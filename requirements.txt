@@ -1,0 +1,14 @@
+# python=3.10
+
+#apache_beam
+datasets==1.18.0
+jupyter
+matplotlib
+mwparserfromhell
+numpy
+pandas
+pydantic-cli
+scipy
+torch
+torchtext
+
