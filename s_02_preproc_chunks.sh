@@ -9,7 +9,7 @@ mllm_src_path=$code_path/mllm
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-python s_02_preproc_interp.py \
+python s_02_preproc_chunks.py \
   --ds-path $ds_path \
   --out-path $out_path
 
