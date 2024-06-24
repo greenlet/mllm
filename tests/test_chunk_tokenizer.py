@@ -374,6 +374,35 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         cases.append(case)
 
+        # ------- Test case 5 ------- #
+        case = TCase(
+            docid=docid, title=title, body=body, docid_tokens=docid_tokens, title_tokens=title_tokens,
+            body_tokens=body_tokens, n_emb_tokens=12, fixed_size=False, chunks=[],
+        )
+        offset = 0
+        offset_tokens = self._tok_offset(offset)
+        case.chunks.append(TChunkCase(
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
+            title_tok_num=4, body_tok_num=1, doc_tokens=[
+                *prefix_tokens,
+                *offset_tokens,
+                *title_tokens,
+                *body_tokens[:1],
+            ]
+        ))
+        offset = 5
+        offset_tokens = self._tok_offset(offset)
+        case.chunks.append(TChunkCase(
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
+            title_tok_num=0, body_tok_num=6, doc_tokens=[
+                *prefix_tokens,
+                *offset_tokens,
+                *body_tokens[1:],
+                self.doc_end_tok,
+            ]
+        ))
+        cases.append(case)
+
         for case in cases:
             ch_tkz = ChunkTokenizer(self.tokens_dict, self.tokenizer, case.n_emb_tokens, case.fixed_size)
             ch_tkz.process_doc(0, self._doc(title, body))
