@@ -11,4 +11,5 @@ pydantic-cli
 scipy
 torch
 torchtext
+tqdm
 

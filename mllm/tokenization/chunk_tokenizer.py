@@ -120,15 +120,24 @@ class ChunkTokenizer:
         self.docs_processed_num = 0
         self.chunks = []
 
-    def _write_data_if_needed(self):
-        if self.docs_write_num <= 0 or self.dir_out is None or self.docs_processed_num < self.docs_write_num:
+    def write_data(self):
+        if not self.chunks:
             return
         keys = 'docid', 'offset', 'tok_num', 'docid_tok_num', \
             'offset_tok_num', 'title_tok_num', 'body_tok_num'
+
+        assert self.dir_out is not None
         self.dir_out.mkdir(parents=True, exist_ok=True)
         n_chunks = len(self.chunks)
         data = {k: [0] * n_chunks for k in keys}
-        tokens = [None] * n_chunks
+        if self.fixed_size:
+            tokens = np.empty(shape=(n_chunks, self.n_emb_tokens), dtype=np.int32)
+            chunk_sizes, tok_off = None, None
+        else:
+            n_tok_all = sum(len(ch.tokens) for ch in self.chunks)
+            tokens = np.empty(shape=(n_tok_all,), dtype=np.int32)
+            chunk_sizes = np.empty(shape=(n_chunks,), dtype=np.int32)
+            tok_off = 0
         for i, chunk in enumerate(self.chunks):
             data['docid'][i] = chunk.docid
             data['offset'][i] = chunk.offset
@@ -138,21 +147,34 @@ class ChunkTokenizer:
             data['title_tok_num'][i] = chunk.title_tok_num
             data['body_tok_num'][i] = chunk.body_tok_num
 
-            tokens[i] = chunk.tokens
+            if self.fixed_size:
+                tokens[i] = chunk.tokens
+            else:
+                chunk_size = len(chunk.tokens)
+                tokens[tok_off:tok_off + chunk_size] = chunk.tokens
+                tok_off += chunk_size
+                chunk_sizes[i] = chunk_size
 
-        doc_id_min = doc_id_max = self.chunks[0].docid, self.chunks[-1].docid
+        doc_id_min, doc_id_max = self.chunks[0].docid, self.chunks[-1].docid
         fname_base = f'docs_{doc_id_min:07d}-{doc_id_max:07d}'
-        fname_np, fname_csv = f'{fname_base}.np', f'{fname_base}.csv'
-        fpath_np, fpath_csv = self.dir_out / fname_np, self.dir_out / fname_csv
 
-        tokens = np.array(tokens, dtype=np.int32)
-        tokens.tofile(fpath_np)
+        tokens_fpath = self.dir_out / f'{fname_base}_tokens.np'
+        tokens.tofile(tokens_fpath)
+        if not self.fixed_size:
+            chunk_sizes_fpath = self.dir_out / f'{fname_base}_chunk_sizes.np'
+            chunk_sizes.tofile(chunk_sizes_fpath)
 
         df = pd.DataFrame(data)
-        df.to_csv(fpath_csv)
+        fpath_csv = self.dir_out / f'{fname_base}.csv'
+        df.to_csv(fpath_csv, index=False)
 
         self.chunks = []
         self.docs_processed_num = 0
+
+    def _write_data_if_needed(self):
+        if self.docs_write_num <= 0 or self.dir_out is None or self.docs_processed_num < self.docs_write_num:
+            return
+        self.write_data()
 
     def _split_fixed(self, docid: int, docid_tokens: list[int], title_tokens: list[int], body_tokens: list[int]) -> list[TokChunk]:
         n_docid = len(docid_tokens)

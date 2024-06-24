@@ -4,6 +4,7 @@ import numpy as np
 from datasets import load_dataset
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
+from tqdm import trange
 
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, gen_add_doc_tokens
 from transformers import GPT2Tokenizer
@@ -15,6 +16,25 @@ class ArgsPreproc(BaseModel):
         required=False,
         description='Path to a dataset loaded within a `datasets` module.',
         cli=('--ds-path',),
+    )
+    emb_chunk_size: int = Field(
+        100,
+        required=False,
+        description='Number of embeddings in a chunk',
+        cli=('--emb-chunk-size',),
+    )
+    chunk_fixed_size: bool = Field(
+        False,
+        required=False,
+        description='If set, each chunk size will be exactly EMB_CHUNK_SIZE. Otherwise,'
+                    'chunks sizes will be around EMB_CHUNK_SIZE and without padding tokens.',
+        cli=('--chunk-fixed-size',)
+    )
+    max_docs: int = Field(
+        0,
+        required=False,
+        description='Maximum documents to split in chunks. If MAX_DOCS <= 0 all documents will be processed',
+        cli=('--max-docs',)
     )
     out_path: Path = Field(
         ...,
@@ -32,6 +52,13 @@ def main(args: ArgsPreproc) -> int:
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     all_tokens = gen_add_doc_tokens(tokenizer)
 
+    fixed_suffix = 'fixed' if args.chunk_fixed_size else 'nonfixed'
+    subdir = f'ch_{args.emb_chunk_size:03d}_{fixed_suffix}'
+    dir_out = args.out_path / subdir
+    ch_tkz = ChunkTokenizer(
+        tokens=all_tokens, tokenizer=tokenizer, n_emb_tokens=args.emb_chunk_size,
+        fixed_size=args.chunk_fixed_size, dir_out=dir_out, docs_write_num=100,
+    )
 
     txt = 'Привет всем!<|endoftext|> Hola! àáâäæãåā <|pad|> <|doc_begin|>'
     print(txt)
@@ -42,16 +69,15 @@ def main(args: ArgsPreproc) -> int:
 
     n_ds = len(ds_train)
     print(f'Dataset size: {n_ds}')
-    n_emb_tokens = 100
-    dir_out = ...
-    docs_write_num = 100
-    chtkz = ChunkTokenizer(tokens=all_tokens, tokenizer=tokenizer, n_emb_tokens=n_emb_tokens)
-    for i in range(n_ds):
-        art = ds_train[i]
-        title, text = art['title'], art['text']
-        title_tok, text_tok = tokenizer(title), tokenizer(text)
-        doc_tok = np.concatenate
-        break
+    n_docs = min(n_ds, args.max_docs) if args.max_docs > 0 else n_ds
+    print(f'Documents to process: {n_docs}')
+
+    pbar = trange(n_docs, desc=f'ChunkGen', unit='doc')
+    for i in pbar:
+        doc = ds_train[i]
+        ch_tkz.process_doc(i, doc)
+    ch_tkz.write_data()
+    pbar.close()
 
     return 0
 
