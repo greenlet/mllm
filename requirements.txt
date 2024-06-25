@@ -9,6 +9,7 @@ numpy
 pandas
 pydantic-cli
 scipy
+tensorboard
 torch
 torchtext
 tqdm

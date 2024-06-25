@@ -43,7 +43,7 @@ class ArgsPreproc(BaseModel):
         cli=('--out-path',),
     )
 
-
+a
 def main(args: ArgsPreproc) -> int:
     print(args)
     ds_cache_dir, ds_path, ds_name = args.ds_path.parent.parent, args.ds_path.parent.name, args.ds_path.name
@@ -59,13 +59,6 @@ def main(args: ArgsPreproc) -> int:
         tokens=all_tokens, tokenizer=tokenizer, n_emb_tokens=args.emb_chunk_size,
         fixed_size=args.chunk_fixed_size, dir_out=dir_out, docs_write_num=100,
     )
-
-    txt = 'Привет всем!<|endoftext|> Hola! àáâäæãåā <|pad|> <|doc_begin|>'
-    print(txt)
-    tokens = tokenizer(txt)
-    print(tokens['input_ids'], len(tokens['input_ids']))
-    txt2 = tokenizer.decode(tokens['input_ids'])
-    print(txt2)
 
     n_ds = len(ds_train)
     print(f'Dataset size: {n_ds}')
