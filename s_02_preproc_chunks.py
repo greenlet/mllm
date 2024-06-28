@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -6,7 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from tqdm import trange
 
-from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, gen_add_doc_tokens
+from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, gen_add_doc_tokens, gen_out_subdir
 from transformers import GPT2Tokenizer
 
 
@@ -43,7 +44,7 @@ class ArgsPreproc(BaseModel):
         cli=('--out-path',),
     )
 
-a
+
 def main(args: ArgsPreproc) -> int:
     print(args)
     ds_cache_dir, ds_path, ds_name = args.ds_path.parent.parent, args.ds_path.parent.name, args.ds_path.name
@@ -52,9 +53,9 @@ def main(args: ArgsPreproc) -> int:
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     all_tokens = gen_add_doc_tokens(tokenizer)
 
-    fixed_suffix = 'fixed' if args.chunk_fixed_size else 'nonfixed'
-    subdir = f'ch_{args.emb_chunk_size:03d}_{fixed_suffix}'
+    subdir = gen_out_subdir(args.emb_chunk_size, args.chunk_fixed_size)
     dir_out = args.out_path / subdir
+    shutil.rmtree(dir_out)
     ch_tkz = ChunkTokenizer(
         tokens=all_tokens, tokenizer=tokenizer, n_emb_tokens=args.emb_chunk_size,
         fixed_size=args.chunk_fixed_size, dir_out=dir_out, docs_write_num=100,

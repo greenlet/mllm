@@ -7,6 +7,10 @@ import pandas as pd
 from transformers import PreTrainedTokenizer
 
 
+FIXED_SUFFIX = 'fixed'
+NONFIXED_SUFFIX = 'nonfixed'
+
+
 class CustomToken:
     name: str
     repr: str
@@ -65,6 +69,29 @@ def gen_add_doc_tokens(tokenizer: PreTrainedTokenizer) -> dict[str, CustomToken]
     return all_tokens
 
 
+def gen_out_subdir(emb_chunk_size: int, fixed_size: bool) -> str:
+    fixed_suffix = FIXED_SUFFIX if fixed_size else NONFIXED_SUFFIX
+    return f'ch_{emb_chunk_size:03d}_{fixed_suffix}'
+
+
+def parse_out_subdir(subdir: str) -> tuple[int, bool]:
+    parts = subdir.split('_')
+    emb_chunk_size, fixed_suffix = int(parts[1]), parts[2]
+    if fixed_suffix == FIXED_SUFFIX:
+        fixed_size = True
+    elif fixed_suffix == NONFIXED_SUFFIX:
+        fixed_size = False
+    else:
+        raise ValueError(f'Unexpected fixed_suffix="{fixed_suffix}" in subdir name "{subdir}". '
+                         f'Expected values: {FIXED_SUFFIX}, {NONFIXED_SUFFIX}')
+    return emb_chunk_size, fixed_size
+
+
+def gen_ds_fnames(doc_id_min: int, doc_id_max: int) -> tuple[str, str, str]:
+    fname_base = f'docs_{doc_id_min:07d}-{doc_id_max:07d}'
+    return f'{fname_base}.csv', f'{fname_base}_tokens.np', f'{fname_base}_chunk_sizes.np'
+
+
 class ChunkTokenizer:
     class TokChunk:
         docid: int
@@ -74,9 +101,14 @@ class ChunkTokenizer:
         offset_tok_num: int
         title_tok_num: int
         body_tok_num: int
+        title_beg_ind: int
+        title_end_ind: int
+        body_beg_ind: int
+        body_end_ind: int
 
         def __init__(self, docid: int, tokens: np.ndarray, offset: int, docid_tok_num: int,
-                offset_tok_num: int, title_tok_num: int, body_tok_num: int):
+                     offset_tok_num: int, title_tok_num: int, body_tok_num: int,
+                     title_beg_ind: int = -1, title_end_ind: int = -1, body_beg_ind: int = -1, body_end_ind: int = -1):
             self.docid = docid
             self.tokens = tokens
             self.offset = offset
@@ -84,6 +116,12 @@ class ChunkTokenizer:
             self.offset_tok_num = offset_tok_num
             self.title_tok_num = title_tok_num
             self.body_tok_num = body_tok_num
+            assert title_beg_ind == title_end_ind == -1 or 0 < title_beg_ind < title_end_ind, f'title_beg_ind = {title_beg_ind}, title_end_ind = {title_end_ind}'
+            assert body_beg_ind == body_end_ind == -1 or 0 < body_beg_ind < body_end_ind, f'body_beg_ind = {body_beg_ind}, body_end_ind = {body_end_ind}'
+            self.title_beg_ind = title_beg_ind
+            self.title_end_ind = title_end_ind
+            self.body_beg_ind = body_beg_ind
+            self.body_end_ind = body_end_ind
 
     doc_beg_tok: int
     doc_end_tok: int
@@ -124,7 +162,9 @@ class ChunkTokenizer:
         if not self.chunks:
             return
         keys = 'docid', 'offset', 'tok_num', 'docid_tok_num', \
-            'offset_tok_num', 'title_tok_num', 'body_tok_num'
+            'offset_tok_num', 'title_tok_num', 'body_tok_num', \
+            'title_beg_ind', 'title_end_ind', 'body_beg_ind', 'body_end_ind', \
+            'doc_id_min', 'doc_id_max', 'doc_id_off'
 
         assert self.dir_out is not None
         self.dir_out.mkdir(parents=True, exist_ok=True)
@@ -138,6 +178,8 @@ class ChunkTokenizer:
             tokens = np.empty(shape=(n_tok_all,), dtype=np.int32)
             chunk_sizes = np.empty(shape=(n_chunks,), dtype=np.int32)
             tok_off = 0
+
+        doc_id_min, doc_id_max = self.chunks[0].docid, self.chunks[-1].docid
         for i, chunk in enumerate(self.chunks):
             data['docid'][i] = chunk.docid
             data['offset'][i] = chunk.offset
@@ -146,6 +188,13 @@ class ChunkTokenizer:
             data['offset_tok_num'][i] = chunk.offset_tok_num
             data['title_tok_num'][i] = chunk.title_tok_num
             data['body_tok_num'][i] = chunk.body_tok_num
+            data['title_beg_ind'][i] = chunk.title_beg_ind
+            data['title_end_ind'][i] = chunk.title_end_ind
+            data['body_beg_ind'][i] = chunk.body_beg_ind
+            data['body_end_ind'][i] = chunk.body_end_ind
+            data['doc_id_min'][i] = doc_id_min
+            data['doc_id_max'][i] = doc_id_max
+            data['doc_id_off'][i] = i
 
             if self.fixed_size:
                 tokens[i] = chunk.tokens
@@ -155,18 +204,17 @@ class ChunkTokenizer:
                 tok_off += chunk_size
                 chunk_sizes[i] = chunk_size
 
-        doc_id_min, doc_id_max = self.chunks[0].docid, self.chunks[-1].docid
-        fname_base = f'docs_{doc_id_min:07d}-{doc_id_max:07d}'
+        df_fname, tokens_fname, sizes_fname = gen_ds_fnames(doc_id_min, doc_id_max)
 
-        tokens_fpath = self.dir_out / f'{fname_base}_tokens.np'
+        tokens_fpath = self.dir_out / tokens_fname
         tokens.tofile(tokens_fpath)
         if not self.fixed_size:
-            chunk_sizes_fpath = self.dir_out / f'{fname_base}_chunk_sizes.np'
+            chunk_sizes_fpath = self.dir_out / sizes_fname
             chunk_sizes.tofile(chunk_sizes_fpath)
 
         df = pd.DataFrame(data)
-        fpath_csv = self.dir_out / f'{fname_base}.csv'
-        df.to_csv(fpath_csv, index=False)
+        df_fpath = self.dir_out / df_fname
+        df.to_csv(df_fpath, index=False)
 
         self.chunks = []
         self.docs_processed_num = 0
@@ -202,20 +250,30 @@ class ChunkTokenizer:
             assert n_rest > 1, f'Doc tokens total: {self.n_emb_tokens}. Tokens occupied: {i}'
 
             title_tok_num = 0
+            title_beg_ind = title_end_ind = -1
             if off < n_title:
                 off_cur = off
                 n_cur = min(n_rest, n_title - off_cur)
                 tokens[i:i + n_cur] = title_tokens[off_cur:off_cur + n_cur]
+                i1 = i + (title_tokens[off_cur] == self.title_beg_tok)
+                i2 = i + n_cur - (title_tokens[off_cur + n_cur - 1] == self.title_end_tok)
+                if i1 <= i2:
+                    title_beg_ind, title_end_ind = i1, i2
                 off += n_cur
                 n_rest -= n_cur
                 i += n_cur
                 title_tok_num = n_cur
 
             body_tok_num = 0
+            body_beg_ind = body_end_ind = -1
             if off >= n_title and n_rest > 0:
                 off_cur = off - n_title
                 n_cur = min(n_rest, n_body - off_cur)
                 tokens[i:i + n_cur] = body_tokens[off_cur:off_cur + n_cur]
+                i1 = i + (body_tokens[off_cur] == self.body_beg_tok)
+                i2 = i + n_cur - (body_tokens[off_cur + n_cur - 1] == self.body_end_tok)
+                if i1 <= i2:
+                    body_beg_ind, body_end_ind = i1, i2
                 off += n_cur
                 n_rest -= n_cur
                 i += n_cur
@@ -230,6 +288,7 @@ class ChunkTokenizer:
             chunk = self.TokChunk(
                 docid=docid, tokens=tokens, offset=offset, docid_tok_num=len(docid_tokens),
                 offset_tok_num=len(off_tokens), title_tok_num=title_tok_num, body_tok_num=body_tok_num,
+                title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
             )
             chunks.append(chunk)
         return chunks
@@ -252,23 +311,37 @@ class ChunkTokenizer:
             off_tokens = [self.offset_beg_tok, *off_tokens, self.offset_end_tok]
             tokens = head_tokens + off_tokens
             title_tok_num = 0
+            title_beg_ind = title_end_ind = -1
             if i1 < n_title:
                 i1_cur = i1
                 i2_cur = min(i2, n_title)
                 tokens.extend(title_tokens[i1_cur:i2_cur])
                 title_tok_num = i2_cur - i1_cur
+                i1 = i1_cur + (title_tokens[i1_cur] == self.title_beg_tok)
+                i2 = i2_cur - (title_tokens[i2_cur - 1] == self.title_end_tok)
+                if i1 <= i2:
+                    title_beg_ind, title_end_ind = i1, i2
+
             body_tok_num = 0
+            body_beg_ind = body_end_ind = -1
             if i2 > n_title:
                 i1_cur = max(i1 - n_title, 0)
                 i2_cur = min(i2 - n_title, n_body)
                 tokens.extend(body_tokens[i1_cur:i2_cur])
                 body_tok_num = i2_cur - i1_cur
+                i1 = i1_cur + (body_tokens[i1_cur] == self.body_beg_tok)
+                i2 = i2_cur - (body_tokens[i2_cur - 1] == self.body_end_tok)
+                if i1 <= i2:
+                    body_beg_ind, body_end_ind = i1, i2
+
             if i2 == n_doc:
                 tokens.append(self.doc_end_tok)
+
             tokens = np.array(tokens, dtype=np.int32)
             chunk = self.TokChunk(
                 docid=docid, tokens=tokens, offset=offset, docid_tok_num=len(docid_tokens),
                 offset_tok_num=len(off_tokens), title_tok_num=title_tok_num, body_tok_num=body_tok_num,
+                title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
             )
             chunks.append(chunk)
         return chunks
