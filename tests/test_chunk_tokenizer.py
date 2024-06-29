@@ -23,6 +23,10 @@ class TChunkCase:
     title_tok_num: int
     body_tok_num: int
     doc_tokens: list[int]
+    title_beg_ind: int = -1
+    title_end_ind: int = -1
+    body_beg_ind: int = -1
+    body_end_ind: int = -1
 
 
 @dataclass(kw_only=True)
@@ -107,14 +111,18 @@ class TestChunkTokenizer(ut.TestCase):
     def _str_case_chunk(self, case: TCase, cchunk: 'TChunkCase', chunk: ChunkTokenizer.TokChunk) -> str:
         res = [
             f'Doc id: {case.docid}',
-            f'Title: {case.title}',
-            f'Body: {case.body}',
+            f'Title: `{case.title}`',
+            f'Body: `{case.body}`',
             f'n_emb_tokens: {case.n_emb_tokens}. fixed_size: {case.fixed_size}',
             f'-- Expected - Actual',
             f'-- docid_tok_num: {cchunk.docid_tok_num} - {chunk.docid_tok_num}',
             f'-- offset_tok_num: {cchunk.offset_tok_num} - {chunk.offset_tok_num}',
             f'-- title_tok_num: {cchunk.title_tok_num} - {chunk.title_tok_num}',
             f'-- body_tok_num: {cchunk.body_tok_num} - {chunk.body_tok_num}',
+            f'-- title_beg_ind: {cchunk.title_beg_ind} - {chunk.title_beg_ind}',
+            f'-- title_end_ind: {cchunk.title_end_ind} - {chunk.title_end_ind}',
+            f'-- body_beg_ind: {cchunk.body_beg_ind} - {chunk.body_beg_ind}',
+            f'-- body_end_ind: {cchunk.body_end_ind} - {chunk.body_end_ind}',
             f'Expected tokens: {cchunk.doc_tokens}',
             f'Actual tokens:   {chunk.tokens}',
         ]
@@ -133,15 +141,22 @@ class TestChunkTokenizer(ut.TestCase):
                 docid_tokens = self._tok_docid(docid)
                 title_tokens = self._tok_title(title)
                 body_tokens = self._tok_body(body)
+                docid_tok_num, title_tok_num, body_tok_num = len(docid_tokens), len(title_tokens), len(body_tokens)
                 case = TCase(
                     docid=docid, title=title, body=body, docid_tokens=docid_tokens, title_tokens=title_tokens,
                     body_tokens=body_tokens, n_emb_tokens=n_emb_tokens, fixed_size=fixed_size, chunks=[],
                 )
                 offset = 0
                 offset_tokens = self._tok_offset(offset)
+                offset_tok_num = len(offset_tokens)
+                title_beg_ind = 1 + docid_tok_num + offset_tok_num + 1
+                title_end_ind = title_beg_ind + title_tok_num - 2
+                body_beg_ind = title_end_ind + 2
+                body_end_ind = body_beg_ind + body_tok_num - 2
                 case.chunks.append(TChunkCase(
-                    docid_tok_num=len(docid_tokens), offset=offset, offset_tok_num=len(offset_tokens),
-                    title_tok_num=len(title_tokens), body_tok_num=len(body_tokens), doc_tokens=[
+                    docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num, title_tok_num=title_tok_num, body_tok_num=body_tok_num,
+                    title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+                    doc_tokens=[
                         self.doc_beg_tok,
                         *docid_tokens,
                         *offset_tokens,
@@ -157,17 +172,16 @@ class TestChunkTokenizer(ut.TestCase):
                 self.assertEqual(3, len(title_tokens))
                 self.assertEqual(3, len(body_tokens))
 
-                chunk, cchunk = ch_tkz.chunks[0], case.chunks[0]
-                self.assertEqual(cchunk.docid_tok_num, chunk.docid_tok_num)
-                self.assertEqual(cchunk.offset_tok_num, chunk.offset_tok_num)
-                self.assertEqual(cchunk.body_tok_num, chunk.body_tok_num)
-                self.assertEqual(cchunk.title_tok_num, chunk.title_tok_num)
-
+                cchunk, chunk = case.chunks[0], ch_tkz.chunks[0]
                 n_doc_tok = len(cchunk.doc_tokens)
-                self.assertEqual(chunk.docid_tok_num, chunk.docid_tok_num, self._str_case_chunk(case, cchunk, chunk))
-                self.assertEqual(chunk.offset_tok_num, chunk.offset_tok_num, self._str_case_chunk(case, cchunk, chunk))
-                self.assertEqual(chunk.title_tok_num, chunk.title_tok_num, self._str_case_chunk(case, cchunk, chunk))
-                self.assertEqual(chunk.body_tok_num, chunk.body_tok_num, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.docid_tok_num, chunk.docid_tok_num, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.offset_tok_num, chunk.offset_tok_num, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.title_tok_num, chunk.title_tok_num, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.body_tok_num, chunk.body_tok_num, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.title_beg_ind, chunk.title_beg_ind, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.title_end_ind, chunk.title_end_ind, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.body_beg_ind, chunk.body_beg_ind, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.body_end_ind, chunk.body_end_ind, self._str_case_chunk(case, cchunk, chunk))
                 self.assertEqual(True, np.alltrue(cchunk.doc_tokens == chunk.tokens[:n_doc_tok]), self._str_case_chunk(case, cchunk, chunk))
                 self.assertEqual(True, np.alltrue(self.pad_tok == chunk.tokens[n_doc_tok:]), self._str_case_chunk(case, cchunk, chunk))
 
@@ -187,9 +201,16 @@ class TestChunkTokenizer(ut.TestCase):
         )
         offset = 0
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = 1 + docid_tok_num + offset_tok_num + 1
+        title_end_ind = title_beg_ind + 1
+        body_beg_ind = -1
+        body_end_ind = -1
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=2, body_tok_num=0, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=2, body_tok_num=0,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *title_tokens[:2],
@@ -197,9 +218,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 2
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = 1 + docid_tok_num + offset_tok_num
+        title_end_ind = title_beg_ind + 1
+        body_beg_ind = -1
+        body_end_ind = -1
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=2, body_tok_num=0, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=2, body_tok_num=0,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *title_tokens[2:],
@@ -207,9 +235,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 4
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = 1 + docid_tok_num + offset_tok_num + 1
+        body_end_ind = body_beg_ind + 1
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=2, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=2,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[:2],
@@ -217,9 +252,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 6
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = 1 + docid_tok_num + offset_tok_num
+        body_end_ind = body_beg_ind + 2
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=2, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=2,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[2:4],
@@ -227,9 +269,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 8
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = 1 + docid_tok_num + offset_tok_num
+        body_end_ind = body_beg_ind + 2
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=2, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=2,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[4:6],
@@ -237,9 +286,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 10
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = -1
+        body_end_ind = -1
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=1, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=1,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[6:],
@@ -255,9 +311,16 @@ class TestChunkTokenizer(ut.TestCase):
         )
         offset = 0
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = 1 + docid_tok_num + offset_tok_num + 1
+        title_end_ind = title_beg_ind + 2
+        body_beg_ind = -1
+        body_end_ind = -1
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=4, body_tok_num=0, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=4, body_tok_num=0,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *title_tokens,
@@ -265,9 +328,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 4
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = 1 + docid_tok_num + offset_tok_num + 1
+        body_end_ind = body_beg_ind + 3
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=4, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=4,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[:4],
@@ -275,9 +345,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 8
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = 1 + docid_tok_num + offset_tok_num
+        body_end_ind = body_beg_ind + 2
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=3, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=3,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[4:],
@@ -293,9 +370,16 @@ class TestChunkTokenizer(ut.TestCase):
         )
         offset = 0
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = 1 + docid_tok_num + offset_tok_num + 1
+        title_end_ind = title_beg_ind + 2
+        body_beg_ind = -1
+        body_end_ind = -1
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=4, body_tok_num=1, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=4, body_tok_num=1,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *title_tokens,
@@ -304,9 +388,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 5
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = 1 + docid_tok_num + offset_tok_num
+        body_end_ind = body_beg_ind + 5
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=5, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=5,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[1:6],
@@ -314,9 +405,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 10
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = -1
+        body_end_ind = -1
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=1, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=1,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[6:],
@@ -332,9 +430,16 @@ class TestChunkTokenizer(ut.TestCase):
         )
         offset = 0
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = 1 + docid_tok_num + offset_tok_num + 1
+        title_end_ind = title_beg_ind + 1
+        body_beg_ind = -1
+        body_end_ind = -1
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=2, body_tok_num=0, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=2, body_tok_num=0,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *title_tokens[:2],
@@ -342,9 +447,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 2
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = 1 + docid_tok_num + offset_tok_num
+        title_end_ind = title_beg_ind + 1
+        body_beg_ind = -1
+        body_end_ind = -1
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=2, body_tok_num=1, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=2, body_tok_num=1,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *title_tokens[2:],
@@ -353,9 +465,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 5
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = 1 + docid_tok_num + offset_tok_num
+        body_end_ind = body_beg_ind + 3
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=3, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=3,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[1:4],
@@ -363,9 +482,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 8
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = 1 + docid_tok_num + offset_tok_num
+        body_end_ind = body_beg_ind + 2
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=3, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=3,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[4:],
@@ -381,9 +507,16 @@ class TestChunkTokenizer(ut.TestCase):
         )
         offset = 0
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = 1 + docid_tok_num + offset_tok_num + 1
+        title_end_ind = title_beg_ind + 2
+        body_beg_ind = -1
+        body_end_ind = -1
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=4, body_tok_num=1, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=4, body_tok_num=1,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *title_tokens,
@@ -392,9 +525,16 @@ class TestChunkTokenizer(ut.TestCase):
         ))
         offset = 5
         offset_tokens = self._tok_offset(offset)
+        offset_tok_num = len(offset_tokens)
+        title_beg_ind = -1
+        title_end_ind = -1
+        body_beg_ind = 1 + docid_tok_num + offset_tok_num
+        body_end_ind = body_beg_ind + 5
         case.chunks.append(TChunkCase(
-            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=len(offset_tokens),
-            title_tok_num=0, body_tok_num=6, doc_tokens=[
+            docid_tok_num=docid_tok_num, offset=offset, offset_tok_num=offset_tok_num,
+            title_tok_num=0, body_tok_num=6,
+            title_beg_ind=title_beg_ind, title_end_ind=title_end_ind, body_beg_ind=body_beg_ind, body_end_ind=body_end_ind,
+            doc_tokens=[
                 *prefix_tokens,
                 *offset_tokens,
                 *body_tokens[1:],
@@ -417,6 +557,10 @@ class TestChunkTokenizer(ut.TestCase):
                 self.assertEqual(cchunk.offset_tok_num, chunk.offset_tok_num, self._str_case_chunk(case, cchunk, chunk))
                 self.assertEqual(cchunk.body_tok_num, chunk.body_tok_num, self._str_case_chunk(case, cchunk, chunk))
                 self.assertEqual(cchunk.title_tok_num, chunk.title_tok_num, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.title_beg_ind, chunk.title_beg_ind, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.title_end_ind, chunk.title_end_ind, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.body_beg_ind, chunk.body_beg_ind, self._str_case_chunk(case, cchunk, chunk))
+                self.assertEqual(cchunk.body_end_ind, chunk.body_end_ind, self._str_case_chunk(case, cchunk, chunk))
 
                 self.assertEqual(True, np.alltrue(chunk.tokens[:len(cchunk.doc_tokens)] == cchunk.doc_tokens), self._str_case_chunk(case, cchunk, chunk))
                 self.assertEqual(True, np.alltrue(chunk.tokens[len(cchunk.doc_tokens):] == self.pad_tok), self._str_case_chunk(case, cchunk, chunk))

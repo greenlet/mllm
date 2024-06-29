@@ -50,7 +50,7 @@ def main(args: ArgsPreproc) -> int:
     ds_cache_dir, ds_path, ds_name = args.ds_path.parent.parent, args.ds_path.parent.name, args.ds_path.name
     ds = load_dataset(path=ds_path, name=ds_name, beam_runner='DirectRunner', cache_dir=str(ds_cache_dir))
     ds_train = ds['train']
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
     all_tokens = gen_add_doc_tokens(tokenizer)
 
     subdir = gen_out_subdir(args.emb_chunk_size, args.chunk_fixed_size)

@@ -13,7 +13,8 @@ from tqdm import trange
 
 
 from mllm.model.model import CfgMllm, Mllm
-from mllm.tokenization.chunk_tokenizer import gen_ds_fnames, parse_out_subdir
+from mllm.tokenization.chunk_tokenizer import gen_ds_fnames, parse_out_subdir, gen_add_doc_tokens
+from transformers import GPT2Tokenizer
 
 
 class ArgsTrain(BaseModel):
@@ -147,6 +148,7 @@ class DsLoader:
                 for i_chunk in range(n_chunks):
                     chunk_size = chunk_sizes[i_chunk]
                     tokens_list[i_chunk] = tokens[offset:offset + chunk_size]
+                    offset += chunk_size
                 tokens = tokens_list
             self._tokens_cache[doc_ids] = tokens
             self._prune_cache()
@@ -160,14 +162,19 @@ class DsLoader:
             ch_tokens = chunks[i]
             title_beg_ind, title_end_ind = ch_row['title_beg_ind'], ch_row['title_end_ind']
             body_beg_ind, body_end_ind = ch_row['body_beg_ind'], ch_row['body_end_ind']
-            print(i, title_beg_ind, title_end_ind, body_beg_ind, body_end_ind)
-            print(len(ch_tokens))
+            # print(i, title_beg_ind, title_end_ind, body_beg_ind, body_end_ind)
+            # print(len(ch_tokens), ch_tokens[:20])
             if title_beg_ind >= 0:
-                assert title_end_ind > title_beg_ind
+                assert 0 < title_beg_ind < title_end_ind
+                n = len(res)
                 res.extend(ch_tokens[title_beg_ind:title_end_ind])
+                # print(f'{n} --> {len(res)}')
             if body_beg_ind >= 0:
-                assert body_end_ind > body_beg_ind
+                assert 0 < body_beg_ind < body_end_ind
+                n = len(res)
                 res.extend(ch_tokens[body_beg_ind:body_end_ind])
+                # print(f'{n} --> {len(res)}')
+        # print(f'res: {len(res)}')
         return res
 
     def get_batch(self, ind: int, train: bool) -> tuple[dict[int, list[np.ndarray]], int, list[int]]:
@@ -202,12 +209,17 @@ class DsLoader:
 
 def main(args: ArgsTrain) -> int:
     print(args)
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
+    all_tokens = gen_add_doc_tokens(tokenizer)
 
     docs_batch_size = 3
     max_chunks_per_doc = 3
     ds_loader = DsLoader(args.ds_dir_path, docs_batch_size, max_chunks_per_doc)
-    docs_chunks, target_doc_id, target_chunks = ds_loader.get_batch(100, train=True)
-    print(target_chunks)
+    docs_chunks, target_doc_id, target_tokens = ds_loader.get_batch(100, train=True)
+    print(target_tokens)
+    target_str = tokenizer.decode(target_tokens)
+    print(target_str)
+
 
     return 0
 

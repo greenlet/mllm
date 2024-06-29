@@ -228,7 +228,7 @@ class ChunkTokenizer:
         n_docid = len(docid_tokens)
         n_title, n_body = len(title_tokens), len(body_tokens)
         n_doc = n_title + n_body
-        ind, off = 0, 0
+        off = 0
         chunks = []
         doc_end_written = False
         while not doc_end_written:
@@ -255,10 +255,10 @@ class ChunkTokenizer:
                 off_cur = off
                 n_cur = min(n_rest, n_title - off_cur)
                 tokens[i:i + n_cur] = title_tokens[off_cur:off_cur + n_cur]
-                i1 = i + (title_tokens[off_cur] == self.title_beg_tok)
-                i2 = i + n_cur - (title_tokens[off_cur + n_cur - 1] == self.title_end_tok)
-                if i1 <= i2:
-                    title_beg_ind, title_end_ind = i1, i2
+                j1 = i + (title_tokens[off_cur] == self.title_beg_tok)
+                j2 = i + n_cur - (title_tokens[off_cur + n_cur - 1] == self.title_end_tok)
+                if j1 < j2:
+                    title_beg_ind, title_end_ind = j1, j2
                 off += n_cur
                 n_rest -= n_cur
                 i += n_cur
@@ -270,10 +270,10 @@ class ChunkTokenizer:
                 off_cur = off - n_title
                 n_cur = min(n_rest, n_body - off_cur)
                 tokens[i:i + n_cur] = body_tokens[off_cur:off_cur + n_cur]
-                i1 = i + (body_tokens[off_cur] == self.body_beg_tok)
-                i2 = i + n_cur - (body_tokens[off_cur + n_cur - 1] == self.body_end_tok)
-                if i1 <= i2:
-                    body_beg_ind, body_end_ind = i1, i2
+                j1 = i + (body_tokens[off_cur] == self.body_beg_tok)
+                j2 = i + n_cur - (body_tokens[off_cur + n_cur - 1] == self.body_end_tok)
+                if j1 < j2:
+                    body_beg_ind, body_end_ind = j1, j2
                 off += n_cur
                 n_rest -= n_cur
                 i += n_cur
@@ -317,10 +317,10 @@ class ChunkTokenizer:
                 i2_cur = min(i2, n_title)
                 tokens.extend(title_tokens[i1_cur:i2_cur])
                 title_tok_num = i2_cur - i1_cur
-                i1 = i1_cur + (title_tokens[i1_cur] == self.title_beg_tok)
-                i2 = i2_cur - (title_tokens[i2_cur - 1] == self.title_end_tok)
-                if i1 <= i2:
-                    title_beg_ind, title_end_ind = i1, i2
+                j1 = len(tokens) - title_tok_num + (title_tokens[i1_cur] == self.title_beg_tok)
+                j2 = len(tokens) - (title_tokens[i2_cur - 1] == self.title_end_tok)
+                if j1 < j2:
+                    title_beg_ind, title_end_ind = j1, j2
 
             body_tok_num = 0
             body_beg_ind = body_end_ind = -1
@@ -329,10 +329,10 @@ class ChunkTokenizer:
                 i2_cur = min(i2 - n_title, n_body)
                 tokens.extend(body_tokens[i1_cur:i2_cur])
                 body_tok_num = i2_cur - i1_cur
-                i1 = i1_cur + (body_tokens[i1_cur] == self.body_beg_tok)
-                i2 = i2_cur - (body_tokens[i2_cur - 1] == self.body_end_tok)
-                if i1 <= i2:
-                    body_beg_ind, body_end_ind = i1, i2
+                j1 = len(tokens) - body_tok_num + (body_tokens[i1_cur] == self.body_beg_tok)
+                j2 = len(tokens) - (body_tokens[i2_cur - 1] == self.body_end_tok)
+                if j1 < j2:
+                    body_beg_ind, body_end_ind = j1, j2
 
             if i2 == n_doc:
                 tokens.append(self.doc_end_tok)
