@@ -11,7 +11,8 @@ device=cpu
 epochs=5
 train_epoch_steps=20
 val_epoch_steps=20
-batch_size=3
+docs_batch_size=3
+max_chunks_per_doc=3
 learning_rate=0.001
 
 mllm_src_path=$code_path/mllm
@@ -21,7 +22,8 @@ cd "$mllm_src_path" || exit 1
 echo "python s_03_train_mllm_level.py \
   --ds-dir-path $wiki_ds_path \
   --train-root-path $train_root_path \
-  --batch-size $batch_size \
+  --docs-batch-size $docs_batch_size \
+  --max-chunks-per-doc $max_chunks_per_doc \
   --device $device \
   --epochs $epochs \
   --learning-rate $learning_rate \

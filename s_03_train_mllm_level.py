@@ -1,5 +1,6 @@
 import shutil
 from datetime import datetime
+import itertools as it
 from pathlib import Path
 from typing import Optional
 
@@ -12,8 +13,8 @@ import torch.utils.tensorboard as tb
 from tqdm import trange
 
 
-from mllm.model.model import CfgMllm, Mllm
-from mllm.tokenization.chunk_tokenizer import gen_ds_fnames, parse_out_subdir, gen_add_doc_tokens
+from mllm.model.model import CfgMllm, Mllm, create_mllm_cfg
+from mllm.tokenization.chunk_tokenizer import gen_ds_fnames, parse_out_subdir, gen_add_doc_tokens, split_doc_embs
 from transformers import GPT2Tokenizer
 
 
@@ -30,11 +31,18 @@ class ArgsTrain(BaseModel):
         description='Path to train root directory. New train subdirectory will be created within each new run.',
         cli=('--train-root-path',),
     )
-    batch_size: Optional[int] = Field(
-        None,
+    docs_batch_size: Optional[int] = Field(
+        3,
         required=False,
-        description='Batch size. Must be greater or equal than 2.',
-        cli=('--batch-size',),
+        description='Documents batch size. Must be greater or equal than 2.',
+        cli=('--docs-batch-size',),
+    )
+    max_chunks_per_doc: Optional[int] = Field(
+        3,
+        required=False,
+        description='Maximum number of consecutive chunks per document taken in each butch. '
+                    'Batch chunk max size will be DOCS_BATCH_SIZE * MAX_CHUNKS_PER_DOC.',
+        cli=('--max-chunks-per-doc',),
     )
     device: str = Field(
         'cpu',
@@ -83,12 +91,89 @@ def read_ds_files(ds_dir_path: Path) -> pd.DataFrame:
     return df
 
 
+class DocsBatch:
+    docs_chunks: dict[int, list[np.ndarray]]
+    target_doc_id: int
+    target_tokens: list[int]
+    pad_tok: int
+    emb_chunk_size: int
+    docs_chunks_padded: np.ndarray
+    target_chunks_padded: np.ndarray
+    target_mask: np.ndarray
+    _docs_chunks_padded_tf: Optional[torch.Tensor] = None
+    _target_chunks_padded_tf: Optional[torch.Tensor] = None
+    _target_mask_tf: Optional[torch.Tensor] = None
+
+    def __init__(self, docs_chunks: dict[int, list[np.ndarray]], target_doc_id: int, target_tokens: list[int],
+                 pad_tok: int, emb_chunk_size: int):
+        self.docs_chunks = docs_chunks
+        self.target_doc_id = target_doc_id
+        self.target_tokens = target_tokens
+        self.pad_tok = pad_tok
+        self.emb_chunk_size = emb_chunk_size
+        self.calc_np()
+
+    def calc_np(self):
+        docs_chunks = []
+        target_chunk_off, target_chunk_sz = 0, 0
+        for doc_id, chunks in self.docs_chunks.items():
+            docs_chunks.extend(chunks)
+            if target_chunk_sz == 0:
+                target_chunk_off += len(chunks)
+                if doc_id == self.target_doc_id:
+                    target_chunk_sz = len(chunks)
+
+        target_embs_offsets = split_doc_embs(len(self.target_tokens), self.emb_chunk_size)
+        n_target_chunks = len(target_embs_offsets) - 1
+        target_chunks = []
+        for i in range(n_target_chunks):
+            chunk = self.target_tokens[target_embs_offsets[i]:target_embs_offsets[i + 1]]
+            target_chunks.append(chunk)
+
+        n_batch_chunks = len(docs_chunks)
+        max_chank_sz = max(len(chunk) for chunk in it.chain(docs_chunks, target_chunks))
+
+        docs_chunks_padded = np.full((n_batch_chunks, max_chank_sz), self.pad_tok, dtype=np.int32)
+        for i_chunk, chunk in enumerate(docs_chunks):
+            docs_chunks_padded[i_chunk, :len(chunk)] = chunk
+
+        target_chunks_padded = np.full((n_target_chunks, max_chank_sz), self.pad_tok, dtype=np.int32)
+        for i_chunk, chunk in enumerate(target_chunks):
+            target_chunks_padded[i_chunk, :len(chunk)] = chunk
+
+        target_mask = np.full(len(docs_chunks), False, dtype=bool)
+        target_mask[target_chunk_off:target_chunk_off + target_chunk_sz] = True
+
+        self.docs_chunks_padded = docs_chunks_padded
+        self.target_chunks_padded = target_chunks_padded
+        self.target_mask = target_mask
+
+    @property
+    def docs_chunks_padded_tf(self) -> torch.Tensor:
+        if self._docs_chunks_padded_tf is None:
+            self._docs_chunks_padded_tf = torch.from_numpy(self.docs_chunks_padded)
+        return self._docs_chunks_padded_tf
+
+    @property
+    def target_chunks_padded_tf(self) -> torch.Tensor:
+        if self._target_chunks_padded_tf is None:
+            self._target_chunks_padded_tf = torch.from_numpy(self.target_chunks_padded)
+        return self._target_chunks_padded_tf
+
+    @property
+    def target_mask_tf(self) -> torch.Tensor:
+        if self._target_mask_tf is None:
+            self._target_mask_tf = torch.from_numpy(self.target_mask)
+        return self._target_mask_tf
+
+
 class DsLoader:
     ds_dir_path: Path
     emb_chunk_size: int
     fixed_size: bool
     docs_batch_size: int
     max_chunks_per_doc: int
+    pad_tok: int
     df: pd.DataFrame
     df_doc: pd.DataFrame
     val_ratio: float
@@ -102,11 +187,12 @@ class DsLoader:
     _max_cache_size: int = 3
 
     def __init__(self, ds_dir_path: Path, docs_batch_size: int, max_chunks_per_doc: int,
-                 val_ratio: float = 0.2):
+                 pad_tok: int, val_ratio: float = 0.2):
         self.ds_dir_path = ds_dir_path
         self.emb_chunk_size, self.fixed_size = parse_out_subdir(ds_dir_path.name)
         self.docs_batch_size = docs_batch_size
         self.max_chunks_per_doc = max_chunks_per_doc
+        self.pad_tok = pad_tok
         self.df = read_ds_files(ds_dir_path)
         self.df.set_index(['docid', 'offset'], inplace=True)
         df_doc = self.df.groupby(level=['docid'])
@@ -177,7 +263,7 @@ class DsLoader:
         # print(f'res: {len(res)}')
         return res
 
-    def get_batch(self, ind: int, train: bool) -> tuple[dict[int, list[np.ndarray]], int, list[int]]:
+    def get_batch(self, ind: int, train: bool) -> DocsBatch:
         docids = self.docids_train if train else self.docids_val
         docids = docids[ind:ind + self.docs_batch_size]
         df_doc = self.df_doc.loc[docids]
@@ -204,22 +290,43 @@ class DsLoader:
 
             if docid == target_docid:
                 target_tokens = self._extract_content_tokens(df, chunks)
-        return docs_chunks, target_docid, target_tokens
+        return DocsBatch(
+            docs_chunks=docs_chunks, target_doc_id=target_docid, target_tokens=target_tokens,
+            pad_tok=self.pad_tok, emb_chunk_size=self.emb_chunk_size
+        )
+
+
+def gen_train_subdir(ds_dir_path: Path) -> str:
+    dt_str = datetime.now().strftime('%Y%m%d_%M%H%S')
+    subdir = f'{dt_str}-{ds_dir_path.parent.name}-{ds_dir_path.name}'
+    return subdir
 
 
 def main(args: ArgsTrain) -> int:
     print(args)
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
-    all_tokens = gen_add_doc_tokens(tokenizer)
+    tok_dict = gen_add_doc_tokens(tokenizer)
+    pad_tok = tok_dict['pad'].ind
+    ds_loader = DsLoader(args.ds_dir_path, args.docs_batch_size, args.max_chunks_per_doc, pad_tok)
+    batch = ds_loader.get_batch(100, train=True)
+    docs_chunks, target_chunks, target_mask = batch.docs_chunks_padded_tf, batch.target_chunks_padded_tf, batch.target_mask_tf
+    print(f'docs_chunks: {docs_chunks.dtype} {docs_chunks.shape}')
+    print(f'target_chunks: {target_chunks.dtype} {target_chunks.shape}')
+    print(f'target_mask: {target_mask.dtype} {target_mask.shape}')
 
-    docs_batch_size = 3
-    max_chunks_per_doc = 3
-    ds_loader = DsLoader(args.ds_dir_path, docs_batch_size, max_chunks_per_doc)
-    docs_chunks, target_doc_id, target_tokens = ds_loader.get_batch(100, train=True)
-    print(target_tokens)
-    target_str = tokenizer.decode(target_tokens)
-    print(target_str)
+    train_subdir = gen_train_subdir(args.ds_dir_path)
+    train_path = args.train_root_path / train_subdir
+    train_path.mkdir(parents=True, exist_ok=True)
+    inp_len = ds_loader.emb_chunk_size + ds_loader.emb_chunk_size // 2 - 1
+    print(f'Creating model with vocab size = {len(tokenizer)}')
 
+    model_cfg = create_mllm_cfg(
+        n_vocab=len(tokenizer), inp_len=inp_len, d_word_wec=256,
+        n_head=8, d_k=32, d_v=32, d_model=256, d_inner=256,
+        pad_idx=pad_tok,
+    )
+    print(model_cfg)
+    model = Mllm(model_cfg)
 
     return 0
 

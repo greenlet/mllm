@@ -378,7 +378,7 @@ def create_mllm_cfg(
         n_levels: int = 2,
         enc_n_layers: MS[int] = (3, 2), n_head: int = 8, d_k: int = 64, d_v: int = 64, d_model: int = 512,
         d_inner: int = 2048, enc_with_graph_mat: bool = False,
-        dec_n_layers: MS[int] = 1,
+        dec_n_layers: MS[int] = 1, pad_idx = 0,
 ) -> CfgMllm:
     if not isinstance(enc_n_layers, tuple):
         enc_n_layers = tuple(enc_n_layers for _ in range(n_levels))
@@ -386,9 +386,6 @@ def create_mllm_cfg(
     if not isinstance(dec_n_layers, tuple):
         dec_n_layers = tuple(dec_n_layers for _ in range(n_levels))
     assert len(dec_n_layers) == n_levels
-
-    # TODO: get rid of pad_idx
-    pad_idx = 0
 
     cfg_vocab_enc = CfgVocabEncoder(
         n_vocab=n_vocab, d_word_vec=d_word_wec, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
