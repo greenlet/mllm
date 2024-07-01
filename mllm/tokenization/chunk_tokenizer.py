@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union, Iterable
 
 import numpy as np
 import pandas as pd
@@ -9,16 +9,19 @@ from transformers import PreTrainedTokenizer
 
 FIXED_SUFFIX = 'fixed'
 NONFIXED_SUFFIX = 'nonfixed'
+Strings = Union[str, Iterable[str]]
 
 
 class CustomToken:
     name: str
     repr: str
+    special: bool
     ind: int = 0
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, special: bool):
         self.name = name
         self.repr = f'<|{name}|>'
+        self.special = special
 
     def set_ind(self, ind: int):
         self.ind = ind
@@ -30,43 +33,63 @@ class CustomToken:
         return str(self)
 
 
-def prefix(pref: str, s: str) -> str:
-    if not pref:
-        return s
-    if not s:
-        return pref
-    return f'{pref}_{s}'
+TokDict = dict[str, CustomToken]
 
 
-def gen_doc_tokens_names(tokens_basenames: list[str]) -> list[str]:
-    res = []
-    for tname in tokens_basenames:
-        tname = prefix('doc', tname)
-        res.extend((f'{tname}_begin', f'{tname}_end'))
-    return res
+def add_pref_post(s: str, pref: str = '', post: str = '') -> str:
+    if pref:
+        s = pref if not s else f'{pref}_{s}'
+    if post:
+        s = post if not s else f'{s}_{post}'
+    return s
 
 
-def gen_tokens(tokens_names: list[str]) -> dict[str, CustomToken]:
+def gen_tokens(tokens_names: list[str], prefix: Strings = '', postfix: Strings = '', special: bool = False) -> TokDict:
+    prefixes = [prefix] if type(prefix) == str else prefix
+    postfixes = [postfix] if type(postfix) == str else postfix
     res = {}
     for tname in tokens_names:
-        token = CustomToken(tname)
-        res[token.name] = token
+        for prefix in prefixes:
+            for postfix in postfixes:
+                tnamepp = add_pref_post(tname, prefix, postfix)
+                token = CustomToken(tnamepp, special)
+                res[token.name] = token
     return res
 
 
-def gen_add_doc_tokens(tokenizer: PreTrainedTokenizer) -> dict[str, CustomToken]:
-    doc_tokens_names = gen_doc_tokens_names(['', 'id', 'offset', 'title', 'body'])
-    special_tokens_names = ['pad']
-    doc_tokens = gen_tokens(doc_tokens_names)
-    special_tokens = gen_tokens(special_tokens_names)
-    for t in doc_tokens.values():
-        tokenizer.add_tokens(t.repr)
-        t.set_ind(len(tokenizer) - 1)
-    for t in special_tokens.values():
-        tokenizer.add_special_tokens({f'{t.name}_token': t.repr})
-        t.set_ind(len(tokenizer) - 1)
-    all_tokens = {**doc_tokens, **special_tokens}
-    return all_tokens
+def add_tokens(tokenizer: PreTrainedTokenizer, tokens: TokDict):
+    for t in tokens.values():
+        if t.special:
+            tokenizer.add_special_tokens({f'{t.name}_token': t.repr})
+        else:
+            tokenizer.add_tokens(t.repr)
+        t.set_ind((len(tokenizer) - 1))
+
+
+def gen_doc_tokens() -> TokDict:
+    tokens = gen_tokens(['', 'id', 'offset', 'title', 'body'], prefix='doc', postfix=['begin', 'end'])
+    return tokens
+
+
+def gen_special_tokens() -> TokDict:
+    tokens = gen_tokens(['pad'], special=True)
+    return tokens
+
+
+def gen_dec_tokens() -> TokDict:
+    tokens = gen_tokens(['query'], postfix=['begin', 'end'])
+    return tokens
+
+
+def gen_all_tokens(tokenizer: Optional[PreTrainedTokenizer] = None) -> TokDict:
+    tokens = {
+        **gen_doc_tokens(),
+        **gen_special_tokens(),
+        **gen_dec_tokens(),
+    }
+    if tokenizer is not None:
+        add_tokens(tokenizer, tokens)
+    return tokens
 
 
 def gen_out_subdir(emb_chunk_size: int, fixed_size: bool) -> str:
@@ -99,6 +122,10 @@ def split_doc_embs(n_doc: int, n_emb_tokens: int) -> np.ndarray:
         n_embs += 1
     embs_offsets = np.linspace(0, n_doc, n_embs + 1, dtype=int)
     return embs_offsets
+
+
+def calc_max_inp_size(n_emb_tokens: int) -> int:
+    return n_emb_tokens + n_emb_tokens // 2 - 1
 
 
 class ChunkTokenizer:
@@ -367,3 +394,4 @@ class ChunkTokenizer:
         self.chunks.extend(chunks)
         self.docs_processed_num += 1
         self._write_data_if_needed()
+

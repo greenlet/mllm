@@ -242,7 +242,7 @@ class Encoder(nn.Module):
             for _ in range(n_layers)])
         self.d_model = d_model
 
-    def forward(self, src_seq: Tensor, src_mask: Tensor, return_attns: bool = False) -> tuple[Tensor, list[Tensor]]:
+    def forward(self, src_seq: Tensor, src_mask: Optional[Tensor] = None, return_attns: bool = False) -> tuple[Tensor, list[Tensor]]:
         enc_slf_attn_list = []
 
         enc_out = src_seq
@@ -361,7 +361,7 @@ class Mllm(nn.Module):
     def run_encoder(self, level_num: int, inp: Tensor) -> tuple[Tensor, Tensor]:
         ind = level_num - 1
         out = self.encoders[ind](inp)[0]
-        out_seq, out_emb = out[..., :-1], out[..., -1]
+        out_seq, out_emb = out[..., :-1, :], out[..., -1, :]
         return out_seq, out_emb
 
     def run_decoder(self, level_num: int, inp: Tensor) -> Tensor:
@@ -378,7 +378,7 @@ def create_mllm_cfg(
         n_levels: int = 2,
         enc_n_layers: MS[int] = (3, 2), n_head: int = 8, d_k: int = 64, d_v: int = 64, d_model: int = 512,
         d_inner: int = 2048, enc_with_graph_mat: bool = False,
-        dec_n_layers: MS[int] = 1, pad_idx = 0,
+        dec_n_layers: MS[int] = 1, pad_idx: int = 0,
 ) -> CfgMllm:
     if not isinstance(enc_n_layers, tuple):
         enc_n_layers = tuple(enc_n_layers for _ in range(n_levels))

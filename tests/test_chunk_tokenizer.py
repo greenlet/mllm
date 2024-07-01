@@ -7,7 +7,7 @@ import numpy as np
 
 from transformers import PreTrainedTokenizer, GPT2Tokenizer
 
-from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, CustomToken, gen_add_doc_tokens
+from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, CustomToken, gen_doc_tokens
 
 TXT_01 = 'x'
 TXT_02 = 'Bear beer boaring boring'
@@ -130,7 +130,7 @@ class TestChunkTokenizer(ut.TestCase):
 
     def setUp(self):
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-        self.tokens_dict = gen_add_doc_tokens(self.tokenizer)
+        self.tokens_dict = gen_doc_tokens(self.tokenizer)
 
     def test_01(self):
         for n_emb_tokens in 20, 50, 100:

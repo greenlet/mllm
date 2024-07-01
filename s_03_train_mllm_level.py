@@ -14,7 +14,8 @@ from tqdm import trange
 
 
 from mllm.model.model import CfgMllm, Mllm, create_mllm_cfg
-from mllm.tokenization.chunk_tokenizer import gen_ds_fnames, parse_out_subdir, gen_add_doc_tokens, split_doc_embs
+from mllm.tokenization.chunk_tokenizer import gen_ds_fnames, parse_out_subdir, gen_doc_tokens, split_doc_embs, \
+    calc_max_inp_size, gen_all_tokens
 from transformers import GPT2Tokenizer
 
 
@@ -50,9 +51,9 @@ class ArgsTrain(BaseModel):
         description='Device to run training on. Can have values: "cpu", "cuda"',
         cli=('--device',)
     )
-    epochs: Optional[int] = Field(
+    epochs: int = Field(
         None,
-        required=False,
+        required=True,
         description='Number of training epochs.',
         cli=('--epochs',),
     )
@@ -295,6 +296,10 @@ class DsLoader:
             pad_tok=self.pad_tok, emb_chunk_size=self.emb_chunk_size
         )
 
+    def shuffle(self, train: bool):
+        docids = self.docids_train if train else self.docids_val
+        np.random.shuffle(docids)
+
 
 def gen_train_subdir(ds_dir_path: Path) -> str:
     dt_str = datetime.now().strftime('%Y%m%d_%M%H%S')
@@ -305,28 +310,45 @@ def gen_train_subdir(ds_dir_path: Path) -> str:
 def main(args: ArgsTrain) -> int:
     print(args)
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
-    tok_dict = gen_add_doc_tokens(tokenizer)
+    tok_dict = gen_all_tokens(tokenizer)
     pad_tok = tok_dict['pad'].ind
     ds_loader = DsLoader(args.ds_dir_path, args.docs_batch_size, args.max_chunks_per_doc, pad_tok)
-    batch = ds_loader.get_batch(100, train=True)
-    docs_chunks, target_chunks, target_mask = batch.docs_chunks_padded_tf, batch.target_chunks_padded_tf, batch.target_mask_tf
-    print(f'docs_chunks: {docs_chunks.dtype} {docs_chunks.shape}')
-    print(f'target_chunks: {target_chunks.dtype} {target_chunks.shape}')
-    print(f'target_mask: {target_mask.dtype} {target_mask.shape}')
 
     train_subdir = gen_train_subdir(args.ds_dir_path)
     train_path = args.train_root_path / train_subdir
     train_path.mkdir(parents=True, exist_ok=True)
-    inp_len = ds_loader.emb_chunk_size + ds_loader.emb_chunk_size // 2 - 1
+    inp_len = calc_max_inp_size(ds_loader.emb_chunk_size)
     print(f'Creating model with vocab size = {len(tokenizer)}')
 
     model_cfg = create_mllm_cfg(
         n_vocab=len(tokenizer), inp_len=inp_len, d_word_wec=256,
+        n_levels=1, enc_n_layers=3, dec_n_layers=2,
         n_head=8, d_k=32, d_v=32, d_model=256, d_inner=256,
         pad_idx=pad_tok,
     )
     print(model_cfg)
     model = Mllm(model_cfg)
+
+    calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
+    n_batches_train = calc_batches(ds_loader.n_docs_train)
+    n_batches_val = calc_batches(ds_loader.n_docs_val)
+    for epoch in range(args.epochs):
+        pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
+        for i in pbar:
+            i_batch = i % n_batches_train
+            if i > 0 and i_batch == 0:
+                ds_loader.shuffle(train=True)
+            batch = ds_loader.get_batch(i_batch, train=True)
+            docs_chunks, target_chunks, target_mask = batch.docs_chunks_padded_tf, batch.target_chunks_padded_tf, batch.target_mask_tf
+            n_target = target_chunks.shape[0]
+            inp_chunks = torch.concat((target_chunks, docs_chunks), dim=0)
+            out_enc = model.run_vocab_encoder(inp_chunks)
+            target_enc, docs_enc = out_enc[:n_target], out_enc[n_target:]
+
+            out_dec = model
+
+        pbar.close()
+
 
     return 0
 

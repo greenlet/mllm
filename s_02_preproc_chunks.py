@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from tqdm import trange
 
-from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, gen_add_doc_tokens, gen_out_subdir
+from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, gen_out_subdir, gen_all_tokens
 from transformers import GPT2Tokenizer
 
 
@@ -51,7 +51,7 @@ def main(args: ArgsPreproc) -> int:
     ds = load_dataset(path=ds_path, name=ds_name, beam_runner='DirectRunner', cache_dir=str(ds_cache_dir))
     ds_train = ds['train']
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
-    all_tokens = gen_add_doc_tokens(tokenizer)
+    all_tokens = gen_all_tokens(tokenizer)
 
     subdir = gen_out_subdir(args.emb_chunk_size, args.chunk_fixed_size)
     dir_out = args.out_path / subdir
