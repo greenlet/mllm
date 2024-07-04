@@ -19,7 +19,8 @@ mllm_src_path=$code_path/mllm
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-echo "python s_03_train_mllm_level.py \
+#echo "
+python s_03_train_mllm_level.py \
   --ds-dir-path $wiki_ds_path \
   --train-root-path $train_root_path \
   --docs-batch-size $docs_batch_size \
@@ -28,6 +29,7 @@ echo "python s_03_train_mllm_level.py \
   --epochs $epochs \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
-  --val-epoch-steps $val_epoch_steps"
+  --val-epoch-steps $val_epoch_steps
+#"
 
 

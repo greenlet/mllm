@@ -288,7 +288,7 @@ class Decoder(nn.Module):
         self.d_model = d_model
         self.rank_prj = nn.Linear(self.d_model, 1, bias=False)
 
-    def forward(self, src_seq: Tensor, src_mask: Tensor, return_attns: bool = False) -> tuple[Tensor, list[Tensor]]:
+    def forward(self, src_seq: Tensor, src_mask: Optional[Tensor] = None, return_attns: bool = False) -> tuple[Tensor, list[Tensor]]:
         enc_slf_attn_list = []
 
         enc_out = src_seq
@@ -298,7 +298,8 @@ class Decoder(nn.Module):
             enc_slf_attn_list += [enc_slf_attn] if return_attns else []
 
         rank_logit = self.rank_prj(enc_out)
-        return rank_logit, enc_slf_attn_list
+        rank_prob = torch.sigmoid(rank_logit)
+        return rank_prob, enc_slf_attn_list
 
 
 class CfgVocabEncoder(BaseModel):
@@ -332,7 +333,6 @@ class CfgMllm(BaseModel):
     decoders: list[CfgEncoder]
 
 
-
 class Mllm(nn.Module):
     cfg: CfgMllm
     vocab_encoder: VocabEncoder
@@ -349,7 +349,7 @@ class Mllm(nn.Module):
             Encoder(**cfg_enc.dict()) for cfg_enc in cfg.encoders
         ])
         self.decoders = nn.ModuleList([
-            Encoder(**cfg_dec.dict()) for cfg_dec in cfg.decoders
+            Decoder(**cfg_dec.dict()) for cfg_dec in cfg.decoders
         ])
         for p in self.parameters():
             if p.dim() > 1:

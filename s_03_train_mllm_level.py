@@ -98,31 +98,35 @@ class DocsBatch:
     target_tokens: list[int]
     pad_tok: int
     emb_chunk_size: int
+    device: torch.device
     docs_chunks_padded: np.ndarray
     target_chunks_padded: np.ndarray
     target_mask: np.ndarray
-    _docs_chunks_padded_tf: Optional[torch.Tensor] = None
-    _target_chunks_padded_tf: Optional[torch.Tensor] = None
-    _target_mask_tf: Optional[torch.Tensor] = None
+    docs_chunks_padded_tf: Optional[torch.Tensor] = None
+    target_chunks_padded_tf: Optional[torch.Tensor] = None
+    target_mask_tf: Optional[torch.Tensor] = None
+    device: Optional[torch.device] = None
 
     def __init__(self, docs_chunks: dict[int, list[np.ndarray]], target_doc_id: int, target_tokens: list[int],
-                 pad_tok: int, emb_chunk_size: int):
+                 pad_tok: int, emb_chunk_size: int, device: Optional[torch.device] = None):
         self.docs_chunks = docs_chunks
         self.target_doc_id = target_doc_id
         self.target_tokens = target_tokens
         self.pad_tok = pad_tok
         self.emb_chunk_size = emb_chunk_size
+        self.device = device
         self.calc_np()
 
     def calc_np(self):
         docs_chunks = []
         target_chunk_off, target_chunk_sz = 0, 0
         for doc_id, chunks in self.docs_chunks.items():
-            docs_chunks.extend(chunks)
             if target_chunk_sz == 0:
-                target_chunk_off += len(chunks)
                 if doc_id == self.target_doc_id:
                     target_chunk_sz = len(chunks)
+                else:
+                    target_chunk_off += len(chunks)
+            docs_chunks.extend(chunks)
 
         target_embs_offsets = split_doc_embs(len(self.target_tokens), self.emb_chunk_size)
         n_target_chunks = len(target_embs_offsets) - 1
@@ -144,28 +148,24 @@ class DocsBatch:
 
         target_mask = np.full(len(docs_chunks), False, dtype=bool)
         target_mask[target_chunk_off:target_chunk_off + target_chunk_sz] = True
+        # print(f'target_chunk_off = {target_chunk_off}. target_chunk_sz = {target_chunk_sz}')
+        # print(f'target_mask = {target_mask}')
 
         self.docs_chunks_padded = docs_chunks_padded
         self.target_chunks_padded = target_chunks_padded
         self.target_mask = target_mask
 
-    @property
-    def docs_chunks_padded_tf(self) -> torch.Tensor:
-        if self._docs_chunks_padded_tf is None:
-            self._docs_chunks_padded_tf = torch.from_numpy(self.docs_chunks_padded)
-        return self._docs_chunks_padded_tf
+    def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:
+        res = torch.from_numpy(arr)
+        if self.device is not None:
+            res = res.to(self.device)
+        return res
 
-    @property
-    def target_chunks_padded_tf(self) -> torch.Tensor:
-        if self._target_chunks_padded_tf is None:
-            self._target_chunks_padded_tf = torch.from_numpy(self.target_chunks_padded)
-        return self._target_chunks_padded_tf
-
-    @property
-    def target_mask_tf(self) -> torch.Tensor:
-        if self._target_mask_tf is None:
-            self._target_mask_tf = torch.from_numpy(self.target_mask)
-        return self._target_mask_tf
+    def gen_tensors(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if self.docs_chunks_padded_tf is None:
+            self.docs_chunks_padded_tf, self.target_chunks_padded_tf, self.target_mask_tf = \
+                map(self._to_tensor, (self.docs_chunks_padded, self.target_chunks_padded, self.target_mask))
+        return self.docs_chunks_padded_tf, self.target_chunks_padded_tf, self.target_mask_tf
 
 
 class DsLoader:
@@ -175,6 +175,8 @@ class DsLoader:
     docs_batch_size: int
     max_chunks_per_doc: int
     pad_tok: int
+    qbeg_tok: int
+    qend_tok: int
     df: pd.DataFrame
     df_doc: pd.DataFrame
     val_ratio: float
@@ -186,14 +188,17 @@ class DsLoader:
     docids_val: np.ndarray
     _tokens_cache: dict[tuple[int, int], np.ndarray]
     _max_cache_size: int = 3
+    device: Optional[torch.device] = None
 
     def __init__(self, ds_dir_path: Path, docs_batch_size: int, max_chunks_per_doc: int,
-                 pad_tok: int, val_ratio: float = 0.2):
+                 pad_tok: int, qbeg_tok: int, qend_tok: int, val_ratio: float = 0.2, device: Optional[torch.device] = None):
         self.ds_dir_path = ds_dir_path
         self.emb_chunk_size, self.fixed_size = parse_out_subdir(ds_dir_path.name)
         self.docs_batch_size = docs_batch_size
         self.max_chunks_per_doc = max_chunks_per_doc
         self.pad_tok = pad_tok
+        self.qbeg_tok = qbeg_tok
+        self.qend_tok = qend_tok
         self.df = read_ds_files(ds_dir_path)
         self.df.set_index(['docid', 'offset'], inplace=True)
         df_doc = self.df.groupby(level=['docid'])
@@ -208,6 +213,7 @@ class DsLoader:
         self.docids_train = self.docids[:self.n_docs_train]
         self.docids_val = self.docids[self.n_docs_train:]
         self._tokens_cache = {}
+        self.device = device
         # print(self.df)
 
     def _prune_cache(self):
@@ -291,9 +297,10 @@ class DsLoader:
 
             if docid == target_docid:
                 target_tokens = self._extract_content_tokens(df, chunks)
+                target_tokens = [self.qbeg_tok, *target_tokens, self.qend_tok]
         return DocsBatch(
             docs_chunks=docs_chunks, target_doc_id=target_docid, target_tokens=target_tokens,
-            pad_tok=self.pad_tok, emb_chunk_size=self.emb_chunk_size
+            pad_tok=self.pad_tok, emb_chunk_size=self.emb_chunk_size, device=self.device,
         )
 
     def shuffle(self, train: bool):
@@ -307,12 +314,32 @@ def gen_train_subdir(ds_dir_path: Path) -> str:
     return subdir
 
 
+def rank_prob_loss(prob_pred: torch.Tensor, mask_gt: torch.Tensor, tgt_weight: float = 0.5) -> torch.Tensor:
+    prob_pred = prob_pred.squeeze(-1)
+    mask_gt = mask_gt.unsqueeze(0)
+    prob_tgt, prob_nontgt = prob_pred[mask_gt], prob_pred[~mask_gt]
+    # loss_tgt = -prob_tgt * torch.log(prob_tgt)
+    # loss_tgt = torch.mean(loss_tgt)
+    loss_tgt = 1 - torch.mean(prob_tgt)
+    loss_nontgt = torch.mean(prob_nontgt)
+    # print(f'loss_tgt = {loss_tgt}. loss_nontgt = {loss_nontgt}')
+    loss = tgt_weight * loss_tgt + (1 - tgt_weight) * loss_nontgt
+    # print(loss_tgt.item(), loss_nontgt.item())
+    return loss
+
+
 def main(args: ArgsTrain) -> int:
     print(args)
+
+    device = torch.device(args.device)
+
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
     tok_dict = gen_all_tokens(tokenizer)
-    pad_tok = tok_dict['pad'].ind
-    ds_loader = DsLoader(args.ds_dir_path, args.docs_batch_size, args.max_chunks_per_doc, pad_tok)
+    pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
+    ds_loader = DsLoader(
+        ds_dir_path=args.ds_dir_path, docs_batch_size=args.docs_batch_size, max_chunks_per_doc=args.max_chunks_per_doc,
+        pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device
+    )
 
     train_subdir = gen_train_subdir(args.ds_dir_path)
     train_path = args.train_root_path / train_subdir
@@ -327,28 +354,97 @@ def main(args: ArgsTrain) -> int:
         pad_idx=pad_tok,
     )
     print(model_cfg)
-    model = Mllm(model_cfg)
+    model = Mllm(model_cfg).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    tbsw = tb.SummaryWriter(log_dir=str(train_path))
+    val_loss_min = None
+    last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
 
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
     n_batches_train = calc_batches(ds_loader.n_docs_train)
     n_batches_val = calc_batches(ds_loader.n_docs_val)
     for epoch in range(args.epochs):
+        model.train()
+        train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for i in pbar:
             i_batch = i % n_batches_train
             if i > 0 and i_batch == 0:
                 ds_loader.shuffle(train=True)
             batch = ds_loader.get_batch(i_batch, train=True)
-            docs_chunks, target_chunks, target_mask = batch.docs_chunks_padded_tf, batch.target_chunks_padded_tf, batch.target_mask_tf
+            docs_chunks, target_chunks, target_mask = batch.gen_tensors()
             n_target = target_chunks.shape[0]
             inp_chunks = torch.concat((target_chunks, docs_chunks), dim=0)
-            out_enc = model.run_vocab_encoder(inp_chunks)
-            target_enc, docs_enc = out_enc[:n_target], out_enc[n_target:]
+            out_enc_0 = model.run_vocab_encoder(inp_chunks)
+            _, out_enc_1 = model.run_encoder(0, out_enc_0)
+            out_enc_1 = out_enc_1.unsqueeze(0)
+            out_dec_0 = model.run_decoder(0, out_enc_1)
+            out_dec_rank = out_dec_0[:, n_target:]
 
-            out_dec = model
+            # print('out_enc_1:', out_enc_1.shape, out_enc_1.dtype)
+            # print('out_dec_0:', out_dec_0.shape, out_dec_0.dtype)
+            # print('out_dec_rank:', out_dec_rank.shape, out_dec_rank.dtype)
+            # print('target_mask:', target_mask)
+            # print('out_dec_rank:',  out_dec_rank)
 
+            loss = rank_prob_loss(out_dec_rank, target_mask)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
+            # if i == 2:
+            #     import sys
+            #     sys.exit()
+
+            pbar.set_postfix_str(f'Train. loss: {loss.item():.6f}')
         pbar.close()
+        train_loss /= args.train_epoch_steps
+        tbsw.add_scalar('Loss/Train', train_loss, epoch)
 
+        model.eval()
+        val_loss = 0
+        pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
+        for i in pbar:
+            i_batch = i % n_batches_val
+            if i > 0 and i_batch == 0:
+                ds_loader.shuffle(train=False)
+            batch = ds_loader.get_batch(i_batch, train=False)
+            docs_chunks, target_chunks, target_mask = batch.gen_tensors()
+            n_target = target_chunks.shape[0]
+            inp_chunks = torch.concat((target_chunks, docs_chunks), dim=0)
+            out_enc_0 = model.run_vocab_encoder(inp_chunks)
+            _, out_enc_1 = model.run_encoder(0, out_enc_0)
+            out_enc_1 = out_enc_1.unsqueeze(0)
+            out_dec_0 = model.run_decoder(0, out_enc_1)
+            out_dec_rank = out_dec_0[:, n_target:]
+
+            loss = rank_prob_loss(out_dec_rank, target_mask)
+            val_loss += loss.item()
+
+            pbar.set_postfix_str(f'Val. loss: {loss.item():.6f}')
+        pbar.close()
+        val_loss /= args.val_epoch_steps
+        tbsw.add_scalar('Loss/Val', val_loss, epoch)
+
+        print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
+        best = False
+        if val_loss_min is None or val_loss < val_loss_min:
+            val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'
+            print(f'Val min loss change: {val_loss_str} --> {val_loss:.6f}')
+            val_loss_min = val_loss
+            best = True
+
+        checkpoint = {
+            'model': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'last_epoch': epoch,
+            'val_loss_min': val_loss_min,
+        }
+        print(f'Saving checkpoint to {last_checkpoint_path}')
+        torch.save(checkpoint, last_checkpoint_path)
+
+        if best:
+            print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
+            shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
 
     return 0
 
