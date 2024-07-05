@@ -368,6 +368,16 @@ class Mllm(nn.Module):
         ind = level_num - 1
         return self.decoders[ind](inp)[0]
 
+    def forward(self, level_num: int, target_chunks: Tensor, docs_chunks: Tensor) -> Tensor:
+        n_target = target_chunks.shape[0]
+        inp_chunks = torch.concat((target_chunks, docs_chunks), dim=0)
+        out_enc_0 = self.run_vocab_encoder(inp_chunks)
+        _, out_enc_1 = self.run_encoder(level_num, out_enc_0)
+        out_enc_1 = out_enc_1.unsqueeze(0)
+        out_dec_0 = self.run_decoder(level_num, out_enc_1)
+        out_dec_rank = out_dec_0[:, n_target:]
+        return out_dec_rank
+
 
 T = TypeVar('T')
 MS = Union[T, tuple[T]]

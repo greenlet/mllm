@@ -8,11 +8,16 @@ wiki_ds_path=$wiki_data_path/$ds_subdir
 train_root_path=$data_path/train_mllm
 
 device=cpu
-epochs=5
-train_epoch_steps=20
-val_epoch_steps=20
-docs_batch_size=3
+#epochs=5
+#train_epoch_steps=20
+#val_epoch_steps=20
+
+epochs=20
+train_epoch_steps=1000
+val_epoch_steps=1000
+docs_batch_size=5
 max_chunks_per_doc=3
+
 learning_rate=0.001
 
 mllm_src_path=$code_path/mllm

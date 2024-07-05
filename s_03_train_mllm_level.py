@@ -206,12 +206,12 @@ class DsLoader:
         df_doc.rename({'chid': 'chunks'}, axis=1, inplace=True)
         self.df_doc = df_doc
         self.val_ratio = val_ratio
-        self.docids = self.df_doc.index.to_numpy()
+        self.docids = self.df_doc.index.to_numpy().copy()
         self.n_docs = len(self.docids)
         self.n_docs_val = int(self.n_docs * self.val_ratio)
         self.n_docs_train = self.n_docs - self.n_docs_val
-        self.docids_train = self.docids[:self.n_docs_train]
-        self.docids_val = self.docids[self.n_docs_train:]
+        self.docids_train = self.docids[:self.n_docs_train].copy()
+        self.docids_val = self.docids[self.n_docs_train:].copy()
         self._tokens_cache = {}
         self.device = device
         # print(self.df)
@@ -272,7 +272,7 @@ class DsLoader:
 
     def get_batch(self, ind: int, train: bool) -> DocsBatch:
         docids = self.docids_train if train else self.docids_val
-        docids = docids[ind:ind + self.docs_batch_size]
+        docids = docids[ind * self.docs_batch_size:(ind + 1) * self.docs_batch_size]
         df_doc = self.df_doc.loc[docids]
         docs_chunks = {}
         target_tokens = []
@@ -373,19 +373,10 @@ def main(args: ArgsTrain) -> int:
                 ds_loader.shuffle(train=True)
             batch = ds_loader.get_batch(i_batch, train=True)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
-            n_target = target_chunks.shape[0]
-            inp_chunks = torch.concat((target_chunks, docs_chunks), dim=0)
-            out_enc_0 = model.run_vocab_encoder(inp_chunks)
-            _, out_enc_1 = model.run_encoder(0, out_enc_0)
-            out_enc_1 = out_enc_1.unsqueeze(0)
-            out_dec_0 = model.run_decoder(0, out_enc_1)
-            out_dec_rank = out_dec_0[:, n_target:]
 
-            # print('out_enc_1:', out_enc_1.shape, out_enc_1.dtype)
-            # print('out_dec_0:', out_dec_0.shape, out_dec_0.dtype)
-            # print('out_dec_rank:', out_dec_rank.shape, out_dec_rank.dtype)
-            # print('target_mask:', target_mask)
-            # print('out_dec_rank:',  out_dec_rank)
+            optimizer.zero_grad()
+
+            out_dec_rank = model(0, target_chunks, docs_chunks)
 
             loss = rank_prob_loss(out_dec_rank, target_mask)
             loss.backward()
@@ -409,13 +400,7 @@ def main(args: ArgsTrain) -> int:
                 ds_loader.shuffle(train=False)
             batch = ds_loader.get_batch(i_batch, train=False)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
-            n_target = target_chunks.shape[0]
-            inp_chunks = torch.concat((target_chunks, docs_chunks), dim=0)
-            out_enc_0 = model.run_vocab_encoder(inp_chunks)
-            _, out_enc_1 = model.run_encoder(0, out_enc_0)
-            out_enc_1 = out_enc_1.unsqueeze(0)
-            out_dec_0 = model.run_decoder(0, out_enc_1)
-            out_dec_rank = out_dec_0[:, n_target:]
+            out_dec_rank = model(0, target_chunks, docs_chunks)
 
             loss = rank_prob_loss(out_dec_rank, target_mask)
             val_loss += loss.item()
