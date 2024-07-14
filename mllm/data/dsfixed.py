@@ -1,80 +1,13 @@
-import shutil
-from datetime import datetime
 import itertools as it
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, Field
-from pydantic_cli import run_and_exit
 import torch
-import torch.utils.tensorboard as tb
 from tqdm import trange
 
-
-from mllm.model.model import CfgMllm, Mllm, create_mllm_cfg
-from mllm.tokenization.chunk_tokenizer import gen_ds_fnames, parse_out_subdir, gen_doc_tokens, split_doc_embs, \
-    calc_max_inp_size, gen_all_tokens
-from transformers import GPT2Tokenizer
-
-
-class ArgsTrain(BaseModel):
-    ds_dir_path: Path = Field(
-        None,
-        required=False,
-        description='Dataset directory path. Must contain .csv and .np files with tokenized text.',
-        cli=('--ds-dir-path',),
-    )
-    train_root_path: Path = Field(
-        ...,
-        required=True,
-        description='Path to train root directory. New train subdirectory will be created within each new run.',
-        cli=('--train-root-path',),
-    )
-    docs_batch_size: Optional[int] = Field(
-        3,
-        required=False,
-        description='Documents batch size. Must be greater or equal than 2.',
-        cli=('--docs-batch-size',),
-    )
-    max_chunks_per_doc: Optional[int] = Field(
-        3,
-        required=False,
-        description='Maximum number of consecutive chunks per document taken in each butch. '
-                    'Batch chunk max size will be DOCS_BATCH_SIZE * MAX_CHUNKS_PER_DOC.',
-        cli=('--max-chunks-per-doc',),
-    )
-    device: str = Field(
-        'cpu',
-        required=False,
-        description='Device to run training on. Can have values: "cpu", "cuda"',
-        cli=('--device',)
-    )
-    epochs: int = Field(
-        None,
-        required=True,
-        description='Number of training epochs.',
-        cli=('--epochs',),
-    )
-    learning_rate: float = Field(
-        0.001,
-        required=False,
-        description='Initial learning rate of the training process.',
-        cli=('--learning-rate',)
-    )
-    train_epoch_steps: Optional[int] = Field(
-        None,
-        required=False,
-        description='Number of training steps per epoch.',
-        cli=('--train-epoch-steps',),
-    )
-    val_epoch_steps: Optional[int] = Field(
-        None,
-        required=False,
-        description='Number of validation steps per epoch.',
-        cli=('--val-epoch-steps',),
-    )
+from mllm.tokenization.chunk_tokenizer import split_doc_embs, parse_out_subdir, gen_ds_fnames
 
 
 def read_ds_files(ds_dir_path: Path) -> pd.DataFrame:
@@ -102,18 +35,20 @@ class DocsBatch:
     docs_chunks_padded: np.ndarray
     target_chunks_padded: np.ndarray
     target_mask: np.ndarray
+    fixed_size: bool
     docs_chunks_padded_tf: Optional[torch.Tensor] = None
     target_chunks_padded_tf: Optional[torch.Tensor] = None
     target_mask_tf: Optional[torch.Tensor] = None
     device: Optional[torch.device] = None
 
     def __init__(self, docs_chunks: dict[int, list[np.ndarray]], target_doc_id: int, target_tokens: list[int],
-                 pad_tok: int, emb_chunk_size: int, device: Optional[torch.device] = None):
+                 pad_tok: int, emb_chunk_size: int, fixed_size: bool, device: Optional[torch.device] = None):
         self.docs_chunks = docs_chunks
         self.target_doc_id = target_doc_id
         self.target_tokens = target_tokens
         self.pad_tok = pad_tok
         self.emb_chunk_size = emb_chunk_size
+        self.fixed_size = fixed_size
         self.device = device
         self.calc_np()
 
@@ -128,7 +63,7 @@ class DocsBatch:
                     target_chunk_off += len(chunks)
             docs_chunks.extend(chunks)
 
-        target_embs_offsets = split_doc_embs(len(self.target_tokens), self.emb_chunk_size)
+        target_embs_offsets = split_doc_embs(len(self.target_tokens), self.emb_chunk_size, self.fixed_size)
         n_target_chunks = len(target_embs_offsets) - 1
         target_chunks = []
         for i in range(n_target_chunks):
@@ -300,143 +235,9 @@ class DsLoader:
                 target_tokens = [self.qbeg_tok, *target_tokens, self.qend_tok]
         return DocsBatch(
             docs_chunks=docs_chunks, target_doc_id=target_docid, target_tokens=target_tokens,
-            pad_tok=self.pad_tok, emb_chunk_size=self.emb_chunk_size, device=self.device,
+            pad_tok=self.pad_tok, emb_chunk_size=self.emb_chunk_size, fixed_size=self.fixed_size, device=self.device,
         )
 
     def shuffle(self, train: bool):
         docids = self.docids_train if train else self.docids_val
         np.random.shuffle(docids)
-
-
-def gen_train_subdir(ds_dir_path: Path) -> str:
-    dt_str = datetime.now().strftime('%Y%m%d_%M%H%S')
-    subdir = f'{dt_str}-{ds_dir_path.parent.name}-{ds_dir_path.name}'
-    return subdir
-
-
-def rank_prob_loss(prob_pred: torch.Tensor, mask_gt: torch.Tensor, tgt_weight: float = 0.5) -> torch.Tensor:
-    prob_pred = prob_pred.squeeze(-1)
-    mask_gt = mask_gt.unsqueeze(0)
-    prob_tgt, prob_nontgt = prob_pred[mask_gt], prob_pred[~mask_gt]
-    # loss_tgt = -prob_tgt * torch.log(prob_tgt)
-    # loss_tgt = torch.mean(loss_tgt)
-    loss_tgt = 1 - torch.mean(prob_tgt)
-    loss_nontgt = torch.mean(prob_nontgt)
-    # print(f'loss_tgt = {loss_tgt}. loss_nontgt = {loss_nontgt}')
-    loss = tgt_weight * loss_tgt + (1 - tgt_weight) * loss_nontgt
-    # print(loss_tgt.item(), loss_nontgt.item())
-    return loss
-
-
-def main(args: ArgsTrain) -> int:
-    print(args)
-
-    device = torch.device(args.device)
-
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
-    tok_dict = gen_all_tokens(tokenizer)
-    pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
-    ds_loader = DsLoader(
-        ds_dir_path=args.ds_dir_path, docs_batch_size=args.docs_batch_size, max_chunks_per_doc=args.max_chunks_per_doc,
-        pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device
-    )
-
-    train_subdir = gen_train_subdir(args.ds_dir_path)
-    train_path = args.train_root_path / train_subdir
-    train_path.mkdir(parents=True, exist_ok=True)
-    inp_len = calc_max_inp_size(ds_loader.emb_chunk_size)
-    print(f'Creating model with vocab size = {len(tokenizer)}')
-
-    model_cfg = create_mllm_cfg(
-        n_vocab=len(tokenizer), inp_len=inp_len, d_word_wec=256,
-        n_levels=1, enc_n_layers=3, dec_n_layers=2,
-        n_head=8, d_k=32, d_v=32, d_model=256, d_inner=256,
-        pad_idx=pad_tok,
-    )
-    print(model_cfg)
-    model = Mllm(model_cfg).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-    tbsw = tb.SummaryWriter(log_dir=str(train_path))
-    val_loss_min = None
-    last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
-
-    calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
-    n_batches_train = calc_batches(ds_loader.n_docs_train)
-    n_batches_val = calc_batches(ds_loader.n_docs_val)
-    for epoch in range(args.epochs):
-        model.train()
-        train_loss = 0
-        pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
-        for i in pbar:
-            i_batch = i % n_batches_train
-            if i > 0 and i_batch == 0:
-                ds_loader.shuffle(train=True)
-            batch = ds_loader.get_batch(i_batch, train=True)
-            docs_chunks, target_chunks, target_mask = batch.gen_tensors()
-
-            optimizer.zero_grad()
-
-            out_dec_rank = model(0, target_chunks, docs_chunks)
-
-            loss = rank_prob_loss(out_dec_rank, target_mask)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-            # if i == 2:
-            #     import sys
-            #     sys.exit()
-
-            pbar.set_postfix_str(f'Train. loss: {loss.item():.6f}')
-        pbar.close()
-        train_loss /= args.train_epoch_steps
-        tbsw.add_scalar('Loss/Train', train_loss, epoch)
-
-        model.eval()
-        val_loss = 0
-        pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
-        for i in pbar:
-            i_batch = i % n_batches_val
-            if i > 0 and i_batch == 0:
-                ds_loader.shuffle(train=False)
-            batch = ds_loader.get_batch(i_batch, train=False)
-            docs_chunks, target_chunks, target_mask = batch.gen_tensors()
-            out_dec_rank = model(0, target_chunks, docs_chunks)
-
-            loss = rank_prob_loss(out_dec_rank, target_mask)
-            val_loss += loss.item()
-
-            pbar.set_postfix_str(f'Val. loss: {loss.item():.6f}')
-        pbar.close()
-        val_loss /= args.val_epoch_steps
-        tbsw.add_scalar('Loss/Val', val_loss, epoch)
-
-        print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
-        best = False
-        if val_loss_min is None or val_loss < val_loss_min:
-            val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'
-            print(f'Val min loss change: {val_loss_str} --> {val_loss:.6f}')
-            val_loss_min = val_loss
-            best = True
-
-        checkpoint = {
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'last_epoch': epoch,
-            'val_loss_min': val_loss_min,
-        }
-        print(f'Saving checkpoint to {last_checkpoint_path}')
-        torch.save(checkpoint, last_checkpoint_path)
-
-        if best:
-            print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
-            shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
-
-    return 0
-
-
-if __name__ == '__main__':
-    def rethrow(e):
-        raise e
-    run_and_exit(ArgsTrain, main, 'Train Mllm model.', exception_handler=rethrow)
-
-

@@ -115,12 +115,13 @@ def gen_ds_fnames(doc_id_min: int, doc_id_max: int) -> tuple[str, str, str]:
     return f'{fname_base}.csv', f'{fname_base}_tokens.np', f'{fname_base}_chunk_sizes.np'
 
 
-def split_doc_embs(n_doc: int, n_emb_tokens: int) -> np.ndarray:
+def split_doc_embs(n_doc: int, n_emb_tokens: int, fixed_size: bool = False) -> np.ndarray:
     n_embs = n_doc // n_emb_tokens
     n_mod = n_doc % n_emb_tokens
     if n_embs == 0 or n_mod >= n_emb_tokens // 2:
         n_embs += 1
-    embs_offsets = np.linspace(0, n_doc, n_embs + 1, dtype=int)
+    n_doc_max = n_embs * n_emb_tokens if fixed_size else n_doc
+    embs_offsets = np.linspace(0, n_doc_max, n_embs + 1, dtype=int)
     return embs_offsets
 
 
@@ -302,7 +303,7 @@ class ChunkTokenizer:
 
             body_tok_num = 0
             body_beg_ind = body_end_ind = -1
-            if off >= n_title and n_rest > 0:
+            if 0 <= off - n_title < n_body and n_rest > 0:
                 off_cur = off - n_title
                 n_cur = min(n_rest, n_body - off_cur)
                 tokens[i:i + n_cur] = body_tokens[off_cur:off_cur + n_cur]
@@ -336,7 +337,7 @@ class ChunkTokenizer:
         embs_offsets = split_doc_embs(n_doc, n_emb_tokens)
         head_tokens = [self.doc_beg_tok, *docid_tokens]
         chunks = []
-        for i in range(embs_offsets.shape[0]):
+        for i in range(embs_offsets.shape[0] - 1):
             i1, i2 = int(embs_offsets[i]), int(embs_offsets[i + 1])
             offset = i1
             off_tokens = self.tokenizer(str(offset))['input_ids']

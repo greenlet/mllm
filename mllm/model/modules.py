@@ -1,18 +1,16 @@
-from dataclasses import dataclass
-from typing import Optional, Any, Union, TypeVar
+from typing import Optional
 
 import numpy as np
-from pydantic import BaseModel
 import torch
 from torch import nn, Tensor
-import torch.nn.functional as F
+from torch.nn import functional as F
 
 
 class ScaledDotProductAttention(nn.Module):
     temperature: float
     inp_len: int
     dropout_rate: float
-    dropout: nn.Module
+    # dropout: nn.Module
 
     def __init__(self, temperature: float, inp_len: int = 0,
                  dropout_rate: float = 0.1):
@@ -37,7 +35,7 @@ class ScaledDotProductAttention(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    n_head: int
+    n_heads: int
     d_model: int
     d_k: int
     d_v: int
@@ -45,15 +43,15 @@ class MultiHeadAttention(nn.Module):
     inp_len: int
     dropout_rate: float
 
-    Q: Optional[nn.Parameter] = None
-    K: Optional[nn.Parameter] = None
-    V: Optional[nn.Parameter] = None
+    # Q: Optional[nn.Parameter] = None
+    # K: Optional[nn.Parameter] = None
+    # V: Optional[nn.Parameter] = None
 
-    def __init__(self, n_head: int, d_model: int, d_k: int, d_v: int,
+    def __init__(self, n_heads: int, d_model: int, d_k: int, d_v: int,
                  with_graph_mat: bool = False, inp_len: int = 0, dropout_rate: float = 0.1):
         super().__init__()
 
-        self.n_head = n_head
+        self.n_heads = n_heads
         self.d_model = d_model
         self.d_k = d_k
         self.d_v = d_v
@@ -67,13 +65,15 @@ class MultiHeadAttention(nn.Module):
             self.K = nn.Parameter(torch.empty((self.inp_len, self.inp_len)))
             self.V = nn.Parameter(torch.empty((self.inp_len, self.inp_len)))
 
-        self.w_qs = nn.Linear(d_model, n_head * d_k, bias=False)
-        self.w_ks = nn.Linear(d_model, n_head * d_k, bias=False)
-        self.w_vs = nn.Linear(d_model, n_head * d_v, bias=False)
-        self.fc = nn.Linear(n_head * d_v, d_model, bias=False)
+        self.w_qs = nn.Linear(d_model, n_heads * d_k, bias=False)
+        self.w_ks = nn.Linear(d_model, n_heads * d_k, bias=False)
+        self.w_vs = nn.Linear(d_model, n_heads * d_v, bias=False)
+        self.fc = nn.Linear(n_heads * d_v, d_model, bias=False)
 
+        temp = d_k ** 0.5
+        temp = 1
         self.attention = ScaledDotProductAttention(
-            temperature=d_k ** 0.5, inp_len=inp_len,
+            temperature=temp, inp_len=inp_len,
             dropout_rate=dropout_rate,
         )
 
@@ -82,7 +82,7 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, q, k, v, mask=None):
 
-        d_k, d_v, n_head = self.d_k, self.d_v, self.n_head
+        d_k, d_v, n_heads = self.d_k, self.d_v, self.n_heads
         sz_b, len_q, len_k, len_v = q.size(0), q.size(1), k.size(1), v.size(1)
 
         residual = q
@@ -96,9 +96,9 @@ class MultiHeadAttention(nn.Module):
             q = torch.matmul(self.Q, q)
             k = torch.matmul(self.K, k)
             v = torch.matmul(self.V, v)
-        q = q.view(sz_b, len_q, n_head, d_k)
-        k = k.view(sz_b, len_k, n_head, d_k)
-        v = v.view(sz_b, len_v, n_head, d_v)
+        q = q.view(sz_b, len_q, n_heads, d_k)
+        k = k.view(sz_b, len_k, n_heads, d_k)
+        v = v.view(sz_b, len_v, n_heads, d_v)
 
         # Transpose for attention dot product: b x n x lq x dv
         q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
@@ -132,7 +132,7 @@ class PositionalEncoding(nn.Module):
         # TODO: make it with torch instead of numpy
 
         def get_position_angle_vec(position):
-            return [position / np.power(1000, 2 * (hid_j // 2) / d_hid) for hid_j in range(d_hid)]
+            return [position / np.power(10000, 2 * (hid_j // 2) / d_hid) for hid_j in range(d_hid)]
 
         sinusoid_table = np.array([get_position_angle_vec(pos_i) for pos_i in range(n_position)])
         sinusoid_table[:, 0::2] = np.sin(sinusoid_table[:, 0::2])  # dim 2i
@@ -149,8 +149,9 @@ class PositionwiseFeedForward(nn.Module):
 
     def __init__(self, d_in, d_hid, dropout_rate: float = 0.1):
         super().__init__()
-        self.w_1 = nn.Linear(d_in, d_hid) # position-wise
-        self.w_2 = nn.Linear(d_hid, d_in) # position-wise
+        bias = True
+        self.w_1 = nn.Linear(d_in, d_hid, bias=bias) # position-wise
+        self.w_2 = nn.Linear(d_hid, d_in, bias=bias) # position-wise
         self.layer_norm = nn.LayerNorm(d_in, eps=1e-6)
         self.dropout = nn.Dropout(dropout_rate)
 
@@ -159,6 +160,8 @@ class PositionwiseFeedForward(nn.Module):
         residual = x
 
         x = self.w_2(F.relu(self.w_1(x)))
+        # x = self.w_2(F.leaky_relu(self.w_1(x)))
+        # x = self.w_2(F.sigmoid(self.w_1(x)))
         x = self.dropout(x)
         x += residual
 
@@ -170,9 +173,9 @@ class PositionwiseFeedForward(nn.Module):
 class EncoderLayer(nn.Module):
     ''' Compose with two layers '''
 
-    def __init__(self, n_head, d_model, d_inner, d_k, d_v, with_graph_mat: bool, inp_len: int, dropout_rate: float = 0.1):
+    def __init__(self, n_heads, d_model, d_inner, d_k, d_v, with_graph_mat: bool, inp_len: int, dropout_rate: float = 0.1):
         super(EncoderLayer, self).__init__()
-        self.slf_attn = MultiHeadAttention(n_head, d_model, d_k, d_v, with_graph_mat, inp_len, dropout_rate=dropout_rate)
+        self.slf_attn = MultiHeadAttention(n_heads, d_model, d_k, d_v, with_graph_mat, inp_len, dropout_rate=dropout_rate)
         self.pos_ffn = PositionwiseFeedForward(d_model, d_inner, dropout_rate=dropout_rate)
 
     def forward(self, enc_input, slf_attn_mask=None):
@@ -185,24 +188,27 @@ class EncoderLayer(nn.Module):
 class VocabEncoder(nn.Module):
     n_vocab: int
     d_word_vec: int
+    d_model: int
     pad_idx: int
     inp_len: int
     dropout_rate: float
 
-    def __init__(self, n_vocab: int, d_word_vec: int, pad_idx: int, inp_len: int, dropout_rate: float):
+    def __init__(self, n_vocab: int, d_word_vec: int, d_model: int, pad_idx: int, inp_len: int, dropout_rate: float):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_word_vec = d_word_vec
+        self.d_model = d_model
         self.pad_idx = pad_idx
         self.inp_len = inp_len
         self.dropout_rate = dropout_rate
         self.src_word_emb = nn.Embedding(self.n_vocab, self.d_word_vec, padding_idx=self.pad_idx)
-        self.position_enc = PositionalEncoding(self.d_word_vec, n_position=self.inp_len)
+        self.position_enc = PositionalEncoding(self.d_word_vec, n_position=self.inp_len * 10)
         self.dropout = nn.Dropout(p=self.dropout_rate)
         self.layer_norm = nn.LayerNorm(self.d_word_vec, eps=1e-6)
 
     def forward(self, src_seq: Tensor) -> Tensor:
         enc_out = self.src_word_emb(src_seq)
+        enc_out *= self.d_model**0.5
         enc_out = self.position_enc(enc_out)
         enc_out = self.dropout(enc_out)
         enc_out = self.layer_norm(enc_out)
@@ -211,7 +217,7 @@ class VocabEncoder(nn.Module):
 
 class Encoder(nn.Module):
     n_layers: int
-    n_head: int
+    n_heads: int
     d_k: int
     d_v: int
     d_model: int
@@ -220,13 +226,17 @@ class Encoder(nn.Module):
     with_graph_mat: bool
     inp_len: int
     dropout_rate: float
+    # dropout: nn.Dropout
+    # layer_stack: nn.ModuleList
+    with_emb_mat: bool
+    # w_em: Optional[nn.Linear] = None
 
     def __init__(self, n_layers: int,
-                 n_head: int, d_k: int, d_v: int, d_model: int, d_inner: int, pad_idx: int,
-                 with_graph_mat: bool, inp_len: int, dropout_rate: float = 0.1):
+                 n_heads: int, d_k: int, d_v: int, d_model: int, d_inner: int, pad_idx: int,
+                 with_graph_mat: bool, inp_len: int, with_emb_mat: bool, dropout_rate: float = 0.1):
         super().__init__()
         self.n_layers = n_layers
-        self.n_head = n_head
+        self.n_heads = n_heads
         self.d_k = d_k
         self.d_v = d_v
         self.d_model = d_model
@@ -234,13 +244,18 @@ class Encoder(nn.Module):
         self.pad_idx = pad_idx
         self.with_graph_mat = with_graph_mat
         self.inp_len = inp_len
+        self.with_emb_mat = with_emb_mat
         self.dropout_rate = dropout_rate
 
         self.dropout = nn.Dropout(p=self.dropout_rate)
         self.layer_stack = nn.ModuleList([
-            EncoderLayer(self.n_head, self.d_model, self.d_inner, self.d_k, self.d_v, self.with_graph_mat, self.inp_len, dropout_rate=dropout_rate)
+            EncoderLayer(self.n_heads, self.d_model, self.d_inner, self.d_k, self.d_v, self.with_graph_mat, self.inp_len, dropout_rate=dropout_rate)
             for _ in range(n_layers)])
         self.d_model = d_model
+        if self.with_emb_mat:
+            assert self.inp_len > 0
+            self.w_em = nn.Linear(self.inp_len, 1, bias=False)
+            # self.A_em = nn.Parameter(torch.zeros((self.inp_len, self.d_model), dtype=torch.float32))
 
     def forward(self, src_seq: Tensor, src_mask: Optional[Tensor] = None, return_attns: bool = False) -> tuple[Tensor, list[Tensor]]:
         enc_slf_attn_list = []
@@ -251,23 +266,30 @@ class Encoder(nn.Module):
             enc_out, enc_slf_attn = enc_layer(enc_out, slf_attn_mask=src_mask)
             enc_slf_attn_list += [enc_slf_attn] if return_attns else []
 
+        if self.with_emb_mat:
+            enc_out = enc_out.transpose(1, 2)
+            enc_out = self.w_em(enc_out)
+            enc_out = enc_out.squeeze(-1)
+            # enc_out = self.A_em.unsqueeze(0) * enc_out
+            # enc_out = torch.sum(enc_out, dim=1)
+
         return enc_out, enc_slf_attn_list
 
 
 class Decoder(nn.Module):
     n_layers: int
-    n_head: int
+    n_heads: int
     d_k: int
     d_v: int
     d_model: int
     d_inner: int
     dropout_rate: float
 
-    def __init__(self, n_layers: int, n_head: int, d_k: int, d_v: int, d_model: int, d_inner: int, pad_idx: int,
-                 with_graph_mat: bool, inp_len: int, dropout_rate: float = 0.1):
+    def __init__(self, n_layers: int, n_heads: int, d_k: int, d_v: int, d_model: int, d_inner: int, pad_idx: int,
+                 with_graph_mat: bool, inp_len: int, dropout_rate: float = 0.1, with_emb_mat=False):
         super().__init__()
         self.n_layers = n_layers
-        self.n_head = n_head
+        self.n_heads = n_heads
         self.d_k = d_k
         self.d_v = d_v
         self.d_model = d_model
@@ -280,12 +302,13 @@ class Decoder(nn.Module):
         self.dropout = nn.Dropout(p=self.dropout_rate)
         self.layer_stack = nn.ModuleList([
             EncoderLayer(
-                n_head=self.n_head, d_model=self.d_model, d_inner=self.d_inner, d_k=self.d_k, d_v=self.d_v,
+                n_heads=self.n_heads, d_model=self.d_model, d_inner=self.d_inner, d_k=self.d_k, d_v=self.d_v,
                 with_graph_mat=self.with_graph_mat, inp_len=self.inp_len, dropout_rate=dropout_rate,
             )
             for _ in range(n_layers)
         ])
         self.d_model = d_model
+        self.layer_norm = nn.LayerNorm(self.d_model, eps=1e-6)
         self.rank_prj = nn.Linear(self.d_model, 1, bias=False)
 
     def forward(self, src_seq: Tensor, src_mask: Optional[Tensor] = None, return_attns: bool = False) -> tuple[Tensor, list[Tensor]]:
@@ -297,139 +320,70 @@ class Decoder(nn.Module):
             enc_out, enc_slf_attn = enc_layer(enc_out, slf_attn_mask=src_mask)
             enc_slf_attn_list += [enc_slf_attn] if return_attns else []
 
+        # enc_out = self.layer_norm(enc_out)
         rank_logit = self.rank_prj(enc_out)
+
+        # rank_prob = rank_logit
         rank_prob = torch.sigmoid(rank_logit)
+        # rank_prob = torch.softmax(rank_logit, dim=-2)
         return rank_prob, enc_slf_attn_list
 
 
-class CfgVocabEncoder(BaseModel):
-    n_vocab: int
-    d_word_vec: int
-    pad_idx: int
-    inp_len: int
-    dropout_rate: float
-
-
-class CfgEncoder(BaseModel):
+class EmbDecoder(nn.Module):
+    d_emb: int
     n_layers: int
-    n_head: int
-    d_k: int
-    d_v: int
-    d_model: int
-    d_inner: int
-    pad_idx: int
-    with_graph_mat: bool
-    inp_len: int
-    dropout_rate: float
+    n_heads: int
+    d_hid: int
+    seq_len: int
+    dp_rate: float
+    A_emb2sec: nn.Parameter
+    att_layers: nn.ModuleList
 
-
-class CfgDecoder(BaseModel):
-    pass
-
-
-class CfgMllm(BaseModel):
-    vocab_encoder: CfgVocabEncoder
-    encoders: list[CfgEncoder]
-    decoders: list[CfgEncoder]
-
-
-class Mllm(nn.Module):
-    cfg: CfgMllm
-    vocab_encoder: VocabEncoder
-    encoders: nn.ModuleList
-    decoders: nn.ModuleList
-
-    def __init__(self, cfg: CfgMllm):
+    def __init__(self, d_emb: int, n_layers: int, n_heads: int, d_hid: int, seq_len: int, dp_rate: float = 0.0):
         super().__init__()
-        self.cfg = cfg.copy(deep=True)
-        self.vocab_encoder = VocabEncoder(
-            **cfg.vocab_encoder.dict(),
-        )
-        self.encoders = nn.ModuleList([
-            Encoder(**cfg_enc.dict()) for cfg_enc in cfg.encoders
+        self.d_emb = d_emb
+        self.n_layers = n_layers
+        self.n_heads = n_heads
+        assert self.d_emb % self.n_heads == 0
+        self.d_head = self.d_emb // self.n_heads
+        self.d_hid = d_hid
+        self.seq_len = seq_len
+        self.dp_rate = dp_rate
+        self.A_emb2sec = nn.Parameter(torch.empty((self.seq_len, self.d_emb, self.d_emb), dtype=torch.float32))
+        self.att_layers = nn.ModuleList([
+            EncoderLayer(
+                n_heads=n_heads, d_model=self.d_emb, d_inner=self.d_hid, d_k=self.d_head, d_v=self.d_head,
+                with_graph_mat=False, inp_len=self.seq_len, dropout_rate=self.dp_rate,
+            ) for _ in range(self.n_layers)
         ])
-        self.decoders = nn.ModuleList([
-            Decoder(**cfg_dec.dict()) for cfg_dec in cfg.decoders
-        ])
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
 
-    def run_vocab_encoder(self, inp: Tensor) -> Tensor:
-        return self.vocab_encoder(inp)
+    # inp has [batch, d_emb] dimensions
+    def forward(self, inp: Tensor) -> Tensor:
+        # Make inp [batch, 1, d_emb, 1] dimensions
+        inp = inp.reshape((inp.shape[0], 1, self.d_emb, 1))
+        # [seq_len, d_emb, d_emb] x [batch, 1, d_emb, 1] = [batch, seq_len, d_emb, 1]
+        seq = self.A_emb2sec.matmul(inp)
+        # Change [batch, seq_len, d_emb, 1] to [batch, seq_len, d_emb]
+        seq = seq.squeeze(-1)
 
-    def run_encoder(self, level_num: int, inp: Tensor) -> tuple[Tensor, Tensor]:
-        ind = level_num - 1
-        out = self.encoders[ind](inp)[0]
-        out_seq, out_emb = out[..., :-1, :], out[..., -1, :]
-        return out_seq, out_emb
+        for att_layer in self.att_layers:
+            seq, _ = att_layer(seq)
 
-    def run_decoder(self, level_num: int, inp: Tensor) -> Tensor:
-        ind = level_num - 1
-        return self.decoders[ind](inp)[0]
-
-    def forward(self, level_num: int, target_chunks: Tensor, docs_chunks: Tensor) -> Tensor:
-        n_target = target_chunks.shape[0]
-        inp_chunks = torch.concat((target_chunks, docs_chunks), dim=0)
-        out_enc_0 = self.run_vocab_encoder(inp_chunks)
-        _, out_enc_1 = self.run_encoder(level_num, out_enc_0)
-        out_enc_1 = out_enc_1.unsqueeze(0)
-        out_dec_0 = self.run_decoder(level_num, out_enc_1)
-        out_dec_rank = out_dec_0[:, n_target:]
-        return out_dec_rank
+        return seq
 
 
-T = TypeVar('T')
-MS = Union[T, tuple[T]]
+class VocabDecoder(nn.Module):
+    d_model: int
+    n_vocab: int
+    word_prj: nn.Linear
 
+    def __init__(self, d_model: int, n_vocab: int):
+        super().__init__()
+        self.d_model = d_model
+        self.n_vocab = n_vocab
+        self.word_prj = nn.Linear(d_model, n_vocab, bias=False)
 
-def create_mllm_cfg(
-        n_vocab: int, d_word_wec: int = 512, inp_len: int = 1000, dropout_rate: float = 0.1,
-        n_levels: int = 2,
-        enc_n_layers: MS[int] = (3, 2), n_head: int = 8, d_k: int = 64, d_v: int = 64, d_model: int = 512,
-        d_inner: int = 2048, enc_with_graph_mat: bool = False,
-        dec_n_layers: MS[int] = 1, pad_idx: int = 0,
-) -> CfgMllm:
-    if not isinstance(enc_n_layers, tuple):
-        enc_n_layers = tuple(enc_n_layers for _ in range(n_levels))
-    assert len(enc_n_layers) == n_levels
-    if not isinstance(dec_n_layers, tuple):
-        dec_n_layers = tuple(dec_n_layers for _ in range(n_levels))
-    assert len(dec_n_layers) == n_levels
-
-    cfg_vocab_enc = CfgVocabEncoder(
-        n_vocab=n_vocab, d_word_vec=d_word_wec, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
-    )
-    cfgs_enc = []
-    for n_layers in enc_n_layers:
-        cfg_enc = CfgEncoder(
-            n_layers=n_layers, n_head=n_head, d_k=d_k, d_v=d_v, d_model=d_model, d_inner=d_inner, pad_idx=pad_idx,
-            with_graph_mat=enc_with_graph_mat, inp_len=inp_len, dropout_rate=dropout_rate,
-        )
-        cfgs_enc.append(cfg_enc)
-
-    cfgs_dec = []
-    for n_layers in dec_n_layers:
-        cfg_dec = CfgEncoder(
-            n_layers=n_layers, n_head=n_head, d_k=d_k, d_v=d_v, d_model=d_model, d_inner=d_inner, pad_idx=pad_idx,
-            with_graph_mat=False, inp_len=0, dropout_rate=dropout_rate,
-        )
-        cfgs_dec.append(cfg_dec)
-
-    cfg_mllm = CfgMllm(
-        vocab_encoder=cfg_vocab_enc, encoders=cfgs_enc, decoders=cfgs_dec,
-    )
-
-    return cfg_mllm
-
-
-def test_create_mllm_model():
-    cfg_mllm = create_mllm_cfg(n_vocab=50_000)
-    print(cfg_mllm)
-    mllm = Mllm(cfg_mllm)
-    print(mllm)
-
-
-if __name__ == '__main__':
-    test_create_mllm_model()
+    def forward(self, inp: Tensor) -> Tensor:
+        out_logit = self.word_prj(inp)
+        return out_logit
 

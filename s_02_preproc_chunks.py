@@ -55,7 +55,7 @@ def main(args: ArgsPreproc) -> int:
 
     subdir = gen_out_subdir(args.emb_chunk_size, args.chunk_fixed_size)
     dir_out = args.out_path / subdir
-    shutil.rmtree(dir_out)
+    shutil.rmtree(dir_out, ignore_errors=True)
     ch_tkz = ChunkTokenizer(
         tokens=all_tokens, tokenizer=tokenizer, n_emb_tokens=args.emb_chunk_size,
         fixed_size=args.chunk_fixed_size, dir_out=dir_out, docs_write_num=100,
@@ -77,5 +77,7 @@ def main(args: ArgsPreproc) -> int:
 
 
 if __name__ == '__main__':
-    run_and_exit(ArgsPreproc, main, 'Tokenize and split in chunks text dataset.')
+    def rethrow(e):
+        raise e
+    run_and_exit(ArgsPreproc, main, 'Tokenize and split in chunks text dataset.', exception_handler=rethrow)
 
