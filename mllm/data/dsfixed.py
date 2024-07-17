@@ -1,4 +1,6 @@
 import itertools as it
+import os.path
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +12,17 @@ from tqdm import trange
 from mllm.tokenization.chunk_tokenizer import split_doc_embs, parse_out_subdir, gen_ds_fnames
 
 
+CACHE_SUBDIR = '.mllm'
+CACHE_DF_FNAME = 'ds.csv'
+
+
 def read_ds_files(ds_dir_path: Path) -> pd.DataFrame:
+    cache_fpath = ds_dir_path / CACHE_SUBDIR / CACHE_DF_FNAME
+    if cache_fpath.exists():
+        print(f'Loading cache from {cache_fpath}')
+        df = pd.read_csv(cache_fpath, header=0)
+        print(f'Loaded dataset size: {len(df)}')
+        return df
     dfs = []
     fpaths = [p for p in ds_dir_path.iterdir() if p.suffix == '.csv']
     n_files = len(fpaths)
@@ -22,6 +34,11 @@ def read_ds_files(ds_dir_path: Path) -> pd.DataFrame:
     df.sort_values(['docid', 'offset'], inplace=True)
     df.reset_index(drop=True, inplace=True)
     df.reset_index(drop=False, names='chid', inplace=True)
+
+    print(f'Caching df with {len(df)} items to {cache_fpath}')
+    shutil.rmtree(cache_fpath.parent, ignore_errors=True)
+    cache_fpath.parent.mkdir()
+    df.to_csv(cache_fpath, header=True)
     return df
 
 
@@ -241,3 +258,13 @@ class DsLoader:
     def shuffle(self, train: bool):
         docids = self.docids_train if train else self.docids_val
         np.random.shuffle(docids)
+
+
+def load_dsfixed():
+    ds_path = Path(os.path.expandvars('$HOME')) / 'data' / 'wiki_20200501_en/ch_100_fixed'
+    ds = DsLoader(ds_path, 10, 3, 123, 456, 789)
+
+
+if __name__ == '__main__':
+    load_dsfixed()
+

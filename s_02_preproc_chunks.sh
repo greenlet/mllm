@@ -6,7 +6,8 @@ out_path=$data_path/wiki_20200501_en
 emb_chunk_size=100
 chunk_fixed_size_arg=""
 chunk_fixed_size_arg="--chunk-fixed-size"
-max_docs=1000
+# max_docs=1000
+max_docs=0
 
 
 mllm_src_path=$code_path/mllm

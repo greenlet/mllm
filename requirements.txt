@@ -12,5 +12,6 @@ scipy
 tensorboard
 torch
 torchtext
+transformers
 tqdm
 

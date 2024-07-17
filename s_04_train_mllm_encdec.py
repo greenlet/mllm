@@ -11,6 +11,7 @@ from pydantic_cli import run_and_exit
 import torch
 import torch.utils.tensorboard as tb
 from torch import nn
+import torch.nn.functional as F
 from tqdm import trange
 
 from mllm.data.dsfixed import DsLoader
@@ -94,6 +95,15 @@ def encdec_prob_loss(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torc
     return loss
 
 
+# chunks: input token chunks of the shape [n_docs x n_tokens_per_doc]
+def remove_tokens(chunks: torch.Tensor, pad_tok: int, rem_ratio: float = 0.1) -> torch.Tensor:
+    p = 1 - rem_ratio
+    mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
+    res = chunks.clone()
+    res[~mask.bool()] = pad_tok
+    return res
+
+
 def main(args: ArgsTrain) -> int:
     print(args)
 
@@ -119,8 +129,9 @@ def main(args: ArgsTrain) -> int:
         n_vocab=len(tokenizer), d_word_wec=256, inp_len=inp_len,
         enc_n_layers=1, dec_n_layers=1,
         n_heads=8, d_model=256, d_inner=1024,
-        pad_idx=pad_tok, dropout_rate=0.0, enc_with_emb_mat=True,
+        pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
     )
+    input_zeros_ratio = 0.1
     print(model_cfg)
     model = MllmEncdec(model_cfg).to(device)
     params = model.parameters()
@@ -150,9 +161,11 @@ def main(args: ArgsTrain) -> int:
             batch = ds_loader.get_batch(i_batch, train=True)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
 
+            chunks_inp = remove_tokens(docs_chunks, pad_tok, input_zeros_ratio)
+
             optimizer.zero_grad()
 
-            out_logits = model(docs_chunks)
+            out_logits = model(chunks_inp)
             if not graph_written:
                 tbsw.add_graph(model, docs_chunks, verbose=True, use_strict_trace=False)
                 graph_written = True
