@@ -95,13 +95,22 @@ def encdec_prob_loss(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torc
     return loss
 
 
+
+def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
+    if shuffle:
+        chunks = list(chunks)
+        np.random.shuffle(chunks)
+    return torch.concat(chunks, dim=0)
+
+
 # chunks: input token chunks of the shape [n_docs x n_tokens_per_doc]
 def remove_tokens(chunks: torch.Tensor, pad_tok: int, rem_ratio: float = 0.1) -> torch.Tensor:
-    p = 1 - rem_ratio
+    p = rem_ratio
     mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
     res = chunks.clone()
-    res[~mask.bool()] = pad_tok
+    res[mask.bool()] = pad_tok
     return res
+
 
 
 def main(args: ArgsTrain) -> int:
@@ -131,7 +140,7 @@ def main(args: ArgsTrain) -> int:
         n_heads=8, d_model=256, d_inner=1024,
         pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
     )
-    input_zeros_ratio = 0.1
+    input_zeros_ratio = 0.2
     print(model_cfg)
     model = MllmEncdec(model_cfg).to(device)
     params = model.parameters()
@@ -149,19 +158,17 @@ def main(args: ArgsTrain) -> int:
     loss_fn = encdec_prob_loss
     # loss_fn = nn.CrossEntropyLoss()
     graph_written = True
+    i_train, i_val = 0, 0
     for epoch in range(args.epochs):
         model.train()
-        # model.eval()
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
-        for i in pbar:
-            i_batch = i % n_batches_train
-            if i > 0 and i_batch == 0:
-                ds_loader.shuffle(train=True)
-            batch = ds_loader.get_batch(i_batch, train=True)
+        for _ in pbar:
+            batch = ds_loader.get_batch(i_train, train=True)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
 
-            chunks_inp = remove_tokens(docs_chunks, pad_tok, input_zeros_ratio)
+            chunks = concat_tokens(docs_chunks, target_chunks)
+            chunks_inp = remove_tokens(chunks, pad_tok, input_zeros_ratio)
 
             optimizer.zero_grad()
 
@@ -170,11 +177,17 @@ def main(args: ArgsTrain) -> int:
                 tbsw.add_graph(model, docs_chunks, verbose=True, use_strict_trace=False)
                 graph_written = True
 
-            loss = loss_fn(out_logits, docs_chunks)
+            loss = loss_fn(out_logits, chunks)
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
-            # if i == 2:
+
+            i_train += 1
+            if i_train == n_batches_train:
+                ds_loader.shuffle(train=True)
+                i_train %= n_batches_train
+
+            # if i_train == 2:
             #     import sys
             #     sys.exit()
 
@@ -186,16 +199,20 @@ def main(args: ArgsTrain) -> int:
         model.eval()
         val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
-        for i in pbar:
-            i_batch = i % n_batches_val
-            if i > 0 and i_batch == 0:
-                ds_loader.shuffle(train=False)
-            batch = ds_loader.get_batch(i_batch, train=False)
+        for _ in pbar:
+            batch = ds_loader.get_batch(i_val, train=False)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
-            out_logits = model(docs_chunks)
+            
+            chunks = concat_tokens(docs_chunks, target_chunks)
+            out_logits = model(chunks)
 
-            loss = loss_fn(out_logits, docs_chunks)
+            loss = loss_fn(out_logits, chunks)
             val_loss += loss.item()
+
+            i_val += 1
+            if i_val == n_batches_val:
+                ds_loader.shuffle(train=False)
+                i_val %= n_batches_val
 
             pbar.set_postfix_str(f'Val. loss: {loss.item():.6f}')
         pbar.close()

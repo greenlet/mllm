@@ -74,6 +74,13 @@ class ArgsTrain(BaseModel):
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
+    pretrained_model_path: Path = Field(
+        ...,
+        required=True,
+        description='Path to pretrained model weigths. Encoder weights will be utilized from it.',
+        cli=('--pretrained-model-path',),
+    )
+    
 
 
 def gen_train_subdir(ds_dir_path: Path) -> str:
