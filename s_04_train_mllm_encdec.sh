@@ -17,6 +17,7 @@ train_epoch_steps=5000
 val_epoch_steps=500
 docs_batch_size=10
 max_chunks_per_doc=3
+train_subdir=last
 
 learning_rate=0.001
 
@@ -24,10 +25,11 @@ mllm_src_path=$code_path/mllm
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-# echo "
+#echo "
 python s_04_train_mllm_encdec.py \
   --ds-dir-path $wiki_ds_path \
   --train-root-path $train_root_path \
+  --train-subdir $train_subdir \
   --docs-batch-size $docs_batch_size \
   --max-chunks-per-doc $max_chunks_per_doc \
   --device $device \
@@ -35,6 +37,6 @@ python s_04_train_mllm_encdec.py \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps
-# "
+#"
 
 

@@ -2,6 +2,8 @@ import shutil
 from datetime import datetime
 import itertools as it
 from pathlib import Path
+import re
+import sys
 from typing import Optional
 
 import numpy as np
@@ -15,6 +17,7 @@ import torch.nn.functional as F
 from tqdm import trange
 
 from mllm.data.dsfixed import DsLoader
+from mllm.utils.utils import DT_PAT_RE, parse_dt_str
 from mllm.model.mllm_encdec import MllmEncdec
 from mllm.model.mllm_ranker import MllmRanker
 from mllm.model.config import CfgMllmRanker, create_mllm_ranker_cfg, create_mllm_encdec_cfg
@@ -22,6 +25,7 @@ from mllm.tokenization.chunk_tokenizer import gen_ds_fnames, parse_out_subdir, g
     calc_max_inp_size, gen_all_tokens
 from mllm.utils.utils import gen_dt_str
 from transformers import GPT2Tokenizer
+
 
 
 class ArgsTrain(BaseModel):
@@ -36,6 +40,13 @@ class ArgsTrain(BaseModel):
         required=True,
         description='Path to train root directory. New train subdirectory will be created within each new run.',
         cli=('--train-root-path',),
+    )
+    train_subdir: str = Field(
+        '',
+        required=False,
+        description='Train subdirectory. Can have values: "last", "<subdirectory-name>". When set to "last", '
+            'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
+        cli=('--train-subdir',)
     )
     docs_batch_size: Optional[int] = Field(
         3,
@@ -82,6 +93,10 @@ class ArgsTrain(BaseModel):
     )
 
 
+SUBDIR_PAT_STR = re.compile(r'^\w+\-(%s)-.+$' % DT_PAT_RE)
+SUBDIR_PAT = re.compile(SUBDIR_PAT_STR)
+
+
 def gen_train_subdir(ds_dir_path: Path) -> str:
     dt_str = gen_dt_str()
     subdir = f'encdec-{dt_str}-{ds_dir_path.parent.name}-{ds_dir_path.name}'
@@ -112,11 +127,52 @@ def remove_tokens(chunks: torch.Tensor, pad_tok: int, rem_ratio: float = 0.1) ->
     return res
 
 
+def find_last_train_subdir(train_root_path: Path) -> Optional[Path]:
+    dt_last: Optional[datetime] = None
+    subdir_last: Optional[str] = None
+    for subpath in train_root_path.iterdir():
+        if not subpath.is_dir():
+            continue
+        m = SUBDIR_PAT.match(subpath.name)
+        dt_cur = parse_dt_str(m.group(1))
+        if dt_cur is None:
+            continue
+        if dt_last is None or dt_cur > dt_last:
+            dt_last = dt_cur
+            subdir_last = subpath.name
+    if subdir_last is not None:
+        return train_root_path / subdir_last
+
 
 def main(args: ArgsTrain) -> int:
     print(args)
 
     device = torch.device(args.device)
+
+    checkpoint = None
+    if args.train_subdir == 'last':
+        train_path = find_last_train_subdir(args.train_root_path)
+        if train_path is None:
+            print(f'Cannot find last subdirectory of the format `{SUBDIR_PAT_STR}` in {args.train_root_path}')
+            sys.exit(1)
+    elif args.train_subdir:
+        train_path = args.train_root_path / args.train_subdir
+        assert train_path.exists(), f'Directory {train_path} does not exist'
+    else:
+        train_subdir = gen_train_subdir(args.ds_dir_path)
+        train_path = args.train_root_path / train_subdir
+        train_path.mkdir(parents=True, exist_ok=True)
+    print(f'train_path: {train_path}')
+
+    last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
+    checkpoint = None
+    if args.train_subdir == 'last':
+        assert last_checkpoint_path.exists(),\
+            (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
+             f'but file {last_checkpoint_path} does not exits.')
+        print(f'Loading checkpoint from {last_checkpoint_path}')
+        checkpoint = torch.load(last_checkpoint_path, map_location=device)
+        print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
 
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
     tok_dict = gen_all_tokens(tokenizer)
@@ -126,9 +182,6 @@ def main(args: ArgsTrain) -> int:
         pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device
     )
 
-    train_subdir = gen_train_subdir(args.ds_dir_path)
-    train_path = args.train_root_path / train_subdir
-    train_path.mkdir(parents=True, exist_ok=True)
     inp_len = ds_loader.emb_chunk_size if ds_loader.fixed_size else calc_max_inp_size(ds_loader.emb_chunk_size)
     print(f'Creating model with vocab size = {len(tokenizer)}')
 
@@ -144,13 +197,18 @@ def main(args: ArgsTrain) -> int:
     print(model_cfg)
     model = MllmEncdec(model_cfg).to(device)
     params = model.parameters()
-    # params = [p for n, p in model.named_parameters()]
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
-    # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
-    # optimizer = torch.optim.LBFGS(model.parameters(), lr=args.learning_rate)
+
+    last_epoch, val_loss_min = -1, None
+    if checkpoint:
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        last_epoch = checkpoint['last_epoch']
+        val_loss_min = checkpoint['val_loss_min']
+        ds_loader.shuffle(train=True)
+        ds_loader.shuffle(train=False)
+
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
-    val_loss_min = None
-    last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
 
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
     n_batches_train = calc_batches(ds_loader.n_docs_train)
@@ -159,7 +217,7 @@ def main(args: ArgsTrain) -> int:
     # loss_fn = nn.CrossEntropyLoss()
     graph_written = True
     i_train, i_val = 0, 0
-    for epoch in range(args.epochs):
+    for epoch in range(last_epoch + 1, args.epochs):
         model.train()
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
