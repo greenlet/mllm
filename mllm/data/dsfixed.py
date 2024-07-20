@@ -16,15 +16,20 @@ CACHE_SUBDIR = '.mllm'
 CACHE_DF_FNAME = 'ds.csv'
 
 
-def read_ds_files(ds_dir_path: Path) -> pd.DataFrame:
+def read_ds_files(ds_dir_path: Path, n_total: int = 0) -> pd.DataFrame:
     cache_fpath = ds_dir_path / CACHE_SUBDIR / CACHE_DF_FNAME
     if cache_fpath.exists():
         print(f'Loading cache from {cache_fpath}')
-        df = pd.read_csv(cache_fpath, header=0)
+        nrows = None if n_total <= 0 else n_total
+        df = pd.read_csv(cache_fpath, header=0, nrows=nrows)
         print(f'Loaded dataset size: {len(df)}')
         return df
     dfs = []
-    fpaths = [p for p in ds_dir_path.iterdir() if p.suffix == '.csv']
+    fpaths = []
+    for i, p in enumerate(ds_dir_path.iterdir()):
+        if p.suffix != '.csv':
+            continue
+        fpaths.append(p)
     n_files = len(fpaths)
     for i in trange(n_files, desc='Processing csv files', unit='file'):
         fpath = fpaths[i]
@@ -141,9 +146,11 @@ class DsLoader:
     _tokens_cache: dict[tuple[int, int], np.ndarray]
     _max_cache_size: int = 3
     device: Optional[torch.device] = None
+    n_total: int = 0
 
     def __init__(self, ds_dir_path: Path, docs_batch_size: int, max_chunks_per_doc: int,
-                 pad_tok: int, qbeg_tok: int, qend_tok: int, val_ratio: float = 0.2, device: Optional[torch.device] = None):
+                 pad_tok: int, qbeg_tok: int, qend_tok: int, val_ratio: float = 0.2, device: Optional[torch.device] = None,
+                 n_total: int = 0):
         self.ds_dir_path = ds_dir_path
         self.emb_chunk_size, self.fixed_size = parse_out_subdir(ds_dir_path.name)
         self.docs_batch_size = docs_batch_size
@@ -151,7 +158,7 @@ class DsLoader:
         self.pad_tok = pad_tok
         self.qbeg_tok = qbeg_tok
         self.qend_tok = qend_tok
-        self.df = read_ds_files(ds_dir_path)
+        self.df = read_ds_files(ds_dir_path, n_total)
         self.df.set_index(['docid', 'offset'], inplace=True)
         df_doc = self.df.groupby(level=['docid'])
         df_doc = df_doc.agg({'chid': 'count', 'title_tok_num': 'sum', 'body_tok_num': 'sum', 'tok_num': 'sum'})
@@ -166,6 +173,7 @@ class DsLoader:
         self.docids_val = self.docids[self.n_docs_train:].copy()
         self._tokens_cache = {}
         self.device = device
+        self.n_total = n_total
         # print(self.df)
 
     def _prune_cache(self):

@@ -14,6 +14,7 @@ import torch
 import torch.utils.tensorboard as tb
 from torch import nn
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.data.dsfixed import DsLoader
@@ -208,6 +209,8 @@ def main(args: ArgsTrain) -> int:
         ds_loader.shuffle(train=True)
         ds_loader.shuffle(train=False)
 
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=5, threshold=1e-4, min_lr=1e-7)
+    print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
@@ -276,6 +279,10 @@ def main(args: ArgsTrain) -> int:
         pbar.close()
         val_loss /= args.val_epoch_steps
         tbsw.add_scalar('Loss/Val', val_loss, epoch)
+
+        scheduler.step(val_loss)
+        last_lr = scheduler.get_last_lr()[0]
+        tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch=epoch)
 
         print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
         best = False

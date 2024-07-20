@@ -12,7 +12,8 @@ from tqdm import trange
 
 from mllm.data.dsfixed import DsLoader
 from mllm.model.mllm_ranker import MllmRanker
-from mllm.model.config import create_mllm_ranker_cfg
+from mllm.model.mllm_encdec import MllmEncdec
+from mllm.model.config import create_mllm_ranker_cfg, create_mllm_encdec_cfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
 from mllm.utils.utils import gen_dt_str
 from transformers import GPT2Tokenizer
@@ -74,14 +75,13 @@ class ArgsTrain(BaseModel):
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
-    pretrained_model_path: Path = Field(
-        ...,
-        required=True,
+    pretrained_model_path: Optional[Path] = Field(
+        None,
+        required=False,
         description='Path to pretrained model weigths. Encoder weights will be utilized from it.',
         cli=('--pretrained-model-path',),
     )
     
-
 
 def gen_train_subdir(ds_dir_path: Path) -> str:
     dt_str = gen_dt_str()
@@ -144,9 +144,10 @@ def main(args: ArgsTrain) -> int:
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=10000)
     tok_dict = gen_all_tokens(tokenizer)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
+    n_total = 1000
     ds_loader = DsLoader(
         ds_dir_path=args.ds_dir_path, docs_batch_size=args.docs_batch_size, max_chunks_per_doc=args.max_chunks_per_doc,
-        pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device
+        pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device, n_total=n_total,
     )
 
     train_subdir = gen_train_subdir(args.ds_dir_path)
@@ -165,6 +166,22 @@ def main(args: ArgsTrain) -> int:
     )
     print(model_cfg)
     model = MllmRanker(model_cfg).to(device)
+
+    if args.pretrained_model_path is not None:
+        print(f'Loading checkpoint with pretrained model from {args.pretrained_model_path}')
+        checkpoint = torch.load(args.pretrained_model_path)
+        model_encdec_cfg = create_mllm_encdec_cfg(
+            n_vocab=len(tokenizer), d_word_wec=256, inp_len=inp_len,
+            enc_n_layers=1, dec_n_layers=1,
+            n_heads=8, d_model=256, d_inner=1024,
+            pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
+        )
+        model_encdec = MllmEncdec(model_encdec_cfg).to(device)
+        print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
+        model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
+        print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
+        model.encoders[0].load_state_dict(model_encdec.encoder.state_dict())
+
     params = model.parameters()
     # params = [p for n, p in model.named_parameters()]
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
@@ -179,7 +196,7 @@ def main(args: ArgsTrain) -> int:
     n_batches_val = calc_batches(ds_loader.n_docs_val)
     # loss_fn = rank_prob_loss
     loss_fn = RankProbLoss()
-    graph_written = False
+    graph_written = True
     for epoch in range(args.epochs):
         model.train()
         # model.eval()
