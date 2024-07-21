@@ -28,7 +28,6 @@ from mllm.utils.utils import gen_dt_str
 from transformers import GPT2Tokenizer
 
 
-
 class ArgsTrain(BaseModel):
     ds_dir_path: Path = Field(
         None,
@@ -111,7 +110,6 @@ def encdec_prob_loss(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torc
     return loss
 
 
-
 def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
     if shuffle:
         chunks = list(chunks)
@@ -180,7 +178,7 @@ def main(args: ArgsTrain) -> int:
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
     ds_loader = DsLoader(
         ds_dir_path=args.ds_dir_path, docs_batch_size=args.docs_batch_size, max_chunks_per_doc=args.max_chunks_per_doc,
-        pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device
+        pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device,
     )
 
     inp_len = ds_loader.emb_chunk_size if ds_loader.fixed_size else calc_max_inp_size(ds_loader.emb_chunk_size)
@@ -282,7 +280,7 @@ def main(args: ArgsTrain) -> int:
 
         scheduler.step(val_loss)
         last_lr = scheduler.get_last_lr()[0]
-        tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch=epoch)
+        tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
         print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
         best = False

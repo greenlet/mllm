@@ -16,7 +16,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 cd "$mllm_src_path" || exit 1
 
 #echo "
-python s_02_preproc_chunks.py \
+python s_02_prep_01_chunks.py \
   --ds-path $ds_path \
   --emb-chunk-size $emb_chunk_size \
   $chunk_fixed_size_arg \

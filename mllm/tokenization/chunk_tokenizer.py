@@ -118,9 +118,13 @@ def gen_ds_fnames(doc_id_min: int, doc_id_max: int) -> tuple[str, str, str]:
 def split_doc_embs(n_doc: int, n_emb_tokens: int, fixed_size: bool = False) -> np.ndarray:
     n_embs = n_doc // n_emb_tokens
     n_mod = n_doc % n_emb_tokens
-    if n_embs == 0 or n_mod >= n_emb_tokens // 2:
-        n_embs += 1
-    n_doc_max = n_embs * n_emb_tokens if fixed_size else n_doc
+    if fixed_size:
+        n_embs += n_mod > 0
+        n_doc_max = n_embs * n_emb_tokens
+    else:
+        if n_embs == 0 or n_mod >= n_emb_tokens // 2:
+            n_embs += 1
+        n_doc_max = n_doc
     embs_offsets = np.linspace(0, n_doc_max, n_embs + 1, dtype=int)
     return embs_offsets
 

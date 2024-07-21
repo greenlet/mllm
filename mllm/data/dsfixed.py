@@ -181,7 +181,7 @@ class DsLoader:
         if len(self._tokens_cache) > self._max_cache_size:
             keys = list(self._tokens_cache.keys())
             cache = self._tokens_cache
-            self._tokens_cache = {k:cache[k] for k in keys[-self._max_cache_size:]}
+            self._tokens_cache = {k: cache[k] for k in keys[-self._max_cache_size:]}
 
     def _load_tokens(self, doc_id_min: int, doc_id_max: int) -> np.ndarray:
         doc_ids = doc_id_min, doc_id_max

@@ -115,7 +115,7 @@ class RankProbLoss(nn.Module):
         super().__init__()
         self.target_weight = target_weight
 
-    def forward(self, prob_pred: torch.Tensor, mask_gt: torch.Tensor) -> torch.Tensor:
+    def forward(self, prob_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         prob_pred = prob_pred.squeeze()
         prob_tgt = torch.masked_select(prob_pred, mask_gt)
         prob_nontgt = torch.masked_select(prob_pred, ~mask_gt)
@@ -133,7 +133,7 @@ class RankProbLoss(nn.Module):
         # loss_nontgt = prob_nontgt.sum() / n_nontgt
 
         loss = self.target_weight * loss_tgt + (1 - self.target_weight) * loss_nontgt
-        return loss
+        return loss, loss_tgt, loss_nontgt
 
 
 def main(args: ArgsTrain) -> int:
@@ -144,7 +144,8 @@ def main(args: ArgsTrain) -> int:
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=10000)
     tok_dict = gen_all_tokens(tokenizer)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
-    n_total = 1000
+    # n_total = 1000
+    n_total = 0
     ds_loader = DsLoader(
         ds_dir_path=args.ds_dir_path, docs_batch_size=args.docs_batch_size, max_chunks_per_doc=args.max_chunks_per_doc,
         pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device, n_total=n_total,
@@ -168,8 +169,9 @@ def main(args: ArgsTrain) -> int:
     model = MllmRanker(model_cfg).to(device)
 
     if args.pretrained_model_path is not None:
-        print(f'Loading checkpoint with pretrained model from {args.pretrained_model_path}')
-        checkpoint = torch.load(args.pretrained_model_path)
+        pretrained_model_path = args.pretrained_model_path / 'best.pth'
+        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
+        checkpoint = torch.load(pretrained_model_path)
         model_encdec_cfg = create_mllm_encdec_cfg(
             n_vocab=len(tokenizer), d_word_wec=256, inp_len=inp_len,
             enc_n_layers=1, dec_n_layers=1,
@@ -177,6 +179,7 @@ def main(args: ArgsTrain) -> int:
             pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
         )
         model_encdec = MllmEncdec(model_encdec_cfg).to(device)
+        model_encdec.load_state_dict(checkpoint['model'])
         print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
         model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
         print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
@@ -200,7 +203,7 @@ def main(args: ArgsTrain) -> int:
     for epoch in range(args.epochs):
         model.train()
         # model.eval()
-        train_loss = 0
+        train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for i in pbar:
             i_batch = i % n_batches_train
@@ -216,21 +219,27 @@ def main(args: ArgsTrain) -> int:
                 tbsw.add_graph(model, [target_chunks, docs_chunks], verbose=True, use_strict_trace=False)
                 graph_written = True
 
-            loss = loss_fn(out_dec_rank, target_mask)
+            loss, loss_tgt, loss_nontgt = loss_fn(out_dec_rank, target_mask)
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+            train_loss_tgt += loss_tgt.item()
+            train_loss_nontgt += loss_nontgt.item()
             # if i == 2:
             #     import sys
             #     sys.exit()
 
-            pbar.set_postfix_str(f'Train. loss: {loss.item():.6f}')
+            pbar.set_postfix_str(f'Train. loss: {loss.item():.6f}. loss_tgt: {loss_tgt.item():.6f}. loss_nontgt: {loss_nontgt.item():.6f}')
         pbar.close()
         train_loss /= args.train_epoch_steps
+        train_loss_tgt /= args.train_epoch_steps
+        train_loss_nontgt /= args.train_epoch_steps
         tbsw.add_scalar('Loss/Train', train_loss, epoch)
+        tbsw.add_scalar('LossTgt/Train', train_loss_tgt, epoch)
+        tbsw.add_scalar('LossNontgt/Train', train_loss_nontgt, epoch)
 
         model.eval()
-        val_loss = 0
+        val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for i in pbar:
             i_batch = i % n_batches_val
@@ -240,15 +249,22 @@ def main(args: ArgsTrain) -> int:
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
             out_dec_rank = model(target_chunks, docs_chunks)
 
-            loss = loss_fn(out_dec_rank, target_mask)
+            loss, loss_tgt, loss_nontgt = loss_fn(out_dec_rank, target_mask)
             val_loss += loss.item()
+            val_loss_tgt += loss.item()
+            val_loss_nontgt += loss.item()
 
-            pbar.set_postfix_str(f'Val. loss: {loss.item():.6f}')
+            pbar.set_postfix_str(f'Val. loss: {loss.item():.6f}. loss_tgt: {loss_tgt.item():.6f}. loss_nontgt: {loss_nontgt.item():.6f}')
         pbar.close()
         val_loss /= args.val_epoch_steps
+        val_loss_tgt /= args.val_epoch_steps
+        val_loss_nontgt /= args.val_epoch_steps
         tbsw.add_scalar('Loss/Val', val_loss, epoch)
+        tbsw.add_scalar('LossTgt/Val', val_loss_tgt, epoch)
+        tbsw.add_scalar('LossNontgt/Val', val_loss_nontgt, epoch)
 
-        print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
+        print(f'Train loss: {train_loss:.6f}, loss_tgt: {train_loss_tgt:.6f}, loss_nontgt: {train_loss_nontgt:.6f}')
+        print(f'Val loss:   {val_loss:.6f}, loss_tgt: {val_loss_tgt:.6f}, loss_nontgt: {val_loss_nontgt:.6f}')
         best = False
         if val_loss_min is None or val_loss < val_loss_min:
             val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'

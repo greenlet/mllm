@@ -35,23 +35,10 @@ class MllmRanker(nn.Module):
             #     nn.init.normal_(p, std=0.1)
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-            elif n.endswith('bias'):
-                nn.init.constant_(p, 0)
             else:
                 nn.init.uniform_(p, -0.1, 0.1)
             pnp = p.detach().cpu().numpy()
             print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
-
-        # for p in self.parameters():
-        #     # print(p.dtype, p.shape, p.dim())
-        #     if p.squeeze().dim() > 1:
-        #         # nn.init.xavier_uniform_(p)
-        #         nn.init.xavier_normal_(p)
-        #     else:
-        #         nn.init.normal_(p, std=0.3)
-        #         # print(p[:10])
-        #     # p.requires_grad_()
-        #     # nn.init.normal_(p, std=0.3)
 
     def run_vocab_encoder(self, inp: Tensor) -> Tensor:
         return self.vocab_encoder(inp)
@@ -72,14 +59,14 @@ class MllmRanker(nn.Module):
     def forward(self, target_chunks: Tensor, docs_chunks: Tensor) -> Tensor:
         level_num = 1
         n_target = target_chunks.shape[0]
-        inp_chunks = torch.concat((target_chunks, docs_chunks), dim=0)
+        inp_chunks = torch.concat((docs_chunks, target_chunks), dim=0)
         out_enc_0 = self.run_vocab_encoder(inp_chunks)
         _, out_enc_1 = self.run_encoder(level_num, out_enc_0)
         out_enc_1 = out_enc_1.unsqueeze(0)
 
         out_dec_0 = self.run_decoder(level_num, out_enc_1)
 
-        out_dec_rank = out_dec_0[:, n_target:]
+        out_dec_rank = out_dec_0[:, :-n_target]
         return out_dec_rank
 
     def forward_1(self, level_num: int, target_chunks: Tensor, docs_chunks: Tensor) -> Tensor:
