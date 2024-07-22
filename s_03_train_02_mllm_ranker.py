@@ -8,6 +8,7 @@ from pydantic_cli import run_and_exit
 import torch
 import torch.utils.tensorboard as tb
 from torch import nn
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.data.dsfixed import DsLoader
@@ -15,78 +16,10 @@ from mllm.model.mllm_ranker import MllmRanker
 from mllm.model.mllm_encdec import MllmEncdec
 from mllm.model.config import create_mllm_ranker_cfg, create_mllm_encdec_cfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
+from mllm.train.args import ArgsTrain
+from mllm.train.utils import gen_train_subdir, find_create_train_path
 from mllm.utils.utils import gen_dt_str
 from transformers import GPT2Tokenizer
-
-
-class ArgsTrain(BaseModel):
-    ds_dir_path: Path = Field(
-        None,
-        required=False,
-        description='Dataset directory path. Must contain .csv and .np files with tokenized text.',
-        cli=('--ds-dir-path',),
-    )
-    train_root_path: Path = Field(
-        ...,
-        required=True,
-        description='Path to train root directory. New train subdirectory will be created within each new run.',
-        cli=('--train-root-path',),
-    )
-    docs_batch_size: Optional[int] = Field(
-        3,
-        required=False,
-        description='Documents batch size. Must be greater or equal than 2.',
-        cli=('--docs-batch-size',),
-    )
-    max_chunks_per_doc: Optional[int] = Field(
-        3,
-        required=False,
-        description='Maximum number of consecutive chunks per document taken in each butch. '
-                    'Batch chunk max size will be DOCS_BATCH_SIZE * MAX_CHUNKS_PER_DOC.',
-        cli=('--max-chunks-per-doc',),
-    )
-    device: str = Field(
-        'cpu',
-        required=False,
-        description='Device to run training on. Can have values: "cpu", "cuda"',
-        cli=('--device',)
-    )
-    epochs: int = Field(
-        None,
-        required=True,
-        description='Number of training epochs.',
-        cli=('--epochs',),
-    )
-    learning_rate: float = Field(
-        0.001,
-        required=False,
-        description='Initial learning rate of the training process.',
-        cli=('--learning-rate',)
-    )
-    train_epoch_steps: Optional[int] = Field(
-        None,
-        required=False,
-        description='Number of training steps per epoch.',
-        cli=('--train-epoch-steps',),
-    )
-    val_epoch_steps: Optional[int] = Field(
-        None,
-        required=False,
-        description='Number of validation steps per epoch.',
-        cli=('--val-epoch-steps',),
-    )
-    pretrained_model_path: Optional[Path] = Field(
-        None,
-        required=False,
-        description='Path to pretrained model weigths. Encoder weights will be utilized from it.',
-        cli=('--pretrained-model-path',),
-    )
-    
-
-def gen_train_subdir(ds_dir_path: Path) -> str:
-    dt_str = gen_dt_str()
-    subdir = f'ranker-{dt_str}-{ds_dir_path.parent.name}-{ds_dir_path.name}'
-    return subdir
 
 
 def rank_prob_loss(prob_pred: torch.Tensor, mask_gt: torch.Tensor, tgt_weight: float = 0.5) -> torch.Tensor:
@@ -141,6 +74,20 @@ def main(args: ArgsTrain) -> int:
 
     device = torch.device(args.device)
 
+    train_path = find_create_train_path(
+        args.train_root_path, 'ranker', f'{args.ds_dir_path.parent.name}-{args.ds_dir_path.name}', args.train_subdir)
+    print(f'train_path: {train_path}')
+
+    last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
+    checkpoint = None
+    if args.train_subdir == 'last':
+        assert last_checkpoint_path.exists(),\
+            (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
+             f'but file {last_checkpoint_path} does not exits.')
+        print(f'Loading checkpoint from {last_checkpoint_path}')
+        checkpoint = torch.load(last_checkpoint_path, map_location=device)
+        print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
+
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=10000)
     tok_dict = gen_all_tokens(tokenizer)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
@@ -151,9 +98,6 @@ def main(args: ArgsTrain) -> int:
         pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device, n_total=n_total,
     )
 
-    train_subdir = gen_train_subdir(args.ds_dir_path)
-    train_path = args.train_root_path / train_subdir
-    train_path.mkdir(parents=True, exist_ok=True)
     inp_len = ds_loader.emb_chunk_size if ds_loader.fixed_size else calc_max_inp_size(ds_loader.emb_chunk_size)
     print(f'Creating model with vocab size = {len(tokenizer)}')
 
@@ -168,10 +112,10 @@ def main(args: ArgsTrain) -> int:
     print(model_cfg)
     model = MllmRanker(model_cfg).to(device)
 
-    if args.pretrained_model_path is not None:
+    if args.pretrained_model_path is not None and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
-        checkpoint = torch.load(pretrained_model_path)
+        pretrained_checkpoint = torch.load(pretrained_model_path)
         model_encdec_cfg = create_mllm_encdec_cfg(
             n_vocab=len(tokenizer), d_word_wec=256, inp_len=inp_len,
             enc_n_layers=1, dec_n_layers=1,
@@ -179,7 +123,7 @@ def main(args: ArgsTrain) -> int:
             pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
         )
         model_encdec = MllmEncdec(model_encdec_cfg).to(device)
-        model_encdec.load_state_dict(checkpoint['model'])
+        model_encdec.load_state_dict(pretrained_checkpoint['model'])
         print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
         model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
         print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
@@ -190,9 +134,18 @@ def main(args: ArgsTrain) -> int:
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
     # optimizer = torch.optim.LBFGS(model.parameters(), lr=args.learning_rate)
+
+    last_epoch, val_loss_min = -1, None
+    if checkpoint:
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        last_epoch = checkpoint['last_epoch']
+        val_loss_min = checkpoint['val_loss_min']
+        ds_loader.shuffle(train=True)
+        ds_loader.shuffle(train=False)
+
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=5, threshold=1e-4, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
-    val_loss_min = None
-    last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
 
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
     n_batches_train = calc_batches(ds_loader.n_docs_train)
@@ -200,16 +153,13 @@ def main(args: ArgsTrain) -> int:
     # loss_fn = rank_prob_loss
     loss_fn = RankProbLoss()
     graph_written = True
-    for epoch in range(args.epochs):
+    i_train, i_val = 0, 0
+    for epoch in range(last_epoch + 1, args.epochs):
         model.train()
-        # model.eval()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
-        for i in pbar:
-            i_batch = i % n_batches_train
-            if i > 0 and i_batch == 0:
-                ds_loader.shuffle(train=True)
-            batch = ds_loader.get_batch(i_batch, train=True)
+        for _ in pbar:
+            batch = ds_loader.get_batch(i_train, train=True)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
 
             optimizer.zero_grad()
@@ -225,6 +175,12 @@ def main(args: ArgsTrain) -> int:
             train_loss += loss.item()
             train_loss_tgt += loss_tgt.item()
             train_loss_nontgt += loss_nontgt.item()
+
+            i_train += 1
+            if i_train == n_batches_train:
+                ds_loader.shuffle(train=True)
+                i_train %= n_batches_train
+
             # if i == 2:
             #     import sys
             #     sys.exit()
@@ -241,18 +197,20 @@ def main(args: ArgsTrain) -> int:
         model.eval()
         val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
-        for i in pbar:
-            i_batch = i % n_batches_val
-            if i > 0 and i_batch == 0:
-                ds_loader.shuffle(train=False)
-            batch = ds_loader.get_batch(i_batch, train=False)
+        for _ in pbar:
+            batch = ds_loader.get_batch(i_val, train=False)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
             out_dec_rank = model(target_chunks, docs_chunks)
 
             loss, loss_tgt, loss_nontgt = loss_fn(out_dec_rank, target_mask)
             val_loss += loss.item()
-            val_loss_tgt += loss.item()
-            val_loss_nontgt += loss.item()
+            val_loss_tgt += loss_tgt.item()
+            val_loss_nontgt += loss_nontgt.item()
+
+            i_val += 1
+            if i_val == n_batches_val:
+                ds_loader.shuffle(train=False)
+                i_val %= n_batches_val
 
             pbar.set_postfix_str(f'Val. loss: {loss.item():.6f}. loss_tgt: {loss_tgt.item():.6f}. loss_nontgt: {loss_nontgt.item():.6f}')
         pbar.close()
@@ -262,6 +220,10 @@ def main(args: ArgsTrain) -> int:
         tbsw.add_scalar('Loss/Val', val_loss, epoch)
         tbsw.add_scalar('LossTgt/Val', val_loss_tgt, epoch)
         tbsw.add_scalar('LossNontgt/Val', val_loss_nontgt, epoch)
+
+        scheduler.step(val_loss)
+        last_lr = scheduler.get_last_lr()[0]
+        tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
         print(f'Train loss: {train_loss:.6f}, loss_tgt: {train_loss_tgt:.6f}, loss_nontgt: {train_loss_nontgt:.6f}')
         print(f'Val loss:   {val_loss:.6f}, loss_tgt: {val_loss_tgt:.6f}, loss_nontgt: {val_loss_nontgt:.6f}')

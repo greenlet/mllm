@@ -29,6 +29,7 @@ val_epoch_steps=500
 docs_batch_size=20
 max_chunks_per_doc=5
 pretrained_model_path=$train_encdec_root_path/encdec-20240718_221554-wiki_20200501_en-ch_100_fixed
+#train_subdir=last
 
 learning_rate=0.0001
 
@@ -40,6 +41,7 @@ cd "$mllm_src_path" || exit 1
 python s_03_train_02_mllm_ranker.py \
   --ds-dir-path $wiki_ds_path \
   --train-root-path $train_ranker_root_path \
+  --train-subdir "$train_subdir" \
   --docs-batch-size $docs_batch_size \
   --max-chunks-per-doc $max_chunks_per_doc \
   --device $device \

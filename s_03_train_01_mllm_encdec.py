@@ -1,106 +1,19 @@
 import shutil
-from datetime import datetime
-import itertools as it
-from pathlib import Path
-import re
-import sys
-from typing import Optional
 
 import numpy as np
-import pandas as pd
-from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 import torch
 import torch.utils.tensorboard as tb
-from torch import nn
-import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.data.dsfixed import DsLoader
-from mllm.utils.utils import DT_PAT_RE, parse_dt_str
+from mllm.train.args import ArgsTrain
+from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdec
-from mllm.model.mllm_ranker import MllmRanker
-from mllm.model.config import CfgMllmRanker, create_mllm_ranker_cfg, create_mllm_encdec_cfg
-from mllm.tokenization.chunk_tokenizer import gen_ds_fnames, parse_out_subdir, gen_doc_tokens, split_doc_embs, \
-    calc_max_inp_size, gen_all_tokens
-from mllm.utils.utils import gen_dt_str
+from mllm.model.config import create_mllm_encdec_cfg
+from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
 from transformers import GPT2Tokenizer
-
-
-class ArgsTrain(BaseModel):
-    ds_dir_path: Path = Field(
-        None,
-        required=False,
-        description='Dataset directory path. Must contain .csv and .np files with tokenized text.',
-        cli=('--ds-dir-path',),
-    )
-    train_root_path: Path = Field(
-        ...,
-        required=True,
-        description='Path to train root directory. New train subdirectory will be created within each new run.',
-        cli=('--train-root-path',),
-    )
-    train_subdir: str = Field(
-        '',
-        required=False,
-        description='Train subdirectory. Can have values: "last", "<subdirectory-name>". When set to "last", '
-            'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
-        cli=('--train-subdir',)
-    )
-    docs_batch_size: Optional[int] = Field(
-        3,
-        required=False,
-        description='Documents batch size. Must be greater or equal than 2.',
-        cli=('--docs-batch-size',),
-    )
-    max_chunks_per_doc: Optional[int] = Field(
-        3,
-        required=False,
-        description='Maximum number of consecutive chunks per document taken in each butch. '
-                    'Batch chunk max size will be DOCS_BATCH_SIZE * MAX_CHUNKS_PER_DOC.',
-        cli=('--max-chunks-per-doc',),
-    )
-    device: str = Field(
-        'cpu',
-        required=False,
-        description='Device to run training on. Can have values: "cpu", "cuda"',
-        cli=('--device',)
-    )
-    epochs: int = Field(
-        None,
-        required=True,
-        description='Number of training epochs.',
-        cli=('--epochs',),
-    )
-    learning_rate: float = Field(
-        0.001,
-        required=False,
-        description='Initial learning rate of the training process.',
-        cli=('--learning-rate',)
-    )
-    train_epoch_steps: Optional[int] = Field(
-        None,
-        required=False,
-        description='Number of training steps per epoch.',
-        cli=('--train-epoch-steps',),
-    )
-    val_epoch_steps: Optional[int] = Field(
-        None,
-        required=False,
-        description='Number of validation steps per epoch.',
-        cli=('--val-epoch-steps',),
-    )
-
-
-SUBDIR_PAT_STR = re.compile(r'^\w+\-(%s)-.+$' % DT_PAT_RE)
-SUBDIR_PAT = re.compile(SUBDIR_PAT_STR)
-
-
-def gen_train_subdir(ds_dir_path: Path) -> str:
-    dt_str = gen_dt_str()
-    subdir = f'encdec-{dt_str}-{ds_dir_path.parent.name}-{ds_dir_path.name}'
-    return subdir
 
 
 def encdec_prob_loss(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
@@ -126,41 +39,13 @@ def remove_tokens(chunks: torch.Tensor, pad_tok: int, rem_ratio: float = 0.1) ->
     return res
 
 
-def find_last_train_subdir(train_root_path: Path) -> Optional[Path]:
-    dt_last: Optional[datetime] = None
-    subdir_last: Optional[str] = None
-    for subpath in train_root_path.iterdir():
-        if not subpath.is_dir():
-            continue
-        m = SUBDIR_PAT.match(subpath.name)
-        dt_cur = parse_dt_str(m.group(1))
-        if dt_cur is None:
-            continue
-        if dt_last is None or dt_cur > dt_last:
-            dt_last = dt_cur
-            subdir_last = subpath.name
-    if subdir_last is not None:
-        return train_root_path / subdir_last
-
-
 def main(args: ArgsTrain) -> int:
     print(args)
 
     device = torch.device(args.device)
 
-    checkpoint = None
-    if args.train_subdir == 'last':
-        train_path = find_last_train_subdir(args.train_root_path)
-        if train_path is None:
-            print(f'Cannot find last subdirectory of the format `{SUBDIR_PAT_STR}` in {args.train_root_path}')
-            sys.exit(1)
-    elif args.train_subdir:
-        train_path = args.train_root_path / args.train_subdir
-        assert train_path.exists(), f'Directory {train_path} does not exist'
-    else:
-        train_subdir = gen_train_subdir(args.ds_dir_path)
-        train_path = args.train_root_path / train_subdir
-        train_path.mkdir(parents=True, exist_ok=True)
+    train_path = find_create_train_path(
+        args.train_root_path, 'encdec', f'{args.ds_dir_path.parent.name}-{args.ds_dir_path.name}', args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
