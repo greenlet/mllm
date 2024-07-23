@@ -57,7 +57,12 @@ class MllmEncdec(nn.Module):
 
     def run_vocab_decoder(self, inp: Tensor) -> Tensor:
         return self.vocab_decoder(inp)
-
+    
+    def run_enc_emb(self, inp: Tensor) -> Tensor:
+        out = self.run_vocab_encoder(inp)
+        out = self.run_encoder(out)
+        return out[1]
+    
     def forward(self, inp_chunks: Tensor) -> Tensor:
         out_enc_0 = self.run_vocab_encoder(inp_chunks)
         _, out_enc_1 = self.run_encoder(out_enc_0)

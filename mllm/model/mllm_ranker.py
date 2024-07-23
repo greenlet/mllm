@@ -56,6 +56,11 @@ class MllmRanker(nn.Module):
         ind = level_num - 1
         return self.decoders[ind](inp)[0]
 
+    def run_enc_emb(self, inp: Tensor) -> Tensor:
+        out = self.run_vocab_encoder(inp)
+        out = self.run_encoder(0, out)
+        return out[1]
+
     def forward(self, target_chunks: Tensor, docs_chunks: Tensor) -> Tensor:
         level_num = 1
         n_target = target_chunks.shape[0]
