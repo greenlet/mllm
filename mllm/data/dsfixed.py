@@ -224,7 +224,6 @@ class DsLoader:
                 # print(f'{n} --> {len(res)}')
             if body_beg_ind >= 0:
                 assert 0 < body_beg_ind < body_end_ind
-                n = len(res)
                 res.extend(ch_tokens[body_beg_ind:body_end_ind])
                 # print(f'{n} --> {len(res)}')
         # print(f'res: {len(res)}')
@@ -257,6 +256,10 @@ class DsLoader:
 
             if docid == target_docid:
                 target_tokens = self._extract_content_tokens(df, chunks)
+                n_sample = max(int(len(target_tokens) * 0.1), 2)
+                inds = np.random.choice(len(target_tokens), n_sample)
+                inds = sorted(inds)
+                target_tokens = [target_tokens[i] for i in inds]
                 target_tokens = [self.qbeg_tok, *target_tokens, self.qend_tok]
         return DocsBatch(
             docs_chunks=docs_chunks, target_doc_id=target_docid, target_tokens=target_tokens,

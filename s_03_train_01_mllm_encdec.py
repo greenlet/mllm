@@ -3,9 +3,11 @@ import shutil
 import numpy as np
 from pydantic_cli import run_and_exit
 import torch
+
 import torch.utils.tensorboard as tb
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
+from transformers import GPT2Tokenizer
 
 from mllm.data.dsfixed import DsLoader
 from mllm.train.args import ArgsTrain
@@ -13,7 +15,6 @@ from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdec
 from mllm.model.config import create_mllm_encdec_cfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
-from transformers import GPT2Tokenizer
 
 
 def encdec_prob_loss(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
