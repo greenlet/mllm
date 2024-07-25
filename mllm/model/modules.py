@@ -324,8 +324,8 @@ class Decoder(nn.Module):
         rank_logit = self.rank_prj(enc_out)
 
         # rank_prob = rank_logit
-        rank_prob = torch.sigmoid(rank_logit)
-        # rank_prob = torch.softmax(rank_logit, dim=-2)
+        # rank_prob = torch.sigmoid(rank_logit)
+        rank_prob = torch.softmax(rank_logit, dim=-2)
         return rank_prob, enc_slf_attn_list
 
 

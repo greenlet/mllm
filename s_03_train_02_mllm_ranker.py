@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 import torch
@@ -19,7 +20,7 @@ from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
 from mllm.train.args import ArgsTrain
 from mllm.train.utils import gen_train_subdir, find_create_train_path
 from mllm.utils.utils import gen_dt_str
-from transformers import GPT2Tokenizer
+from transformers import GPT2Tokenizer, PreTrainedTokenizer
 
 
 def rank_prob_loss(prob_pred: torch.Tensor, mask_gt: torch.Tensor, tgt_weight: float = 0.5) -> torch.Tensor:
@@ -52,21 +53,34 @@ class RankProbLoss(nn.Module):
         prob_pred = prob_pred.squeeze()
         prob_tgt = torch.masked_select(prob_pred, mask_gt)
         prob_nontgt = torch.masked_select(prob_pred, ~mask_gt)
-        # loss_tgt = 1 - torch.mean(prob_tgt)
-        # loss_nontgt = torch.mean(prob_nontgt)
         loss_tgt = -torch.mean(torch.log(prob_tgt))
         loss_nontgt = -torch.mean(torch.log(1 - prob_nontgt))
-
-        # mask_gt = mask_gt.to(torch.float32)
-        # prob_tgt = mask_gt * prob_pred
-        # prob_nontgt = (1 - mask_gt) * prob_pred
-        # n_tgt = mask_gt.sum()
-        # n_nontgt = len(mask_gt) - n_tgt
-        # loss_tgt = 1 - prob_tgt.sum() / n_tgt
-        # loss_nontgt = prob_nontgt.sum() / n_nontgt
-
         loss = self.target_weight * loss_tgt + (1 - self.target_weight) * loss_nontgt
         return loss, loss_tgt, loss_nontgt
+
+
+class TokenAugmenter:
+    tokenizer: PreTrainedTokenizer
+    act_prob: float
+    min_tokens: int
+    max_tokens: int
+
+    def __init__(self, tokenizer: PreTrainedTokenizer, act_prob: float = 0.8, min_tokens: int = 4, max_tokens: int = 50, seed: int = 11):
+        self.tokenizer = tokenizer
+        self.act_prob = act_prob
+        self.min_tokens = min_tokens
+        self.max_tokens = max_tokens
+        np.random.seed(seed)
+
+    def __call__(self, tokens: list[int]) -> list[int]:
+        n_tokens = len(tokens)
+        p = np.random.uniform()
+        if p > self.act_prob or n_tokens <= self.min_tokens:
+            return tokens
+        n_left = np.random.randint(self.min_tokens, min(self.max_tokens, n_tokens) + 1)
+        ind = np.random.randint(n_tokens - n_left + 1)
+        tokens = tokens[ind:ind + n_left]
+        return tokens
 
 
 def main(args: ArgsTrain) -> int:
@@ -152,6 +166,7 @@ def main(args: ArgsTrain) -> int:
     n_batches_val = calc_batches(ds_loader.n_docs_val)
     # loss_fn = rank_prob_loss
     loss_fn = RankProbLoss()
+    token_augmenter = TokenAugmenter(tokenizer=tokenizer)
     graph_written = True
     i_train, i_val = 0, 0
     for epoch in range(last_epoch + 1, args.epochs):
@@ -159,7 +174,7 @@ def main(args: ArgsTrain) -> int:
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = ds_loader.get_batch(i_train, train=True)
+            batch = ds_loader.get_batch(i_train, train=True, target_augmenter=token_augmenter)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
 
             optimizer.zero_grad()
@@ -198,7 +213,7 @@ def main(args: ArgsTrain) -> int:
         val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = ds_loader.get_batch(i_val, train=False)
+            batch = ds_loader.get_batch(i_val, train=False, target_augmenter=token_augmenter)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
             out_dec_rank = model(target_chunks, docs_chunks)
 

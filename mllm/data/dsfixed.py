@@ -2,7 +2,7 @@ import itertools as it
 import os.path
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 import numpy as np
 import pandas as pd
@@ -229,7 +229,7 @@ class DsLoader:
         # print(f'res: {len(res)}')
         return res
 
-    def get_batch(self, ind: int, train: bool) -> DocsBatch:
+    def get_batch(self, ind: int, train: bool, target_augmenter: Optional[Callable] = None) -> DocsBatch:
         docids = self.docids_train if train else self.docids_val
         docids = docids[ind * self.docs_batch_size:(ind + 1) * self.docs_batch_size]
         df_doc = self.df_doc.loc[docids]
@@ -256,10 +256,8 @@ class DsLoader:
 
             if docid == target_docid:
                 target_tokens = self._extract_content_tokens(df, chunks)
-                n_sample = max(int(len(target_tokens) * 0.1), 2)
-                inds = np.random.choice(len(target_tokens), n_sample)
-                inds = sorted(inds)
-                target_tokens = [target_tokens[i] for i in inds]
+                if target_augmenter is not None:
+                    target_tokens = target_augmenter(target_tokens)
                 target_tokens = [self.qbeg_tok, *target_tokens, self.qend_tok]
         return DocsBatch(
             docs_chunks=docs_chunks, target_doc_id=target_docid, target_tokens=target_tokens,
