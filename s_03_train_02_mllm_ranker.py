@@ -1,3 +1,4 @@
+import itertools
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -68,19 +69,41 @@ class TokenAugmenter:
     def __init__(self, tokenizer: PreTrainedTokenizer, act_prob: float = 0.8, min_tokens: int = 4, max_tokens: int = 50, seed: int = 11):
         self.tokenizer = tokenizer
         self.act_prob = act_prob
+        assert min_tokens <= max_tokens
         self.min_tokens = min_tokens
         self.max_tokens = max_tokens
         np.random.seed(seed)
 
-    def __call__(self, tokens: list[int]) -> list[int]:
-        n_tokens = len(tokens)
+    def __call__(self, tokens: list[list[int]]) -> list[list[int]]:
+        n_tokens = sum(len(t) for t in tokens)
         p = np.random.uniform()
         if p > self.act_prob or n_tokens <= self.min_tokens:
             return tokens
-        n_left = np.random.randint(self.min_tokens, min(self.max_tokens, n_tokens) + 1)
-        ind = np.random.randint(n_tokens - n_left + 1)
-        tokens = tokens[ind:ind + n_left]
-        return tokens
+        max_tokens = min(self.min_tokens, n_tokens)
+        n_res = np.random.randint(self.min_tokens, max_tokens + 1)
+        i1 = np.random.randint(n_tokens)
+        i2 = i1 + n_res
+        n_beg = 0
+        if i2 > n_tokens:
+            n_beg = i2 - n_tokens
+            i2 = n_tokens
+        n_end = i2 - i1
+
+        res = []
+        for t in tokens:
+            if n_beg > 0:
+                n1 = len(t)
+                t = t[n_beg:]
+                n2 = len(t)
+                n_beg -= n1 - n2
+            elif n_end > 0:
+                n1 = len(t)
+                t = t[:-n_end]
+                n2 = len(t)
+                n_end -= n1 - n2
+            res.append([*t])
+
+        return res
 
 
 def main(args: ArgsTrain) -> int:
@@ -167,6 +190,7 @@ def main(args: ArgsTrain) -> int:
     # loss_fn = rank_prob_loss
     loss_fn = RankProbLoss()
     token_augmenter = TokenAugmenter(tokenizer=tokenizer)
+    # token_augmenter = None
     graph_written = True
     i_train, i_val = 0, 0
     for epoch in range(last_epoch + 1, args.epochs):
