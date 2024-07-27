@@ -125,7 +125,9 @@ class DocsBatch:
 
         target_mask = np.full(len(docs_chunks), False, dtype=bool)
         target_mask[target_chunk_off:target_chunk_off + target_chunk_sz] = True
-        self._sync_chunks_mask(self.target_tokens, target_mask)
+        
+        # self._sync_chunks_mask(self.target_tokens, target_mask)
+        
         target_tokens = list(itertools.chain(*self.target_tokens))
         target_tokens = [self.qbeg_tok, *target_tokens, self.qend_tok]
 

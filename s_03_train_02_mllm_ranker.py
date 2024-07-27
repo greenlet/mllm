@@ -189,7 +189,7 @@ def main(args: ArgsTrain) -> int:
     n_batches_val = calc_batches(ds_loader.n_docs_val)
     # loss_fn = rank_prob_loss
     loss_fn = RankProbLoss()
-    token_augmenter = TokenAugmenter(tokenizer=tokenizer)
+    token_augmenter = TokenAugmenter(tokenizer=tokenizer, act_prob=1, min_tokens=15)
     # token_augmenter = None
     graph_written = True
     i_train, i_val = 0, 0
