@@ -5,7 +5,7 @@ import torch
 from torch import nn, Tensor
 
 from mllm.model.config import CfgMllmRanker, create_mllm_ranker_cfg
-from mllm.model.modules import VocabEncoder, Encoder, Decoder
+from mllm.model.modules import VocabEncoder, Encoder, Decoder, DecoderRankSimple
 
 
 class MllmRanker(nn.Module):
@@ -23,8 +23,11 @@ class MllmRanker(nn.Module):
         self.encoders = nn.ModuleList([
             Encoder(**cfg_enc.dict()) for cfg_enc in cfg.encoders
         ])
+        # self.decoders = nn.ModuleList([
+        #     Decoder(**cfg_dec.dict()) for cfg_dec in cfg.decoders
+        # ])
         self.decoders = nn.ModuleList([
-            Decoder(**cfg_dec.dict()) for cfg_dec in cfg.decoders
+            DecoderRankSimple(cfg.decoders[0].d_model)
         ])
         for n, p in self.named_parameters():
             # if n == 'vocab_encoder.src_word_emb.weight':
@@ -62,6 +65,18 @@ class MllmRanker(nn.Module):
         return out[1]
 
     def forward(self, target_chunks: Tensor, docs_chunks: Tensor) -> Tensor:
+        level_num = 1
+        n_target = target_chunks.shape[0]
+        inp_chunks = torch.concat((docs_chunks, target_chunks), dim=0)
+        out_enc_0 = self.run_vocab_encoder(inp_chunks)
+        _, out_enc_1 = self.run_encoder(level_num, out_enc_0)
+        out_enc_1 = out_enc_1.unsqueeze(0)
+
+        enc_docs_chunks, enc_target_chunks = out_enc_1[:, :-n_target], out_enc_1[:, -n_target:]
+        out_dec_rank = self.decoders[0](enc_docs_chunks, enc_target_chunks)
+        return out_dec_rank
+
+    def forward_2(self, target_chunks: Tensor, docs_chunks: Tensor) -> Tensor:
         level_num = 1
         n_target = target_chunks.shape[0]
         inp_chunks = torch.concat((docs_chunks, target_chunks), dim=0)

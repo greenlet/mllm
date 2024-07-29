@@ -178,9 +178,11 @@ class EncoderLayer(nn.Module):
         self.slf_attn = MultiHeadAttention(n_heads, d_model, d_k, d_v, with_graph_mat, inp_len, dropout_rate=dropout_rate)
         self.pos_ffn = PositionwiseFeedForward(d_model, d_inner, dropout_rate=dropout_rate)
 
-    def forward(self, enc_input, slf_attn_mask=None):
+    def forward(self, enc_input: Optional[Tensor], enc_input_kv: Optional[Tensor] = None, slf_attn_mask: Optional[Tensor] = None):
+        if enc_input_kv is None:
+            enc_input_kv = enc_input
         enc_output, enc_slf_attn = self.slf_attn(
-            enc_input, enc_input, enc_input, mask=slf_attn_mask)
+            enc_input, enc_input_kv, enc_input_kv, mask=slf_attn_mask)
         enc_output = self.pos_ffn(enc_output)
         return enc_output, enc_slf_attn
 
@@ -386,4 +388,34 @@ class VocabDecoder(nn.Module):
     def forward(self, inp: Tensor) -> Tensor:
         out_logit = self.word_prj(inp)
         return out_logit
+
+
+class DecoderRankSimple(nn.Module):
+    d_model: int
+
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.d_model = d_model
+        self.w = nn.Linear(d_model, d_model, bias=False)
+
+    # docs_chunks: (batch_size, docs_chunks_len, d_model)
+    # query_chunks: (batch_size, query_chunks_len, d_model)
+    def forward(self, docs_chunks: Tensor, query_chunks: Tensor) -> Tensor:
+        # (batch_size, query_chunks_len, d_model)
+        query_chunks = self.w(query_chunks)
+
+        # (batch_size, d_model, docs_chunks_len)
+        docs_chunks = docs_chunks.transpose(-2, -1)
+
+        # (batch_size, query_chunks_len, docs_chunks_len)
+        ranks = torch.matmul(query_chunks, docs_chunks)
+
+        # (batch_size, docs_chunks_len)
+        ranks = torch.max(ranks, 1)[0]
+
+        # (batch_size, docs_chunks_len)
+        ranks_prob = torch.sigmoid(ranks)
+
+        return ranks_prob
+
 
