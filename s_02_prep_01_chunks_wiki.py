@@ -1,7 +1,6 @@
 import shutil
 from pathlib import Path
 
-import numpy as np
 from datasets import load_dataset
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit

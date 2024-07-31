@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from tqdm import trange
 
+from mllm.data.msmarco import MSMARCO_DOCS_FNAME, MsmDoc
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, gen_out_subdir, gen_all_tokens
 from transformers import GPT2Tokenizer
 
@@ -47,6 +48,20 @@ class ArgsPreproc(BaseModel):
 
 def main(args: ArgsPreproc) -> int:
     print(args)
+
+    dir_out = ''
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
+    all_tokens = gen_all_tokens(tokenizer)
+    ch_tkz = ChunkTokenizer(
+        tokens=all_tokens, tokenizer=tokenizer, n_emb_tokens=args.emb_chunk_size,
+        fixed_size=args.chunk_fixed_size, dir_out=dir_out, docs_write_num=100,
+    )
+    docs_fpath = args.ds_path / MSMARCO_DOCS_FNAME
+    with open(docs_fpath, 'r', encoding='utf-8') as f:
+        while True:
+            l = f.readline().strip()
+            if not l: break
+            doc = MsmDoc.from_line(l)
 
     return 0
 
