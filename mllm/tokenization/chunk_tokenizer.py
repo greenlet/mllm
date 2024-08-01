@@ -383,7 +383,7 @@ class ChunkTokenizer:
             chunks.append(chunk)
         return chunks
 
-    def process_doc(self, docid: int, doc: dict[str, str]):
+    def process_doc(self, docid: int, doc: dict[str, str]) -> list[TokChunk]:
         title, body = doc['title'], doc['text']
         title_tokens, body_tokens = self.tokenizer(title), self.tokenizer(body)
         title_tokens, body_tokens = title_tokens['input_ids'], body_tokens['input_ids']
@@ -396,7 +396,10 @@ class ChunkTokenizer:
         else:
             chunks = self._split_approx(docid, docid_tokens, title_tokens, body_tokens)
 
-        self.chunks.extend(chunks)
-        self.docs_processed_num += 1
-        self._write_data_if_needed()
+        if self.dir_out:
+            self.chunks.extend(chunks)
+            self.docs_processed_num += 1
+            self._write_data_if_needed()
+
+        return chunks
 
