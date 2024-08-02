@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from tqdm import trange
 
-from mllm.data.msmarco import MSMARCO_DOCS_FNAME, MsmDoc
+from mllm.data.dsmsmarco import MSMARCO_DOCS_FNAME, MsmDoc
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, gen_out_subdir, gen_all_tokens
 from transformers import GPT2Tokenizer
 

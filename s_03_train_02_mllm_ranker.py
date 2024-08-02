@@ -13,7 +13,7 @@ from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.data.dsfixed import DsLoader
+from mllm.data.dswiki import DsLoader
 from mllm.model.mllm_ranker import MllmRanker
 from mllm.model.mllm_encdec import MllmEncdec
 from mllm.model.config import create_mllm_ranker_cfg, create_mllm_encdec_cfg

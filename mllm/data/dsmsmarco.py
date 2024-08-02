@@ -1,4 +1,5 @@
 import gzip
+import itertools as it
 from pathlib import Path
 from typing import Optional, Callable, TextIO
 
@@ -6,8 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from mllm.data.common import DocsBatch
-from mllm.tokenization.chunk_tokenizer import parse_out_subdir, ChunkTokenizer
+from mllm.tokenization.chunk_tokenizer import parse_out_subdir, ChunkTokenizer, split_doc_embs
 
 MSMARCO_DOCTRAIN_QUERIES_FNAME = 'msmarco-doctrain-queries.tsv.gz'
 MSMARCO_DOCTRAIN_QRELS_FNAME = 'msmarco-doctrain-qrels.tsv.gz'
@@ -99,6 +99,113 @@ def get_doc(fid: TextIO, offset: int) -> MsmDoc:
     return MsmDoc.from_line(l)
 
 
+class DocsBatch:
+    docs_chunks: list[list[np.ndarray]]
+    qs_chunks: list[list[list[int]]]
+    pad_tok: int
+    emb_chunk_size: int
+    docs_chunks_padded: np.ndarray
+    qs_chunks_padded: np.ndarray
+    qs_mask: np.ndarray
+    docs_chunks_padded_tf: Optional[torch.Tensor] = None
+    qs_chunks_padded_tf: Optional[torch.Tensor] = None
+    qs_mask_tf: Optional[torch.Tensor] = None
+    device: Optional[torch.device] = None
+
+    def __init__(self, docs_chunks: list[list[np.ndarray]], qs_chunks: list[list[list[int]]], pad_tok: int, emb_chunk_size: int,
+                 device: Optional[torch.device] = None):
+        self.docs_chunks = docs_chunks
+        self.qs_chunks = qs_chunks
+        self.pad_tok = pad_tok
+        self.emb_chunk_size = emb_chunk_size
+        self.device = device
+        self.calc_np()
+
+    def _shuffle_docs_chunks(self, docs_chunks: list[np.ndarray], target_ind: int) -> tuple[np.ndarray, np.ndarray]:
+        np.random.shuffle(docs_chunks)
+        target_off, target_len = 0, 0
+        res_chunks = []
+        for ind, doc_chunk in docs_chunks:
+            n_doc = len(doc_chunk)
+            if target_len == 0 and ind != target_ind:
+                target_off += n_doc
+            else:
+                target_len = n_doc
+            res_chunks.extend(doc_chunk)
+
+    def calc_np(self):
+        max_chunks_sz = 0
+        for chunk in it.chain(self.docs_chunks, self.qs_chunks):
+            max_chunks_sz = max(max_chunks_sz, max(len(tokens) for tokens in chunk))
+
+        docs_chunks_padded = []
+        for i_doc, doc_chunk in enumerate(self.docs_chunks):
+            doc_chunk_padded = np.full((len(doc_chunk), max_chunks_sz), self.pad_tok, dtype=np.int32)
+            for i_tok, tokens in enumerate(doc_chunk):
+                doc_chunk_padded[i_tok, :len(tokens)] = tokens
+            docs_chunks_padded.append((i_doc, doc_chunk_padded))
+
+        qs_chunks_padded = []
+        for query_chunk in self.qs_chunks:
+            query_chunk_padded = np.full((len(query_chunk), max_chunks_sz), self.pad_tok, dtype=np.int32)
+            for i, tokens in enumerate(query_chunk):
+                query_chunk_padded[i, :len(tokens)] = tokens
+            qs_chunks_padded.append(query_chunk_padded)
+
+
+
+        docs_chunks = []
+        qs_chunk_off, qs_chunk_sz = 0, 0
+        for doc_id, chunks in self.docs_chunks.items():
+            if qs_chunk_sz == 0:
+                if doc_id == self.target_doc_id:
+                    qs_chunk_sz = len(chunks)
+                else:
+                    qs_chunk_off += len(chunks)
+            docs_chunks.extend(chunks)
+
+        target_mask = np.full(len(docs_chunks), False, dtype=bool)
+        target_mask[qs_chunk_off:qs_chunk_off + qs_chunk_sz] = True
+
+        # self._sync_chunks_mask(self.target_tokens, target_mask)
+
+        target_tokens = list(itertools.chain(*self.target_tokens))
+        target_tokens = [self.qbeg_tok, *target_tokens, self.qend_tok]
+
+        target_embs_offsets = split_doc_embs(len(target_tokens), self.emb_chunk_size, self.fixed_size)
+        n_target_chunks = len(target_embs_offsets) - 1
+        target_chunks = []
+        for i in range(n_target_chunks):
+            doc_chunk = target_tokens[target_embs_offsets[i]:target_embs_offsets[i + 1]]
+            target_chunks.append(doc_chunk)
+
+        n_batch_chunks = len(docs_chunks)
+        max_chank_sz = max(len(chunk) for chunk in it.chain(docs_chunks, target_chunks))
+
+        docs_chunks_padded = np.full((n_batch_chunks, max_chank_sz), self.pad_tok, dtype=np.int32)
+        for i_chunk, doc_chunk in enumerate(docs_chunks):
+            docs_chunks_padded[i_chunk, :len(doc_chunk)] = doc_chunk
+
+        target_chunks_padded = np.full((n_target_chunks, max_chank_sz), self.pad_tok, dtype=np.int32)
+        for i_chunk, doc_chunk in enumerate(target_chunks):
+            target_chunks_padded[i_chunk, :len(doc_chunk)] = doc_chunk
+
+        self.docs_chunks_padded = docs_chunks_padded
+        self.qs_chunks_padded = target_chunks_padded
+        self.qs_mask = target_mask
+
+    def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:
+        res = torch.from_numpy(arr)
+        if self.device is not None:
+            res = res.to(self.device)
+        return res
+
+    def gen_tensors(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if self.docs_chunks_padded_tf is None:
+            self.docs_chunks_padded_tf, self.qs_chunks_padded_tf, self.qs_mask_tf = \
+                map(self._to_tensor, (self.docs_chunks_padded, self.qs_chunks_padded, self.qs_mask))
+        return self.docs_chunks_padded_tf, self.qs_chunks_padded_tf, self.qs_mask_tf
+
 class DsLoader:
     ds_path: Path
     emb_chunk_size: int
@@ -154,12 +261,19 @@ class DsLoader:
         self.qids_train = self.df_qrels_train.index.to_numpy().copy()
         self.qids_val = self.df_qrels_val.index.to_numpy().copy()
 
-    def _tokenize_query(self, query: str) -> np.ndarray:
-        pass
+    def tokenize_query(self, query: str) -> list[list[int]]:
+        tokens = self.ch_tkz.tokenizer(query)['input_ids']
+        tokens = [self.qbeg_tok, *tokens, self.qend_tok]
+        off = split_doc_embs(len(tokens), self.emb_chunk_size, fixed_size=True)
+        res = []
+        for i in range(len(off) - 1):
+            res.append(tokens[off[i]:off[i + 1]])
+        return res
+
     def get_batch(self, ind: int, train: bool, target_augmenter: Optional[Callable] = None) -> DocsBatch:
-        qids, df_qrels = self.qids_train, self.df_qs_train
+        qids, df_qrels, df_qs = self.qids_train, self.df_qrels_train, self.df_qs_train
         if train:
-            qids, df_qrels = self.qids_val, self.df_qs_val
+            qids, df_qrels, df_qs = self.qids_val, self.df_qrels_val, self.df_qs_val
         i1 = ind * self.docs_batch_size
         i2 = min(i1 + self.docs_batch_size, len(qids))
         i1 = i2 - self.docs_batch_size
@@ -167,17 +281,21 @@ class DsLoader:
         qids = qids[i1:i2]
         df_qrels = df_qrels.loc[qids]
 
+        docs_chunks, qs_chunks = [], []
         for _, row in df_qrels.iterrows():
             docidn = row['docidn']
             off = self.df_off.loc[docidn]['off_tsv']
             doc = get_doc(self.fid_docs, off)
             doc_chunks = self.ch_tkz.process_doc(doc.docidn, {'title': doc.title, 'text': doc.body})
-            # query_chunks = self.ch_tkz.process_doc()
+            qid = row['topicid']
+            query = df_qs.loc[qid]['query']
+            query_chunks = self.tokenize_query(query)
+            docs_chunks.append([ch.tokens for ch in doc_chunks])
+            qs_chunks.append(query_chunks)
 
         return DocsBatch(
-            docs_chunks=docs_chunks, target_doc_id=target_docid, target_tokens=target_tokens,
-            pad_tok=self.pad_tok, qbeg_tok=self.qbeg_tok, qend_tok=self.qend_tok,
-            emb_chunk_size=self.emb_chunk_size, fixed_size=self.fixed_size, device=self.device,
+            docs_chunks=docs_chunks, qs_chunks=qs_chunks,
+            pad_tok=self.pad_tok, emb_chunk_size=self.emb_chunk_size, device=self.device,
         )
 
     def shuffle(self, train: bool):

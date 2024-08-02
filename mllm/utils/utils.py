@@ -14,6 +14,6 @@ def gen_dt_str(dt: Optional[datetime] = None) -> str:
 def parse_dt_str(dt_str: str, silent: bool = True) -> Optional[datetime]:
     try:
         return datetime.strptime(dt_str, DT_PAT)
-    except:
+    except Exception:
         pass
 
