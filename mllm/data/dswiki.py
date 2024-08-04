@@ -165,7 +165,7 @@ class DocsBatch:
         return self.docs_chunks_padded_tf, self.target_chunks_padded_tf, self.target_mask_tf
 
 
-class DsLoader:
+class WikiDsLoader:
     ds_path: Path
     emb_chunk_size: int
     fixed_size: bool
@@ -291,7 +291,7 @@ class DsLoader:
 
 def load_dsfixed():
     ds_path = Path(os.path.expandvars('$HOME')) / 'data' / 'wiki_20200501_en/ch_100_fixed'
-    ds = DsLoader(ds_path, 10, 3, 123, 456, 789)
+    ds = WikiDsLoader(ds_path, 10, 3, 123, 456, 789)
 
 
 if __name__ == '__main__':

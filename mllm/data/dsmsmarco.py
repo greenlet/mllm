@@ -89,17 +89,17 @@ class MsmDoc:
 
     @staticmethod
     def from_line(l: str) -> 'MsmDoc':
-        docid, url, title, body = l.rstrip().split('\t')
+        docid, url, title, body = l.rstrip('\n').split('\t')
         return MsmDoc(docid=docid, url=url, title=title, body=body)
 
 
 def get_doc(fid: TextIO, offset: int) -> MsmDoc:
     fid.seek(offset)
-    l = fid.readline().rstrip()
+    l = fid.readline().rstrip('\n')
     return MsmDoc.from_line(l)
 
 
-class DocsBatch:
+class MsmDocsBatch:
     docs_chunks: list[list[np.ndarray]]
     qs_chunks: list[list[list[int]]]
     pad_tok: int
@@ -120,18 +120,6 @@ class DocsBatch:
         self.emb_chunk_size = emb_chunk_size
         self.device = device
         self.calc_np()
-
-    def _shuffle_docs_chunks(self, docs_chunks: list[np.ndarray], target_ind: int) -> tuple[np.ndarray, np.ndarray]:
-        np.random.shuffle(docs_chunks)
-        target_off, target_len = 0, 0
-        res_chunks = []
-        for ind, doc_chunk in docs_chunks:
-            n_doc = len(doc_chunk)
-            if target_len == 0 and ind != target_ind:
-                target_off += n_doc
-            else:
-                target_len = n_doc
-            res_chunks.extend(doc_chunk)
 
     def calc_np(self):
         assert len(self.docs_chunks) == len(self.qs_chunks), f'# of docs ({len(self.docs_chunks)}) != # of queries ({len(self.qs_chunks)})'
@@ -165,6 +153,8 @@ class DocsBatch:
 
         self.docs_chunks_padded = docs_chunks_padded
         self.qs_chunks_padded = qs_chunks_padded
+        self.docs_off_len = docs_off_len
+        self.qs_off_len = qs_off_len
 
     def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:
         res = torch.from_numpy(arr)
@@ -179,10 +169,9 @@ class DocsBatch:
         return self.docs_chunks_padded_tf, self.qs_chunks_padded_tf
 
 
-class DsLoader:
+class MsmDsLoader:
     ds_path: Path
     emb_chunk_size: int
-    fixed_size: bool
     docs_batch_size: int
     max_chunks_per_doc: int
     pad_tok: int
@@ -201,15 +190,16 @@ class DsLoader:
     device: Optional[torch.device] = None
     fid_docs: Optional[TextIO] = None
 
-    def __init__(self, ds_path: Path, docs_batch_size: int, max_chunks_per_doc: int,
-                 pad_tok: int, qbeg_tok: int, qend_tok: int, ch_tkz: ChunkTokenizer):
+    def __init__(self, ds_path: Path, emb_chunk_size: int, docs_batch_size: int, max_chunks_per_doc: int,
+                 pad_tok: int, qbeg_tok: int, qend_tok: int, ch_tkz: ChunkTokenizer, device: Optional[torch.device] = None):
         self.ds_path = ds_path
-        self.emb_chunk_size, self.fixed_size = parse_out_subdir(ds_path.name)
+        self.emb_chunk_size = emb_chunk_size
         self.docs_batch_size = docs_batch_size
         self.max_chunks_per_doc = max_chunks_per_doc
         self.pad_tok = pad_tok
         self.qbeg_tok = qbeg_tok
         self.qend_tok = qend_tok
+        self.device = device
         assert ch_tkz.fixed_size and ch_tkz.dir_out is None, f'fixed_size = {ch_tkz.fixed_size}. dir_out = {ch_tkz.dir_out}'
         self.ch_tkz = ch_tkz
 
@@ -218,14 +208,15 @@ class DsLoader:
         print(f'Loading {qs_train_fpath}')
         self.df_qs_train = read_queries_df(qs_train_fpath)
         print(f'Loading {qrels_train_fpath}')
-        self.df_qrels_train = read_queries_df(qrels_train_fpath)
+        self.df_qrels_train = read_qrels_df(qrels_train_fpath)
         qs_val_fpath = self.ds_path / MSMARCO_DOCDEV_QUERIES_FNAME
         qrels_val_fpath = self.ds_path / MSMARCO_DOCDEV_QRELS_FNAME
         print(f'Loading {qs_val_fpath}')
         self.df_qs_val = read_queries_df(qs_val_fpath)
         print(f'Loading {qrels_val_fpath}')
-        self.df_qrels_val = read_queries_df(qrels_val_fpath)
+        self.df_qrels_val = read_qrels_df(qrels_val_fpath)
         docs_fpath = self.ds_path / MSMARCO_DOCS_FNAME
+        self.fid_docs = open_fid_docs(docs_fpath)
         lookup_fpath = self.ds_path / MSMARCO_DOCS_LOOKUP_FNAME
         print(f'Loading {lookup_fpath}')
         self.df_off = read_offsets_df(lookup_fpath)
@@ -243,14 +234,14 @@ class DsLoader:
             res.append(tokens[off[i]:off[i + 1]])
         return res
 
-    def get_batch(self, ind: int, train: bool, target_augmenter: Optional[Callable] = None) -> DocsBatch:
+    def get_batch(self, ind: int, train: bool) -> MsmDocsBatch:
         qids, df_qrels, df_qs = self.qids_train, self.df_qrels_train, self.df_qs_train
         if train:
             qids, df_qrels, df_qs = self.qids_val, self.df_qrels_val, self.df_qs_val
         i1 = ind * self.docs_batch_size
         i2 = min(i1 + self.docs_batch_size, len(qids))
         i1 = i2 - self.docs_batch_size
-        assert 0 <= i1 < i2 < len(qids)
+        assert 0 <= i1 < i2 < len(qids), f'i1 = {i1}. i2 = {i2}. len(qids) = {len(qids)}'
         qids = qids[i1:i2]
         df_qrels = df_qrels.loc[qids]
 
@@ -259,14 +250,18 @@ class DsLoader:
             docidn = row['docidn']
             off = self.df_off.loc[docidn]['off_tsv']
             doc = get_doc(self.fid_docs, off)
-            doc_chunks = self.ch_tkz.process_doc(doc.docidn, {'title': doc.title, 'text': doc.body})
-            qid = row['topicid']
+            body = f'{doc.url} {doc.body}' if doc.body else doc.url
+            doc_chunks = self.ch_tkz.process_doc(doc.docidn, {'title': doc.title, 'text': body})
+            if len(doc_chunks) > self.max_chunks_per_doc:
+                i = np.random.randint(len(doc_chunks) - self.max_chunks_per_doc + 1)
+                doc_chunks = doc_chunks[i:i + self.max_chunks_per_doc]
+            qid = row.name
             query = df_qs.loc[qid]['query']
             query_chunks = self.tokenize_query(query)
             docs_chunks.append([ch.tokens for ch in doc_chunks])
             qs_chunks.append(query_chunks)
 
-        return DocsBatch(
+        return MsmDocsBatch(
             docs_chunks=docs_chunks, qs_chunks=qs_chunks,
             pad_tok=self.pad_tok, emb_chunk_size=self.emb_chunk_size, device=self.device,
         )

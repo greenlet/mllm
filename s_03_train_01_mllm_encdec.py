@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import GPT2Tokenizer
 
-from mllm.data.dswiki import DsLoader
+from mllm.data.dswiki import WikiDsLoader
 from mllm.train.args import ArgsTrain
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdec
@@ -62,7 +62,7 @@ def main(args: ArgsTrain) -> int:
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
     tok_dict = gen_all_tokens(tokenizer)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
-    ds_loader = DsLoader(
+    ds_loader = WikiDsLoader(
         ds_path=args.ds_dir_path, docs_batch_size=args.docs_batch_size, max_chunks_per_doc=args.max_chunks_per_doc,
         pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device,
     )

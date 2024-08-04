@@ -64,6 +64,44 @@ class MllmRanker(nn.Module):
         out = self.run_encoder(0, out)
         return out[1]
 
+    @staticmethod
+    def _permute_chunks(chunks: Tensor, chunks_off_len: list[tuple[int, int]], i_target: int) -> tuple[Tensor, Tensor]:
+        inds = torch.randperm(len(chunks_off_len))
+        res = [chunks[i] for i in inds]
+        return inds, res
+
+    def run_qs(self, docs_chunks: Tensor, qs_chunks: Tensor, docs_off_len: list[tuple[int, int]],
+               qs_off_len: list[tuple[int, int]]) -> tuple[Tensor, Tensor]:
+        n_docs, n_qs = len(docs_off_len), len(qs_off_len)
+        assert n_docs == n_qs, f'# of docs ({n_docs}) != # of queries ({n_qs})'
+        device = docs_chunks.device
+        inp_chunks = torch.concat((docs_chunks, qs_chunks), dim=0)
+        out_enc = self.run_vocab_encoder(inp_chunks)
+        _, out_enc = self.run_encoder(1, out_enc)
+        n_docs_chunks = docs_chunks.shape[0]
+        doc_enc, qs_enc = out_enc[:n_docs_chunks], out_enc[n_docs_chunks:]
+
+        masks_batch = torch.full((n_qs, len(docs_chunks)), False, dtype=torch.bool)
+        ranks_batch = torch.empty((n_qs, len(docs_chunks)), dtype=torch.float32)
+        for i_query in range(n_qs):
+            query_off, query_len = qs_off_len[i_query]
+            query_enc = qs_enc[query_off:query_off + query_len]
+            docs_perm = torch.empty(doc_enc.shape, dtype=torch.float32, device=device)
+            inds_perm = torch.randperm(n_docs)
+            off = 0
+            for doc_ind in inds_perm:
+                doc_off, doc_len = docs_off_len[doc_ind]
+                docs_perm[off:off + doc_len] = doc_enc[doc_off:doc_off + doc_len]
+                if doc_ind == i_query:
+                    masks_batch[i_query, off:off + doc_len] = True
+                off += doc_len
+            docs_perm, query_enc = docs_perm.unsqueeze(0), query_enc.unsqueeze(0)
+            out_rank = self.decoders[0](docs_perm, query_enc)
+            out_rank = out_rank.squeeze(0)
+            ranks_batch[i_query] = out_rank
+
+        return ranks_batch, masks_batch
+
     def forward(self, target_chunks: Tensor, docs_chunks: Tensor) -> Tensor:
         level_num = 1
         n_target = target_chunks.shape[0]
