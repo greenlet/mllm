@@ -71,6 +71,44 @@ class MllmRanker(nn.Module):
         return inds, res
 
     def run_qs(self, docs_chunks: Tensor, qs_chunks: Tensor, docs_off_len: list[tuple[int, int]],
+               qs_off_len: list[tuple[int, int]]) -> tuple[list[Tensor], list[Tensor]]:
+        n_docs, n_qs = len(docs_off_len), len(qs_off_len)
+        assert n_docs == n_qs, f'# of docs ({n_docs}) != # of queries ({n_qs})'
+        device = docs_chunks.device
+        inp_chunks = torch.concat((docs_chunks, qs_chunks), dim=0)
+        out_enc = self.run_vocab_encoder(inp_chunks)
+        _, out_enc = self.run_encoder(1, out_enc)
+        n_docs_chunks = docs_chunks.shape[0]
+        docs_enc, qs_enc = out_enc[:n_docs_chunks], out_enc[n_docs_chunks:]
+
+        docs_encs = []
+        for doc_off, doc_len in docs_off_len:
+            docs_encs.append(docs_enc[doc_off:doc_off + doc_len])
+
+        qs_encs = []
+        for query_off, query_len in qs_off_len:
+            qs_encs.append(qs_enc[query_off:query_off + query_len])
+
+        ranks, masks = [], []
+        for i_query in range(n_qs):
+            inds_perm = torch.randperm(n_docs)
+            docs_encs_perm = []
+            mask = torch.full((n_docs_chunks,), False, dtype=torch.bool, device=device)
+            for ind in inds_perm:
+                docs_encs_perm.append(docs_encs[ind])
+                if ind == i_query:
+                    doc_off, doc_len = docs_off_len[ind]
+                    mask[doc_off:doc_off + doc_len] = True
+            docs_encs_perm = torch.concat(docs_encs_perm)
+            docs_encs_perm = docs_encs_perm.unsqueeze(0)
+            query_enc = qs_encs[i_query].unsqueeze(0)
+            out_rank = self.decoders[0](docs_encs_perm, query_enc)
+            ranks.append(out_rank)
+            masks.append(mask)
+
+        return ranks, masks
+
+    def run_qs_1(self, docs_chunks: Tensor, qs_chunks: Tensor, docs_off_len: list[tuple[int, int]],
                qs_off_len: list[tuple[int, int]]) -> tuple[Tensor, Tensor]:
         n_docs, n_qs = len(docs_off_len), len(qs_off_len)
         assert n_docs == n_qs, f'# of docs ({n_docs}) != # of queries ({n_qs})'

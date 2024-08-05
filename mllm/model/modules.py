@@ -397,10 +397,14 @@ class DecoderRankSimple(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.w = nn.Linear(d_model, d_model, bias=False)
+        self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
 
     # docs_chunks: (batch_size, docs_chunks_len, d_model)
     # query_chunks: (batch_size, query_chunks_len, d_model)
     def forward(self, docs_chunks: Tensor, query_chunks: Tensor) -> Tensor:
+        docs_chunks = self.layer_norm(docs_chunks)
+        query_chunks = self.layer_norm(query_chunks)
+
         # (batch_size, query_chunks_len, d_model)
         query_chunks = self.w(query_chunks)
 

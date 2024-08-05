@@ -241,7 +241,7 @@ class MsmDsLoader:
         i1 = ind * self.docs_batch_size
         i2 = min(i1 + self.docs_batch_size, len(qids))
         i1 = i2 - self.docs_batch_size
-        assert 0 <= i1 < i2 < len(qids), f'i1 = {i1}. i2 = {i2}. len(qids) = {len(qids)}'
+        assert 0 <= i1 < i2 <= len(qids), f'i1 = {i1}. i2 = {i2}. len(qids) = {len(qids)}'
         qids = qids[i1:i2]
         df_qrels = df_qrels.loc[qids]
 

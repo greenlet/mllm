@@ -40,7 +40,24 @@ class RankProbLoss(nn.Module):
         self.target_weight = target_weight
         self.register_buffer('prob_cap', torch.scalar_tensor(1e-6))
 
-    def forward(self, prob_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, prob_pred: list[torch.Tensor], mask_gt: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        loss_tgt = torch.scalar_tensor(0, dtype=torch.float32, device=prob_pred[0].device)
+        loss_nontgt = torch.scalar_tensor(0, dtype=torch.float32, device=prob_pred[0].device)
+        n_batch = len(prob_pred)
+        for i in range(n_batch):
+            prob_tgt = torch.masked_select(prob_pred[i], mask_gt[i])
+            prob_nontgt = 1 - torch.masked_select(prob_pred[i], ~mask_gt[i])
+            prob_tgt = torch.maximum(prob_tgt, self.prob_cap)
+            prob_nontgt = torch.maximum(prob_nontgt, self.prob_cap)
+            loss_tgt += -torch.mean(torch.log(prob_tgt))
+            loss_nontgt += -torch.mean(torch.log(prob_nontgt))
+
+        loss_tgt /= n_batch
+        loss_nontgt /= n_batch
+        loss = self.target_weight * loss_tgt + (1 - self.target_weight) * loss_nontgt
+        return loss, loss_tgt, loss_nontgt
+
+    def forward_1(self, prob_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         prob_pred = prob_pred.squeeze()
         prob_tgt = torch.masked_select(prob_pred, mask_gt)
         prob_nontgt = 1 - torch.masked_select(prob_pred, ~mask_gt)
@@ -102,7 +119,7 @@ def main(args: ArgsTrainRankerQs) -> int:
             n_vocab=len(tokenizer), d_word_wec=256, inp_len=args.embs_chunk_size,
             enc_n_layers=1, dec_n_layers=1,
             n_heads=8, d_model=256, d_inner=1024,
-            pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
+            pad_idx=pad_tok, dropout_rate=0.2, enc_with_emb_mat=True,
         )
         model_encdec = MllmEncdec(model_encdec_cfg).to(device)
         model_encdec.load_state_dict(pretrained_checkpoint['model'])
