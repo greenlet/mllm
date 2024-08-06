@@ -203,27 +203,63 @@ class MsmDsLoader:
         assert ch_tkz.fixed_size and ch_tkz.dir_out is None, f'fixed_size = {ch_tkz.fixed_size}. dir_out = {ch_tkz.dir_out}'
         self.ch_tkz = ch_tkz
 
+        # qs_train_fpath = self.ds_path / MSMARCO_DOCTRAIN_QUERIES_FNAME
+        # qrels_train_fpath = self.ds_path / MSMARCO_DOCTRAIN_QRELS_FNAME
+        # print(f'Loading {qs_train_fpath}')
+        # self.df_qs_train = read_queries_df(qs_train_fpath)
+        # print(f'Loading {qrels_train_fpath}')
+        # self.df_qrels_train = read_qrels_df(qrels_train_fpath)
+        # qs_val_fpath = self.ds_path / MSMARCO_DOCDEV_QUERIES_FNAME
+        # qrels_val_fpath = self.ds_path / MSMARCO_DOCDEV_QRELS_FNAME
+        # print(f'Loading {qs_val_fpath}')
+        # self.df_qs_val = read_queries_df(qs_val_fpath)
+        # print(f'Loading {qrels_val_fpath}')
+        # self.df_qrels_val = read_qrels_df(qrels_val_fpath)
+        # docs_fpath = self.ds_path / MSMARCO_DOCS_FNAME
+        # self.fid_docs = open_fid_docs(docs_fpath)
+        # lookup_fpath = self.ds_path / MSMARCO_DOCS_LOOKUP_FNAME
+        # print(f'Loading {lookup_fpath}')
+        # self.df_off = read_offsets_df(lookup_fpath)
+        # self.n_qs_train = len(self.df_qrels_train)
+        # self.n_qs_val = len(self.df_qrels_train)
+        # self.qids_train = self.df_qrels_train.index.to_numpy().copy()
+        # self.qids_val = self.df_qrels_val.index.to_numpy().copy()
+
         qs_train_fpath = self.ds_path / MSMARCO_DOCTRAIN_QUERIES_FNAME
         qrels_train_fpath = self.ds_path / MSMARCO_DOCTRAIN_QRELS_FNAME
         print(f'Loading {qs_train_fpath}')
-        self.df_qs_train = read_queries_df(qs_train_fpath)
+        df_qs_1 = read_queries_df(qs_train_fpath)
         print(f'Loading {qrels_train_fpath}')
-        self.df_qrels_train = read_qrels_df(qrels_train_fpath)
+        df_qrels_1 = read_qrels_df(qrels_train_fpath)
         qs_val_fpath = self.ds_path / MSMARCO_DOCDEV_QUERIES_FNAME
         qrels_val_fpath = self.ds_path / MSMARCO_DOCDEV_QRELS_FNAME
         print(f'Loading {qs_val_fpath}')
-        self.df_qs_val = read_queries_df(qs_val_fpath)
+        df_qs_2 = read_queries_df(qs_val_fpath)
         print(f'Loading {qrels_val_fpath}')
-        self.df_qrels_val = read_qrels_df(qrels_val_fpath)
+        df_qrels_2 = read_qrels_df(qrels_val_fpath)
         docs_fpath = self.ds_path / MSMARCO_DOCS_FNAME
-        self.fid_docs = open_fid_docs(docs_fpath)
+        fid_docs = open_fid_docs(docs_fpath)
         lookup_fpath = self.ds_path / MSMARCO_DOCS_LOOKUP_FNAME
         print(f'Loading {lookup_fpath}')
-        self.df_off = read_offsets_df(lookup_fpath)
-        self.n_qs_train = len(self.df_qrels_train)
-        self.n_qs_val = len(self.df_qrels_train)
-        self.qids_train = self.df_qrels_train.index.to_numpy().copy()
-        self.qids_val = self.df_qrels_val.index.to_numpy().copy()
+        df_off = read_offsets_df(lookup_fpath)
+
+        df_qs = pd.concat([df_qs_1, df_qs_2], axis=0)
+        df_qrels = pd.concat([df_qrels_1, df_qrels_2], axis=0)
+        qids = df_qrels.index.to_numpy().copy()
+        np.random.shuffle(qids)
+        df_qrels = df_qrels.loc[qids]
+        n_qs = len(df_qrels)
+        self.n_qs_train = int(n_qs * 0.8)
+        self.n_qs_val = n_qs - self.n_qs_train
+        self.qids_train = qids[:self.n_qs_train].copy()
+        self.qids_val = qids[self.n_qs_train:].copy()
+        self.df_qs_train = df_qs.loc[self.qids_train]
+        self.df_qs_val = df_qs.loc[self.qids_val]
+        self.df_qrels_train = df_qrels.loc[self.qids_train]
+        self.df_qrels_val = df_qrels.loc[self.qids_val]
+
+        self.fid_docs = fid_docs
+        self.df_off = df_off
 
     def tokenize_query(self, query: str) -> list[list[int]]:
         tokens = self.ch_tkz.tokenizer(query)['input_ids']

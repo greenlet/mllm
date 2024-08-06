@@ -258,6 +258,7 @@ class Encoder(nn.Module):
             assert self.inp_len > 0
             self.w_em = nn.Linear(self.inp_len, 1, bias=False)
             # self.A_em = nn.Parameter(torch.zeros((self.inp_len, self.d_model), dtype=torch.float32))
+        self.layer_norm = nn.LayerNorm(self.d_model, eps=1e-6)
 
     def forward(self, src_seq: Tensor, src_mask: Optional[Tensor] = None, return_attns: bool = False) -> tuple[Tensor, list[Tensor]]:
         enc_slf_attn_list = []
@@ -274,6 +275,8 @@ class Encoder(nn.Module):
             enc_out = enc_out.squeeze(-1)
             # enc_out = self.A_em.unsqueeze(0) * enc_out
             # enc_out = torch.sum(enc_out, dim=1)
+
+        enc_out = self.layer_norm(enc_out)
 
         return enc_out, enc_slf_attn_list
 
@@ -402,8 +405,10 @@ class DecoderRankSimple(nn.Module):
     # docs_chunks: (batch_size, docs_chunks_len, d_model)
     # query_chunks: (batch_size, query_chunks_len, d_model)
     def forward(self, docs_chunks: Tensor, query_chunks: Tensor) -> Tensor:
-        docs_chunks = self.layer_norm(docs_chunks)
-        query_chunks = self.layer_norm(query_chunks)
+        # docs_chunks = self.layer_norm(docs_chunks)
+        # query_chunks = self.layer_norm(query_chunks)
+        # docs_chunks = docs_chunks / docs_chunks.norm(dim=-1, keepdim=True)
+        # query_chunks = query_chunks / query_chunks.norm(dim=-1, keepdim=True)
 
         # (batch_size, query_chunks_len, d_model)
         query_chunks = self.w(query_chunks)
@@ -419,6 +424,7 @@ class DecoderRankSimple(nn.Module):
 
         # (batch_size, docs_chunks_len)
         ranks_prob = torch.sigmoid(ranks)
+        # ranks_prob = torch.softmax(ranks, dim=-1)
 
         return ranks_prob
 

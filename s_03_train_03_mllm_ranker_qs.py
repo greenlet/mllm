@@ -119,10 +119,10 @@ def main(args: ArgsTrainRankerQs) -> int:
             n_vocab=len(tokenizer), d_word_wec=256, inp_len=args.embs_chunk_size,
             enc_n_layers=1, dec_n_layers=1,
             n_heads=8, d_model=256, d_inner=1024,
-            pad_idx=pad_tok, dropout_rate=0.2, enc_with_emb_mat=True,
+            pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
         )
         model_encdec = MllmEncdec(model_encdec_cfg).to(device)
-        model_encdec.load_state_dict(pretrained_checkpoint['model'])
+        model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
         print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
         model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
         print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))

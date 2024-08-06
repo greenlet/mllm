@@ -81,6 +81,59 @@ class MllmRanker(nn.Module):
         n_docs_chunks = docs_chunks.shape[0]
         docs_enc, qs_enc = out_enc[:n_docs_chunks], out_enc[n_docs_chunks:]
 
+        qs_encs = []
+        for query_off, query_len in qs_off_len:
+            qs_encs.append(qs_enc[query_off:query_off + query_len])
+
+        docs_encs = docs_enc.unsqueeze(0)
+        ranks, masks = [], []
+        for i_query in range(n_qs):
+            query_enc = qs_encs[i_query].unsqueeze(0)
+            out_rank = self.decoders[0](docs_encs, query_enc)
+            ranks.append(out_rank)
+            mask = torch.full((n_docs_chunks,), False, dtype=torch.bool, device=device)
+            doc_off, doc_len = docs_off_len[i_query]
+            mask[doc_off:doc_off + doc_len] = True
+            masks.append(mask)
+
+        return ranks, masks
+
+    def run_qs_3(self, docs_chunks: Tensor, qs_chunks: Tensor, docs_off_len: list[tuple[int, int]],
+               qs_off_len: list[tuple[int, int]]) -> tuple[list[Tensor], list[Tensor]]:
+        n_docs, n_qs = len(docs_off_len), len(qs_off_len)
+        assert n_docs == n_qs, f'# of docs ({n_docs}) != # of queries ({n_qs})'
+        device = docs_chunks.device
+        inp_chunks = torch.concat((docs_chunks, qs_chunks), dim=0)
+        out_enc = self.run_vocab_encoder(inp_chunks)
+        _, out_enc = self.run_encoder(1, out_enc)
+        n_docs_chunks = docs_chunks.shape[0]
+        docs_enc, qs_enc = out_enc[:n_docs_chunks], out_enc[n_docs_chunks:]
+
+        i_query = np.random.randint(n_qs)
+        mask = torch.full((n_docs_chunks,), False, dtype=torch.bool, device=device)
+        query_off, query_len = qs_off_len[i_query]
+        doc_off, doc_len = docs_off_len[i_query]
+        query_enc = qs_enc[query_off:query_off + query_len]
+        mask[doc_off:doc_off + doc_len] = True
+        docs_enc = docs_enc.unsqueeze(0)
+        query_enc = query_enc.unsqueeze(0)
+        mask = mask.unsqueeze(0)
+
+        out_rank = self.decoders[0](docs_enc, query_enc)
+
+        return [out_rank], [mask]
+
+    def run_qs_2(self, docs_chunks: Tensor, qs_chunks: Tensor, docs_off_len: list[tuple[int, int]],
+               qs_off_len: list[tuple[int, int]]) -> tuple[list[Tensor], list[Tensor]]:
+        n_docs, n_qs = len(docs_off_len), len(qs_off_len)
+        assert n_docs == n_qs, f'# of docs ({n_docs}) != # of queries ({n_qs})'
+        device = docs_chunks.device
+        inp_chunks = torch.concat((docs_chunks, qs_chunks), dim=0)
+        out_enc = self.run_vocab_encoder(inp_chunks)
+        _, out_enc = self.run_encoder(1, out_enc)
+        n_docs_chunks = docs_chunks.shape[0]
+        docs_enc, qs_enc = out_enc[:n_docs_chunks], out_enc[n_docs_chunks:]
+
         docs_encs = []
         for doc_off, doc_len in docs_off_len:
             docs_encs.append(docs_enc[doc_off:doc_off + doc_len])
