@@ -24,13 +24,13 @@ class ArgsTrain(BaseModel):
             'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
         cli=('--train-subdir',)
     )
-    docs_batch_size: Optional[int] = Field(
+    docs_batch_size: int = Field(
         3,
         required=False,
         description='Documents batch size. Must be greater or equal than 2.',
         cli=('--docs-batch-size',),
     )
-    max_chunks_per_doc: Optional[int] = Field(
+    max_chunks_per_doc: int = Field(
         3,
         required=False,
         description='Maximum number of consecutive chunks per document taken in each butch. '

@@ -249,7 +249,7 @@ class MsmDsLoader:
         np.random.shuffle(qids)
         df_qrels = df_qrels.loc[qids]
         n_qs = len(df_qrels)
-        self.n_qs_train = int(n_qs * 0.8)
+        self.n_qs_train = int(n_qs * 0.9)
         self.n_qs_val = n_qs - self.n_qs_train
         self.qids_train = qids[:self.n_qs_train].copy()
         self.qids_val = qids[self.n_qs_train:].copy()

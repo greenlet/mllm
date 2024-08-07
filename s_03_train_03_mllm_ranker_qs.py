@@ -13,6 +13,7 @@ from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
+from mllm.config.exp_config import ExpConfig
 from mllm.data.dsmsmarco import MsmDsLoader
 from mllm.data.dswiki import WikiDsLoader
 from mllm.model.mllm_ranker import MllmRanker
@@ -71,6 +72,8 @@ class RankProbLoss(nn.Module):
 
 def main(args: ArgsTrainRankerQs) -> int:
     print(args)
+
+    exp_cfg = ExpConfig()
 
     device = torch.device(args.device)
 

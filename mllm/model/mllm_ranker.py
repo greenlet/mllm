@@ -98,6 +98,17 @@ class MllmRanker(nn.Module):
 
         return ranks, masks
 
+    def run_qs_infer(self, docs_chunks: Tensor, qs_chunks: Tensor) -> Tensor:
+        device = docs_chunks.device
+        inp_chunks = torch.concat((docs_chunks, qs_chunks), dim=0)
+        out_enc = self.run_vocab_encoder(inp_chunks)
+        _, out_enc = self.run_encoder(1, out_enc)
+        n_docs_chunks = docs_chunks.shape[0]
+        docs_enc, qs_enc = out_enc[:n_docs_chunks], out_enc[n_docs_chunks:]
+
+        out_rank = self.decoders[0](docs_enc.unsqueeze(0), qs_enc.unsqueeze(0))
+        return out_rank
+
     def run_qs_3(self, docs_chunks: Tensor, qs_chunks: Tensor, docs_off_len: list[tuple[int, int]],
                qs_off_len: list[tuple[int, int]]) -> tuple[list[Tensor], list[Tensor]]:
         n_docs, n_qs = len(docs_off_len), len(qs_off_len)

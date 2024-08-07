@@ -4,6 +4,7 @@
 datasets==1.18.0
 jupyter
 matplotlib
+mteb
 mwparserfromhell
 numpy
 pandas
