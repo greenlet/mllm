@@ -40,7 +40,7 @@ def find_create_train_path(train_root_path: Path, prefix: Optional[str] = None, 
         train_path = find_last_train_subdir(train_root_path)
         if train_path is None:
             raise Exception(f'Cannot find last subdirectory of the format `{SUBDIR_PAT_STR}` in {train_root_path}')
-    if subdir:
+    elif subdir:
         train_path = train_root_path / subdir
         assert train_path.exists(), f'Directory {train_path} does not exist'
     else:

@@ -51,6 +51,32 @@ class CfgMllmEncdec(BaseModel):
     decoder: CfgEmbDecoder
 
 
+def create_mllm_encdec_cfg(
+        n_vocab: int, d_word_wec: int = 512, inp_len: int = 1000, dropout_rate: float = 0.1,
+        enc_n_layers: int = 3, n_heads: int = 8, d_model: int = 512,
+        d_inner: int = 2048, enc_with_graph_mat: bool = False, enc_with_emb_mat: bool = False,
+        dec_n_layers: int = 3, pad_idx: int = 0,
+) -> CfgMllmEncdec:
+    cfg_vocab_enc = CfgVocabEncoder(
+        n_vocab=n_vocab, d_word_vec=d_word_wec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
+    )
+    assert d_model % n_heads == 0
+    d_k = d_v = d_model // n_heads
+    cfg_enc = CfgEncoder(
+        n_layers=enc_n_layers, n_heads=n_heads, d_k=d_k, d_v=d_v, d_model=d_model, d_inner=d_inner, pad_idx=pad_idx,
+        with_graph_mat=enc_with_graph_mat, inp_len=inp_len, dropout_rate=dropout_rate, with_emb_mat=enc_with_emb_mat,
+    )
+    cfg_dec = CfgEmbDecoder(
+        d_emb=d_model, n_layers=dec_n_layers, n_heads=n_heads, d_hid=d_inner,
+        seq_len=inp_len, dp_rate=dropout_rate,
+    )
+    cfg_mllm_encdec = CfgMllmEncdec(
+        vocab_encoder=cfg_vocab_enc, encoder=cfg_enc, decoder=cfg_dec,
+    )
+
+    return cfg_mllm_encdec
+
+
 def create_mllm_ranker_cfg(
         n_vocab: int, d_word_wec: int = 512, inp_len: int = 1000, dropout_rate: float = 0.1,
         n_levels: int = 2,
@@ -90,29 +116,4 @@ def create_mllm_ranker_cfg(
 
     return cfg_mllm_ranker
 
-
-def create_mllm_encdec_cfg(
-        n_vocab: int, d_word_wec: int = 512, inp_len: int = 1000, dropout_rate: float = 0.1,
-        enc_n_layers: int = 3, n_heads: int = 8, d_model: int = 512,
-        d_inner: int = 2048, enc_with_graph_mat: bool = False, enc_with_emb_mat: bool = False,
-        dec_n_layers: int = 3, pad_idx: int = 0,
-) -> CfgMllmEncdec:
-    cfg_vocab_enc = CfgVocabEncoder(
-        n_vocab=n_vocab, d_word_vec=d_word_wec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
-    )
-    assert d_model % n_heads == 0
-    d_k = d_v = d_model // n_heads
-    cfg_enc = CfgEncoder(
-        n_layers=enc_n_layers, n_heads=n_heads, d_k=d_k, d_v=d_v, d_model=d_model, d_inner=d_inner, pad_idx=pad_idx,
-        with_graph_mat=enc_with_graph_mat, inp_len=inp_len, dropout_rate=dropout_rate, with_emb_mat=enc_with_emb_mat,
-    )
-    cfg_dec = CfgEmbDecoder(
-        d_emb=d_model, n_layers=dec_n_layers, n_heads=n_heads, d_hid=d_inner,
-        seq_len=inp_len, dp_rate=dropout_rate,
-    )
-    cfg_mllm_encdec = CfgMllmEncdec(
-        vocab_encoder=cfg_vocab_enc, encoder=cfg_enc, decoder=cfg_dec,
-    )
-
-    return cfg_mllm_encdec
 

@@ -78,7 +78,7 @@ def main(args: ArgsTrain) -> int:
         n_heads=8, d_model=256, d_inner=1024,
         pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
     )
-    input_zeros_ratio = 0.2
+    input_zeros_ratio = 0.3
     print(model_cfg)
     model = MllmEncdec(model_cfg).to(device)
     params = model.parameters()
@@ -93,7 +93,7 @@ def main(args: ArgsTrain) -> int:
         ds_loader.shuffle(train=True)
         ds_loader.shuffle(train=False)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=5, threshold=1e-4, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=6, threshold=1e-4, min_lr=1e-7)
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 

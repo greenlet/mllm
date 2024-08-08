@@ -17,6 +17,9 @@ class MllmRankerQsTrainCfg(ExpConfig):
     max_chunks_per_doc: int
 
 
+
 class TrainMllmRankerQsCfg(ExpConfig):
     pass
+
+
 
