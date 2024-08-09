@@ -18,21 +18,12 @@ from mllm.data.dsmsmarco import MsmDsLoader
 from mllm.data.dswiki import WikiDsLoader
 from mllm.model.mllm_ranker import MllmRanker
 from mllm.model.mllm_encdec import MllmEncdec
-from mllm.model.config import create_mllm_ranker_cfg, create_mllm_encdec_cfg
+from mllm.exp.cfg_v1_0_0 import create_mllm_encdec_cfg, create_mllm_ranker_cfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, ChunkTokenizer
-from mllm.train.args import ArgsTrain
+from mllm.exp.cfg_base import ArgsTokensChunksTrain
 from mllm.train.utils import gen_train_subdir, find_create_train_path
 from mllm.utils.utils import gen_dt_str
 from transformers import GPT2Tokenizer, PreTrainedTokenizer
-
-
-class ArgsTrainRankerQs(ArgsTrain):
-    embs_chunk_size: Optional[int] = Field(
-        100,
-        required=False,
-        description='Number of tokens in chunk converted to a single embedding vector.',
-        cli=('--embs-chunk-size',),
-    )
 
 
 class RankProbLoss(nn.Module):
@@ -70,7 +61,7 @@ class RankProbLoss(nn.Module):
         return loss, loss_tgt, loss_nontgt
 
 
-def main(args: ArgsTrainRankerQs) -> int:
+def main(args: ArgsTokensChunksTrain) -> int:
     print(args)
 
     exp_cfg = ExpConfig()
@@ -250,6 +241,6 @@ def main(args: ArgsTrainRankerQs) -> int:
 if __name__ == '__main__':
     def rethrow(e):
         raise e
-    run_and_exit(ArgsTrainRankerQs, main, 'Train Mllm model.', exception_handler=rethrow)
+    run_and_exit(ArgsTokensChunksTrain, main, 'Train Mllm Ranking model.', exception_handler=rethrow)
 
 

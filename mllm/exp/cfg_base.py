@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-class ArgsTrain(BaseModel):
+class ArgsTokensChunksTrain(BaseModel):
     ds_dir_path: Path = Field(
         None,
         required=False,
@@ -72,5 +72,11 @@ class ArgsTrain(BaseModel):
         required=False,
         description='Path to pretrained model weights.',
         cli=('--pretrained-model-path',),
+    )
+    embs_chunk_size: Optional[int] = Field(
+        100,
+        required=False,
+        description='Number of tokens in chunk converted to a single embedding vector.',
+        cli=('--embs-chunk-size',),
     )
 

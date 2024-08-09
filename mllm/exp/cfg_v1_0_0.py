@@ -1,6 +1,88 @@
+from pathlib import Path
 from typing import TypeVar, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from torch import nn
+
+
+
+class EncdecExpCfg(BaseModel):
+    train_dir_path: Path
+
+
+class ExpCfg(BaseModel):
+    version: str = '0.0.1'
+    description: str = ''
+    ds_dir_path: Path
+    train_dir_path: Path
+
+
+class ExpState(BaseModel):
+    last_epoch: int
+    val_loss_min: float
+
+
+
+class ModelEncdecEncoderConfig(BaseModel):
+    pass
+
+
+class ModelEncdecDecoderConfig(BaseModel):
+    pass
+
+
+class ModelEncdecConfig(BaseModel):
+    pass
+
+
+class ModelRankerEncoderConfig(BaseModel):
+    pass
+
+
+class ModelRankerDecoderConfig(BaseModel):
+    pass
+
+
+class ModelRankerConfig(BaseModel):
+    pass
+
+
+class ModelEncdecEncoder(nn.Module):
+    cfg: ModelEncdecEncoderConfig
+
+    def __init__(self, cfg: ModelEncdecEncoderConfig):
+        super().__init__()
+        self.cfg = cfg
+
+
+class ModelEncdecDecoder(nn.Module):
+    cfg: ModelEncdecDecoderConfig
+
+    def __init__(self, cfg: ModelEncdecDecoderConfig):
+        super().__init__()
+        self.cfg = cfg
+
+
+class ModelEncdec(nn.Module):
+    cfg: ModelEncdecConfig
+    encoder: ModelEncdecEncoder
+    decoder: ModelEncdecDecoder
+
+    def __init__(self, cfg: ModelEncdecConfig):
+        super().__init__()
+        self.cfg = cfg
+
+
+class ModelRankerEncoder(nn.Module):
+    pass
+
+
+class ModelRankerDecoder(nn.Module):
+    pass
+
+
+class ModelRanker(nn.Module):
+    pass
 
 
 T = TypeVar('T')
@@ -115,5 +197,3 @@ def create_mllm_ranker_cfg(
     )
 
     return cfg_mllm_ranker
-
-

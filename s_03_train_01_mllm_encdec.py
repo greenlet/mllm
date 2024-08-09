@@ -10,10 +10,10 @@ from tqdm import trange
 from transformers import GPT2Tokenizer
 
 from mllm.data.dswiki import WikiDsLoader
-from mllm.train.args import ArgsTrain
+from mllm.exp.cfg_base import ArgsTokensChunksTrain
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdec
-from mllm.model.config import create_mllm_encdec_cfg
+from mllm.exp.cfg_v1_0_0 import create_mllm_encdec_cfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
 
 
@@ -40,7 +40,7 @@ def remove_tokens(chunks: torch.Tensor, pad_tok: int, rem_ratio: float = 0.1) ->
     return res
 
 
-def main(args: ArgsTrain) -> int:
+def main(args: ArgsTokensChunksTrain) -> int:
     print(args)
 
     device = torch.device(args.device)
@@ -195,6 +195,6 @@ def main(args: ArgsTrain) -> int:
 if __name__ == '__main__':
     def rethrow(e):
         raise e
-    run_and_exit(ArgsTrain, main, 'Train Mllm model.', exception_handler=rethrow)
+    run_and_exit(ArgsTokensChunksTrain, main, 'Train Mllm model.', exception_handler=rethrow)
 
 

@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torch import nn, Tensor
 
-from mllm.model.config import CfgMllmEncdec
+from mllm.exp.cfg_v1_0_0 import CfgMllmEncdec
 from mllm.model.modules import EncoderLayer, VocabEncoder, EmbDecoder, VocabDecoder, Encoder
 
 
