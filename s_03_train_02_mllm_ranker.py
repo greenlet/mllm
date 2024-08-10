@@ -16,9 +16,9 @@ from tqdm import trange
 from mllm.data.dswiki import WikiDsLoader
 from mllm.model.mllm_ranker import MllmRanker
 from mllm.model.mllm_encdec import MllmEncdec
-from mllm.exp.cfg_v1_0_0 import create_mllm_encdec_cfg, create_mllm_ranker_cfg
+from mllm.exp.cfg import create_mllm_encdec_cfg, create_mllm_ranker_cfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
-from mllm.exp.cfg_base import ArgsTokensChunksTrain
+from mllm.exp.args import ArgsTokensChunksTrain
 from mllm.train.utils import gen_train_subdir, find_create_train_path
 from mllm.utils.utils import gen_dt_str
 from transformers import GPT2Tokenizer, PreTrainedTokenizer

@@ -10,10 +10,10 @@ from tqdm import trange
 from transformers import GPT2Tokenizer
 
 from mllm.data.dswiki import WikiDsLoader
-from mllm.exp.cfg_base import ArgsTokensChunksTrain
+from mllm.exp.args import ArgsTokensChunksTrain
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdec
-from mllm.exp.cfg_v1_0_0 import create_mllm_encdec_cfg
+from mllm.exp.cfg import create_mllm_encdec_cfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
 
 

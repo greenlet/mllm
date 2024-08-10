@@ -3,18 +3,18 @@ import numpy as np
 import torch
 from torch import nn, Tensor
 
-from mllm.exp.cfg_v1_0_0 import CfgMllmEncdec
+from mllm.exp.cfg import MllmEncdecCfg
 from mllm.model.modules import EncoderLayer, VocabEncoder, EmbDecoder, VocabDecoder, Encoder
 
 
 class MllmEncdec(nn.Module):
-    cfg: CfgMllmEncdec
+    cfg: MllmEncdecCfg
     vocab_encoder: VocabEncoder
     encoder: Encoder
     decoder: EmbDecoder
     vocab_decoder: VocabDecoder
 
-    def __init__(self, cfg: CfgMllmEncdec):
+    def __init__(self, cfg: MllmEncdecCfg):
         super().__init__()
         self.cfg = cfg.copy(deep=True)
         self.vocab_encoder = VocabEncoder(

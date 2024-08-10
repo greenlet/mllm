@@ -9,6 +9,7 @@ mwparserfromhell
 numpy
 pandas
 pydantic-cli
+pydantic-yaml
 scipy
 tensorboard
 torch
