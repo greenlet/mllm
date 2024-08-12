@@ -30,8 +30,7 @@ class DsQrels:
     ds_id: str
     qs_ids: np.ndarray
 
-    def __init__(self, ds_id: str, qs_ids: np.ndarray):
-        self.ds_id = ds_id
+    def __init__(self, qs_ids: np.ndarray):
         self.qs_ids = qs_ids
 
     def get_view(self) -> DsQrelsView:

@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import GPT2Tokenizer
 
-from mllm.data.dswiki import WikiDsLoader
+from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import ArgsTokensChunksTrain
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdec

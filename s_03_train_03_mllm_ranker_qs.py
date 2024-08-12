@@ -1,11 +1,5 @@
-import itertools
 import shutil
-from datetime import datetime
-from pathlib import Path
-from typing import Optional
 
-import numpy as np
-from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 import torch
 import torch.utils.tensorboard as tb
@@ -14,16 +8,14 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.exp_config import ExpConfig
-from mllm.data.dsmsmarco import MsmDsLoader
-from mllm.data.dswiki import WikiDsLoader
+from mllm.data.msmarco.dsmsmarco import MsmDsLoader
 from mllm.model.mllm_ranker import MllmRanker
 from mllm.model.mllm_encdec import MllmEncdec
 from mllm.exp.cfg import create_mllm_encdec_cfg, create_mllm_ranker_cfg
-from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, ChunkTokenizer
+from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
 from mllm.exp.args import ArgsTokensChunksTrain
-from mllm.train.utils import gen_train_subdir, find_create_train_path
-from mllm.utils.utils import gen_dt_str
-from transformers import GPT2Tokenizer, PreTrainedTokenizer
+from mllm.train.utils import find_create_train_path
+from transformers import GPT2Tokenizer
 
 
 class RankProbLoss(nn.Module):
