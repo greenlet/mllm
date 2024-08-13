@@ -35,7 +35,8 @@ train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=15
 max_chunks_per_doc=5
-pretrained_model_path=$train_encdec_root_path/encdec-20240718_221554-wiki_20200501_en-ch_100_fixed
+# pretrained_model_path=$train_encdec_root_path/encdec-20240718_221554-wiki_20200501_en-ch_100_fixed
+pretrained_model_path=$train_encdec_root_path/encdec-20240808_222352-wiki_20200501_en-ch_100_fixed
 train_subdir=""
 
 learning_rate=0.0001

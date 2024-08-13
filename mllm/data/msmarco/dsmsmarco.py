@@ -263,7 +263,7 @@ class MsmDsLoader:
 
     def tokenize_query(self, query: str) -> list[list[int]]:
         tokens = self.ch_tkz.tokenizer(query)['input_ids']
-        tokens = [self.qbeg_tok, *tokens, self.qend_tok]
+        # tokens = [self.qbeg_tok, *tokens, self.qend_tok]
         off = split_doc_embs(len(tokens), self.emb_chunk_size, fixed_size=True)
         res = []
         for i in range(len(off) - 1):
