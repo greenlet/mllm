@@ -7,7 +7,6 @@ from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.exp_config import ExpConfig
 from mllm.data.msmarco.dsmsmarco import MsmDsLoader
 from mllm.model.mllm_ranker import MllmRanker
 from mllm.model.mllm_encdec import MllmEncdec
@@ -31,10 +30,14 @@ class RankProbLoss(nn.Module):
         for i in range(n_batch):
             prob_tgt = torch.masked_select(prob_pred[i], mask_gt[i])
             prob_nontgt = 1 - torch.masked_select(prob_pred[i], ~mask_gt[i])
+            
             prob_tgt = torch.maximum(prob_tgt, self.prob_cap)
             prob_nontgt = torch.maximum(prob_nontgt, self.prob_cap)
             loss_tgt += -torch.mean(torch.log(prob_tgt))
             loss_nontgt += -torch.mean(torch.log(prob_nontgt))
+            
+            # loss_tgt += 1 - torch.mean(prob_tgt)
+            # loss_nontgt += 1 - torch.mean(prob_nontgt)
 
         loss_tgt /= n_batch
         loss_nontgt /= n_batch
@@ -55,8 +58,6 @@ class RankProbLoss(nn.Module):
 
 def main(args: ArgsTokensChunksTrain) -> int:
     print(args)
-
-    exp_cfg = ExpConfig()
 
     device = torch.device(args.device)
 
@@ -135,11 +136,16 @@ def main(args: ArgsTokensChunksTrain) -> int:
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
     n_batches_train = calc_batches(ds_loader.n_qs_train)
     n_batches_val = calc_batches(ds_loader.n_qs_val)
+    print(f'Queries train: {ds_loader.n_qs_train} == {len(ds_loader.df_qrels_train)}')
+    print(f'Queries val: {ds_loader.n_qs_val} == {len(ds_loader.df_qrels_val)}')
+    print(f'Batches train: {n_batches_train}')
+    print(f'Batches val: {n_batches_val}')
     loss_fn = RankProbLoss()
     i_train, i_val = 0, 0
     for epoch in range(last_epoch + 1, args.epochs):
-        model.eval()
-        model.decoders.train()
+        # model.eval()
+        # model.decoders.train()
+        model.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
@@ -158,6 +164,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
 
             i_train += 1
             if i_train == n_batches_train:
+                print(f'i_train = {i_train}. Shuffle')
                 ds_loader.shuffle(train=True)
                 i_train %= n_batches_train
 
@@ -190,6 +197,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
 
             i_val += 1
             if i_val == n_batches_val:
+                print(f'i_val = {i_val}. Shuffle')
                 ds_loader.shuffle(train=False)
                 i_val %= n_batches_val
 

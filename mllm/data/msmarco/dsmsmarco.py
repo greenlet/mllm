@@ -272,7 +272,7 @@ class MsmDsLoader:
 
     def get_batch(self, ind: int, train: bool) -> MsmDocsBatch:
         qids, df_qrels, df_qs = self.qids_train, self.df_qrels_train, self.df_qs_train
-        if train:
+        if not train:
             qids, df_qrels, df_qs = self.qids_val, self.df_qrels_val, self.df_qs_val
         i1 = ind * self.docs_batch_size
         i2 = min(i1 + self.docs_batch_size, len(qids))
@@ -282,12 +282,15 @@ class MsmDsLoader:
         df_qrels = df_qrels.loc[qids]
 
         docs_chunks, qs_chunks = [], []
+        docid_sequential = 0
         for _, row in df_qrels.iterrows():
             docidn = row['docidn']
             off = self.df_off.loc[docidn]['off_tsv']
             doc = get_doc(self.fid_docs, off)
             body = f'{doc.url} {doc.body}' if doc.body else doc.url
-            doc_chunks = self.ch_tkz.process_doc(doc.docidn, {'title': doc.title, 'text': body})
+            # docid = doc.docidn
+            docid = docid_sequential
+            doc_chunks = self.ch_tkz.process_doc(docid, {'title': doc.title, 'text': body})
             if len(doc_chunks) > self.max_chunks_per_doc:
                 i = np.random.randint(len(doc_chunks) - self.max_chunks_per_doc + 1)
                 doc_chunks = doc_chunks[i:i + self.max_chunks_per_doc]
@@ -296,6 +299,7 @@ class MsmDsLoader:
             query_chunks = self.tokenize_query(query)
             docs_chunks.append([ch.tokens for ch in doc_chunks])
             qs_chunks.append(query_chunks)
+            docid_sequential += 1
 
         return MsmDocsBatch(
             docs_chunks=docs_chunks, qs_chunks=qs_chunks,
