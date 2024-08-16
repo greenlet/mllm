@@ -93,7 +93,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
         n_vocab=len(tokenizer), inp_len=args.embs_chunk_size, d_word_wec=256,
         n_levels=1, enc_n_layers=1, dec_n_layers=1,
         n_heads=8, d_k=32, d_v=32, d_model=256, d_inner=1024,
-        pad_idx=pad_tok, dropout_rate=0.2, enc_with_emb_mat=True,
+        pad_idx=pad_tok, dropout_rate=0.0, enc_with_emb_mat=True,
     )
     print(model_cfg)
     model = MllmRanker(model_cfg).to(device)

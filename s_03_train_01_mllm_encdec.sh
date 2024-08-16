@@ -12,14 +12,15 @@ train_root_path=$data_path/train_mllm_encdec
 # val_epoch_steps=20
 
 device=cuda
-epochs=200
-train_epoch_steps=5000
-val_epoch_steps=500
+epochs=500
+train_epoch_steps=1000
+val_epoch_steps=100
 docs_batch_size=10
 max_chunks_per_doc=3
 #train_subdir=last
+# train_subdir=encdec-20240808_222352-wiki_20200501_en-ch_100_fixed
 
-learning_rate=0.001
+learning_rate=0.0001
 
 mllm_src_path=$code_path/mllm
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path

@@ -189,7 +189,7 @@ class WikiDsLoader:
     n_total: int = 0
 
     def __init__(self, ds_path: Path, docs_batch_size: int, max_chunks_per_doc: int,
-                 pad_tok: int, qbeg_tok: int, qend_tok: int, val_ratio: float = 0.2, device: Optional[torch.device] = None,
+                 pad_tok: int, qbeg_tok: int, qend_tok: int, val_ratio: float = 0.05, device: Optional[torch.device] = None,
                  n_total: int = 0):
         self.ds_path = ds_path
         self.emb_chunk_size, self.fixed_size = parse_out_subdir(ds_path.name)

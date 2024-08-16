@@ -17,10 +17,25 @@ from mllm.exp.cfg import create_mllm_encdec_cfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
 
 
-def encdec_prob_loss(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
+def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
     probs_pred = torch.softmax(logits_pred, dim=-1)
     probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt.to(torch.int64).unsqueeze(-1))
     loss = -torch.mean(torch.log(probs_gt))
+    return loss
+
+
+def encdec_prob_loss_sigmoid(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
+    tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
+    probs_pred = torch.sigmoid(logits_pred)
+    probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
+    loss_gt = -torch.mean(torch.log(probs_gt))
+    loss_nongt = 0
+    for i in range(probs_pred.shape[0]):
+        mask = torch.full((logits_pred.shape[-2], logits_pred.shape[-1],), True, device=logits_pred.device)
+        mask = mask.scatter(1, tokens_gt[i], 0)
+        loss_nongt += -torch.mean(torch.log(1 - probs_pred[i][mask]))
+    loss_nongt = loss_nongt / logits_pred.shape[0]
+    loss = loss_gt + loss_nongt
     return loss
 
 
@@ -74,7 +89,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
 
     model_cfg = create_mllm_encdec_cfg(
         n_vocab=len(tokenizer), d_word_wec=256, inp_len=inp_len,
-        enc_n_layers=1, dec_n_layers=1,
+        enc_n_layers=2, dec_n_layers=2,
         n_heads=8, d_model=256, d_inner=1024,
         pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
     )
@@ -86,21 +101,28 @@ def main(args: ArgsTokensChunksTrain) -> int:
 
     last_epoch, val_loss_min = -1, None
     if checkpoint:
-        model.load_state_dict(checkpoint['model'])
+        model.load_state_dict(checkpoint['model'], strict=False)
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
         ds_loader.shuffle(train=True)
         ds_loader.shuffle(train=False)
+    
+    # TODO move into arguments
+    assert not checkpoint
+    checkpoint = torch.load(args.train_root_path / 'encdec-20240808_222352-wiki_20200501_en-ch_100_fixed' / 'best.pth', map_location=device)
+    model.load_state_dict(checkpoint['model'], strict=False)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=6, threshold=1e-4, min_lr=1e-7)
+
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8, threshold=1e-4, min_lr=1e-7)
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
     n_batches_train = calc_batches(ds_loader.n_docs_train)
     n_batches_val = calc_batches(ds_loader.n_docs_val)
-    loss_fn = encdec_prob_loss
+    # loss_fn = encdec_prob_loss_softmax
+    loss_fn = encdec_prob_loss_sigmoid
     # loss_fn = nn.CrossEntropyLoss()
     graph_written = True
     i_train, i_val = 0, 0
