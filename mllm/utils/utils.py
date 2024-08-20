@@ -25,6 +25,7 @@ def parse_dt_str(dt_str: str, silent: bool = True) -> Optional[datetime]:
 def write_tsv(df: pd.DataFrame, fpath: Path, **kwargs):
     df.to_csv(fpath, sep='\t', header=True, quoting=csv.QUOTE_MINIMAL, index=None, **kwargs)
 
+
 def read_tsv(fpath: Path, **kwargs) -> pd.DataFrame:
     df = pd.read_csv(fpath, sep='\t', header=0, quoting=csv.QUOTE_MINIMAL, **kwargs)
     return df
