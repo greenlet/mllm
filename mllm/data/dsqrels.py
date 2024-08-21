@@ -55,6 +55,36 @@ class DocsFile:
             self.opened = False
 
 
+def join_qrels_datasets(
+        ds_ids: list[int], dfs_qs: list[pd.DataFrame], dfs_qrels: list[pd.DataFrame],
+        dfs_off: list[pd.DataFrame]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    dfs_qs_new, dfs_qrels_new, dfs_off_new = [], [], []
+    qid_off, did_off = 0, 0
+    for ds_id, df_qs, df_qrels, df_off in zip(ds_ids, dfs_qs, dfs_qrels, dfs_off):
+        df_qs, df_qrels, df_off = df_qs.copy(), df_qrels.copy(), df_off.copy()
+        df_qs['dsid'] = ds_id
+        df_qs['dsqid'] = np.arange(qid_off, qid_off + len(df_qs))
+        df_qid_to_dsqid = df_qs[['dsqid', 'qid']].set_index('qid')
+        df_off['dsid'] = ds_id
+        df_off['dsdid'] = np.arange(did_off, did_off + len(df_off))
+        df_did_to_dsdid = df_off[['dsdid', 'did']].set_index('did')
+        df_qrels['dsid'] = ds_id
+        df_qrels.set_index('qid', inplace=True)
+        df_qrels.loc[df_qid_to_dsqid.index] = df_qid_to_dsqid['dsqid']
+        df_qrels.reset_index(drop=False)
+        df_qrels.set_index('did', inplace=True)
+        df_qrels.loc[df_did_to_dsdid.index] = df_did_to_dsdid['dsdid']
+        df_qrels.reset_index(drop=False)
+        dfs_qs_new.append(df_qs)
+        dfs_qrels_new.append(df_qrels)
+        dfs_off_new.append(df_off)
+        qid_off += len(df_qs)
+        did_off += len(df_off)
+    df_qs_res = pd.concat(dfs_qs_new, axis=0)
+    df_qrels_res = pd.concat(dfs_qrels_new, axis=0)
+    df_off_res = pd.concat(dfs_off_new, axis=0)
+    return df_qs_res, df_qrels_res, df_off_res
+
 
 class DsQrels:
     ds_ids: list[DsQrelsId]
@@ -75,27 +105,10 @@ class DsQrels:
             self.df_qs = dfs_qs[0]
             self.df_qrels = dfs_qrels[0]
             self.df_off = dfs_off[0]
-            self.docs_files = docs_files
         else:
-            dfs_qs_new, dfs_qrels_new, dfs_off_new = [], [], []
-            qid_off, did_off = 0, 0
-            for ds_id, df_qs, df_qrels, df_off in zip(ds_ids, dfs_qs, dfs_qrels, dfs_off):
-                assert ds_id in docs_files
-                df_qs, df_qrels, df_off = df_qs.copy(), df_qrels.copy(), df_off.copy()
-                df_qs['dsid'] = ds_id
-                df_qs['dsqid'] = np.arange(qid_off, qid_off + len(df_qs))
-                df_qid_to_dsqid = df_qs.set_index('qid')
-                df_off['dsid'] = ds_id
-                df_off['dsdid'] = np.arange(did_off, did_off + len(df_off))
-                df_did_to_dsdid = df_off.set_index('did')
-                df_qrels['dsid'] = ds_id
-                df_qrels.set_index(('qid', 'did'), inplace=True)
-                df_qrels.loc[df_qs['qid']] = df_qs['dsqid']
-                df_qrels.loc[..., df_qs['did']] = df_qs['dsdid']
-                dfs_qs_new.append(df_qs)
-                dfs_qrels_new.append(df_qrels)
-                dfs_off_new.append(df_off)
-
+            ds_ids_int = [ds_id.value for ds_id in ds_ids]
+            self.df_qs, self.df_qrels, self.df_off = join_qrels_datasets(ds_ids_int, dfs_qs, dfs_qrels, dfs_off)
+        self.docs_files = docs_files
 
     def get_view(self) -> DsQrelsView:
         pass
