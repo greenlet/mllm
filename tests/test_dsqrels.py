@@ -54,7 +54,9 @@ class TestDsQrels(ut.TestCase):
         df_qrels_exp['dsqid'] = [0, 0, 1, 2, 2, 2, 3, 3, 4, 5, 5]
         df_qrels_exp['dsdid'] = [0, 1, 2, 0, 1, 2, 3, 4, 5, 6, 5]
 
-        self.assertEqual(df_qs, df_qs_exp)
-        self.assertEqual(df_off, df_off_exp)
-        self.assertEqual(df_qrels, df_qrels_exp)
+        # print(df_qrels)
+        # print(df_qrels_exp)
+        self.assertTrue(df_qs.equals(df_qs_exp))
+        self.assertTrue(df_off.equals(df_off_exp))
+        self.assertTrue(df_qrels.equals(df_qrels_exp))
 

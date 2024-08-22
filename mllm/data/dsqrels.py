@@ -64,17 +64,13 @@ def join_qrels_datasets(
         df_qs, df_qrels, df_off = df_qs.copy(), df_qrels.copy(), df_off.copy()
         df_qs['dsid'] = ds_id
         df_qs['dsqid'] = np.arange(qid_off, qid_off + len(df_qs))
-        df_qid_to_dsqid = df_qs[['dsqid', 'qid']].set_index('qid')
+        df_qid_to_dsqid = df_qs[['dsqid', 'qid']].set_index('qid')['dsqid']
         df_off['dsid'] = ds_id
         df_off['dsdid'] = np.arange(did_off, did_off + len(df_off))
-        df_did_to_dsdid = df_off[['dsdid', 'did']].set_index('did')
+        df_did_to_dsdid = df_off[['dsdid', 'did']].set_index('did')['dsdid']
         df_qrels['dsid'] = ds_id
-        df_qrels.set_index('qid', inplace=True)
-        df_qrels.loc[df_qid_to_dsqid.index] = df_qid_to_dsqid['dsqid']
-        df_qrels.reset_index(drop=False)
-        df_qrels.set_index('did', inplace=True)
-        df_qrels.loc[df_did_to_dsdid.index] = df_did_to_dsdid['dsdid']
-        df_qrels.reset_index(drop=False)
+        df_qrels['dsqid'] = df_qrels['qid'].map(df_qid_to_dsqid)
+        df_qrels['dsdid'] = df_qrels['did'].map(df_did_to_dsdid)
         dfs_qs_new.append(df_qs)
         dfs_qrels_new.append(df_qrels)
         dfs_off_new.append(df_off)
@@ -117,7 +113,6 @@ class DsQrels:
     def join(dss: list['DsQrels']) -> 'DsQrels':
         ds_ids = list(itertools.chain.from_iterable(ds.ds_ids for ds in dss))
         assert len(ds_ids) == len(set(ds_ids)), f'{ds_ids}'
-
 
     def close(self):
         for docs_file in self.docs_files.values():
