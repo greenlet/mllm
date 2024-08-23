@@ -63,14 +63,14 @@ def join_qrels_datasets(
     for ds_id, df_qs, df_qrels, df_off in zip(ds_ids, dfs_qs, dfs_qrels, dfs_off):
         df_qs, df_qrels, df_off = df_qs.copy(), df_qrels.copy(), df_off.copy()
         df_qs['dsid'] = ds_id
-        df_qs['dsqid'] = np.arange(qid_off, qid_off + len(df_qs))
+        df_qs['dsqid'] = np.arange(qid_off, qid_off + len(df_qs), dtype=int)
         df_qid_to_dsqid = df_qs[['dsqid', 'qid']].set_index('qid')['dsqid']
         df_off['dsid'] = ds_id
-        df_off['dsdid'] = np.arange(did_off, did_off + len(df_off))
+        df_off['dsdid'] = np.arange(did_off, did_off + len(df_off), dtype=int)
         df_did_to_dsdid = df_off[['dsdid', 'did']].set_index('did')['dsdid']
         df_qrels['dsid'] = ds_id
-        df_qrels['dsqid'] = df_qrels['qid'].map(df_qid_to_dsqid)
-        df_qrels['dsdid'] = df_qrels['did'].map(df_did_to_dsdid)
+        df_qrels['dsqid'] = df_qrels['qid'].map(df_qid_to_dsqid).astype(int)
+        df_qrels['dsdid'] = df_qrels['did'].map(df_did_to_dsdid).astype(int)
         dfs_qs_new.append(df_qs)
         dfs_qrels_new.append(df_qrels)
         dfs_off_new.append(df_off)
