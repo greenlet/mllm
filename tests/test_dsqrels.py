@@ -180,6 +180,8 @@ class TestDsQrels(ut.TestCase):
             dfs_qrels.append(df_qrels)
             dfs_qrels_exp.append(df_qrels_exp)
 
+            qs_off += n_qs
+            docs_off += n_docs
             i += 1
 
         df_qs_exp = pd.concat(dfs_qs_exp, axis=0)
@@ -189,16 +191,36 @@ class TestDsQrels(ut.TestCase):
         return dfs_qs, dfs_off, dfs_qrels, df_qs_exp, df_off_exp, df_qrels_exp
 
     def test_join_qrels_03(self):
-        ds_ids = [1, 2]
+        def gen_rand_params(sz: int) -> tuple[list[int], list[int], list[int], list[int]]:
+            n_qs_l_ = np.random.randint(1, 1000, size=sz)
+            n_docs_l_ = np.random.randint(100, 8000, size=sz)
+            min_docs_per_query_l_ = np.random.randint(10, size=sz)
+            max_docs_per_query_l_ = min_docs_per_query_l_ + np.random.randint(1, 40, size=sz)
+            return list(n_qs_l_), list(n_docs_l_), list(min_docs_per_query_l_), list(max_docs_per_query_l_)
 
-        dfs_qs, dfs_off, dfs_qrels, df_qs_exp, df_off_exp, df_qrels_exp = \
-            self._gen_datasets([1000, 1500], [5000, 8000], [1, 0], [3, 1])
+        for n_qs_l, n_docs_l, min_docs_per_query_l, max_docs_per_query_l in [
+            ([2, 3], [4, 5], [1, 1], [3, 1]),
+            ([1000, 1500], [5000, 8000], [1, 0], [3, 1]),
+            ([3, 3, 3], [5, 5, 5], [0, 0, 0], [2, 2, 1]),
+            ([100, 200, 500], [1000, 1001, 1002], [0, 0, 0], [10, 15, 1]),
+            gen_rand_params(5),
+            gen_rand_params(10),
+        ]:
+            ds_ids = list(range(1, len(n_qs_l) + 1))
+            dfs_qs, dfs_off, dfs_qrels, df_qs_exp, df_off_exp, df_qrels_exp = self._gen_datasets(
+                n_qs_l, n_docs_l, min_docs_per_query_l, max_docs_per_query_l,
+            )
+            df_qs, df_qrels, df_off = join_qrels_datasets(
+                ds_ids, dfs_qs, dfs_qrels, dfs_off,
+            )
+            # print(df_qs)
+            # print(df_qs_exp)
+            # print(df_off)
+            # print(df_off_exp)
+            # print(df_qrels)
+            # print(df_qrels_exp)
 
-        df_qs, df_qrels, df_off = join_qrels_datasets(
-            ds_ids, dfs_qs, dfs_qrels, dfs_off,
-        )
-
-        self.assertTrue(df_qs.equals(df_qs_exp))
-        self.assertTrue(df_off.equals(df_off_exp))
-        self.assertTrue(df_qrels.equals(df_qrels_exp))
+            self.assertTrue(df_qs.equals(df_qs_exp))
+            self.assertTrue(df_off.equals(df_off_exp))
+            self.assertTrue(df_qrels.equals(df_qrels_exp))
 
