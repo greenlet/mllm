@@ -165,14 +165,14 @@ class TestChunkTokenizer(ut.TestCase):
                         self.doc_end_tok,
                     ]
                 ))
-                ch_tkz.process_doc(docid, self._doc(title, body))
-                self.assertEqual(1, len(ch_tkz.chunks))
+                chunks = ch_tkz.process_doc(docid, self._doc(title, body))
+                self.assertEqual(1, len(chunks))
                 self.assertEqual(3, len(docid_tokens))
                 self.assertEqual(3, len(offset_tokens))
                 self.assertEqual(3, len(title_tokens))
                 self.assertEqual(3, len(body_tokens))
 
-                cchunk, chunk = case.chunks[0], ch_tkz.chunks[0]
+                cchunk, chunk = case.chunks[0], chunks[0]
                 n_doc_tok = len(cchunk.doc_tokens)
                 self.assertEqual(cchunk.docid_tok_num, chunk.docid_tok_num, self._str_case_chunk(case, cchunk, chunk))
                 self.assertEqual(cchunk.offset_tok_num, chunk.offset_tok_num, self._str_case_chunk(case, cchunk, chunk))
@@ -545,13 +545,13 @@ class TestChunkTokenizer(ut.TestCase):
 
         for case in cases:
             ch_tkz = ChunkTokenizer(self.tokens_dict, self.tokenizer, case.n_emb_tokens, case.fixed_size)
-            ch_tkz.process_doc(0, self._doc(title, body))
+            chunks = ch_tkz.process_doc(0, self._doc(title, body))
             self.assertEqual(1 + 2, docid_tok_num)
             self.assertEqual(2 + 2, len(title_tokens))
             self.assertEqual(5 + 2, len(body_tokens))
-            self.assertEqual(len(case.chunks), len(ch_tkz.chunks))
+            self.assertEqual(len(case.chunks), len(chunks))
 
-            for i, chunk in enumerate(ch_tkz.chunks):
+            for i, chunk in enumerate(chunks):
                 cchunk = case.chunks[i]
                 self.assertEqual(docid_tok_num, chunk.docid_tok_num)
                 self.assertEqual(cchunk.offset_tok_num, chunk.offset_tok_num, self._str_case_chunk(case, cchunk, chunk))

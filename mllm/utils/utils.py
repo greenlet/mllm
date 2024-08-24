@@ -1,7 +1,7 @@
 import csv
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import pandas as pd
 
@@ -29,4 +29,93 @@ def write_tsv(df: pd.DataFrame, fpath: Path, **kwargs):
 def read_tsv(fpath: Path, **kwargs) -> pd.DataFrame:
     df = pd.read_csv(fpath, sep='\t', header=0, quoting=csv.QUOTE_MINIMAL, **kwargs)
     return df
+
+
+SplitsType = Union[int, list[int], tuple[int, ...], float, list[float], tuple[float, ...]]
+
+
+def is_iter_len(x: object) -> bool:
+    return hasattr(x, '__iter__') and hasattr(x, '__len__')
+
+
+def split_range(n: int, splits: SplitsType) -> list[int]:
+    if n == 0:
+        return []
+    negative = False
+    if n < 0:
+        negative = True
+        n = -n
+    def postproc(l: list[int]):
+        if negative:
+            return [-x for x in reversed(l)]
+        return l
+
+    res = [0]
+    if type(splits) == int:
+        if splits <= 0:
+            return []
+        div, rem = divmod(n, splits)
+        if div == 0:
+            splits = rem
+        i_split, i = 0, 0
+        while i_split < splits:
+            off = div
+            if rem > 0:
+                off += 1
+                rem -= 1
+            i += off
+            res.append(i)
+            i_split += 1
+        return postproc(res)
+
+    isitlen = is_iter_len(splits)
+    if isitlen and len(splits) == 0:
+        return []
+
+    if type(splits) == float:
+        splits = [splits]
+        isitlen = True
+
+    if isitlen and any(type(s) == float for s in splits):
+        has_int = any(type(s) == int for s in splits)
+        spl = []
+        was_neg, total = False, 0
+        for s in splits:
+            if s < 0:
+                x = -1
+                was_neg = True
+            elif type(s) == float:
+                x = int(n * s)
+                assert x > 0, f'Zero sized split = {s} out of {n}'
+            else:
+                x = s
+            spl.append(x)
+            total += x
+
+        if not was_neg and total < n and not has_int:
+            spl.append(n - total)
+        splits = spl
+
+    if isitlen and type(splits[0]) == int:
+        splits = [sp for sp in splits if sp != 0]
+        if len(splits) == 0:
+            return postproc([0, n])
+        was_neg, total = False, 0
+        for s in splits:
+            assert type(s) == int
+            if s == -1:
+                assert not was_neg
+                was_neg = True
+            else:
+                assert s > 0
+                total += s
+        assert was_neg and total < n or not was_neg and total == n, f'was_neg: {was_neg}. total: {total}. n: {n}'
+        i, rest = 0, n - total
+        for s in splits:
+            i += (s if s > 0 else rest)
+            res.append(i)
+        return postproc(res)
+
+    raise Exception(f'Unknown splits format: {splits}')
+
 
