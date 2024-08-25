@@ -102,8 +102,6 @@ class TestDsQrels(ut.TestCase):
         df_qrels_exp['dsqid'] = np.array([0, 0, 1, 2, 2, 2, 3, 3, 4, 5, 5], dtype=int)
         df_qrels_exp['dsdid'] = np.array([0, 1, 2, 0, 1, 2, 3, 4, 5, 6, 5], dtype=int)
 
-        # print(df_qrels)
-        # print(df_qrels_exp)
         self.assertTrue(df_qs.equals(df_qs_exp))
         self.assertTrue(df_off.equals(df_off_exp))
         self.assertTrue(df_qrels.equals(df_qrels_exp))
@@ -223,4 +221,37 @@ class TestDsQrels(ut.TestCase):
             self.assertTrue(df_qs.equals(df_qs_exp))
             self.assertTrue(df_off.equals(df_off_exp))
             self.assertTrue(df_qrels.equals(df_qrels_exp))
+
+    def test_join_qrels_04(self):
+        ds_ids = [1]
+        df_qs_1 = pd.DataFrame({
+            'qid': np.array([1, 2, 3], dtype=int),
+            'query': ['11', 'two', '-3'],
+        })
+        df_off_1 = pd.DataFrame({
+            'did': [11, 22, 33],
+            'offset': [0, 100, 230],
+        }, dtype=int)
+        df_qrels_1 = pd.DataFrame({
+            'qid': [1, 1, 2, 3, 3, 3],
+            'did': [11, 22, 33, 11, 22, 33],
+        }, dtype=int)
+        df_qs, df_qrels, df_off = join_qrels_datasets(
+            ds_ids, [df_qs_1], [df_qrels_1], [df_off_1],
+        )
+
+        df_qs_1['dsid'] = 1
+        df_qs_exp = df_qs_1
+        df_qs_exp['dsqid'] = np.arange(len(df_qs_exp), dtype=int)
+        df_off_1['dsid'] = 1
+        df_off_exp = df_off_1
+        df_off_exp['dsdid'] = np.arange(len(df_off_exp), dtype=int)
+        df_qrels_1['dsid'] = 1
+        df_qrels_exp = df_qrels_1
+        df_qrels_exp['dsqid'] = np.array([0, 0, 1, 2, 2, 2], dtype=int)
+        df_qrels_exp['dsdid'] = np.array([0, 1, 2, 0, 1, 2], dtype=int)
+
+        self.assertTrue(df_qs.equals(df_qs_exp))
+        self.assertTrue(df_off.equals(df_off_exp))
+        self.assertTrue(df_qrels.equals(df_qrels_exp))
 

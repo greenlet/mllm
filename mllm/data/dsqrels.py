@@ -6,6 +6,8 @@ from typing import Generator, Optional, TextIO, Union, TypeVar
 import numpy as np
 import pandas as pd
 
+from mllm.utils.utils import SplitsType, split_range
+
 
 class DsQrelsId(Enum):
     Msmarco = 1
@@ -23,14 +25,60 @@ class DsQrelsView:
 
     def __init__(self, ds: 'DsQrels', ids: np.ndarray, batch_size: Optional[int] = None):
         self.ds = ds
-        self.ids = ids
+        self.ids = ids.copy()
         self.batch_size = batch_size
 
-    def split(self, first_ratio: float) -> tuple['DsQrelsView', 'DsQrelsView']:
-        pass
+    def split(self, splits: SplitsType) -> tuple['DsQrelsView', ...]:
+        intervals = split_range(len(self.ids), splits)
+        res = []
+        for i in range(1, len(intervals)):
+            ids = self.ids[intervals[i - 1]:intervals[i]]
+            ov = DsQrelsView(
+                ds=self.ds, ids=ids, batch_size=self.batch_size,
+            )
+            res.append(ov)
+        return tuple(res)
 
-    def get_batch_it(self, batch_size: Optional[None]) -> Generator[QrelsBatch, None, None]:
-        pass
+    def set_batch_size(self, batch_size: int):
+        self.batch_size = batch_size
+
+    def get_batch_iterator(self, n_batches: Optional[int] = None, batch_size: Optional[int] = None,
+                           drop_last: bool = False, shuffle_between_loops: bool = True)\
+            -> Generator[QrelsBatch, None, None]:
+        batch_size = batch_size or self.batch_size
+        n = len(self.ids)
+        n_batches_total = n // batch_size + min(n % batch_size, 1)
+
+        info = f'n = {n}. batch_size = {batch_size}. n_batches = {n_batches}. n_batches_total = {n_batches_total}'
+        assert n_batches_total > 0, info
+        assert n_batches is None or n_batches > 0, info
+
+        looped = False
+        if n_batches is None:
+            n_batches = n_batches_total
+        if n_batches > n_batches_total:
+            looped = True
+
+        for i_batch in range(n_batches):
+            i = i_batch * batch_size
+            if i >= n:
+                if shuffle_between_loops:
+                    np.random.shuffle(self.ids)
+                    i = 0
+                else:
+                    i %= n
+            batch_size_cur = min(batch_size, n - i)
+            inds = range(i, i + batch_size_cur)
+            if batch_size_cur < batch_size:
+                if not looped:
+                    if drop_last:
+                        return
+                else:
+                    rest = batch_size - batch_size_cur
+                    inds = list(range(i, n)) + list(range(rest))
+            ids = self.ids[inds]
+            batch = self.ds.get_batch(ids)
+            yield batch
 
 
 class DocsFile:
@@ -97,17 +145,16 @@ class DsQrels:
         assert len(ds_ids) == len(dfs_qs) == len(dfs_qrels) == len(dfs_off) == len(docs_files), \
             f'len(ds_ids) = {len(ds_ids)}. len(dfs_qs) = {len(dfs_qs)}. len(dfs_qrels) = {len(dfs_qrels)}. len(dfs_off) = {len(dfs_off)}. len(docs_fids) = {len(docs_files)}'
         self.ds_ids = ds_ids
-        if len(dfs_qs) == 1:
-            self.df_qs = dfs_qs[0]
-            self.df_qrels = dfs_qrels[0]
-            self.df_off = dfs_off[0]
-        else:
-            ds_ids_int = [ds_id.value for ds_id in ds_ids]
-            self.df_qs, self.df_qrels, self.df_off = join_qrels_datasets(ds_ids_int, dfs_qs, dfs_qrels, dfs_off)
+        ds_ids_int = [ds_id.value for ds_id in ds_ids]
+        self.df_qs, self.df_qrels, self.df_off = join_qrels_datasets(ds_ids_int, dfs_qs, dfs_qrels, dfs_off)
         self.docs_files = docs_files
 
-    def get_view(self) -> DsQrelsView:
-        pass
+    def get_view(self, batch_size: Optional[int] = None) -> DsQrelsView:
+        ids = self.df_qs['dsqid'].values
+        return DsQrelsView(self, ids, batch_size)
+
+    def get_batch(self, dsqid: np.ndarray) -> QrelsBatch:
+        raise Exception('Not implemented')
 
     @staticmethod
     def join(dss: list['DsQrels']) -> 'DsQrels':
@@ -117,3 +164,4 @@ class DsQrels:
     def close(self):
         for docs_file in self.docs_files.values():
             docs_file.close()
+
