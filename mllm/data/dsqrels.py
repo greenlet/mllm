@@ -6,6 +6,7 @@ from typing import Generator, Optional, TextIO, Union, TypeVar
 import numpy as np
 import pandas as pd
 
+from mllm.tokenization.chunk_tokenizer import ChunkTokenizer
 from mllm.utils.utils import SplitsType, split_range
 
 
@@ -15,7 +16,9 @@ class DsQrelsId(Enum):
 
 
 class QrelsBatch:
-    pass
+    def __init__(self, ds_ids: list[int], query_ids: list[int], doc_ids: list[int], ds_query_ids: list[int], ds_doc_ids: list[int],
+                 chunks: list[list[ChunkTokenizer.TokChunk]]):
+        pass
 
 
 class DsQrelsView:
@@ -131,6 +134,7 @@ def join_qrels_datasets(
 
 
 class DsQrels:
+    ch_tkz: ChunkTokenizer
     ds_ids: list[DsQrelsId]
     # qid: int, query: str, dsid: int (added), dsqid: int (generated)
     df_qs: pd.DataFrame
@@ -140,21 +144,46 @@ class DsQrels:
     df_off: pd.DataFrame
     docs_files: dict[DsQrelsId, DocsFile]
 
-    def __init__(self, ds_ids: list[DsQrelsId], dfs_qs: list[pd.DataFrame], dfs_qrels: list[pd.DataFrame],
+    def __init__(self, ch_tkz: ChunkTokenizer, ds_ids: list[DsQrelsId], dfs_qs: list[pd.DataFrame], dfs_qrels: list[pd.DataFrame],
                  dfs_off: list[pd.DataFrame], docs_files: dict[DsQrelsId, DocsFile]):
         assert len(ds_ids) == len(dfs_qs) == len(dfs_qrels) == len(dfs_off) == len(docs_files), \
             f'len(ds_ids) = {len(ds_ids)}. len(dfs_qs) = {len(dfs_qs)}. len(dfs_qrels) = {len(dfs_qrels)}. len(dfs_off) = {len(dfs_off)}. len(docs_fids) = {len(docs_files)}'
+        self.ch_tkz = ch_tkz
         self.ds_ids = ds_ids
         ds_ids_int = [ds_id.value for ds_id in ds_ids]
         self.df_qs, self.df_qrels, self.df_off = join_qrels_datasets(ds_ids_int, dfs_qs, dfs_qrels, dfs_off)
+        self.df_qs.set_index('dsqid', inplace=True)
+        self.df_qrels.set_index('dsqid', inplace=True)
+        self.df_off.set_index('dsdid', inplace=True)
         self.docs_files = docs_files
 
     def get_view(self, batch_size: Optional[int] = None) -> DsQrelsView:
-        ids = self.df_qs['dsqid'].values
+        ids = self.df_qs.index.values
         return DsQrelsView(self, ids, batch_size)
 
-    def get_batch(self, dsqid: np.ndarray) -> QrelsBatch:
-        raise Exception('Not implemented')
+    def _get_doc_title_text(self, ds_id: int, offset: int) -> tuple[str, str]:
+        ds_id_ = DsQrelsId(ds_id)
+        docs_file = self.docs_files[ds_id_]
+        l = docs_file.get_line(offset)
+        _, _, title, text = l.rstrip().split('\t')
+        return title, text
+
+    def get_batch(self, dsqids: np.ndarray) -> QrelsBatch:
+        ds_ids, query_ids, doc_ids, ds_query_ids, ds_doc_ids, chunks = [], [], [], [], [], []
+        for dsqid in dsqids:
+            q_row = self.df_qs.loc[dsqid]
+            qr_rows = self.df_qrels.loc[dsqid]
+            qr_row = qr_rows.sample(n=1)
+            off_row = self.df_off.loc[qr_row['dsdid']]
+            title, text = self._get_doc_title_text(q_row['dsid'], off_row['offset'])
+            tok_chunks = self.ch_tkz.process_doc(qr_row['dsdid'], {'title': title, 'text': text})
+            ds_ids.append(q_row['dsid'])
+            query_ids.append(q_row['qid'])
+            doc_ids.append(qr_row['did'])
+            ds_query_ids.append(q_row['dsqid'])
+            ds_doc_ids.append(qr_row['dsdid'])
+            chunks.append(tok_chunks)
+        return QrelsBatch(ds_ids=ds_ids, query_ids=query_ids, doc_ids=doc_ids, ds_query_ids=ds_query_ids, ds_doc_ids=ds_doc_ids, chunks=chunks)
 
     @staticmethod
     def join(dss: list['DsQrels']) -> 'DsQrels':
