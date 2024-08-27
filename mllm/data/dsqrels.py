@@ -5,8 +5,9 @@ from typing import Generator, Optional, TextIO, Union, TypeVar
 
 import numpy as np
 import pandas as pd
+import torch
 
-from mllm.tokenization.chunk_tokenizer import ChunkTokenizer
+from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, split_doc_embs
 from mllm.utils.utils import SplitsType, split_range
 
 
@@ -16,9 +17,75 @@ class DsQrelsId(Enum):
 
 
 class QrelsBatch:
-    def __init__(self, ds_ids: list[int], query_ids: list[int], doc_ids: list[int], ds_query_ids: list[int], ds_doc_ids: list[int],
-                 chunks: list[list[ChunkTokenizer.TokChunk]]):
-        pass
+    df_qs: pd.DataFrame
+    docs_chunks: list[list[np.ndarray]]
+    qs_chunks: list[list[list[int]]]
+    pad_tok: int
+    emb_chunk_size: int
+    docs_chunks_padded: np.ndarray
+    qs_chunks_padded: np.ndarray
+    docs_off_len: list[tuple[int, int]]
+    qs_off_len: list[tuple[int, int]]
+    docs_chunks_padded_tf: Optional[torch.Tensor] = None
+    qs_chunks_padded_tf: Optional[torch.Tensor] = None
+    device: Optional[torch.device] = None
+
+    def __init__(self, df_qs: pd.DataFrame, docs_chunks: list[list[np.ndarray]], qs_chunks: list[list[list[int]]], pad_tok: int, emb_chunk_size: int,
+                 device: Optional[torch.device] = None):
+        self.df_qs = df_qs
+        self.docs_chunks = docs_chunks
+        self.qs_chunks = qs_chunks
+        self.pad_tok = pad_tok
+        self.emb_chunk_size = emb_chunk_size
+        self.device = device
+        self.calc_np()
+
+    def calc_np(self):
+        assert len(self.docs_chunks) == len(self.qs_chunks), f'# of docs ({len(self.docs_chunks)}) != # of queries ({len(self.qs_chunks)})'
+
+        max_chunks_sz = 0
+        docs_off_len, docs_off = [], 0
+        for chunk in self.docs_chunks:
+            max_chunks_sz = max(max_chunks_sz, max(len(tokens) for tokens in chunk))
+            n_chunk = len(chunk)
+            docs_off_len.append((docs_off, n_chunk))
+            docs_off += n_chunk
+
+        qs_off_len, qs_off = [], 0
+        for chunk in self.qs_chunks:
+            max_chunks_sz = max(max_chunks_sz, max(len(tokens) for tokens in chunk))
+            n_chunk = len(chunk)
+            qs_off_len.append((qs_off, n_chunk))
+            qs_off += n_chunk
+
+        docs_chunks_padded = np.full((docs_off, max_chunks_sz), self.pad_tok, dtype=np.int32)
+        for i_doc, doc_chunk in enumerate(self.docs_chunks):
+            for i_tok, tokens in enumerate(doc_chunk):
+                off = docs_off_len[i_doc][0]
+                docs_chunks_padded[off + i_tok, :len(tokens)] = tokens
+
+        qs_chunks_padded = np.full((qs_off, max_chunks_sz), self.pad_tok, dtype=np.int32)
+        for i_query, query_chunk in enumerate(self.qs_chunks):
+            for i_tok, tokens in enumerate(query_chunk):
+                off = qs_off_len[i_query][0]
+                qs_chunks_padded[off + i_tok, :len(tokens)] = tokens
+
+        self.docs_chunks_padded = docs_chunks_padded
+        self.qs_chunks_padded = qs_chunks_padded
+        self.docs_off_len = docs_off_len
+        self.qs_off_len = qs_off_len
+
+    def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:
+        res = torch.from_numpy(arr)
+        if self.device is not None:
+            res = res.to(self.device)
+        return res
+
+    def gen_tensors(self) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.docs_chunks_padded_tf is None:
+            self.docs_chunks_padded_tf, self.qs_chunks_padded_tf = \
+                map(self._to_tensor, (self.docs_chunks_padded, self.qs_chunks_padded))
+        return self.docs_chunks_padded_tf, self.qs_chunks_padded_tf
 
 
 class DsQrelsView:
@@ -143,9 +210,13 @@ class DsQrels:
     # did: int, offset: int, dsdid: int (generated), dsid: int (added)
     df_off: pd.DataFrame
     docs_files: dict[DsQrelsId, DocsFile]
+    max_chunks_per_doc: int
+    emb_chunk_size: int
+    device: Optional[torch.device] = None
 
     def __init__(self, ch_tkz: ChunkTokenizer, ds_ids: list[DsQrelsId], dfs_qs: list[pd.DataFrame], dfs_qrels: list[pd.DataFrame],
-                 dfs_off: list[pd.DataFrame], docs_files: dict[DsQrelsId, DocsFile]):
+                 dfs_off: list[pd.DataFrame], docs_files: dict[DsQrelsId, DocsFile],
+                 max_chunks_per_doc: int, emb_chunk_size: int, device: Optional[torch.device] = None):
         assert len(ds_ids) == len(dfs_qs) == len(dfs_qrels) == len(dfs_off) == len(docs_files), \
             f'len(ds_ids) = {len(ds_ids)}. len(dfs_qs) = {len(dfs_qs)}. len(dfs_qrels) = {len(dfs_qrels)}. len(dfs_off) = {len(dfs_off)}. len(docs_fids) = {len(docs_files)}'
         self.ch_tkz = ch_tkz
@@ -156,6 +227,9 @@ class DsQrels:
         self.df_qrels.set_index('dsqid', inplace=True)
         self.df_off.set_index('dsdid', inplace=True)
         self.docs_files = docs_files
+        self.max_chunks_per_doc = max_chunks_per_doc
+        self.emb_chunk_size = emb_chunk_size
+        self.device = device
 
     def get_view(self, batch_size: Optional[int] = None) -> DsQrelsView:
         ids = self.df_qs.index.values
@@ -168,22 +242,49 @@ class DsQrels:
         _, _, title, text = l.rstrip().split('\t')
         return title, text
 
+    def _tokenize_query(self, query: str) -> list[list[int]]:
+        tokens = self.ch_tkz.tokenizer(query)['input_ids']
+        # tokens = [self.qbeg_tok, *tokens, self.qend_tok]
+        off = split_doc_embs(len(tokens), self.emb_chunk_size, fixed_size=True)
+        res = []
+        for i in range(len(off) - 1):
+            res.append(tokens[off[i]:off[i + 1]])
+        return res
+
     def get_batch(self, dsqids: np.ndarray) -> QrelsBatch:
         ds_ids, query_ids, doc_ids, ds_query_ids, ds_doc_ids, chunks = [], [], [], [], [], []
+        df_qs = self.df_qs.loc[dsqids].copy()
+        df_qs['did'] = 0
+        df_qs['dsdid'] = 0
+        df_qs['title'] = ''
+        df_qs['text'] = ''
+        docid_sequential = 0
+        qs_chunks, docs_chunks = [], []
         for dsqid in dsqids:
-            q_row = self.df_qs.loc[dsqid]
+            q_row = df_qs.loc[dsqid]
             qr_rows = self.df_qrels.loc[dsqid]
             qr_row = qr_rows.sample(n=1)
             off_row = self.df_off.loc[qr_row['dsdid']]
             title, text = self._get_doc_title_text(q_row['dsid'], off_row['offset'])
-            tok_chunks = self.ch_tkz.process_doc(qr_row['dsdid'], {'title': title, 'text': text})
-            ds_ids.append(q_row['dsid'])
-            query_ids.append(q_row['qid'])
-            doc_ids.append(qr_row['did'])
-            ds_query_ids.append(q_row['dsqid'])
-            ds_doc_ids.append(qr_row['dsdid'])
-            chunks.append(tok_chunks)
-        return QrelsBatch(ds_ids=ds_ids, query_ids=query_ids, doc_ids=doc_ids, ds_query_ids=ds_query_ids, ds_doc_ids=ds_doc_ids, chunks=chunks)
+            df_qs.loc[dsqid, 'did'] = off_row['did']
+            df_qs.loc[dsqid, 'dsdid'] = off_row['dsdid']
+            df_qs.loc[dsqid, 'title'] = title
+            df_qs.loc[dsqid, 'text'] = text
+            docid = docid_sequential
+            doc_chunks = self.ch_tkz.process_doc(docid, {'title': title, 'text': text})
+            if len(doc_chunks) > self.max_chunks_per_doc:
+                i = np.random.randint(len(doc_chunks) - self.max_chunks_per_doc + 1)
+                doc_chunks = doc_chunks[i:i + self.max_chunks_per_doc]
+            query = q_row['query']
+            query_chunks = self._tokenize_query(query)
+            docs_chunks.append([ch.tokens for ch in doc_chunks])
+            qs_chunks.append(query_chunks)
+            docid_sequential += 1
+
+        return QrelsBatch(
+            df_qs=df_qs, docs_chunks=docs_chunks, qs_chunks=qs_chunks, pad_tok=self.ch_tkz.pad_tok, emb_chunk_size=self.emb_chunk_size,
+            device=self.device,
+        )
 
     @staticmethod
     def join(dss: list['DsQrels']) -> 'DsQrels':
