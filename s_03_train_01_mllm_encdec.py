@@ -1,4 +1,5 @@
 import shutil
+from typing import Union
 
 import numpy as np
 from pydantic_cli import run_and_exit
@@ -6,6 +7,7 @@ import torch
 
 import torch.utils.tensorboard as tb
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch import nn
 from tqdm import trange
 from transformers import GPT2Tokenizer
 
@@ -24,19 +26,45 @@ def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor)
     return loss
 
 
-def encdec_prob_loss_sigmoid(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
+def encdec_prob_loss_sigmoid(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+    device = logits_pred.device
     tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
     probs_pred = torch.sigmoid(logits_pred)
+    prob_cap = torch.tensor(1e-6, dtype=torch.float32, device=device)
     probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
+    probs_gt = torch.maximum(probs_gt, prob_cap)
     loss_gt = -torch.mean(torch.log(probs_gt))
-    loss_nongt = 0
+    loss_nongt = torch.tensor(0, dtype=torch.float32, device=device)
     for i in range(probs_pred.shape[0]):
-        mask = torch.full((logits_pred.shape[-2], logits_pred.shape[-1],), True, device=logits_pred.device)
+        mask = torch.full((logits_pred.shape[-2], logits_pred.shape[-1],), True, device=device)
         mask = mask.scatter(1, tokens_gt[i], 0)
-        loss_nongt += -torch.mean(torch.log(1 - probs_pred[i][mask]))
+        probs_nongt = 1 - probs_pred[i][mask]
+        probs_nongt = torch.maximum(probs_nongt, prob_cap)
+        loss_nongt += -torch.mean(torch.log(probs_nongt))
     loss_nongt = loss_nongt / logits_pred.shape[0]
     loss = loss_gt + loss_nongt
-    return loss
+    return loss_gt, loss_nongt, loss
+
+
+class EncdecProbLossSigmoid(nn.Module):
+    def __init__(self, seq_len: int, n_tokens: int, device: torch.device):
+        super().__init__()
+        mask = torch.full((seq_len, n_tokens), True, device=device)
+        self.register_buffer('mask', mask)
+
+    def forward(self, logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
+        tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
+        probs_pred = torch.sigmoid(logits_pred)
+        probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
+        loss_gt = -torch.mean(torch.log(probs_gt))
+        loss_nongt = 0
+        for i in range(probs_pred.shape[0]):
+            self.mask.scatter_(1, tokens_gt[i], 0)
+            loss_nongt += -torch.mean(torch.log(1 - probs_pred[i][self.mask]))
+            self.mask.scatter_(1, tokens_gt[i], 1)
+        loss_nongt = loss_nongt / logits_pred.shape[0]
+        loss = loss_gt + loss_nongt
+        return loss
 
 
 def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
@@ -79,7 +107,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
     ds_loader = WikiDsLoader(
         ds_path=args.ds_dir_path, docs_batch_size=args.docs_batch_size, max_chunks_per_doc=args.max_chunks_per_doc,
-        pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device,
+        pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device, n_total=0,
     )
 
     inp_len = ds_loader.emb_chunk_size if ds_loader.fixed_size else calc_max_inp_size(ds_loader.emb_chunk_size)
@@ -108,10 +136,10 @@ def main(args: ArgsTokensChunksTrain) -> int:
         ds_loader.shuffle(train=True)
         ds_loader.shuffle(train=False)
     
-    # TODO move into arguments
-    assert not checkpoint
-    checkpoint = torch.load(args.train_root_path / 'encdec-20240808_222352-wiki_20200501_en-ch_100_fixed' / 'best.pth', map_location=device)
-    model.load_state_dict(checkpoint['model'], strict=False)
+    # # TODO move into arguments
+    # assert not checkpoint
+    # checkpoint = torch.load(args.train_root_path / 'encdec-20240808_222352-wiki_20200501_en-ch_100_fixed' / 'best.pth', map_location=device)
+    # model.load_state_dict(checkpoint['model'], strict=False)
 
 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8, threshold=1e-4, min_lr=1e-7)
@@ -123,12 +151,14 @@ def main(args: ArgsTokensChunksTrain) -> int:
     n_batches_val = calc_batches(ds_loader.n_docs_val)
     # loss_fn = encdec_prob_loss_softmax
     loss_fn = encdec_prob_loss_sigmoid
+    # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
     # loss_fn = nn.CrossEntropyLoss()
     graph_written = True
     i_train, i_val = 0, 0
+    loss_gt, loss_nongt = None, None
     for epoch in range(last_epoch + 1, args.epochs):
         model.train()
-        train_loss = 0
+        train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             batch = ds_loader.get_batch(i_train, train=True)
@@ -145,9 +175,14 @@ def main(args: ArgsTokensChunksTrain) -> int:
                 graph_written = True
 
             loss = loss_fn(out_logits, chunks)
+            if type(loss) == tuple:
+                loss_gt, loss_nongt, loss = loss
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+            if loss_gt is not None:
+                train_loss_gt += loss_gt.item()
+                train_loss_nongt += loss_nongt.item()
 
             i_train += 1
             if i_train == n_batches_train:
@@ -158,13 +193,21 @@ def main(args: ArgsTokensChunksTrain) -> int:
             #     import sys
             #     sys.exit()
 
-            pbar.set_postfix_str(f'Train. loss: {loss.item():.6f}')
+            s = f'Train. loss: {loss.item():.6f}'
+            if loss_gt is not None:
+                s += f'. loss_gt: {loss_gt.item():.6f}. loss_nongt: {loss_nongt.item():.6f}'
+            pbar.set_postfix_str(s)
         pbar.close()
         train_loss /= args.train_epoch_steps
         tbsw.add_scalar('Loss/Train', train_loss, epoch)
+        if loss_gt is not None:
+            train_loss_gt /= args.train_epoch_steps
+            train_loss_nongt /= args.train_epoch_steps
+            tbsw.add_scalar('LossGt/Val', train_loss_gt, epoch)
+            tbsw.add_scalar('LossNongt/Val', train_loss_nongt, epoch)
 
         model.eval()
-        val_loss = 0
+        val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             batch = ds_loader.get_batch(i_val, train=False)
@@ -174,17 +217,30 @@ def main(args: ArgsTokensChunksTrain) -> int:
             out_logits = model(chunks)
 
             loss = loss_fn(out_logits, chunks)
+            if type(loss) == tuple:
+                loss_gt, loss_nongt, loss = loss
             val_loss += loss.item()
+            if loss_gt is not None:
+                val_loss_gt += loss_gt.item()
+                val_loss_nongt += loss_nongt.item()
 
             i_val += 1
             if i_val == n_batches_val:
                 ds_loader.shuffle(train=False)
                 i_val %= n_batches_val
 
-            pbar.set_postfix_str(f'Val. loss: {loss.item():.6f}')
+            s = f'Val. loss: {loss.item():.6f}'
+            if loss_gt is not None:
+                s += f'. loss_gt: {loss_gt.item():.6f}. loss_nongt: {loss_nongt.item():.6f}'
+            pbar.set_postfix_str(s)
         pbar.close()
         val_loss /= args.val_epoch_steps
         tbsw.add_scalar('Loss/Val', val_loss, epoch)
+        if loss_gt is not None:
+            val_loss_gt /= args.val_epoch_steps
+            val_loss_nongt /= args.val_epoch_steps
+            tbsw.add_scalar('LossGt/Val', val_loss_gt, epoch)
+            tbsw.add_scalar('LossNongt/Val', val_loss_nongt, epoch)
 
         scheduler.step(val_loss)
         last_lr = scheduler.get_last_lr()[0]

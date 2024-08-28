@@ -13,11 +13,11 @@ train_root_path=$data_path/train_mllm_encdec
 
 device=cuda
 epochs=500
-train_epoch_steps=1000
-val_epoch_steps=100
+train_epoch_steps=500
+val_epoch_steps=50
 docs_batch_size=10
 max_chunks_per_doc=3
-#train_subdir=last
+train_subdir=last
 # train_subdir=encdec-20240808_222352-wiki_20200501_en-ch_100_fixed
 
 learning_rate=0.0001
