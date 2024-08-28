@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from mllm.data.dsqrels import DocsFile, DsQrelsId, DsQrels
 from mllm.tokenization.chunk_tokenizer import parse_out_subdir, ChunkTokenizer, split_doc_embs
 
 MSMARCO_DOCTRAIN_QUERIES_FNAME = 'msmarco-doctrain-queries.tsv.gz'
@@ -23,27 +24,32 @@ def docid_to_num(docid: str) -> int:
     return int(docid[1:])
 
 
-def read_queries_df(queries_fpath: Path) -> pd.DataFrame:
+def read_queries_df(queries_fpath: Path, with_index: bool = True) -> pd.DataFrame:
     with gzip.open(queries_fpath, 'rt', encoding='utf8') as f:
         df = pd.read_csv(f, sep='\t', header = None, names=('topicid', 'query'))
-        df.set_index('topicid', inplace=True)
+        if with_index:
+            df.set_index('topicid', inplace=True)
     return df
 
 
-def read_offsets_df(lookup_fpath: Path) -> pd.DataFrame:
+def read_offsets_df(lookup_fpath: Path, with_index: bool = True) -> pd.DataFrame:
     with gzip.open(lookup_fpath, 'rt', encoding='utf8') as f:
         df = pd.read_csv(f, sep='\t', header=None, names=('docid', 'off_trec', 'off_tsv'), usecols=('docid', 'off_tsv'))
         df['docidn'] = df['docid'].apply(docid_to_num)
-        df.set_index('docidn', inplace=True)
+        if with_index:
+            df.set_index('docidn', inplace=True)
     return df
 
 
-def read_qrels_df(qrels_fpath: Path) -> pd.DataFrame:
+def read_qrels_df(qrels_fpath: Path, with_index: bool = True) -> pd.DataFrame:
     with gzip.open(qrels_fpath, 'rt', encoding='utf8') as f:
         df = pd.read_csv(f, sep=' ', header=None, names=('topicid', 'x', 'docid', 'rel'), usecols=('topicid', 'docid', 'rel'))
         df['docidn'] = df['docid'].apply(docid_to_num)
+    if with_index:
         df.set_index('topicid', inplace=True)
-    assert len(df.index.unique()) == len(df)
+        assert len(df.index.unique()) == len(df)
+    else:
+        assert len(df['topicid'].unique()) == len(df)
     assert (df['rel'] == 1).sum() == len(df)
     return df
 
@@ -313,5 +319,35 @@ class MsmDsLoader:
     def close(self):
         self.fid_docs.close()
         self.fid_docs = None
+
+
+def load_dsqrels_msmarco(
+        ds_path: Path, ch_tkz: ChunkTokenizer, max_chunks_per_doc: int, emb_chunk_size: int,
+        device: Optional[torch.device] = None) -> DsQrels:
+    qs_train_fpath = ds_path / MSMARCO_DOCTRAIN_QUERIES_FNAME
+    qrels_train_fpath = ds_path / MSMARCO_DOCTRAIN_QRELS_FNAME
+    df_qs_1 = read_queries_df(qs_train_fpath, with_index=False)
+    df_qrels_1 = read_qrels_df(qrels_train_fpath, with_index=False)
+    qs_val_fpath = ds_path / MSMARCO_DOCDEV_QUERIES_FNAME
+    qrels_val_fpath = ds_path / MSMARCO_DOCDEV_QRELS_FNAME
+    df_qs_2 = read_queries_df(qs_val_fpath, with_index=False)
+    df_qrels_2 = read_qrels_df(qrels_val_fpath, with_index=False)
+    docs_fpath = ds_path / MSMARCO_DOCS_FNAME
+    docs_file = DocsFile(docs_fpath)
+    lookup_fpath = ds_path / MSMARCO_DOCS_LOOKUP_FNAME
+    df_off = read_offsets_df(lookup_fpath, with_index=False)
+    df_off = df_off[['docidn', 'tsv_off']]
+    df_qs = pd.concat([df_qs_1, df_qs_2], axis=0)
+    df_qrels = pd.concat([df_qrels_1, df_qrels_2], axis=0)
+    df_qrels = df_qrels[['topicid', 'docidn']]
+
+    df_qs.rename({'topicid': 'qid'}, inplace=True)
+    df_qrels.rename({'topicid': 'qid', 'docidn': 'did'}, inplace=True)
+    df_off.rename({'docidn': 'did', 'off_tsv': 'offset'}, inplace=True)
+    ds_id = DsQrelsId.Msmarco
+    return DsQrels(
+        ch_tkz=ch_tkz, ds_ids=[ds_id], dfs_qs=[df_qs], dfs_qrels=[df_qrels], dfs_off=[df_off], docs_files={ds_id: docs_file},
+        max_chunks_per_doc=max_chunks_per_doc, emb_chunk_size=emb_chunk_size, device=device,
+    )
 
 
