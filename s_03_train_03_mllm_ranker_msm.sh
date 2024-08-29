@@ -3,7 +3,7 @@ code_path=$HOME/prog
 data_path=$HOME/data
 msmarco_data_path=$data_path/msmarco
 #ds_subdir=ch_100_nonfixed
-train_ranker_root_path=$data_path/train_mllm_ranker_qs
+train_ranker_root_path=$data_path/train_mllm_ranker_msm
 train_encdec_root_path=$data_path/train_mllm_encdec
 
 device=cpu
@@ -46,7 +46,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_03_train_03_mllm_ranker_qs.py \
+python s_03_train_03_mllm_ranker_msm.py \
   --ds-dir-path $msmarco_data_path \
   --train-root-path $train_ranker_root_path \
   --train-subdir "$train_subdir" \

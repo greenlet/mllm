@@ -295,3 +295,10 @@ class DsQrels:
         for docs_file in self.docs_files.values():
             docs_file.close()
 
+    def __str__(self) -> str:
+        ids_str = ','.join(ds_id.name for ds_id in self.ds_ids)
+        return f'{ids_str}. Queries: {len(self.df_qs)}. Docs: {len({self.df_off})}. QueryDocRels: {len(self.df_qrels)}'
+
+    def __repr__(self):
+        return str(self)
+

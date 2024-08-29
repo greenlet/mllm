@@ -5,7 +5,7 @@ wiki_data_path=$data_path/wiki_20200501_en
 #ds_subdir=ch_100_nonfixed
 ds_subdir=ch_100_fixed
 wiki_ds_path=$wiki_data_path/$ds_subdir
-train_ranker_root_path=$data_path/train_mllm_ranker
+train_ranker_root_path=$data_path/train_mllm_ranker_wiki
 train_encdec_root_path=$data_path/train_mllm_encdec
 
 device=cpu
@@ -38,7 +38,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_03_train_02_mllm_ranker.py \
+python s_03_train_02_mllm_ranker_wiki.py \
   --ds-dir-path $wiki_ds_path \
   --train-root-path $train_ranker_root_path \
   --train-subdir "$train_subdir" \
