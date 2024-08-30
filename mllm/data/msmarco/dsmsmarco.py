@@ -322,7 +322,7 @@ class MsmDsLoader:
 
 
 def load_dsqrels_msmarco(
-        ds_path: Path, ch_tkz: ChunkTokenizer, max_chunks_per_doc: int, emb_chunk_size: int,
+        ds_path: Path, ch_tkz: ChunkTokenizer, max_chunks_per_doc: int, embs_chunk_size: int,
         device: Optional[torch.device] = None) -> DsQrels:
     qs_train_fpath = ds_path / MSMARCO_DOCTRAIN_QUERIES_FNAME
     qrels_train_fpath = ds_path / MSMARCO_DOCTRAIN_QRELS_FNAME
@@ -336,18 +336,17 @@ def load_dsqrels_msmarco(
     docs_file = DocsFile(docs_fpath)
     lookup_fpath = ds_path / MSMARCO_DOCS_LOOKUP_FNAME
     df_off = read_offsets_df(lookup_fpath, with_index=False)
-    df_off = df_off[['docidn', 'tsv_off']]
+    df_off = df_off[['docidn', 'off_tsv']]
     df_qs = pd.concat([df_qs_1, df_qs_2], axis=0)
     df_qrels = pd.concat([df_qrels_1, df_qrels_2], axis=0)
     df_qrels = df_qrels[['topicid', 'docidn']]
 
-    df_qs.rename({'topicid': 'qid'}, inplace=True)
-    df_qrels.rename({'topicid': 'qid', 'docidn': 'did'}, inplace=True)
-    df_off.rename({'docidn': 'did', 'off_tsv': 'offset'}, inplace=True)
+    df_qs.rename(columns={'topicid': 'qid'}, inplace=True)
+    df_qrels.rename(columns={'topicid': 'qid', 'docidn': 'did'}, inplace=True)
+    df_off.rename(columns={'docidn': 'did', 'off_tsv': 'offset'}, inplace=True)
     ds_id = DsQrelsId.Msmarco
     return DsQrels(
         ch_tkz=ch_tkz, ds_ids=[ds_id], dfs_qs=[df_qs], dfs_qrels=[df_qrels], dfs_off=[df_off], docs_files={ds_id: docs_file},
-        max_chunks_per_doc=max_chunks_per_doc, emb_chunk_size=emb_chunk_size, device=device,
+        max_chunks_per_doc=max_chunks_per_doc, emb_chunk_size=embs_chunk_size, device=device,
     )
-
 

@@ -42,9 +42,9 @@ def load_dsqrels_fever(
     df_off = read_tsv(docs_off_fpath)
     docs_file = DocsFile(docs_fpath)
 
-    df_qs.rename({'queryid': 'qid'}, inplace=True)
-    df_qrels.rename({'queryid': 'qid', 'docid': 'did'}, inplace=True)
-    df_off.rename({'docid': 'did'}, inplace=True)
+    df_qs.rename(columns={'queryid': 'qid'}, inplace=True)
+    df_qrels.rename(columns={'queryid': 'qid', 'docidn': 'did'}, inplace=True)
+    df_off.rename(columns={'docidn': 'did'}, inplace=True)
     ds_id = DsQrelsId.Fever
     return DsQrels(
         ch_tkz=ch_tkz, ds_ids=[ds_id], dfs_qs=[df_qs], dfs_qrels=[df_qrels], dfs_off=[df_off], docs_files={ds_id: docs_file},

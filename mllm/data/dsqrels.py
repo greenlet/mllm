@@ -150,6 +150,9 @@ class DsQrelsView:
             batch = self.ds.get_batch(ids)
             yield batch
 
+    def __len__(self) -> int:
+        return len(self.ids)
+
 
 class DocsFile:
     fpath: Path
@@ -164,7 +167,7 @@ class DocsFile:
     def get_line(self, offset: int) -> str:
         assert self.opened
         self.fid.seek(offset)
-        l = self.fid.readline().rstrip()
+        l = self.fid.readline().rstrip('\n')
         return l
 
     def close(self):
@@ -223,9 +226,9 @@ class DsQrels:
         self.ds_ids = ds_ids
         ds_ids_int = [ds_id.value for ds_id in ds_ids]
         self.df_qs, self.df_qrels, self.df_off = join_qrels_datasets(ds_ids_int, dfs_qs, dfs_qrels, dfs_off)
-        self.df_qs.set_index('dsqid', inplace=True)
-        self.df_qrels.set_index('dsqid', inplace=True)
-        self.df_off.set_index('dsdid', inplace=True)
+        self.df_qs.set_index('dsqid', inplace=True, drop=False)
+        self.df_qrels.set_index('dsqid', inplace=True, drop=False)
+        self.df_off.set_index('dsdid', inplace=True, drop=False)
         self.docs_files = docs_files
         self.max_chunks_per_doc = max_chunks_per_doc
         self.emb_chunk_size = emb_chunk_size
@@ -239,7 +242,8 @@ class DsQrels:
         ds_id_ = DsQrelsId(ds_id)
         docs_file = self.docs_files[ds_id_]
         l = docs_file.get_line(offset)
-        _, _, title, text = l.rstrip().split('\t')
+        _, url, title, text = l.split('\t')
+        text = text if text else ' '.join(url.split('/'))
         return title, text
 
     def _tokenize_query(self, query: str) -> list[list[int]]:
@@ -263,7 +267,10 @@ class DsQrels:
         for dsqid in dsqids:
             q_row = df_qs.loc[dsqid]
             qr_rows = self.df_qrels.loc[dsqid]
-            qr_row = qr_rows.sample(n=1)
+            if type(qr_rows) == pd.Series:
+                qr_row = qr_rows
+            else:
+                qr_row = qr_rows.sample(n=1).iloc[0]
             off_row = self.df_off.loc[qr_row['dsdid']]
             title, text = self._get_doc_title_text(q_row['dsid'], off_row['offset'])
             df_qs.loc[dsqid, 'did'] = off_row['did']
@@ -290,6 +297,37 @@ class DsQrels:
     def join(dss: list['DsQrels']) -> 'DsQrels':
         ds_ids = list(itertools.chain.from_iterable(ds.ds_ids for ds in dss))
         assert len(ds_ids) == len(set(ds_ids)), f'{ds_ids}'
+        ch_tkz: Optional[ChunkTokenizer] = None
+        ds_ids: list[DsQrelsId] = []
+        dfs_qs: list[pd.DataFrame] = []
+        dfs_qrels: list[pd.DataFrame] = []
+        dfs_off: list[pd.DataFrame] = []
+        docs_files: dict[DsQrelsId, DocsFile] = {}
+        max_chunks_per_doc: Optional[int] = None
+        emb_chunk_size: Optional[int] = None
+        device: Optional[torch.device] = None
+        first = True
+        for ds in dss:
+            if first:
+                ch_tkz, max_chunks_per_doc, emb_chunk_size, device = ds.ch_tkz, ds.max_chunks_per_doc, ds.emb_chunk_size, ds.device
+                first = False
+            else:
+                assert ds.ch_tkz == ch_tkz
+                assert ds.max_chunks_per_doc == max_chunks_per_doc
+                assert ds.emb_chunk_size == emb_chunk_size
+                assert ds.device == device
+            ds_ids.extend(ds.ds_ids)
+            dfs_qs.append(ds.df_qs)
+            dfs_qrels.append(ds.df_qrels)
+            dfs_off.append(ds.df_off)
+            docs_files = {
+                **docs_files,
+                **ds.docs_files,
+            }
+        return DsQrels(
+            ch_tkz=ch_tkz, ds_ids=ds_ids, dfs_qs=dfs_qs, dfs_qrels=dfs_qrels, dfs_off=dfs_off, docs_files=docs_files,
+            max_chunks_per_doc=max_chunks_per_doc, emb_chunk_size=emb_chunk_size, device=device,
+        )
 
     def close(self):
         for docs_file in self.docs_files.values():
@@ -297,8 +335,11 @@ class DsQrels:
 
     def __str__(self) -> str:
         ids_str = ','.join(ds_id.name for ds_id in self.ds_ids)
-        return f'{ids_str}. Queries: {len(self.df_qs)}. Docs: {len({self.df_off})}. QueryDocRels: {len(self.df_qrels)}'
+        return f'{ids_str}. Queries: {len(self.df_qs)}. Docs: {len(self.df_off)}. QueryDocRels: {len(self.df_qrels)}'
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self)
+
+    def __len__(self) -> int:
+        return len(self.df_qs)
 
