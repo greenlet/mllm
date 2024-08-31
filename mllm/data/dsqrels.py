@@ -133,7 +133,7 @@ class DsQrelsView:
             i = i_batch * batch_size
             if i >= n:
                 if shuffle_between_loops:
-                    np.random.shuffle(self.ids)
+                    self.shuffle()
                     i = 0
                 else:
                     i %= n
@@ -152,6 +152,10 @@ class DsQrelsView:
 
     def __len__(self) -> int:
         return len(self.ids)
+
+    def shuffle(self):
+        print(f'Shuffle {len(self.ids)} elements')
+        np.random.shuffle(self.ids)
 
 
 class DocsFile:
@@ -342,4 +346,3 @@ class DsQrels:
 
     def __len__(self) -> int:
         return len(self.df_qs)
-

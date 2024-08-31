@@ -124,7 +124,8 @@ def main(args: ArgsQrelsTrain) -> int:
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
     ds_view = ds.get_view(batch_size=args.docs_batch_size)
-    view_train, view_val = ds_view.split((-1, 0.1))
+    ds_view.shuffle()
+    view_train, view_val = ds_view.split((-1, 0.05))
 
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
     n_qs_train, n_qs_val = len(view_train), len(view_val)
@@ -136,12 +137,12 @@ def main(args: ArgsQrelsTrain) -> int:
     print(f'Batches val: {n_batches_val}')
     loss_fn = RankProbLoss()
     train_batch_it = view_train.get_batch_iterator(
-        n_batches=n_batches_train,
+        n_batches=args.epochs * args.docs_batch_size,
         drop_last=False,
         shuffle_between_loops=True,
     )
     val_batch_it = view_val.get_batch_iterator(
-        n_batches=n_batches_val,
+        n_batches=args.epochs * args.docs_batch_size,
         drop_last=False,
         shuffle_between_loops=True,
     )
@@ -227,6 +228,7 @@ def main(args: ArgsQrelsTrain) -> int:
             print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
             shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
 
+    ds.close()
     return 0
 
 
