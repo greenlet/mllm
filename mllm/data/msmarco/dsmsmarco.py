@@ -322,7 +322,7 @@ class MsmDsLoader:
 
 
 def load_dsqrels_msmarco(
-        ds_path: Path, ch_tkz: ChunkTokenizer, max_chunks_per_doc: int, embs_chunk_size: int,
+        ds_path: Path, ch_tkz: ChunkTokenizer, max_chunks_per_doc: int, emb_chunk_size: int,
         device: Optional[torch.device] = None) -> DsQrels:
     qs_train_fpath = ds_path / MSMARCO_DOCTRAIN_QUERIES_FNAME
     qrels_train_fpath = ds_path / MSMARCO_DOCTRAIN_QRELS_FNAME
@@ -347,6 +347,6 @@ def load_dsqrels_msmarco(
     ds_id = DsQrelsId.Msmarco
     return DsQrels(
         ch_tkz=ch_tkz, ds_ids=[ds_id], dfs_qs=[df_qs], dfs_qrels=[df_qrels], dfs_off=[df_off], docs_files={ds_id: docs_file},
-        max_chunks_per_doc=max_chunks_per_doc, emb_chunk_size=embs_chunk_size, device=device,
+        max_chunks_per_doc=max_chunks_per_doc, emb_chunk_size=emb_chunk_size, device=device,
     )
 

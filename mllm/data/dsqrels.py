@@ -130,13 +130,11 @@ class DsQrelsView:
             looped = True
 
         for i_batch in range(n_batches):
-            i = i_batch * batch_size
-            if i >= n:
+            if i_batch > 0 and i_batch % n_batches_total == 0:
                 if shuffle_between_loops:
                     self.shuffle()
-                    i = 0
-                else:
-                    i %= n
+                i_batch %= n_batches_total
+            i = i_batch * batch_size
             batch_size_cur = min(batch_size, n - i)
             inds = range(i, i + batch_size_cur)
             if batch_size_cur < batch_size:

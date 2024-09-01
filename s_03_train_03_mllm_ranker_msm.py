@@ -37,10 +37,10 @@ def main(args: ArgsTokensChunksTrain) -> int:
 
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=10000)
     tok_dict = gen_all_tokens(tokenizer)
-    ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.embs_chunk_size, fixed_size=True)
+    ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
     ds_loader = MsmDsLoader(
-        ds_path=args.ds_dir_path, emb_chunk_size=args.embs_chunk_size, docs_batch_size=args.docs_batch_size,
+        ds_path=args.ds_dir_path, emb_chunk_size=args.emb_chunk_size, docs_batch_size=args.docs_batch_size,
         max_chunks_per_doc=args.max_chunks_per_doc, pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, ch_tkz=ch_tkz,
         device=device,
     )
@@ -50,7 +50,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
     torch.autograd.set_detect_anomaly(True)
 
     model_cfg = create_mllm_ranker_cfg(
-        n_vocab=len(tokenizer), inp_len=args.embs_chunk_size, d_word_wec=256,
+        n_vocab=len(tokenizer), inp_len=args.emb_chunk_size, d_word_wec=256,
         n_levels=1, enc_n_layers=1, dec_n_layers=1,
         n_heads=8, d_k=32, d_v=32, d_model=256, d_inner=1024,
         pad_idx=pad_tok, dropout_rate=0.0, enc_with_emb_mat=True,
@@ -63,7 +63,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
         model_encdec_cfg = create_mllm_encdec_cfg(
-            n_vocab=len(tokenizer), d_word_wec=256, inp_len=args.embs_chunk_size,
+            n_vocab=len(tokenizer), d_word_wec=256, inp_len=args.emb_chunk_size,
             enc_n_layers=1, dec_n_layers=1,
             n_heads=8, d_model=256, d_inner=1024,
             pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,

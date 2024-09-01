@@ -73,7 +73,7 @@ class ArgsTokensChunksTrain(BaseModel):
         description='Path to pretrained model weights.',
         cli=('--pretrained-model-path',),
     )
-    embs_chunk_size: Optional[int] = Field(
+    emb_chunk_size: Optional[int] = Field(
         100,
         required=False,
         description='Number of tokens in chunk converted to a single embedding vector.',
