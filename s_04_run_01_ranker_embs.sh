@@ -4,11 +4,14 @@ data_path=$HOME/data
 msmarco_data_path=$data_path/msmarco
 fever_data_path=$data_path/fever
 train_ranker_root_path=$data_path/train_mllm_ranker_qrels
+out_ds_path=$data_path/msmarco-fever
 
 emb_chunk_size=100
 
 device=cpu
-docs_batch_size=3
+batch_size=10
+batches=10
+
 train_subdir=ranker-20240831_214832-msmarco-fever
 
 #device=cuda
@@ -25,6 +28,8 @@ python s_04_run_01_ranker_embs.py \
   --train-root-path $train_ranker_root_path \
   --train-subdir $train_subdir \
   --emb-chunk-size $emb_chunk_size \
-  --docs-batch-size $docs_batch_size \
-  --device $device
+  --batch-size $batch_size \
+  --batches $batches \
+  --device $device \
+  --out-ds-path $out_ds_path
 

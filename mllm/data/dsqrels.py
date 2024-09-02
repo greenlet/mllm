@@ -88,6 +88,35 @@ class QrelsBatch:
         return self.docs_chunks_padded_tf, self.qs_chunks_padded_tf
 
 
+class DocsBatch:
+    ds_ids: list[int]
+    ds_doc_ids: list[int]
+    docs_chunks: np.ndarray
+    emb_chunk_size: int
+    docs_chunks_tf: Optional[torch.Tensor] = None
+    device: Optional[torch.device] = None
+
+    def __init__(self, ds_ids: list[int], ds_doc_ids: list[int], docs_chunks: list[np.ndarray], emb_chunk_size: int,
+            device: Optional[torch.device] = None):
+        assert len(ds_ids) == len(ds_doc_ids) == len(docs_chunks), f'len(ds_ids) = {len(ds_ids)}, len(ds_doc_ids) = {len(ds_doc_ids)}. len(docs_chunks) = {len(docs_chunks)}'
+        self.ds_ids = ds_ids
+        self.ds_doc_ids = ds_doc_ids
+        self.docs_chunks = np.array(docs_chunks)
+        self.emb_chunk_size = emb_chunk_size
+        self.device = device
+
+    def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:
+        res = torch.from_numpy(arr)
+        if self.device is not None:
+            res = res.to(self.device)
+        return res
+
+    def gen_tensor(self) -> torch.Tensor:
+        if self.docs_chunks_tf is None:
+            self.docs_chunks_tf, = self._to_tensor(self.docs_chunks)
+        return self.docs_chunks_tf
+
+
 class DsQrelsView:
     ds: 'DsQrels'
     ids: np.ndarray
@@ -344,3 +373,45 @@ class DsQrels:
 
     def __len__(self) -> int:
         return len(self.df_qs)
+
+
+    def get_docs_batch_iterator(self, batch_size: int, n_batches: Optional[int] = None, device: Optional[torch.device] = None) \
+            -> tuple[int, Generator[tuple[int, DocsBatch], None, None]]:
+        n_docs = len(self.df_off)
+        ds_ids, ds_docs_ids, chunks = [], [], []
+        i_batch, stopped_early = 0, False
+        for i_doc in range(n_docs):
+            off_row = self.df_off.iloc[i_doc]
+            did, offset, dsdid, dsid = off_row.did, off_row.offset, off_row.dsdid, off_row.dsid
+            l = self.docs_files[dsid].get_line(offset)
+            _, url, title, text = l.split('\t')
+            doc_chunks = self.ch_tkz.process_doc(dsdid, {'title': title, 'text': text})
+            ds_ids.extend([dsid] * len(doc_chunks))
+            ds_docs_ids.extend([dsdid] * len(doc_chunks))
+            chunks.extend(chunk.tokens for chunk in doc_chunks)
+            if len(ds_ids) >= batch_size:
+                yield DocsBatch(
+                    ds_ids=ds_ids[:batch_size],
+                    ds_doc_ids=ds_docs_ids[:batch_size],
+                    docs_chunks=chunks[:batch_size],
+                    emb_chunk_size=self.emb_chunk_size,
+                    device = device
+                )
+                ds_ids = ds_ids[batch_size:]
+                ds_docs_ids = ds_docs_ids[batch_size:]
+                chunks = chunks[batch_size:]
+                i_batch += 1
+                if n_batches is not None and n_batches > 0:
+                    if i_batch == n_batches:
+                        stopped_early = True
+                        break
+
+        if ds_ids and not stopped_early:
+            yield DocsBatch(
+                ds_ids=ds_ids,
+                ds_doc_ids=ds_docs_ids,
+                docs_chunks=chunks,
+                emb_chunk_size=self.emb_chunk_size,
+                device=device
+            )
+

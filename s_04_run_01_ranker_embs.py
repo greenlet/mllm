@@ -2,8 +2,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from pydantic import Field
-from pydantic.main import BaseModel
+from pydantic import Field, BaseModel
 from pydantic_cli import run_and_exit
 import torch
 import torch.utils.tensorboard as tb
@@ -14,6 +13,7 @@ from tqdm import trange
 from mllm.data.dsqrels import DsQrels
 from mllm.data.fever.dsfever import load_dsqrels_fever
 from mllm.data.msmarco.dsmsmarco import MsmDsLoader, load_dsqrels_msmarco
+from mllm.data.utils import load_qrels_datasets
 from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
 from mllm.model.mllm_encdec import MllmEncdec
 from mllm.exp.cfg import create_mllm_encdec_cfg, create_mllm_ranker_cfg
@@ -50,17 +50,29 @@ class ArgsRunRankerEmbs(BaseModel):
         description='Number of tokens in chunk converted to a single embedding vector.',
         cli=('--emb-chunk-size',),
     )
-    docs_batch_size: int = Field(
+    batch_size: int = Field(
         3,
         required=False,
         description='Documents batch size for inference.',
-        cli=('--docs-batch-size',),
+        cli=('--batch-size',),
+    )
+    batches: int = Field(
+        0,
+        required=False,
+        description='Number of batches to run. If not set or <= 0 then all the data will be processed.',
+        cli=('--batches',),
     )
     device: str = Field(
         'cpu',
         required=False,
         description='Device to run inference on. Can have values: "cpu", "cuda"',
         cli=('--device',)
+    )
+    out_ds_path: Path = Field(
+        ...,
+        required=True,
+        description='Path to a directory where embeddings generated will be stored',
+        cli=('--train-root-path',),
     )
 
 
@@ -71,7 +83,6 @@ def main(args: ArgsRunRankerEmbs) -> int:
 
     device = torch.device(args.device)
 
-    ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     train_path = args.train_root_path / args.train_subdir
     print(f'train_path: {train_path}')
 
@@ -81,24 +92,9 @@ def main(args: ArgsRunRankerEmbs) -> int:
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=10000)
     tok_dict = gen_all_tokens(tokenizer)
     ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)
-    pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
+    pad_tok = tok_dict['pad'].ind
 
-    dss = []
-    for ds_path in args.ds_dir_paths:
-        if 'fever' in ds_path.name:
-            load_fn = load_dsqrels_fever
-        elif 'msmarco' in ds_path.name:
-            load_fn = load_dsqrels_msmarco
-        else:
-            raise Exception(f'Unknown dataset: {ds_path}')
-        ds = load_fn(ds_path=ds_path, ch_tkz=ch_tkz, max_chunks_per_doc=100, emb_chunk_size=args.emb_chunk_size, device=device)
-        dss.append(ds)
-
-    print('Join datasets:')
-    for ds in dss:
-        assert len(ds.ds_ids) == 1
-        print(f'   {ds}')
-    ds = DsQrels.join(dss)
+    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.emb_chunk_size, device)
     print(ds)
 
     print(f'Creating model with vocab size = {len(tokenizer)}')
@@ -111,7 +107,16 @@ def main(args: ArgsRunRankerEmbs) -> int:
     print(model_cfg)
     model = MllmRanker(model_cfg).to(device)
     model.load_state_dict(checkpoint['model'])
-    print(model)
+    # print(model)
+
+    args.out_ds_path.mkdir(parents=True, exist_ok=True)
+
+    docs_batch_it = ds.get_docs_batch_iterator(
+        batch_size=args.batch_size,
+        n_batches=args.batches,
+        device=device,
+    )
+
     return 0
 
 

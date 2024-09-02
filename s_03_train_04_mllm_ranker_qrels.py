@@ -1,24 +1,21 @@
 import shutil
 from pathlib import Path
 
-from pydantic import Field
-from pydantic_cli import run_and_exit
 import torch
 import torch.utils.tensorboard as tb
-from torch import nn
+from pydantic import Field
+from pydantic_cli import run_and_exit
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
-
-from mllm.data.dsqrels import DsQrels
-from mllm.data.fever.dsfever import load_dsqrels_fever
-from mllm.data.msmarco.dsmsmarco import MsmDsLoader, load_dsqrels_msmarco
-from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
-from mllm.model.mllm_encdec import MllmEncdec
-from mllm.exp.cfg import create_mllm_encdec_cfg, create_mllm_ranker_cfg
-from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
-from mllm.exp.args import ArgsTokensChunksTrain
-from mllm.train.utils import find_create_train_path
 from transformers import GPT2Tokenizer
+
+from mllm.data.utils import load_qrels_datasets
+from mllm.exp.args import ArgsTokensChunksTrain
+from mllm.exp.cfg import create_mllm_encdec_cfg, create_mllm_ranker_cfg
+from mllm.model.mllm_encdec import MllmEncdec
+from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
+from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
+from mllm.train.utils import find_create_train_path
 
 
 class ArgsQrelsTrain(ArgsTokensChunksTrain):
@@ -59,22 +56,7 @@ def main(args: ArgsQrelsTrain) -> int:
     ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
 
-    dss = []
-    for ds_path in args.ds_dir_paths:
-        if 'fever' in ds_path.name:
-            load_fn = load_dsqrels_fever
-        elif 'msmarco' in ds_path.name:
-            load_fn = load_dsqrels_msmarco
-        else:
-            raise Exception(f'Unknown dataset: {ds_path}')
-        ds = load_fn(ds_path=ds_path, ch_tkz=ch_tkz, max_chunks_per_doc=args.max_chunks_per_doc, emb_chunk_size=args.emb_chunk_size, device=device)
-        dss.append(ds)
-
-    print('Join datasets:')
-    for ds in dss:
-        assert len(ds.ds_ids) == 1
-        print(f'   {ds}')
-    ds = DsQrels.join(dss)
+    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.emb_chunk_size, device)
     print(ds)
 
     print(f'Creating model with vocab size = {len(tokenizer)}')
@@ -179,7 +161,9 @@ def main(args: ArgsQrelsTrain) -> int:
         tbsw.add_scalar('LossTgt/Train', train_loss_tgt, epoch)
         tbsw.add_scalar('LossNontgt/Train', train_loss_nontgt, epoch)
 
-        torch.cuda.empty_cache()
+        if device.type == 'cuda':
+            torch.cuda.empty_cache()
+
         model.eval()
         val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
