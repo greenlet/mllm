@@ -61,7 +61,7 @@ class MllmRanker(nn.Module):
 
     def run_enc_emb(self, inp: Tensor) -> Tensor:
         out = self.run_vocab_encoder(inp)
-        out = self.run_encoder(0, out)
+        out = self.run_encoder(1, out)
         return out[1]
 
     @staticmethod

@@ -1,26 +1,21 @@
-import shutil
+from pathlib import Path
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+import pandas as pd
+import torch
 from pydantic import Field, BaseModel
 from pydantic_cli import run_and_exit
-import torch
-import torch.utils.tensorboard as tb
-from torch import nn
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from pydantic_yaml import to_yaml_file
 from tqdm import trange
-
-from mllm.data.dsqrels import DsQrels
-from mllm.data.fever.dsfever import load_dsqrels_fever
-from mllm.data.msmarco.dsmsmarco import MsmDsLoader, load_dsqrels_msmarco
-from mllm.data.utils import load_qrels_datasets
-from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
-from mllm.model.mllm_encdec import MllmEncdec
-from mllm.exp.cfg import create_mllm_encdec_cfg, create_mllm_ranker_cfg
-from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
-from mllm.exp.args import ArgsTokensChunksTrain
-from mllm.train.utils import find_create_train_path
 from transformers import GPT2Tokenizer
+
+from mllm.data.utils import load_qrels_datasets
+from mllm.exp.cfg import create_mllm_ranker_cfg
+from mllm.model.mllm_ranker import MllmRanker
+from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
+from mllm.utils.utils import write_tsv
 
 
 class ArgsRunRankerEmbs(BaseModel):
@@ -56,11 +51,11 @@ class ArgsRunRankerEmbs(BaseModel):
         description='Documents batch size for inference.',
         cli=('--batch-size',),
     )
-    batches: int = Field(
+    docs_total: int = Field(
         0,
         required=False,
-        description='Number of batches to run. If not set or <= 0 then all the data will be processed.',
-        cli=('--batches',),
+        description='Number of documents to run. If empty or <= 0 then all the documents will be processed.',
+        cli=('--docs-total',),
     )
     device: str = Field(
         'cpu',
@@ -72,8 +67,14 @@ class ArgsRunRankerEmbs(BaseModel):
         ...,
         required=True,
         description='Path to a directory where embeddings generated will be stored',
-        cli=('--train-root-path',),
+        cli=('--out-ds-path',),
     )
+
+
+class RunInfo(BaseModel):
+    ds_dir_paths: list[Path]
+    model_fpath: Path
+    emb_chunk_size: int
 
 
 def main(args: ArgsRunRankerEmbs) -> int:
@@ -86,8 +87,8 @@ def main(args: ArgsRunRankerEmbs) -> int:
     train_path = args.train_root_path / args.train_subdir
     print(f'train_path: {train_path}')
 
-    last_checkpoint_path = train_path / 'last.pth'
-    checkpoint = torch.load(last_checkpoint_path, map_location=device)
+    best_checkpoint_path = train_path / 'best.pth'
+    checkpoint = torch.load(best_checkpoint_path, map_location=device)
 
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=10000)
     tok_dict = gen_all_tokens(tokenizer)
@@ -111,11 +112,38 @@ def main(args: ArgsRunRankerEmbs) -> int:
 
     args.out_ds_path.mkdir(parents=True, exist_ok=True)
 
+    n_docs = len(ds.df_off)
     docs_batch_it = ds.get_docs_batch_iterator(
         batch_size=args.batch_size,
-        n_batches=args.batches,
+        n_batches=args.docs_total,
         device=device,
     )
+
+    run_info = RunInfo(
+        ds_dir_paths=args.ds_dir_paths,
+        model_fpath=best_checkpoint_path,
+        emb_chunk_size=args.emb_chunk_size,
+    )
+    run_info_fpath = args.out_ds_path / 'run_info.yaml'
+    to_yaml_file(run_info_fpath, run_info)
+
+    model.eval()
+    n_it = args.docs_total if args.docs_total is not None and args.docs_total > 0 else n_docs
+    pbar = trange(n_it, desc=f'Docs emb inference', unit='doc')
+    ind = 0
+    docs_embs_fpath = args.out_ds_path / 'docs_embs.npy'
+    with open(docs_embs_fpath, 'wb') as f:
+        for _ in pbar:
+            batch = next(docs_batch_it)
+            docs_chunks = batch.gen_tensor()
+            docs_embs = model.run_enc_emb(docs_chunks)
+            print(docs_chunks.shape, docs_embs.shape)
+            df = pd.DataFrame({'ds_ids': batch.ds_ids, 'ds_doc_ids': batch.ds_doc_ids})
+            docs_embs = docs_embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
+            f.write(docs_embs)
+            ids_fpath = args.out_ds_path / f'ids_{ind:04d}.tsv'
+            write_tsv(df, ids_fpath)
+            ind += 1
 
     return 0
 

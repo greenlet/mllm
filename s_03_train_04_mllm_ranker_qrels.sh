@@ -36,10 +36,10 @@ device=cuda
 epochs=200
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=30
+docs_batch_size=50
 max_chunks_per_doc=5
 pretrained_model_path=$train_encdec_root_path/encdec-20240816_230618-wiki_20200501_en-ch_100_fixed
-train_subdir="last"
+#train_subdir="last"
 
 learning_rate=0.0001
 

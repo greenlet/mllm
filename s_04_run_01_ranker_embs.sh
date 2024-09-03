@@ -10,13 +10,13 @@ emb_chunk_size=100
 
 device=cpu
 batch_size=10
-batches=10
+docs_total=100
 
-train_subdir=ranker-20240831_214832-msmarco-fever
+train_subdir=ranker-20240903_215749-msmarco-fever
 
 #device=cuda
 #docs_batch_size=100
-#train_subdir=ranker-20240831_214832-msmarco-fever
+#train_subdir=ranker-20240903_215749-msmarco-fever
 
 mllm_src_path=$code_path/mllm
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
@@ -29,7 +29,7 @@ python s_04_run_01_ranker_embs.py \
   --train-subdir $train_subdir \
   --emb-chunk-size $emb_chunk_size \
   --batch-size $batch_size \
-  --batches $batches \
+  --docs-total $docs_total \
   --device $device \
   --out-ds-path $out_ds_path
 

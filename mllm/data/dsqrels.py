@@ -162,8 +162,7 @@ class DsQrelsView:
             if i_batch > 0 and i_batch % n_batches_total == 0:
                 if shuffle_between_loops:
                     self.shuffle()
-                i_batch %= n_batches_total
-            i = i_batch * batch_size
+            i = (i_batch % n_batches_total) * batch_size
             batch_size_cur = min(batch_size, n - i)
             inds = range(i, i + batch_size_cur)
             if batch_size_cur < batch_size:
@@ -376,20 +375,21 @@ class DsQrels:
 
 
     def get_docs_batch_iterator(self, batch_size: int, n_batches: Optional[int] = None, device: Optional[torch.device] = None) \
-            -> tuple[int, Generator[tuple[int, DocsBatch], None, None]]:
+            -> Generator[DocsBatch, None, None]:
         n_docs = len(self.df_off)
         ds_ids, ds_docs_ids, chunks = [], [], []
         i_batch, stopped_early = 0, False
+        docs_files = {ds_id.value: ds_file for ds_id, ds_file in self.docs_files.items()}
         for i_doc in range(n_docs):
             off_row = self.df_off.iloc[i_doc]
             did, offset, dsdid, dsid = off_row.did, off_row.offset, off_row.dsdid, off_row.dsid
-            l = self.docs_files[dsid].get_line(offset)
+            l = docs_files[dsid].get_line(offset)
             _, url, title, text = l.split('\t')
             doc_chunks = self.ch_tkz.process_doc(dsdid, {'title': title, 'text': text})
             ds_ids.extend([dsid] * len(doc_chunks))
             ds_docs_ids.extend([dsdid] * len(doc_chunks))
             chunks.extend(chunk.tokens for chunk in doc_chunks)
-            if len(ds_ids) >= batch_size:
+            while len(ds_ids) >= batch_size:
                 yield DocsBatch(
                     ds_ids=ds_ids[:batch_size],
                     ds_doc_ids=ds_docs_ids[:batch_size],
@@ -405,6 +405,8 @@ class DsQrels:
                     if i_batch == n_batches:
                         stopped_early = True
                         break
+            if stopped_early:
+                break
 
         if ds_ids and not stopped_early:
             yield DocsBatch(

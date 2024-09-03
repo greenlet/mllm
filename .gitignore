@@ -166,4 +166,5 @@ cython_debug/
 
 # Custom
 /data/
+/notebooks/data/
 .DS_Store

@@ -5,6 +5,7 @@ import torch
 import torch.utils.tensorboard as tb
 from pydantic import Field
 from pydantic_cli import run_and_exit
+from sklearn.linear_model import lasso_path
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import GPT2Tokenizer
@@ -118,13 +119,14 @@ def main(args: ArgsQrelsTrain) -> int:
     print(f'Batches train: {n_batches_train}')
     print(f'Batches val: {n_batches_val}')
     loss_fn = RankProbLoss()
+    n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(
-        n_batches=args.epochs * args.docs_batch_size,
+        n_batches=n_epochs * n_qs_train,
         drop_last=False,
         shuffle_between_loops=True,
     )
     val_batch_it = view_val.get_batch_iterator(
-        n_batches=args.epochs * args.docs_batch_size,
+        n_batches=n_epochs * n_qs_train,
         drop_last=False,
         shuffle_between_loops=True,
     )
