@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from pathlib import Path
 from typing import Optional
@@ -51,11 +52,11 @@ class ArgsRunRankerEmbs(BaseModel):
         description='Documents batch size for inference.',
         cli=('--batch-size',),
     )
-    docs_total: int = Field(
+    n_docs: int = Field(
         0,
         required=False,
-        description='Number of documents to run. If empty or <= 0 then all the documents will be processed.',
-        cli=('--docs-total',),
+        description='Number of docs to run. If empty or <= 0 then all the docs will be processed.',
+        cli=('--n-docs',),
     )
     device: str = Field(
         'cpu',
@@ -75,6 +76,10 @@ class RunInfo(BaseModel):
     ds_dir_paths: list[Path]
     model_fpath: Path
     emb_chunk_size: int
+
+
+def ids_fname(i: int) -> str:
+    return f'ids_{i:04}.tsv'
 
 
 def main(args: ArgsRunRankerEmbs) -> int:
@@ -112,11 +117,11 @@ def main(args: ArgsRunRankerEmbs) -> int:
 
     args.out_ds_path.mkdir(parents=True, exist_ok=True)
 
-    n_docs = len(ds.df_off)
-    docs_batch_it = ds.get_docs_batch_iterator(
-        batch_size=args.batch_size,
-        n_batches=args.docs_total,
-        device=device,
+    n_docs_total = len(ds.df_off)
+    n_docs = args.n_docs if args.n_docs is not None and args.n_docs > 0 else n_docs_total
+    n_docs = min(n_docs, n_docs_total)
+    docs_chunks_it = ds.get_docs_chunks_iterator(
+        n_docs=n_docs,
     )
 
     run_info = RunInfo(
@@ -127,23 +132,34 @@ def main(args: ArgsRunRankerEmbs) -> int:
     run_info_fpath = args.out_ds_path / 'run_info.yaml'
     to_yaml_file(run_info_fpath, run_info)
 
+    def to_tensor(chunks: list[np.ndarray]) -> torch.Tensor:
+        chunks = np.stack(chunks, axis=0)
+        t = torch.from_numpy(chunks)
+        return t.to(device)
+
     model.eval()
-    n_it = args.docs_total if args.docs_total is not None and args.docs_total > 0 else n_docs
-    pbar = trange(n_it, desc=f'Docs emb inference', unit='doc')
-    ind = 0
+    pbar = trange(n_docs, desc=f'Docs emb inference', unit='doc')
     docs_embs_fpath = args.out_ds_path / 'docs_embs.npy'
+    ds_ids, ds_doc_ids, docs_chunks = [], [], []
     with open(docs_embs_fpath, 'wb') as f:
         for _ in pbar:
-            batch = next(docs_batch_it)
-            docs_chunks = batch.gen_tensor()
-            docs_embs = model.run_enc_emb(docs_chunks)
-            print(docs_chunks.shape, docs_embs.shape)
-            df = pd.DataFrame({'ds_ids': batch.ds_ids, 'ds_doc_ids': batch.ds_doc_ids})
-            docs_embs = docs_embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
-            f.write(docs_embs)
-            ids_fpath = args.out_ds_path / f'ids_{ind:04d}.tsv'
-            write_tsv(df, ids_fpath)
-            ind += 1
+            dc = next(docs_chunks_it)
+            n_chunks = len(dc.doc_chunks)
+            ds_ids.extend([dc.ds_id] * n_chunks)
+            ds_doc_ids.extend([dc.ds_doc_id] * n_chunks)
+            docs_chunks.extend(dc.doc_chunks)
+
+            while len(docs_chunks) > args.batch_size:
+                batch, docs_chunks = docs_chunks[:args.batch_size], docs_chunks[args.batch_size:]
+                batch = to_tensor(batch)
+                docs_embs = model.run_enc_emb(batch)
+                docs_embs = docs_embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
+                f.write(docs_embs)
+
+    df_ids = pd.DataFrame({'ds_ids': ds_ids, 'ds_doc_ids': ds_doc_ids})
+    ids_fpath = args.out_ds_path / 'ids.tsv'
+    print(f'Writing ids ds of size {len(df_ids)} in {ids_fpath}')
+    write_tsv(df_ids, ids_fpath)
 
     return 0
 
