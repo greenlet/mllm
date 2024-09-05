@@ -7,7 +7,8 @@ import numpy as np
 
 from transformers import PreTrainedTokenizer, GPT2Tokenizer
 
-from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, CustomToken, gen_doc_tokens, gen_all_tokens
+from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, gen_doc_tokens, gen_all_tokens
+from mllm.config.model import CustomToken
 
 TXT_01 = 'x'
 TXT_02 = 'Bear beer boaring boring'

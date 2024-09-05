@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch import nn, Tensor
 
-from mllm.exp.cfg import MllmRankerCfg, create_mllm_ranker_cfg
+from mllm.config.model import MllmRankerCfg, create_mllm_ranker_cfg
 from mllm.model.modules import VocabEncoder, Encoder, Decoder, DecoderRankSimple
 
 

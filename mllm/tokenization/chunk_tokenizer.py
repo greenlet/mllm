@@ -6,32 +6,11 @@ import pandas as pd
 
 from transformers import PreTrainedTokenizer
 
+from mllm.config.model import CustomToken
 
 FIXED_SUFFIX = 'fixed'
 NONFIXED_SUFFIX = 'nonfixed'
 Strings = Union[str, Iterable[str]]
-
-
-class CustomToken:
-    name: str
-    repr: str
-    special: bool
-    ind: int = 0
-
-    def __init__(self, name: str, special: bool):
-        self.name = name
-        self.repr = f'<|{name}|>'
-        self.special = special
-
-    def set_ind(self, ind: int):
-        self.ind = ind
-
-    def __str__(self) -> str:
-        return f'{self.__class__.__name__}. Name: {self.name}. Repr: {self.repr}. Ind: {self.ind}'
-
-    def __repr__(self) -> str:
-        return str(self)
-
 
 TokDict = dict[str, CustomToken]
 
@@ -52,7 +31,7 @@ def gen_tokens(tokens_names: list[str], prefix: Strings = '', postfix: Strings =
         for prefix in prefixes:
             for postfix in postfixes:
                 tnamepp = add_pref_post(tname, prefix, postfix)
-                token = CustomToken(tnamepp, special)
+                token = CustomToken.create(tnamepp, special)
                 res[token.name] = token
     return res
 

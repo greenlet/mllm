@@ -1,32 +1,28 @@
 from pathlib import Path
 from typing import TypeVar, Union
 
-from pydantic import BaseModel, Field
-from torch import nn
-
-
-class DsCfg(BaseModel):
-    src_url: str
-    dir_path: Path
-
-
-class DsTrainCfg(DsCfg):
-    ds_cfgs: list[DsCfg]
-    train_ratio: float
-    random_seed: int
-
-class DsWikiCfg(BaseModel):
-    pass
-
-class DsMsMarcoCfg(BaseModel):
-    pass
-
-class EncdecTrainCfg(BaseModel):
-    train_dir_path: Path
+from pydantic import BaseModel
 
 
 T = TypeVar('T')
 MS = Union[T, tuple[T]]
+
+
+class CustomToken(BaseModel):
+    name: str
+    repr: str
+    special: bool
+    ind: int
+
+    @staticmethod
+    def create(name: str, special: bool) -> 'CustomToken':
+        return CustomToken(name=name, repr=f'<|{name}|>', special=special, ind=-1)
+
+
+class TokenizerCfg(BaseModel):
+    name: str
+    model_max_length: int
+    custom_tokens: dict[str, CustomToken]
 
 
 class VocabEncoderCfg(BaseModel):
@@ -137,5 +133,4 @@ def create_mllm_ranker_cfg(
     )
 
     return cfg_mllm_ranker
-
 

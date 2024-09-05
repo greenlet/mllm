@@ -46,7 +46,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_03_train_03_mllm_ranker_msm.py \
+python s_03_train_03_ranker_msm.py \
   --ds-dir-path $msmarco_data_path \
   --train-root-path $train_ranker_root_path \
   --train-subdir "$train_subdir" \

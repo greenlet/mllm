@@ -13,7 +13,7 @@ from tqdm import trange
 from transformers import GPT2Tokenizer
 
 from mllm.data.utils import load_qrels_datasets
-from mllm.exp.cfg import create_mllm_ranker_cfg
+from mllm.config.model import create_mllm_ranker_cfg
 from mllm.model.mllm_ranker import MllmRanker
 from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
 from mllm.utils.utils import write_tsv

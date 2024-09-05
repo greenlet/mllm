@@ -15,7 +15,7 @@ from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import ArgsTokensChunksTrain
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdec
-from mllm.exp.cfg import create_mllm_encdec_cfg
+from mllm.config.model import create_mllm_encdec_cfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
 
 

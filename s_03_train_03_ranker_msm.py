@@ -1,45 +1,28 @@
 import shutil
-from pathlib import Path
 
+from pydantic_cli import run_and_exit
 import torch
 import torch.utils.tensorboard as tb
-from pydantic import Field
-from pydantic_cli import run_and_exit
-from sklearn.linear_model import lasso_path
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
+
+from mllm.data.msmarco.dsmsmarco import MsmDsLoader
+from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
+from mllm.model.mllm_encdec import MllmEncdec
+from mllm.config.model import create_mllm_encdec_cfg, create_mllm_ranker_cfg
+from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
+from mllm.exp.args import ArgsTokensChunksTrain
+from mllm.train.utils import find_create_train_path
 from transformers import GPT2Tokenizer
 
-from mllm.data.utils import load_qrels_datasets
-from mllm.exp.args import ArgsTokensChunksTrain
-from mllm.exp.cfg import create_mllm_encdec_cfg, create_mllm_ranker_cfg
-from mllm.model.mllm_encdec import MllmEncdec
-from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
-from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
-from mllm.train.utils import find_create_train_path
 
-
-class ArgsQrelsTrain(ArgsTokensChunksTrain):
-    ds_dir_paths: list[Path] = Field(
-        [],
-        required=True,
-        description='Qrels datasets directory paths. Supported datasets: Msmarco, Fever.'
-                    'Naming convention: directory name must contain the name of dataset: msmarco, fever. Unknown datasets '
-                    'will cause an error and exit.',
-        cli=('--ds-dir-paths',),
-    )
-
-
-def main(args: ArgsQrelsTrain) -> int:
+def main(args: ArgsTokensChunksTrain) -> int:
     print(args)
-
-    assert args.ds_dir_paths, '--ds-dir-paths is expected to list at least one Qrels datsaset'
 
     device = torch.device(args.device)
 
-    ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     train_path = find_create_train_path(
-        args.train_root_path, 'ranker', ds_names, args.train_subdir)
+        args.train_root_path, 'ranker', args.ds_dir_path.name, args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
@@ -56,9 +39,11 @@ def main(args: ArgsQrelsTrain) -> int:
     tok_dict = gen_all_tokens(tokenizer)
     ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
-
-    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.emb_chunk_size, device)
-    print(ds)
+    ds_loader = MsmDsLoader(
+        ds_path=args.ds_dir_path, emb_chunk_size=args.emb_chunk_size, docs_batch_size=args.docs_batch_size,
+        max_chunks_per_doc=args.max_chunks_per_doc, pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, ch_tkz=ch_tkz,
+        device=device,
+    )
 
     print(f'Creating model with vocab size = {len(tokenizer)}')
 
@@ -102,34 +87,21 @@ def main(args: ArgsQrelsTrain) -> int:
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
+        ds_loader.shuffle(train=True)
+        ds_loader.shuffle(train=False)
 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=5, threshold=1e-4, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    ds_view = ds.get_view(batch_size=args.docs_batch_size)
-    ds_view.shuffle()
-    view_train, view_val = ds_view.split((-1, 0.05))
-
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
-    n_qs_train, n_qs_val = len(view_train), len(view_val)
-    n_batches_train = calc_batches(n_qs_train)
-    n_batches_val = calc_batches(n_qs_val)
-    print(f'Queries train: {n_qs_train}')
-    print(f'Queries val: {n_qs_val}')
+    n_batches_train = calc_batches(ds_loader.n_qs_train)
+    n_batches_val = calc_batches(ds_loader.n_qs_val)
+    print(f'Queries train: {ds_loader.n_qs_train} == {len(ds_loader.df_qrels_train)}')
+    print(f'Queries val: {ds_loader.n_qs_val} == {len(ds_loader.df_qrels_val)}')
     print(f'Batches train: {n_batches_train}')
     print(f'Batches val: {n_batches_val}')
     loss_fn = RankProbLoss()
-    n_epochs = args.epochs - (last_epoch + 1)
-    train_batch_it = view_train.get_batch_iterator(
-        n_batches=n_epochs * n_qs_train,
-        drop_last=False,
-        shuffle_between_loops=True,
-    )
-    val_batch_it = view_val.get_batch_iterator(
-        n_batches=n_epochs * n_qs_train,
-        drop_last=False,
-        shuffle_between_loops=True,
-    )
+    i_train, i_val = 0, 0
     for epoch in range(last_epoch + 1, args.epochs):
         # model.eval()
         # model.decoders.train()
@@ -137,7 +109,7 @@ def main(args: ArgsQrelsTrain) -> int:
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = next(train_batch_it)
+            batch = ds_loader.get_batch(i_train, train=True)
             docs_chunks, qs_chunks = batch.gen_tensors()
 
             optimizer.zero_grad()
@@ -149,6 +121,12 @@ def main(args: ArgsQrelsTrain) -> int:
             train_loss += loss.item()
             train_loss_tgt += loss_tgt.item()
             train_loss_nontgt += loss_nontgt.item()
+
+            i_train += 1
+            if i_train == n_batches_train:
+                print(f'i_train = {i_train}. Shuffle')
+                ds_loader.shuffle(train=True)
+                i_train %= n_batches_train
 
             # if i == 2:
             #     import sys
@@ -163,14 +141,11 @@ def main(args: ArgsQrelsTrain) -> int:
         tbsw.add_scalar('LossTgt/Train', train_loss_tgt, epoch)
         tbsw.add_scalar('LossNontgt/Train', train_loss_nontgt, epoch)
 
-        if device.type == 'cuda':
-            torch.cuda.empty_cache()
-
         model.eval()
         val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = next(val_batch_it)
+            batch = ds_loader.get_batch(i_val, train=False)
             docs_chunks, qs_chunks = batch.gen_tensors()
 
             out_rank, target_mask = model.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
@@ -179,6 +154,12 @@ def main(args: ArgsQrelsTrain) -> int:
             val_loss += loss.item()
             val_loss_tgt += loss_tgt.item()
             val_loss_nontgt += loss_nontgt.item()
+
+            i_val += 1
+            if i_val == n_batches_val:
+                print(f'i_val = {i_val}. Shuffle')
+                ds_loader.shuffle(train=False)
+                i_val %= n_batches_val
 
             pbar.set_postfix_str(f'Val. loss: {loss.item():.6f}. loss_tgt: {loss_tgt.item():.6f}. loss_nontgt: {loss_nontgt.item():.6f}')
         pbar.close()
@@ -215,13 +196,12 @@ def main(args: ArgsQrelsTrain) -> int:
             print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
             shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
 
-    ds.close()
     return 0
 
 
 if __name__ == '__main__':
     def rethrow(e):
         raise e
-    run_and_exit(ArgsQrelsTrain, main, 'Train Mllm Ranking model.', exception_handler=rethrow)
+    run_and_exit(ArgsTokensChunksTrain, main, 'Train Mllm Ranking model.', exception_handler=rethrow)
 
 

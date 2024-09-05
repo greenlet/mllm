@@ -38,7 +38,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_03_train_02_mllm_ranker_wiki.py \
+python s_03_train_02_ranker_wiki.py \
   --ds-dir-path $wiki_ds_path \
   --train-root-path $train_ranker_root_path \
   --train-subdir "$train_subdir" \
