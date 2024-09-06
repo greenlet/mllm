@@ -4,9 +4,9 @@ from typing import Optional, Union, Iterable
 import numpy as np
 import pandas as pd
 
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizer, GPT2Tokenizer
 
-from mllm.config.model import CustomToken
+from mllm.config.model import CustomToken, TokenizerCfg
 
 FIXED_SUFFIX = 'fixed'
 NONFIXED_SUFFIX = 'nonfixed'
@@ -42,7 +42,7 @@ def add_tokens(tokenizer: PreTrainedTokenizer, tokens: TokDict):
             tokenizer.add_special_tokens({f'{t.name}_token': t.repr})
         else:
             tokenizer.add_tokens(t.repr)
-        t.set_ind((len(tokenizer) - 1))
+        t.ind = len(tokenizer) - 1
 
 
 def gen_doc_tokens() -> TokDict:
@@ -69,6 +69,26 @@ def gen_all_tokens(tokenizer: Optional[PreTrainedTokenizer] = None) -> TokDict:
     if tokenizer is not None:
         add_tokens(tokenizer, tokens)
     return tokens
+
+
+def gpt2_from_config(cfg: TokenizerCfg) -> PreTrainedTokenizer:
+    assert cfg.name == 'gpt2'
+    tkz = GPT2Tokenizer.from_pretrained(cfg.name, model_max_length=cfg.model_max_length)
+    tokens = sorted(list(cfg.custom_tokens.values()), key=lambda ct: ct.ind)
+    for t in tokens:
+        assert t.ind == len(tkz)
+        if t.special:
+            tkz.add_special_tokens({f'{t.name}_token': t.repr})
+        else:
+            tkz.add_tokens(t.repr)
+    return tkz
+
+
+def tokenizer_from_config(cfg: TokenizerCfg) -> PreTrainedTokenizer:
+    if cfg.name == 'gpt2':
+        return gpt2_from_config(cfg)
+    else:
+        raise Exception(f'Unknown tokenizer name: {cfg.name}. Config: {cfg}')
 
 
 def gen_out_subdir(emb_chunk_size: int, fixed_size: bool) -> str:

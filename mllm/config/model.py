@@ -21,6 +21,7 @@ class CustomToken(BaseModel):
 
 class TokenizerCfg(BaseModel):
     name: str
+    n_tokens_init: int
     model_max_length: int
     custom_tokens: dict[str, CustomToken]
 
