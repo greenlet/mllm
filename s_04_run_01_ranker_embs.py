@@ -142,14 +142,14 @@ def main(args: ArgsRunRankerEmbs) -> int:
     docs_embs_fpath = args.out_ds_path / 'docs_embs.npy'
     ds_ids, ds_doc_ids, docs_chunks = [], [], []
     with open(docs_embs_fpath, 'wb') as f:
-        for _ in pbar:
+        for i, _ in enumerate(pbar):
             dc = next(docs_chunks_it)
             n_chunks = len(dc.doc_chunks)
             ds_ids.extend([dc.ds_id] * n_chunks)
             ds_doc_ids.extend([dc.ds_doc_id] * n_chunks)
             docs_chunks.extend(dc.doc_chunks)
 
-            while len(docs_chunks) > args.batch_size:
+            while len(docs_chunks) >= args.batch_size or len(docs_chunks) > 0 and i == n_docs - 1:
                 batch, docs_chunks = docs_chunks[:args.batch_size], docs_chunks[args.batch_size:]
                 batch = to_tensor(batch)
                 docs_embs = model.run_enc_emb(batch)
