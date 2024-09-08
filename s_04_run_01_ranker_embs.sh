@@ -14,8 +14,7 @@ emb_chunk_size=100
 #train_subdir=ranker-20240903_215749-msmarco-fever
 
 device=cuda
-batch_size=
-00
+batch_size=2500
 n_docs=0
 train_subdir=ranker-20240903_215749-msmarco-fever
 

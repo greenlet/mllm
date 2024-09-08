@@ -97,7 +97,7 @@ def create_mllm_encdec_cfg(
 
 
 def create_mllm_ranker_cfg(
-        n_vocab: int, d_word_wec: int = 512, inp_len: int = 1000, dropout_rate: float = 0.1,
+        n_vocab: int, inp_len: int = 1000, d_word_wec: int = 512, dropout_rate: float = 0.1,
         n_levels: int = 2,
         enc_n_layers: MS[int] = (3, 2), n_heads: int = 8, d_k: int = 64, d_v: int = 64, d_model: int = 512,
         d_inner: int = 2048, enc_with_graph_mat: bool = False, enc_with_emb_mat: bool = False,
@@ -125,7 +125,7 @@ def create_mllm_ranker_cfg(
     for n_layers in dec_n_layers:
         cfg_dec = EncoderCfg(
             n_layers=n_layers, n_heads=n_heads, d_k=d_k, d_v=d_v, d_model=d_model, d_inner=d_inner, pad_idx=pad_idx,
-            with_graph_mat=False, inp_len=0, dropout_rate=dropout_rate, with_emb_mat=False,
+            with_graph_mat=False, inp_len=inp_len, dropout_rate=dropout_rate, with_emb_mat=False,
         )
         cfgs_dec.append(cfg_dec)
 

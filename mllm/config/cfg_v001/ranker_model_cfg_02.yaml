@@ -10,7 +10,29 @@ decoders:
   pad_idx: 50267
   with_emb_mat: false
   with_graph_mat: false
+- d_inner: 1024
+  d_k: 32
+  d_model: 256
+  d_v: 32
+  dropout_rate: 0.0
+  inp_len: 100
+  n_heads: 8
+  n_layers: 1
+  pad_idx: 50267
+  with_emb_mat: false
+  with_graph_mat: false
 encoders:
+- d_inner: 1024
+  d_k: 32
+  d_model: 256
+  d_v: 32
+  dropout_rate: 0.0
+  inp_len: 100
+  n_heads: 8
+  n_layers: 1
+  pad_idx: 50267
+  with_emb_mat: true
+  with_graph_mat: false
 - d_inner: 1024
   d_k: 32
   d_model: 256
