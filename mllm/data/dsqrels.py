@@ -99,6 +99,17 @@ class DocChunks:
         self.doc_chunks = doc_chunks
 
 
+class QueryChunks:
+    ds_id: int
+    ds_query_id: int
+    query_chunks: list[list[int]]
+
+    def __init__(self, ds_id: int, ds_query_id: int, query_chunks: list[list[int]]):
+        self.ds_id = ds_id
+        self.ds_query_id = ds_query_id
+        self.query_chunks = query_chunks
+
+
 class DsQrelsView:
     ds: 'DsQrels'
     ids: np.ndarray
@@ -264,11 +275,14 @@ class DsQrels:
         off = split_doc_embs(len(tokens), self.emb_chunk_size, fixed_size=True)
         res = []
         for i in range(len(off) - 1):
-            res.append(tokens[off[i]:off[i + 1]])
+            toks = tokens[off[i]:off[i + 1]]
+            if len(toks) < self.emb_chunk_size:
+                pad_toks = [self.ch_tkz.pad_tok] * (self.emb_chunk_size - len(toks))
+                toks = [*toks, *pad_toks]
+            res.append(toks)
         return res
 
     def get_batch(self, dsqids: np.ndarray) -> QrelsBatch:
-        ds_ids, query_ids, doc_ids, ds_query_ids, ds_doc_ids, chunks = [], [], [], [], [], []
         df_qs = self.df_qs.loc[dsqids].copy()
         df_qs['did'] = 0
         df_qs['dsdid'] = 0
@@ -370,5 +384,19 @@ class DsQrels:
             doc_chunks = self.ch_tkz.process_doc(dsdid, {'title': title, 'text': text})
             doc_chunks = [dc.tokens for dc in doc_chunks]
             yield DocChunks(ds_id=dsid, ds_doc_id=dsdid, doc_chunks=doc_chunks)
+        for f in docs_files.values():
+            f.close()
+
+    def get_qs_chunks_iterator(self, n_qs: int = 0) -> Generator[QueryChunks, None, None]:
+        n_qs_total = len(self.df_qs)
+        if n_qs > 0:
+            n_qs = min(n_qs, n_qs_total)
+        else:
+            n_qs = n_qs_total
+        for i_query in range(n_qs):
+            q_row = self.df_qs.iloc[i_query]
+            ds_id, ds_query_id, query = q_row.dsid, q_row.dsqid, q_row.query
+            query_chunks = self._tokenize_query(query)
+            yield QueryChunks(ds_id=ds_id, ds_query_id=ds_query_id, query_chunks=query_chunks)
 
 

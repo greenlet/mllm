@@ -8,14 +8,14 @@ import pandas as pd
 import torch
 from pydantic import Field, BaseModel
 from pydantic_cli import run_and_exit
-from pydantic_yaml import to_yaml_file
+from pydantic_yaml import to_yaml_file, parse_yaml_file_as
 from tqdm import trange
 from transformers import GPT2Tokenizer
 
 from mllm.data.utils import load_qrels_datasets
-from mllm.config.model import create_mllm_ranker_cfg
+from mllm.config.model import create_mllm_ranker_cfg, TokenizerCfg, MllmRankerCfg
 from mllm.model.mllm_ranker import MllmRanker
-from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
+from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer, tokenizer_from_config
 from mllm.utils.utils import write_tsv
 
 
@@ -40,11 +40,17 @@ class ArgsRunRankerEmbs(BaseModel):
         description='Train subdirectory. Must be name of TRAIN_ROOT_PATH subdirectory where model weights are stored (in a file "best.pth").',
         cli=('--train-subdir',)
     )
-    emb_chunk_size: Optional[int] = Field(
-        100,
-        required=False,
-        description='Number of tokens in chunk converted to a single embedding vector.',
-        cli=('--emb-chunk-size',),
+    tokenizer_cfg_fpath: Path = Field(
+        ...,
+        required=True,
+        description='Path to tokenizer config Yaml file.',
+        cli=('--tokenizer-cfg-fpath',),
+    )
+    model_cfg_fpath: Path = Field(
+        ...,
+        required=True,
+        description='Path to ranker model config Yaml file.',
+        cli=('--model-cfg-fpath',),
     )
     batch_size: int = Field(
         3,
@@ -57,6 +63,12 @@ class ArgsRunRankerEmbs(BaseModel):
         required=False,
         description='Number of docs to run. If empty or <= 0 then all the docs will be processed.',
         cli=('--n-docs',),
+    )
+    n_qs: int = Field(
+        0,
+        required=False,
+        description='Number of queries to run. If empty or <= 0 then all the queries will be processed.',
+        cli=('--n-qs',),
     )
     device: str = Field(
         'cpu',
@@ -76,6 +88,11 @@ class RunInfo(BaseModel):
     ds_dir_paths: list[Path]
     model_fpath: Path
     emb_chunk_size: int
+    n_docs: int = 0
+    n_docs_chunks: int = 0
+    n_qs: int = 0
+    n_qs_chunks: int = 0
+
 
 
 def ids_fname(i: int) -> str:
@@ -95,22 +112,20 @@ def main(args: ArgsRunRankerEmbs) -> int:
     best_checkpoint_path = train_path / 'best.pth'
     checkpoint = torch.load(best_checkpoint_path, map_location=device)
 
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=10000)
-    tok_dict = gen_all_tokens(tokenizer)
-    ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)
-    pad_tok = tok_dict['pad'].ind
+    tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
+    tokenizer = tokenizer_from_config(tkz_cfg)
 
-    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.emb_chunk_size, device)
+    model_cfg = parse_yaml_file_as(MllmRankerCfg, args.model_cfg_fpath)
+    n_emb_tokens = model_cfg.encoders[0].inp_len
+    print(model_cfg)
+
+    ch_tkz = ChunkTokenizer(tkz_cfg.custom_tokens, tokenizer, n_emb_tokens=n_emb_tokens, fixed_size=True)
+    pad_tok = tkz_cfg.custom_tokens['pad'].ind
+
+    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, n_emb_tokens, device)
     print(ds)
 
     print(f'Creating model with vocab size = {len(tokenizer)}')
-    model_cfg = create_mllm_ranker_cfg(
-        n_vocab=len(tokenizer), inp_len=args.emb_chunk_size, d_word_wec=256,
-        n_levels=1, enc_n_layers=1, dec_n_layers=1,
-        n_heads=8, d_k=32, d_v=32, d_model=256, d_inner=1024,
-        pad_idx=pad_tok, dropout_rate=0.0, enc_with_emb_mat=True,
-    )
-    print(model_cfg)
     model = MllmRanker(model_cfg).to(device)
     model.load_state_dict(checkpoint['model'])
     # print(model)
@@ -118,16 +133,21 @@ def main(args: ArgsRunRankerEmbs) -> int:
     args.out_ds_path.mkdir(parents=True, exist_ok=True)
 
     n_docs_total = len(ds.df_off)
-    n_docs = args.n_docs if args.n_docs is not None and args.n_docs > 0 else n_docs_total
+    n_docs = args.n_docs if args.n_docs > 0 else n_docs_total
     n_docs = min(n_docs, n_docs_total)
-    docs_chunks_it = ds.get_docs_chunks_iterator(
-        n_docs=n_docs,
-    )
+    docs_chunks_it = ds.get_docs_chunks_iterator(n_docs=n_docs)
+
+    n_qs_total = len(ds.df_qs)
+    n_qs = args.n_qs if args.n_qs > 0 else n_qs_total
+    n_qs = min(n_qs, n_qs_total)
+    qs_chunks_it = ds.get_qs_chunks_iterator(n_qs=n_qs)
 
     run_info = RunInfo(
         ds_dir_paths=args.ds_dir_paths,
         model_fpath=best_checkpoint_path,
-        emb_chunk_size=args.emb_chunk_size,
+        emb_chunk_size=n_emb_tokens,
+        n_docs=n_docs,
+        n_qs=n_qs,
     )
     run_info_fpath = args.out_ds_path / 'run_info.yaml'
     to_yaml_file(run_info_fpath, run_info)
@@ -138,9 +158,12 @@ def main(args: ArgsRunRankerEmbs) -> int:
         return t.to(device)
 
     model.eval()
+
+    print(f'Processing {n_docs} documents')
     pbar = trange(n_docs, desc=f'Docs emb inference', unit='doc')
     docs_embs_fpath = args.out_ds_path / 'docs_embs.npy'
     ds_ids, ds_doc_ids, docs_chunks = [], [], []
+    n_docs_chunks = 0
     with open(docs_embs_fpath, 'wb') as f:
         for i, _ in enumerate(pbar):
             dc = next(docs_chunks_it)
@@ -155,11 +178,47 @@ def main(args: ArgsRunRankerEmbs) -> int:
                 docs_embs = model.run_enc_emb(batch)
                 docs_embs = docs_embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
                 f.write(docs_embs)
+                n_docs_chunks += len(batch)
 
-    df_ids = pd.DataFrame({'ds_ids': ds_ids, 'ds_doc_ids': ds_doc_ids})
-    ids_fpath = args.out_ds_path / 'ids.tsv'
-    print(f'Writing ids ds of size {len(df_ids)} in {ids_fpath}')
-    write_tsv(df_ids, ids_fpath)
+    run_info.n_docs_chunks = n_docs_chunks
+    to_yaml_file(run_info_fpath, run_info)
+
+    df_docs_ids = pd.DataFrame({'ds_ids': ds_ids, 'ds_doc_ids': ds_doc_ids})
+    docs_ids_fpath = args.out_ds_path / 'docs_ids.tsv'
+    print(f'Writing docs ids dataset of size {len(df_docs_ids)} in {docs_ids_fpath}')
+    write_tsv(df_docs_ids, docs_ids_fpath)
+    del ds_ids
+    del ds_doc_ids
+    del df_docs_ids
+
+    print(f'Processing {n_qs} queries')
+    pbar = trange(n_qs, desc=f'Queries emb inference', unit='query')
+    qs_embs_fpath = args.out_ds_path / 'qs_embs.npy'
+    ds_ids, ds_query_ids, qs_chunks = [], [], []
+    n_qs_chunks = 0
+    with open(qs_embs_fpath, 'wb') as f:
+        for i, _ in enumerate(pbar):
+            qc = next(qs_chunks_it)
+            n_chunks = len(qc.query_chunks)
+            ds_ids.extend([qc.ds_id] * n_chunks)
+            ds_query_ids.extend([qc.ds_query_id] * n_chunks)
+            qs_chunks.extend(qc.query_chunks)
+
+            while len(qs_chunks) >= args.batch_size or len(qs_chunks) > 0 and i == n_qs - 1:
+                batch, qs_chunks = qs_chunks[:args.batch_size], qs_chunks[args.batch_size:]
+                batch = to_tensor(batch)
+                docs_embs = model.run_enc_emb(batch)
+                docs_embs = docs_embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
+                f.write(docs_embs)
+                n_qs_chunks += len(batch)
+
+    run_info.n_qs_chunks = n_qs_chunks
+    to_yaml_file(run_info_fpath, run_info)
+
+    df_qs_ids = pd.DataFrame({'ds_ids': ds_ids, 'ds_query_ids': ds_query_ids})
+    qs_ids_fpath = args.out_ds_path / 'qs_ids.tsv'
+    print(f'Writing queries ids dataset of size {len(df_qs_ids)} in {qs_ids_fpath}')
+    write_tsv(df_qs_ids, qs_ids_fpath)
 
     return 0
 
