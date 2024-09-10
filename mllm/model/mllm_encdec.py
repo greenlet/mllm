@@ -1,3 +1,4 @@
+from typing import Optional
 
 import numpy as np
 import torch
@@ -9,23 +10,24 @@ from mllm.model.modules import EncoderLayer, VocabEncoder, EmbDecoder, VocabDeco
 
 class MllmEncdec(nn.Module):
     cfg: MllmEncdecCfg
-    vocab_encoder: VocabEncoder
+    level: int
     encoder: Encoder
     decoder: EmbDecoder
-    vocab_decoder: VocabDecoder
+    vocab_encoder: Optional[VocabEncoder] = None
+    vocab_decoder: Optional[VocabDecoder] = None
 
-    def __init__(self, cfg: MllmEncdecCfg):
+    def __init__(self, cfg: MllmEncdecCfg, level: int):
         super().__init__()
         self.cfg = cfg.copy(deep=True)
-        self.vocab_encoder = VocabEncoder(
-            **cfg.vocab_encoder.dict(),
-        )
+        self.level = level
+        if self.level > 0:
+            self.vocab_encoder = VocabEncoder(**cfg.vocab_encoder.dict())
+            self.vocab_decoder = VocabDecoder(
+                d_model=cfg.encoder.d_model,
+                n_vocab=cfg.vocab_encoder.n_vocab,
+            )
         self.encoder = Encoder(**self.cfg.encoder.dict())
         self.decoder = EmbDecoder(**self.cfg.decoder.dict())
-        self.vocab_decoder = VocabDecoder(
-            d_model=cfg.encoder.d_model,
-            n_vocab=cfg.vocab_encoder.n_vocab,
-        )
 
         for n, p in self.named_parameters():
             # if n == 'vocab_encoder.src_word_emb.weight':
@@ -42,7 +44,10 @@ class MllmEncdec(nn.Module):
             print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
 
     def run_vocab_encoder(self, inp: Tensor) -> Tensor:
-        return self.vocab_encoder(inp)
+        out = inp
+        if self.vocab_encoder is not None:
+            out = self.vocab_encoder(inp)
+        return out
 
     def run_encoder(self, inp: Tensor) -> tuple[Tensor, Tensor]:
         out = self.encoder(inp)[0]
@@ -56,7 +61,10 @@ class MllmEncdec(nn.Module):
         return self.decoder(inp)
 
     def run_vocab_decoder(self, inp: Tensor) -> Tensor:
-        return self.vocab_decoder(inp)
+        out = inp
+        if self.vocab_decoder is not None:
+            out = self.vocab_decoder(inp)
+        return out
     
     def run_enc_emb(self, inp: Tensor) -> Tensor:
         out = self.run_vocab_encoder(inp)

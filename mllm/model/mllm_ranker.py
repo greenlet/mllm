@@ -1,11 +1,50 @@
-from typing import Union, TypeVar
+from typing import Union, TypeVar, Optional
 
 import numpy as np
 import torch
 from torch import nn, Tensor
 
-from mllm.config.model import MllmRankerCfg, create_mllm_ranker_cfg
+from mllm.config.model import MllmRankerCfg, create_mllm_ranker_cfg, EncoderCfg, VocabEncoderCfg
 from mllm.model.modules import VocabEncoder, Encoder, Decoder, DecoderRankSimple
+
+
+class RankProbLoss(nn.Module):
+    def __init__(self, target_weight: float = 0.5):
+        super().__init__()
+        self.target_weight = target_weight
+        self.register_buffer('prob_cap', torch.scalar_tensor(1e-6))
+
+    def forward(self, prob_pred: list[torch.Tensor], mask_gt: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        loss_tgt = torch.scalar_tensor(0, dtype=torch.float32, device=prob_pred[0].device)
+        loss_nontgt = torch.scalar_tensor(0, dtype=torch.float32, device=prob_pred[0].device)
+        n_batch = len(prob_pred)
+        for i in range(n_batch):
+            prob_tgt = torch.masked_select(prob_pred[i], mask_gt[i])
+            prob_nontgt = 1 - torch.masked_select(prob_pred[i], ~mask_gt[i])
+
+            prob_tgt = torch.maximum(prob_tgt, self.prob_cap)
+            prob_nontgt = torch.maximum(prob_nontgt, self.prob_cap)
+            loss_tgt += -torch.mean(torch.log(prob_tgt))
+            loss_nontgt += -torch.mean(torch.log(prob_nontgt))
+
+            # loss_tgt += 1 - torch.mean(prob_tgt)
+            # loss_nontgt += 1 - torch.mean(prob_nontgt)
+
+        loss_tgt /= n_batch
+        loss_nontgt /= n_batch
+        loss = self.target_weight * loss_tgt + (1 - self.target_weight) * loss_nontgt
+        return loss, loss_tgt, loss_nontgt
+
+    def forward_1(self, prob_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        prob_pred = prob_pred.squeeze()
+        prob_tgt = torch.masked_select(prob_pred, mask_gt)
+        prob_nontgt = 1 - torch.masked_select(prob_pred, ~mask_gt)
+        prob_tgt = torch.maximum(prob_tgt, self.prob_cap)
+        prob_nontgt = torch.maximum(prob_nontgt, self.prob_cap)
+        loss_tgt = -torch.mean(torch.log(prob_tgt))
+        loss_nontgt = -torch.mean(torch.log(prob_nontgt))
+        loss = self.target_weight * loss_tgt + (1 - self.target_weight) * loss_nontgt
+        return loss, loss_tgt, loss_nontgt
 
 
 class MllmRanker(nn.Module):
@@ -122,6 +161,84 @@ class MllmRanker(nn.Module):
         return out_dec_rank
 
 
+class MllmRankerLevel(nn.Module):
+    enc_cfg: EncoderCfg
+    dec_cfg: EncoderCfg
+    encoder: Encoder
+    decoder: DecoderRankSimple
+    vocab_enc_cfg: Optional[VocabEncoderCfg] = None
+    vocab_enc: Optional[VocabEncoder] = None
+
+    def __init__(self, enc_cfg: EncoderCfg, dec_cfg: EncoderCfg, vocab_enc_cfg: Optional[VocabEncoderCfg] = None):
+        super().__init__()
+        self.enc_cfg = enc_cfg.copy(deep=True)
+        self.dec_cfg = dec_cfg.copy(deep=True)
+        if vocab_enc_cfg is not None:
+            self.vocab_enc_cfg = vocab_enc_cfg.copy(deep = True)
+            self.vocab_encoder = VocabEncoder(
+                **self.vocab_enc_cfg.dict(),
+            )
+        self.encoder = Encoder(**self.cfg_enc.dict())
+        self.decoder = DecoderRankSimple(self.cfg_dec.d_model)
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
+            pnp = p.detach().cpu().numpy()
+            print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
+
+    def run_vocab_encoder(self, inp: Tensor) -> Tensor:
+        if self.vocab_encoder is not None:
+            inp = self.vocab_encoder(inp)
+        return inp
+
+    def run_encoder(self, inp: Tensor) -> tuple[Tensor, Tensor]:
+        out = self.encoder(inp)[0]
+        if self.cfg.encoder.with_emb_mat:
+            out_seq = out_emb = out
+        else:
+            out_seq, out_emb = out[..., :-1, :], out[..., -1, :]
+        return out_seq, out_emb
+
+    def run_qs(self, docs_chunks: Tensor, qs_chunks: Tensor, docs_off_len: list[tuple[int, int]],
+               qs_off_len: list[tuple[int, int]]) -> tuple[list[Tensor], list[Tensor]]:
+        n_docs, n_qs = len(docs_off_len), len(qs_off_len)
+        assert n_docs == n_qs, f'# of docs ({n_docs}) != # of queries ({n_qs})'
+        device = docs_chunks.device
+        inp_chunks = torch.concat((docs_chunks, qs_chunks), dim=0)
+        out_enc = self.run_vocab_encoder(inp_chunks)
+        _, out_enc = self.run_encoder(out_enc)
+        n_docs_chunks = docs_chunks.shape[0]
+        docs_enc, qs_enc = out_enc[:n_docs_chunks], out_enc[n_docs_chunks:]
+
+        qs_encs = []
+        for query_off, query_len in qs_off_len:
+            qs_encs.append(qs_enc[query_off:query_off + query_len])
+
+        docs_encs = docs_enc.unsqueeze(0)
+        ranks, masks = [], []
+        for i_query in range(n_qs):
+            query_enc = qs_encs[i_query].unsqueeze(0)
+            out_rank = self.decoder(docs_encs, query_enc)
+            ranks.append(out_rank)
+            mask = torch.full((n_docs_chunks,), False, dtype=torch.bool, device=device)
+            doc_off, doc_len = docs_off_len[i_query]
+            mask[doc_off:doc_off + doc_len] = True
+            masks.append(mask)
+
+        return ranks, masks
+
+    def run_qs_infer(self, docs_chunks: Tensor, qs_chunks: Tensor) -> Tensor:
+        inp_chunks = torch.concat((docs_chunks, qs_chunks), dim=0)
+        out_enc = self.run_vocab_encoder(inp_chunks)
+        _, out_enc = self.run_encoder(out_enc)
+        n_docs_chunks = docs_chunks.shape[0]
+        docs_enc, qs_enc = out_enc[:n_docs_chunks], out_enc[n_docs_chunks:]
+        out_rank = self.decoder(docs_enc.unsqueeze(0), qs_enc.unsqueeze(0))
+        return out_rank
+
+
 def test_create_mllm_ranker():
     cfg_mllm = create_mllm_ranker_cfg(n_vocab=50_000)
     print(cfg_mllm)
@@ -132,42 +249,4 @@ def test_create_mllm_ranker():
 if __name__ == '__main__':
     test_create_mllm_ranker()
 
-
-class RankProbLoss(nn.Module):
-    def __init__(self, target_weight: float = 0.5):
-        super().__init__()
-        self.target_weight = target_weight
-        self.register_buffer('prob_cap', torch.scalar_tensor(1e-6))
-
-    def forward(self, prob_pred: list[torch.Tensor], mask_gt: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        loss_tgt = torch.scalar_tensor(0, dtype=torch.float32, device=prob_pred[0].device)
-        loss_nontgt = torch.scalar_tensor(0, dtype=torch.float32, device=prob_pred[0].device)
-        n_batch = len(prob_pred)
-        for i in range(n_batch):
-            prob_tgt = torch.masked_select(prob_pred[i], mask_gt[i])
-            prob_nontgt = 1 - torch.masked_select(prob_pred[i], ~mask_gt[i])
-
-            prob_tgt = torch.maximum(prob_tgt, self.prob_cap)
-            prob_nontgt = torch.maximum(prob_nontgt, self.prob_cap)
-            loss_tgt += -torch.mean(torch.log(prob_tgt))
-            loss_nontgt += -torch.mean(torch.log(prob_nontgt))
-
-            # loss_tgt += 1 - torch.mean(prob_tgt)
-            # loss_nontgt += 1 - torch.mean(prob_nontgt)
-
-        loss_tgt /= n_batch
-        loss_nontgt /= n_batch
-        loss = self.target_weight * loss_tgt + (1 - self.target_weight) * loss_nontgt
-        return loss, loss_tgt, loss_nontgt
-
-    def forward_1(self, prob_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        prob_pred = prob_pred.squeeze()
-        prob_tgt = torch.masked_select(prob_pred, mask_gt)
-        prob_nontgt = 1 - torch.masked_select(prob_pred, ~mask_gt)
-        prob_tgt = torch.maximum(prob_tgt, self.prob_cap)
-        prob_nontgt = torch.maximum(prob_nontgt, self.prob_cap)
-        loss_tgt = -torch.mean(torch.log(prob_tgt))
-        loss_nontgt = -torch.mean(torch.log(prob_nontgt))
-        loss = self.target_weight * loss_tgt + (1 - self.target_weight) * loss_nontgt
-        return loss, loss_tgt, loss_nontgt
 
