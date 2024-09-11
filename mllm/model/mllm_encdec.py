@@ -8,7 +8,7 @@ from mllm.config.model import MllmEncdecCfg
 from mllm.model.modules import EncoderLayer, VocabEncoder, EmbDecoder, VocabDecoder, Encoder
 
 
-class MllmEncdec(nn.Module):
+class MllmEncdecLevel(nn.Module):
     cfg: MllmEncdecCfg
     level: int
     encoder: Encoder

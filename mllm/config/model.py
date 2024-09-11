@@ -49,12 +49,6 @@ class EncoderCfg(BaseModel):
     with_emb_mat: bool
 
 
-class MllmRankerCfg(BaseModel):
-    vocab_encoder: VocabEncoderCfg
-    encoders: list[EncoderCfg]
-    decoders: list[EncoderCfg]
-
-
 class EmbDecoderCfg(BaseModel):
     d_emb: int
     n_layers: int
@@ -66,31 +60,54 @@ class EmbDecoderCfg(BaseModel):
 
 class MllmEncdecCfg(BaseModel):
     vocab_encoder: VocabEncoderCfg
-    encoder: EncoderCfg
-    decoder: EmbDecoderCfg
+    encoders: list[EncoderCfg]
+    decoders: list[EmbDecoderCfg]
+
+
+class MllmRankerCfg(BaseModel):
+    vocab_encoder: VocabEncoderCfg
+    encoders: list[EncoderCfg]
+    decoders: list[EncoderCfg]
 
 
 def create_mllm_encdec_cfg(
-        n_vocab: int, d_word_wec: int = 512, inp_len: int = 1000, dropout_rate: float = 0.1,
-        enc_n_layers: int = 3, n_heads: int = 8, d_model: int = 512,
+        n_vocab: int, inp_len: int = 1000, d_word_wec: int = 512, dropout_rate: float = 0.1,
+        n_levels: int = 2,
+        enc_n_layers: MS[int] = (3, 2), n_heads: int = 8, d_model: int = 512,
         d_inner: int = 2048, enc_with_graph_mat: bool = False, enc_with_emb_mat: bool = False,
         dec_n_layers: int = 3, pad_idx: int = 0,
 ) -> MllmEncdecCfg:
+    if not isinstance(enc_n_layers, tuple):
+        enc_n_layers = tuple(enc_n_layers for _ in range(n_levels))
+    assert len(enc_n_layers) == n_levels
+    if not isinstance(dec_n_layers, tuple):
+        dec_n_layers = tuple(dec_n_layers for _ in range(n_levels))
+    assert len(dec_n_layers) == n_levels
+
+    assert d_model % n_heads == 0
+    d_k = d_v = d_model // n_heads
+
     cfg_vocab_enc = VocabEncoderCfg(
         n_vocab=n_vocab, d_word_vec=d_word_wec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
     )
-    assert d_model % n_heads == 0
-    d_k = d_v = d_model // n_heads
-    cfg_enc = EncoderCfg(
-        n_layers=enc_n_layers, n_heads=n_heads, d_k=d_k, d_v=d_v, d_model=d_model, d_inner=d_inner, pad_idx=pad_idx,
-        with_graph_mat=enc_with_graph_mat, inp_len=inp_len, dropout_rate=dropout_rate, with_emb_mat=enc_with_emb_mat,
-    )
-    cfg_dec = EmbDecoderCfg(
-        d_emb=d_model, n_layers=dec_n_layers, n_heads=n_heads, d_hid=d_inner,
-        seq_len=inp_len, dp_rate=dropout_rate,
-    )
+    cfgs_enc = []
+    for n_layers in enc_n_layers:    
+        cfg_enc = EncoderCfg(
+            n_layers=n_layers, n_heads=n_heads, d_k=d_k, d_v=d_v, d_model=d_model, d_inner=d_inner, pad_idx=pad_idx,
+            with_graph_mat=enc_with_graph_mat, inp_len=inp_len, dropout_rate=dropout_rate, with_emb_mat=enc_with_emb_mat,
+        )
+        cfgs_enc.append(cfg_enc)
+
+    cfgs_dec = []
+    for n_layers in dec_n_layers:
+        cfg_dec = EmbDecoderCfg(
+            d_emb=d_model, n_layers=n_layers, n_heads=n_heads, d_hid=d_inner,
+            seq_len=inp_len, dp_rate=dropout_rate,
+        )
+        cfgs_dec.append(cfg_dec)
+
     cfg_mllm_encdec = MllmEncdecCfg(
-        vocab_encoder=cfg_vocab_enc, encoder=cfg_enc, decoder=cfg_dec,
+        vocab_encoder=cfg_vocab_enc, encoders=cfgs_enc, decoders=cfgs_dec,
     )
 
     return cfg_mllm_encdec
@@ -99,7 +116,7 @@ def create_mllm_encdec_cfg(
 def create_mllm_ranker_cfg(
         n_vocab: int, inp_len: int = 1000, d_word_wec: int = 512, dropout_rate: float = 0.1,
         n_levels: int = 2,
-        enc_n_layers: MS[int] = (3, 2), n_heads: int = 8, d_k: int = 64, d_v: int = 64, d_model: int = 512,
+        enc_n_layers: MS[int] = (3, 2), n_heads: int = 8, d_model: int = 512,
         d_inner: int = 2048, enc_with_graph_mat: bool = False, enc_with_emb_mat: bool = False,
         dec_n_layers: MS[int] = 1, pad_idx: int = 0,
 ) -> MllmRankerCfg:
@@ -109,6 +126,9 @@ def create_mllm_ranker_cfg(
     if not isinstance(dec_n_layers, tuple):
         dec_n_layers = tuple(dec_n_layers for _ in range(n_levels))
     assert len(dec_n_layers) == n_levels
+
+    assert d_model % n_heads == 0
+    d_k = d_v = d_model // n_heads
 
     cfg_vocab_enc = VocabEncoderCfg(
         n_vocab=n_vocab, d_word_vec=d_word_wec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
