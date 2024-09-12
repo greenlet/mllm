@@ -4,13 +4,15 @@ import numpy as np
 import torch
 from torch import nn, Tensor
 
-from mllm.config.model import MllmEncdecCfg
+from mllm.config.model import MllmEncdecCfg, EncoderCfg, EmbDecoderCfg
 from mllm.model.modules import EncoderLayer, VocabEncoder, EmbDecoder, VocabDecoder, Encoder
 
 
 class MllmEncdecLevel(nn.Module):
     cfg: MllmEncdecCfg
     level: int
+    cfg_enc: EncoderCfg
+    cfg_dec: EmbDecoderCfg
     encoder: Encoder
     decoder: EmbDecoder
     vocab_encoder: Optional[VocabEncoder] = None
@@ -20,14 +22,16 @@ class MllmEncdecLevel(nn.Module):
         super().__init__()
         self.cfg = cfg.copy(deep=True)
         self.level = level
-        if self.level > 0:
+        self.cfg_enc = self.cfg.encoders[self.level]
+        self.cfg_dec = self.cfg.decoders[self.level]
+        if self.level == 0:
             self.vocab_encoder = VocabEncoder(**cfg.vocab_encoder.dict())
             self.vocab_decoder = VocabDecoder(
-                d_model=cfg.encoder.d_model,
+                d_model=self.cfg_enc.d_model,
                 n_vocab=cfg.vocab_encoder.n_vocab,
             )
-        self.encoder = Encoder(**self.cfg.encoder.dict())
-        self.decoder = EmbDecoder(**self.cfg.decoder.dict())
+        self.encoder = Encoder(**self.cfg_enc.dict())
+        self.decoder = EmbDecoder(**self.cfg_dec.dict())
 
         for n, p in self.named_parameters():
             # if n == 'vocab_encoder.src_word_emb.weight':
@@ -51,7 +55,7 @@ class MllmEncdecLevel(nn.Module):
 
     def run_encoder(self, inp: Tensor) -> tuple[Tensor, Tensor]:
         out = self.encoder(inp)[0]
-        if self.cfg.encoder.with_emb_mat:
+        if self.cfg_enc.with_emb_mat:
             out_seq = out_emb = out
         else:
             out_seq, out_emb = out[..., :-1, :], out[..., -1, :]
@@ -76,8 +80,7 @@ class MllmEncdecLevel(nn.Module):
         _, out_enc_1 = self.run_encoder(out_enc_0)
 
         out_dec_0 = self.run_decoder(out_enc_1)
-        out_dec_logits = self.run_vocab_decoder(out_dec_0)
+        out_dec_1 = self.run_vocab_decoder(out_dec_0)
 
-        return out_dec_logits
-
+        return out_dec_1
 

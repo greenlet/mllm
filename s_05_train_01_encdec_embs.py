@@ -11,6 +11,7 @@ import torch.utils.tensorboard as tb
 from pydantic_yaml import parse_yaml_file_as
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch import nn
+from torch.optim.optimizer import required
 from tqdm import trange
 from transformers import GPT2Tokenizer
 
@@ -18,7 +19,7 @@ from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import ArgsTokensChunksTrain
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdec
-from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmRankerCfg
+from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmRankerCfg, MllmEncdecCfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
 
 
@@ -99,6 +100,12 @@ class ArgsTrainEncdecEmbs(BaseModel):
         description='Number of training steps per epoch.',
         cli=('--train-epoch-steps',),
     )
+    train_input_zeros_ratio: float = Field(
+        0,
+        required=False,
+        description='Ratio of input embeddings set to 0. Value must be from 0 to 1',
+        cli=('--train-input-zeros-ratio',)
+    )
     val_epoch_steps: Optional[int] = Field(
         None,
         required=False,
@@ -178,7 +185,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
 
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     train_path = find_create_train_path(
-        args.train_root_path, 'encdec', ds_names, args.train_subdir)
+        args.train_root_path, f'encdec-l{args.model_level}', ds_names, args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
@@ -205,10 +212,10 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
     # inp_len = ds_loader.emb_chunk_size if ds_loader.fixed_size else calc_max_inp_size(ds_loader.emb_chunk_size)
     # print(f'Creating model with vocab size = {len(tokenizer)}')
 
-    model_cfg = parse_yaml_file_as(MllmRankerCfg, args.model_cfg_fpath)
+    model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
     input_zeros_ratio = 0.3
     print(model_cfg)
-    model = MllmEncdec(model_cfg, args.model_level.to(device)
+    model = MllmEncdec(model_cfg, args.model_level).to(device)
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
