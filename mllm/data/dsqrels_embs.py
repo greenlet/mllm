@@ -8,7 +8,11 @@ import torch
 from mllm.utils.utils import read_tsv
 
 
-class DsQrelsEmbsView:
+class QrelsDocsEmbsBatch:
+    pass
+
+
+class DsQrelsDocsEmbsView:
     ds: 'DsQrelsEmbs'
     ids: np.ndarray
     batch_size: Optional[int] = None
@@ -47,7 +51,9 @@ class DsQrelsEmbs:
     chunk_size: int
     embs_size: int
     embs_dtype: Type
+    # doc_emb_id: int, ds_id: int, ds_doc_id: int
     df_docs_ids: pd.DataFrame
+    # query_emb_id: int, ds_id: int, ds_query_id: int
     df_qs_ids: pd.DataFrame
     docs_embs_file: BinVecsFile
     qs_file: BinVecsFile
@@ -64,9 +70,15 @@ class DsQrelsEmbs:
         qs_ids_fpath = self.ds_dir_path / 'qs_ids.tsv'
         qs_embs_fpath = self.ds_dir_path / 'qs_embs.npy'
         self.df_docs_ids = read_tsv(docs_ids_fpath)
+        self.df_docs_ids.set_index('doc_emb_id', inplace=True)
         self.df_qs_ids = read_tsv(qs_ids_fpath)
+        self.df_qs_ids.set_index('query_emb_id', inplace=True)
         self.docs_embs_file = BinVecsFile(fpath=docs_embs_fpath, vec_size=self.embs_size, dtype=self.embs_dtype)
         self.qs_embs_file = BinVecsFile(fpath=qs_embs_fpath, vec_size=self.embs_size, dtype=self.embs_dtype)
+
+    def get_docs_embs_batch(self, doc_emb_ids: np.ndarray) -> QrelsDocsEmbsBatch:
+        df_docs_ids = self.df_docs_ids.loc[doc_emb_ids]
+
 
     def close(self):
         self.docs_embs_file.close()

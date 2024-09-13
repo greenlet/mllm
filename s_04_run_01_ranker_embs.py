@@ -183,7 +183,7 @@ def main(args: ArgsRunRankerEmbs) -> int:
     run_info.n_docs_chunks = n_docs_chunks
     to_yaml_file(run_info_fpath, run_info)
 
-    df_docs_ids = pd.DataFrame({'ds_ids': ds_ids, 'ds_doc_ids': ds_doc_ids})
+    df_docs_ids = pd.DataFrame({'doc_emb_id': np.arange(len(ds_ids)), 'ds_id': ds_ids, 'ds_doc_id': ds_doc_ids})
     docs_ids_fpath = args.out_ds_path / 'docs_ids.tsv'
     print(f'Writing docs ids dataset of size {len(df_docs_ids)} in {docs_ids_fpath}')
     write_tsv(df_docs_ids, docs_ids_fpath)
@@ -215,7 +215,7 @@ def main(args: ArgsRunRankerEmbs) -> int:
     run_info.n_qs_chunks = n_qs_chunks
     to_yaml_file(run_info_fpath, run_info)
 
-    df_qs_ids = pd.DataFrame({'ds_ids': ds_ids, 'ds_query_ids': ds_query_ids})
+    df_qs_ids = pd.DataFrame({'query_emb_id': np.arange(len(ds_ids)), 'ds_id': ds_ids, 'ds_query_id': ds_query_ids})
     qs_ids_fpath = args.out_ds_path / 'qs_ids.tsv'
     print(f'Writing queries ids dataset of size {len(df_qs_ids)} in {qs_ids_fpath}')
     write_tsv(df_qs_ids, qs_ids_fpath)
