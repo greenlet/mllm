@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from mllm.data.common import DsView
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, split_doc_embs
 from mllm.utils.utils import SplitsType, split_range
 
@@ -110,71 +111,8 @@ class QueryChunks:
         self.query_chunks = query_chunks
 
 
-class DsQrelsView:
-    ds: 'DsQrels'
-    ids: np.ndarray
-    batch_size: Optional[int] = None
-
-    def __init__(self, ds: 'DsQrels', ids: np.ndarray, batch_size: Optional[int] = None):
-        self.ds = ds
-        self.ids = ids.copy()
-        self.batch_size = batch_size
-
-    def split(self, splits: SplitsType) -> tuple['DsQrelsView', ...]:
-        intervals = split_range(len(self.ids), splits)
-        res = []
-        for i in range(1, len(intervals)):
-            ids = self.ids[intervals[i - 1]:intervals[i]]
-            ov = DsQrelsView(
-                ds=self.ds, ids=ids, batch_size=self.batch_size,
-            )
-            res.append(ov)
-        return tuple(res)
-
-    def set_batch_size(self, batch_size: int):
-        self.batch_size = batch_size
-
-    def get_batch_iterator(self, n_batches: Optional[int] = None, batch_size: Optional[int] = None,
-                           drop_last: bool = False, shuffle_between_loops: bool = True)\
-            -> Generator[QrelsBatch, None, None]:
-        batch_size = batch_size or self.batch_size
-        n = len(self.ids)
-        n_batches_total = n // batch_size + min(n % batch_size, 1)
-
-        info = f'n = {n}. batch_size = {batch_size}. n_batches = {n_batches}. n_batches_total = {n_batches_total}'
-        assert n_batches_total > 0, info
-        assert n_batches is None or n_batches > 0, info
-
-        looped = False
-        if n_batches is None:
-            n_batches = n_batches_total
-        if n_batches > n_batches_total:
-            looped = True
-
-        for i_batch in range(n_batches):
-            if i_batch > 0 and i_batch % n_batches_total == 0:
-                if shuffle_between_loops:
-                    self.shuffle()
-            i = (i_batch % n_batches_total) * batch_size
-            batch_size_cur = min(batch_size, n - i)
-            inds = range(i, i + batch_size_cur)
-            if batch_size_cur < batch_size:
-                if not looped:
-                    if drop_last:
-                        return
-                else:
-                    rest = batch_size - batch_size_cur
-                    inds = list(range(i, n)) + list(range(rest))
-            ids = self.ids[inds]
-            batch = self.ds.get_batch(ids)
-            yield batch
-
-    def __len__(self) -> int:
-        return len(self.ids)
-
-    def shuffle(self):
-        print(f'Shuffle {len(self.ids)} elements')
-        np.random.shuffle(self.ids)
+class DsQrelsView(DsView['DsQrels', QrelsBatch]):
+    pass
 
 
 class DocsFile:
@@ -259,7 +197,7 @@ class DsQrels:
 
     def get_view(self, batch_size: Optional[int] = None) -> DsQrelsView:
         ids = self.df_qs.index.values
-        return DsQrelsView(self, ids, batch_size)
+        return DsQrelsView(self, ids, self.get_batch, batch_size)
 
     def _get_doc_title_text(self, ds_id: int, offset: int) -> tuple[str, str]:
         ds_id_ = DsQrelsId(ds_id)
@@ -360,7 +298,7 @@ class DsQrels:
             docs_file.close()
 
     def __str__(self) -> str:
-        ids_str = ','.join(ds_id.name for ds_id in self.ds_ids)
+        ids_str = ', '.join(ds_id.name for ds_id in self.ds_ids)
         return f'{ids_str}. Queries: {len(self.df_qs)}. Docs: {len(self.df_off)}. QueryDocRels: {len(self.df_qrels)}'
 
     def __repr__(self) -> str:
