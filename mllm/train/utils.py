@@ -6,6 +6,7 @@ from typing import Optional
 import numpy as np
 import torch
 
+from mllm.data.common import DsView, TDs, TBatch
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
 
 SUBDIR_PAT_STR = re.compile(r'^\w+\-(%s)-.+$' % DT_PAT_RE)
@@ -58,4 +59,15 @@ def print_grad(model: torch.nn.Module):
         print(name, p.dtype, grad.shape, np.prod(list(grad.shape)), (grad < eps).sum())
         print(' ' * 4, p.min(), p.mean(), p.max())
 
+
+def calc_print_batches(view_train: DsView[TDs, TBatch], view_val: DsView[TDs, TBatch], batch_size: int, items_name: str) -> tuple[int, int]:
+    calc_batches = lambda n_docs: n_docs // batch_size + (n_docs % batch_size > 1)
+    n_qs_train, n_qs_val = len(view_train), len(view_val)
+    n_batches_train = calc_batches(n_qs_train)
+    n_batches_val = calc_batches(n_qs_val)
+    print(f'{items_name} train: {n_qs_train}')
+    print(f'{items_name} val: {n_qs_val}')
+    print(f'Batches train: {n_batches_train}')
+    print(f'Batches val: {n_batches_val}')
+    return n_batches_train, n_batches_val
 

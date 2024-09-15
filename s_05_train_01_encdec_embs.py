@@ -1,4 +1,5 @@
 import shutil
+import time
 from pathlib import Path
 from typing import Union, Optional
 
@@ -14,10 +15,12 @@ from torch import nn
 from torch.optim.optimizer import required
 from tqdm import trange
 from transformers import GPT2Tokenizer
+from triton.language import dtype
 
+from mllm.data.dsqrels_embs import DsQrelsEmbs
 from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import ArgsTokensChunksTrain
-from mllm.train.utils import find_create_train_path
+from mllm.train.utils import find_create_train_path, calc_print_batches
 from mllm.model.mllm_encdec import MllmEncdec
 from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmRankerCfg, MllmEncdecCfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
@@ -38,12 +41,6 @@ class ArgsTrainEncdecEmbs(BaseModel):
                     'Naming convention: directory name must contain the name of dataset: msmarco, fever. Unknown datasets '
                     'will cause an error and exit.',
         cli=('--ds-dir-paths',),
-    )
-    tokenizer_cfg_fpath: Path = Field(
-        ...,
-        required=True,
-        description='Path to tokenizer config Yaml file.',
-        cli=('--tokenizer-cfg-fpath',),
     )
     model_cfg_fpath: Path = Field(
         ...,
@@ -198,20 +195,6 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
 
-    tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
-    tokenizer = tokenizer_from_config(tkz_cfg)
-    tok_dict = tkz_cfg.custom_tokens
-    pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
-
-
-    # ds_loader = WikiDsLoader(
-    #     ds_path=args.ds_dir_path, docs_batch_size=args.docs_batch_size, max_chunks_per_doc=args.max_chunks_per_doc,
-    #     pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device, n_total=0,
-    # )
-    #
-    # inp_len = ds_loader.emb_chunk_size if ds_loader.fixed_size else calc_max_inp_size(ds_loader.emb_chunk_size)
-    # print(f'Creating model with vocab size = {len(tokenizer)}')
-
     model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
     input_zeros_ratio = 0.3
     print(model_cfg)
@@ -219,32 +202,33 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
+    enc_cfg = model_cfg.encoders[args.model_level]
+    ds = DsQrelsEmbs(
+        ds_dir_path=args.ds_dir_path, chunk_size=enc_cfg.inp_len, emb_size=enc_cfg.d_model, emb_dtype=np.float32, device=device
+    )
+    ds_view = ds.get_docs_embs_view(args.batch_size)
+    np.random.seed(12)
+    ds_view.shuffle()
+    view_train, view_val = ds_view.split((-1, 0.05))
+
+    n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, args.batch_size, 'Embeddings')
+
     last_epoch, val_loss_min = -1, None
     if checkpoint:
         model.load_state_dict(checkpoint['model'], strict=False)
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
-        ds_loader.shuffle(train=True)
-        ds_loader.shuffle(train=False)
-    
-    # TODO: move into arguments
-    # assert not checkpoint
-    # checkpoint = torch.load(args.train_root_path / 'encdec-20240808_222352-wiki_20200501_en-ch_100_fixed' / 'best.pth', map_location=device)
-    # model.load_state_dict(checkpoint['model'], strict=False)
+        np.random.seed(int(time.time() * 1000))
+        view_train.shuffle()
+        view_val.shuffle()
 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8, threshold=1e-4, min_lr=1e-7)
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
-    n_batches_train = calc_batches(ds_loader.n_docs_train)
-    n_batches_val = calc_batches(ds_loader.n_docs_val)
-    # loss_fn = encdec_prob_loss_softmax
     loss_fn = encdec_prob_loss_sigmoid
-    # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
-    # loss_fn = nn.CrossEntropyLoss()
-    graph_written = True
+
     i_train, i_val = 0, 0
     loss_gt, loss_nongt = None, None
     for epoch in range(last_epoch + 1, args.epochs):
@@ -252,7 +236,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = ds_loader.get_batch(i_train, train=True)
+            batch = ds.get_batch(i_train, train=True)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
 
             chunks = concat_tokens(docs_chunks, target_chunks)
@@ -261,9 +245,6 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
             optimizer.zero_grad()
 
             out_logits = model(chunks_inp)
-            if not graph_written:
-                tbsw.add_graph(model, docs_chunks, verbose=True, use_strict_trace=False)
-                graph_written = True
 
             loss = loss_fn(out_logits, chunks)
             if type(loss) == tuple:
@@ -277,7 +258,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
 
             i_train += 1
             if i_train == n_batches_train:
-                ds_loader.shuffle(train=True)
+                ds.shuffle(train=True)
                 i_train %= n_batches_train
 
             # if i_train == 2:
@@ -301,7 +282,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = ds_loader.get_batch(i_val, train=False)
+            batch = ds.get_batch(i_val, train=False)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
             
             chunks = concat_tokens(docs_chunks, target_chunks)
@@ -317,7 +298,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
 
             i_val += 1
             if i_val == n_batches_val:
-                ds_loader.shuffle(train=False)
+                ds.shuffle(train=False)
                 i_val %= n_batches_val
 
             s = f'Val. loss: {loss.item():.6f}'

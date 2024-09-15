@@ -1,6 +1,8 @@
 import shutil
+import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.utils.tensorboard as tb
 from pydantic import Field
@@ -16,7 +18,8 @@ from mllm.config.model import create_mllm_encdec_cfg, create_mllm_ranker_cfg
 from mllm.model.mllm_encdec import MllmEncdec
 from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
 from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
-from mllm.train.utils import find_create_train_path
+from mllm.train.utils import find_create_train_path, calc_print_batches
+from s_01_diff_01_gen_gpt2_embs import ds_train
 
 
 class ArgsQrelsTrain(ArgsTokensChunksTrain):
@@ -96,13 +99,6 @@ def main(args: ArgsQrelsTrain) -> int:
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
     # optimizer = torch.optim.LBFGS(model.parameters(), lr=args.learning_rate)
 
-    last_epoch, val_loss_min = -1, None
-    if checkpoint:
-        model.load_state_dict(checkpoint['model'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        last_epoch = checkpoint['last_epoch']
-        val_loss_min = checkpoint['val_loss_min']
-
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=5, threshold=1e-4, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
@@ -110,29 +106,30 @@ def main(args: ArgsQrelsTrain) -> int:
     ds_view.shuffle()
     view_train, view_val = ds_view.split((-1, 0.05))
 
-    calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
-    n_qs_train, n_qs_val = len(view_train), len(view_val)
-    n_batches_train = calc_batches(n_qs_train)
-    n_batches_val = calc_batches(n_qs_val)
-    print(f'Queries train: {n_qs_train}')
-    print(f'Queries val: {n_qs_val}')
-    print(f'Batches train: {n_batches_train}')
-    print(f'Batches val: {n_batches_val}')
+    last_epoch, val_loss_min = -1, None
+    if checkpoint:
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        last_epoch = checkpoint['last_epoch']
+        val_loss_min = checkpoint['val_loss_min']
+        np.random.seed(int(time.time() * 1000))
+        view_train.shuffle()
+        view_val.shuffle()
+
+    n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, args.docs_batch_size, 'Queries')
     loss_fn = RankProbLoss()
     n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(
-        n_batches=n_epochs * n_qs_train,
+        n_batches=n_epochs * n_batches_train,
         drop_last=False,
         shuffle_between_loops=True,
     )
     val_batch_it = view_val.get_batch_iterator(
-        n_batches=n_epochs * n_qs_train,
+        n_batches=n_epochs * n_batches_val,
         drop_last=False,
         shuffle_between_loops=True,
     )
     for epoch in range(last_epoch + 1, args.epochs):
-        # model.eval()
-        # model.decoders.train()
         model.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
