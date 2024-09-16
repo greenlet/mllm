@@ -13,15 +13,16 @@ from pydantic_yaml import parse_yaml_file_as
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch import nn
 from torch.optim.optimizer import required
+import torch.nn.functional as F
 from tqdm import trange
 from transformers import GPT2Tokenizer
 from triton.language import dtype
 
-from mllm.data.dsqrels_embs import DsQrelsEmbs
+from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsDocsEmbsBatch
 from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import ArgsTokensChunksTrain
+from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.train.utils import find_create_train_path, calc_print_batches
-from mllm.model.mllm_encdec import MllmEncdec
 from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmRankerCfg, MllmEncdecCfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
 
@@ -110,53 +111,18 @@ class ArgsTrainEncdecEmbs(BaseModel):
         cli=('--val-epoch-steps',),
     )
 
-
-def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
-    probs_pred = torch.softmax(logits_pred, dim=-1)
-    probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt.to(torch.int64).unsqueeze(-1))
-    loss = -torch.mean(torch.log(probs_gt))
-    return loss
-
-
-def encdec_prob_loss_sigmoid(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
-    device = logits_pred.device
-    tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
-    probs_pred = torch.sigmoid(logits_pred)
-    prob_cap = torch.tensor(1e-6, dtype=torch.float32, device=device)
-    probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
-    probs_gt = torch.maximum(probs_gt, prob_cap)
-    loss_gt = -torch.mean(torch.log(probs_gt))
-    loss_nongt = torch.tensor(0, dtype=torch.float32, device=device)
-    for i in range(probs_pred.shape[0]):
-        mask = torch.full((logits_pred.shape[-2], logits_pred.shape[-1],), True, device=device)
-        mask = mask.scatter(1, tokens_gt[i], 0)
-        probs_nongt = 1 - probs_pred[i][mask]
-        probs_nongt = torch.maximum(probs_nongt, prob_cap)
-        loss_nongt += -torch.mean(torch.log(probs_nongt))
-    loss_nongt = loss_nongt / logits_pred.shape[0]
-    loss = loss_gt + loss_nongt
-    return loss_gt, loss_nongt, loss
-
-
-class EncdecProbLossSigmoid(nn.Module):
-    def __init__(self, seq_len: int, n_tokens: int, device: torch.device):
-        super().__init__()
-        mask = torch.full((seq_len, n_tokens), True, device=device)
-        self.register_buffer('mask', mask)
-
-    def forward(self, logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
-        tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
-        probs_pred = torch.sigmoid(logits_pred)
-        probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
-        loss_gt = -torch.mean(torch.log(probs_gt))
-        loss_nongt = 0
-        for i in range(probs_pred.shape[0]):
-            self.mask.scatter_(1, tokens_gt[i], 0)
-            loss_nongt += -torch.mean(torch.log(1 - probs_pred[i][self.mask]))
-            self.mask.scatter_(1, tokens_gt[i], 1)
-        loss_nongt = loss_nongt / logits_pred.shape[0]
-        loss = loss_gt + loss_nongt
-        return loss
+# embs_pred [n_batch, seq_len, emb_size] float32 - embeddings sequence predicted by model
+# embs_gt [n_batch, seq_len, emb_size] float32 - ground truth embeddings
+# mask_zeros [n_batch, seq_len, 1] bool - mask which set to True for input embeddings set to 0 and False for
+# input embeddings remained intact
+def encdec_embs_loss_cos(embs_pred: torch.Tensor, embs_gt: torch.Tensor, mask_zeros: torch.Tensor) \
+        -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    # [n_batch, seq_len, 1]
+    cos_dist = F.cosine_similarity(embs_pred, embs_gt, dim=-1).unsqueeze(-1)
+    loss_zeros = torch.mean(cos_dist[mask_zeros])
+    loss_nonzeros = torch.mean(cos_dist[~mask_zeros])
+    loss = loss_zeros + loss_nonzeros
+    return loss_zeros, loss_nonzeros, loss
 
 
 def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
@@ -166,10 +132,11 @@ def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
     return torch.concat(chunks, dim=0)
 
 
-# chunks: input token chunks of the shape [n_docs x n_tokens_per_doc]
-def remove_tokens(chunks: torch.Tensor, pad_tok: int, rem_ratio: float = 0.1) -> torch.Tensor:
+# chunks: input token chunks of the shape [n_batch, chunk_size, emb_size]
+def zero_random_embs(embs: torch.Tensor, rem_ratio: float = 0.1) -> torch.Tensor:
     p = rem_ratio
-    mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
+    n_batch, chunk_size, emb_size = embs.shape
+    mask = torch.distributions.Bernoulli(probs=p).sample(n_batch * chunk_size).to(chunks.device)
     res = chunks.clone()
     res[mask.bool()] = pad_tok
     return res
@@ -198,7 +165,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
     model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
     input_zeros_ratio = 0.3
     print(model_cfg)
-    model = MllmEncdec(model_cfg, args.model_level).to(device)
+    model = MllmEncdecLevel(model_cfg, args.model_level).to(device)
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
@@ -227,15 +194,27 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    loss_fn = encdec_prob_loss_sigmoid
+    loss_fn = encdec_embs_loss_cos
 
-    i_train, i_val = 0, 0
-    loss_gt, loss_nongt = None, None
+    n_epochs = args.epochs - (last_epoch + 1)
+    train_batch_it = view_train.get_batch_iterator(
+        n_batches=n_epochs * n_batches_train,
+        drop_last=False,
+        shuffle_between_loops=True,
+    )
+    val_batch_it = view_val.get_batch_iterator(
+        n_batches=n_epochs * n_batches_val,
+        drop_last=False,
+        shuffle_between_loops=True,
+    )
     for epoch in range(last_epoch + 1, args.epochs):
         model.train()
-        train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
+        train_loss_zeros, train_loss_nonzeros, train_loss = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
+            batch: QrelsDocsEmbsBatch = next(train_batch_it)
+            embs = batch.get_tensor()
+
             batch = ds.get_batch(i_train, train=True)
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
 

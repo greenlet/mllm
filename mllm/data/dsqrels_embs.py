@@ -13,10 +13,32 @@ class QrelsDocsEmbsBatch:
     # doc_emb_id: int (index), ds_id: int, ds_doc_id: int
     df_docs_ids: pd.DataFrame
     docs_embs: list[np.ndarray]
+    chunk_size: int
+    emb_size: int
+    device: Optional[torch.device] = None
+    docs_embs_tf: Optional[torch.Tensor] = None
 
-    def __init__(self, df_docs_ids: pd.DataFrame, docs_embs: list[np.ndarray]):
+    def __init__(self, df_docs_ids: pd.DataFrame, docs_embs: list[np.ndarray], chunk_size: int,
+                 emb_size: int, device: Optional[torch.device] = None):
         self.df_docs_ids = df_docs_ids
         self.docs_embs = docs_embs
+        self.chunk_size = chunk_size
+        self.emb_size = emb_size
+        self.device = device
+
+    def _to_tensor(self, arr: list[np.ndarray]) -> torch.Tensor:
+        arr = np.stack(arr, axis=0)
+        res = torch.from_numpy(arr)
+        res = res.reshape((-1, self.chunk_size, self.emb_size))
+        if self.device is not None:
+            res = res.to(self.device)
+        return res
+
+
+    def get_tensor(self) -> torch.Tensor:
+        if self.docs_embs_tf is None:
+            self.docs_embs_tf = self._to_tensor(self.docs_embs)
+        return self.docs_embs_tf
 
 
 class DsQrelsDocsEmbsView(DsView['DsQrelsEmbs', QrelsDocsEmbsBatch]):
@@ -90,12 +112,13 @@ class DsQrelsEmbs:
         for off in offsets:
             doc_emb = self.docs_embs_file.get_vec(off)
             docs_embs.append(doc_emb)
-        batch = QrelsDocsEmbsBatch(df_docs_ids=df_docs_ids, docs_embs=docs_embs)
+        batch = QrelsDocsEmbsBatch(df_docs_ids=df_docs_ids, docs_embs=docs_embs, chunk_size=self.chunk_size, emb_size=self.emb_size,
+                                   device=self.device)
         return batch
 
     def get_docs_embs_view(self, batch_size: Optional[int] = None) -> DsQrelsDocsEmbsView:
         ids = self.df_docs_ids.index.values
-        return DsQrelsDocsEmbsView(self, ids, self.get_docs_embs_batch, batch_size)
+        return DsQrelsDocsEmbsView(self, ids, self.get_docs_embs_batch, batch_size * self.chunk_size)
 
     def close(self):
         self.docs_embs_file.close()
@@ -106,4 +129,5 @@ class DsQrelsEmbs:
 
     def __repr__(self) -> str:
         return str(self)
+
 

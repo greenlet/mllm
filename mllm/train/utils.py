@@ -61,7 +61,7 @@ def print_grad(model: torch.nn.Module):
 
 
 def calc_print_batches(view_train: DsView[TDs, TBatch], view_val: DsView[TDs, TBatch], batch_size: int, items_name: str) -> tuple[int, int]:
-    calc_batches = lambda n_docs: n_docs // batch_size + (n_docs % batch_size > 1)
+    calc_batches = lambda n_items: n_items // batch_size + (n_items % batch_size > 1)
     n_qs_train, n_qs_val = len(view_train), len(view_val)
     n_batches_train = calc_batches(n_qs_train)
     n_batches_val = calc_batches(n_qs_val)
