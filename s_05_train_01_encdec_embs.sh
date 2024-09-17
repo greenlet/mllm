@@ -1,9 +1,9 @@
 
 code_path=$HOME/prog
 data_path=$HOME/data
-wiki_data_path=$data_path/wiki_20200501_en
-ds_subdir=ch_100_fixed
-wiki_ds_path=$wiki_data_path/$ds_subdir
+ds_dir_path=$data_path/ranker_embs_msmarco_fever
+msmarco_data_path=$data_path/msmarco
+fever_data_path=$data_path/fever
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg_v001
@@ -13,19 +13,17 @@ model_level=1
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_${model_level}
 
-device=cpu
-epochs=5
-train_epoch_steps=20
-val_epoch_steps=20
-docs_batch_size=3
-max_chunks_per_doc=2
+#device=cpu
+#epochs=5
+#train_epoch_steps=20
+#val_epoch_steps=20
+#docs_batch_size=3
 
-#device=cuda
-#epochs=500
-#train_epoch_steps=500
-#val_epoch_steps=50
-#docs_batch_size=10
-#max_chunks_per_doc=3
+device=cuda
+epochs=300
+train_epoch_steps=500
+val_epoch_steps=50
+docs_batch_size=10
 #train_subdir=last
 
 learning_rate=0.0001
@@ -36,13 +34,13 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 cd "$mllm_src_path" || exit 1
 #echo "
 python s_05_train_01_encdec_embs.py \
-  --ds-dir-path $wiki_ds_path \
+  --ds-dir-path $ds_dir_path \
+  --ds-dir-paths $msmarco_data_path $fever_data_path \
   --train-root-path $train_root_path \
   --train-subdir "$train_subdir" \
   --model-cfg-fpath $model_cfg_fpath \
-  --model-levl $model_level \
+  --model-level $model_level \
   --docs-batch-size $docs_batch_size \
-  --max-chunks-per-doc $max_chunks_per_doc \
   --device $device \
   --epochs $epochs \
   --learning-rate $learning_rate \

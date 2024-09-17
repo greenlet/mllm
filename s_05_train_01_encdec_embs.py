@@ -1,30 +1,22 @@
 import shutil
 import time
 from pathlib import Path
-from typing import Union, Optional
+from typing import Optional
 
 import numpy as np
+import torch
+import torch.nn.functional as F
+import torch.utils.tensorboard as tb
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
-import torch
-
-import torch.utils.tensorboard as tb
 from pydantic_yaml import parse_yaml_file_as
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch import nn
-from torch.optim.optimizer import required
-import torch.nn.functional as F
 from tqdm import trange
-from transformers import GPT2Tokenizer
-from triton.language import dtype
 
+from mllm.config.model import MllmEncdecCfg
 from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsDocsEmbsBatch
-from mllm.data.wiki.dswiki import WikiDsLoader
-from mllm.exp.args import ArgsTokensChunksTrain
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.train.utils import find_create_train_path, calc_print_batches
-from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmRankerCfg, MllmEncdecCfg
-from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
 
 
 class ArgsTrainEncdecEmbs(BaseModel):
@@ -53,7 +45,8 @@ class ArgsTrainEncdecEmbs(BaseModel):
         ...,
         required=True,
         description='Model level. 0 - start from tokens and produce embeddins_0. k - start from embeddings from level k - 1 '
-                    'and produce embeddings_k.'
+                    'and produce embeddings_k.',
+        cli=('--model-level',),
     )
     train_root_path: Path = Field(
         ...,
@@ -98,12 +91,6 @@ class ArgsTrainEncdecEmbs(BaseModel):
         description='Number of training steps per epoch.',
         cli=('--train-epoch-steps',),
     )
-    train_input_zeros_ratio: float = Field(
-        0,
-        required=False,
-        description='Ratio of input embeddings set to 0. Value must be from 0 to 1',
-        cli=('--train-input-zeros-ratio',)
-    )
     val_epoch_steps: Optional[int] = Field(
         None,
         required=False,
@@ -111,35 +98,50 @@ class ArgsTrainEncdecEmbs(BaseModel):
         cli=('--val-epoch-steps',),
     )
 
+
+# chunks: input token chunks of the shape [n_batch, chunk_size, emb_size]
+def zero_random_embs(embs: torch.Tensor, rem_ratio: float = 0.1) -> torch.Tensor:
+    p = rem_ratio
+    mask = torch.distributions.Bernoulli(probs=p).sample(embs.shape[:2]).to(embs.device)
+    res = embs.clone()
+    res[mask.bool()] = 0
+    return res
+
+
 # embs_pred [n_batch, seq_len, emb_size] float32 - embeddings sequence predicted by model
 # embs_gt [n_batch, seq_len, emb_size] float32 - ground truth embeddings
 # mask_zeros [n_batch, seq_len, 1] bool - mask which set to True for input embeddings set to 0 and False for
 # input embeddings remained intact
-def encdec_embs_loss_cos(embs_pred: torch.Tensor, embs_gt: torch.Tensor, mask_zeros: torch.Tensor) \
+def encdec_embs_loss_cos_masked(embs_pred: torch.Tensor, embs_gt: torch.Tensor, mask_zeros: torch.Tensor) \
         -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # [n_batch, seq_len, 1]
     cos_dist = F.cosine_similarity(embs_pred, embs_gt, dim=-1).unsqueeze(-1)
+    cos_dist = torch.abs(cos_dist)
     loss_zeros = torch.mean(cos_dist[mask_zeros])
     loss_nonzeros = torch.mean(cos_dist[~mask_zeros])
     loss = loss_zeros + loss_nonzeros
     return loss_zeros, loss_nonzeros, loss
 
 
-def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
-    if shuffle:
-        chunks = list(chunks)
-        np.random.shuffle(chunks)
-    return torch.concat(chunks, dim=0)
+# embs_pred [n_batch, seq_len, emb_size] float32 - embeddings sequence predicted by model
+# embs_gt [n_batch, seq_len, emb_size] float32 - ground truth embeddings
+def encdec_embs_loss_cos(embs_pred: torch.Tensor, embs_gt: torch.Tensor) -> torch.Tensor:
+    # [n_batch, seq_len]
+    cos_dist = F.cosine_similarity(embs_pred, embs_gt, dim=-1)
+    cos_dist = torch.abs(cos_dist)
+    # []
+    loss = torch.mean(cos_dist)
+    return loss
 
 
-# chunks: input token chunks of the shape [n_batch, chunk_size, emb_size]
-def zero_random_embs(embs: torch.Tensor, rem_ratio: float = 0.1) -> torch.Tensor:
-    p = rem_ratio
-    n_batch, chunk_size, emb_size = embs.shape
-    mask = torch.distributions.Bernoulli(probs=p).sample(n_batch * chunk_size).to(chunks.device)
-    res = chunks.clone()
-    res[mask.bool()] = pad_tok
-    return res
+# embs_pred [n_batch, seq_len, emb_size] float32 - embeddings sequence predicted by model
+# embs_gt [n_batch, seq_len, emb_size] float32 - ground truth embeddings
+def encdec_embs_loss_mse(embs_pred: torch.Tensor, embs_gt: torch.Tensor) -> torch.Tensor:
+    # [n_batch, seq_len]
+    diff = embs_pred - embs_gt
+    # []
+    loss = torch.mean(diff**2)
+    return loss
 
 
 def main(args: ArgsTrainEncdecEmbs) -> int:
@@ -163,7 +165,6 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
 
     model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
-    input_zeros_ratio = 0.3
     print(model_cfg)
     model = MllmEncdecLevel(model_cfg, args.model_level).to(device)
     params = model.parameters()
@@ -178,7 +179,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
     ds_view.shuffle()
     view_train, view_val = ds_view.split((-1, 0.05))
 
-    n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, args.batch_size, 'Embeddings')
+    n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, ds_view.batch_size, 'Embeddings')
 
     last_epoch, val_loss_min = -1, None
     if checkpoint:
@@ -190,11 +191,12 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         view_train.shuffle()
         view_val.shuffle()
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8, threshold=1e-4, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8, threshold=1e-6, min_lr=1e-7)
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    loss_fn = encdec_embs_loss_cos
+    # loss_fn = encdec_embs_loss_cos
+    loss_fn = encdec_embs_loss_mse
 
     n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(
@@ -209,89 +211,41 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
     )
     for epoch in range(last_epoch + 1, args.epochs):
         model.train()
-        train_loss_zeros, train_loss_nonzeros, train_loss = 0, 0, 0
+        train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             batch: QrelsDocsEmbsBatch = next(train_batch_it)
             embs = batch.get_tensor()
 
-            batch = ds.get_batch(i_train, train=True)
-            docs_chunks, target_chunks, target_mask = batch.gen_tensors()
-
-            chunks = concat_tokens(docs_chunks, target_chunks)
-            chunks_inp = remove_tokens(chunks, pad_tok, input_zeros_ratio)
-
             optimizer.zero_grad()
-
-            out_logits = model(chunks_inp)
-
-            loss = loss_fn(out_logits, chunks)
-            if type(loss) == tuple:
-                loss_gt, loss_nongt, loss = loss
+            out = model(embs)
+            loss = loss_fn(out, embs)
             loss.backward()
             optimizer.step()
+
             train_loss += loss.item()
-            if loss_gt is not None:
-                train_loss_gt += loss_gt.item()
-                train_loss_nongt += loss_nongt.item()
-
-            i_train += 1
-            if i_train == n_batches_train:
-                ds.shuffle(train=True)
-                i_train %= n_batches_train
-
-            # if i_train == 2:
-            #     import sys
-            #     sys.exit()
-
             s = f'Train. loss: {loss.item():.6f}'
-            if loss_gt is not None:
-                s += f'. loss_gt: {loss_gt.item():.6f}. loss_nongt: {loss_nongt.item():.6f}'
             pbar.set_postfix_str(s)
         pbar.close()
         train_loss /= args.train_epoch_steps
         tbsw.add_scalar('Loss/Train', train_loss, epoch)
-        if loss_gt is not None:
-            train_loss_gt /= args.train_epoch_steps
-            train_loss_nongt /= args.train_epoch_steps
-            tbsw.add_scalar('LossGt/Val', train_loss_gt, epoch)
-            tbsw.add_scalar('LossNongt/Val', train_loss_nongt, epoch)
 
         model.eval()
-        val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
+        val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = ds.get_batch(i_val, train=False)
-            docs_chunks, target_chunks, target_mask = batch.gen_tensors()
-            
-            chunks = concat_tokens(docs_chunks, target_chunks)
-            out_logits = model(chunks)
+            batch: QrelsDocsEmbsBatch = next(val_batch_it)
+            embs = batch.get_tensor()
 
-            loss = loss_fn(out_logits, chunks)
-            if type(loss) == tuple:
-                loss_gt, loss_nongt, loss = loss
+            out = model(embs)
+            loss = loss_fn(out, embs)
+
             val_loss += loss.item()
-            if loss_gt is not None:
-                val_loss_gt += loss_gt.item()
-                val_loss_nongt += loss_nongt.item()
-
-            i_val += 1
-            if i_val == n_batches_val:
-                ds.shuffle(train=False)
-                i_val %= n_batches_val
-
             s = f'Val. loss: {loss.item():.6f}'
-            if loss_gt is not None:
-                s += f'. loss_gt: {loss_gt.item():.6f}. loss_nongt: {loss_nongt.item():.6f}'
             pbar.set_postfix_str(s)
         pbar.close()
         val_loss /= args.val_epoch_steps
         tbsw.add_scalar('Loss/Val', val_loss, epoch)
-        if loss_gt is not None:
-            val_loss_gt /= args.val_epoch_steps
-            val_loss_nongt /= args.val_epoch_steps
-            tbsw.add_scalar('LossGt/Val', val_loss_gt, epoch)
-            tbsw.add_scalar('LossNongt/Val', val_loss_nongt, epoch)
 
         scheduler.step(val_loss)
         last_lr = scheduler.get_last_lr()[0]
@@ -324,6 +278,6 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
 if __name__ == '__main__':
     def rethrow(e):
         raise e
-    run_and_exit(ArgsTokensChunksTrain, main, 'Train Mllm model.', exception_handler=rethrow)
+    run_and_exit(ArgsTrainEncdecEmbs, main, 'Train Mllm model.', exception_handler=rethrow)
 
 

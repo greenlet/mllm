@@ -11,6 +11,7 @@ from mllm.utils.utils import read_tsv
 
 class QrelsDocsEmbsBatch:
     # doc_emb_id: int (index), ds_id: int, ds_doc_id: int
+    # docs_embs [n_batch * chunk_size, emb_size]
     df_docs_ids: pd.DataFrame
     docs_embs: list[np.ndarray]
     chunk_size: int
@@ -27,9 +28,11 @@ class QrelsDocsEmbsBatch:
         self.device = device
 
     def _to_tensor(self, arr: list[np.ndarray]) -> torch.Tensor:
+        # [n_batch * chunk_size, emb_size]
         arr = np.stack(arr, axis=0)
         res = torch.from_numpy(arr)
         res = res.reshape((-1, self.chunk_size, self.emb_size))
+        # [n_batch, chunk_size, emb_size]
         if self.device is not None:
             res = res.to(self.device)
         return res
@@ -55,9 +58,10 @@ class BinVecsFile:
 
     def __init__(self, fpath: Path, vec_size: int, dtype: np.dtype[int]):
         self.fpath = fpath
-        self.fid = open(self.fpath, 'b')
+        self.fid = open(self.fpath, 'rb')
+        self.opened = True
         self.vec_size = vec_size
-        self.dtype = dtype
+        self.dtype = np.dtype(dtype)
         self.bytes_size = self.vec_size * self.dtype.itemsize
 
     def get_vec(self, offset: int) -> np.ndarray:
@@ -92,7 +96,7 @@ class DsQrelsEmbs:
         self.chunk_size = chunk_size
         self.emb_size = emb_size
         self.emb_dtype = emb_dtype
-        self.emb_bytes_size = self.emb_size * self.emb_dtype.itemsize
+        self.emb_bytes_size = self.emb_size * np.dtype(self.emb_dtype).itemsize
         self.device = device
         docs_ids_fpath = self.ds_dir_path / 'docs_ids.tsv'
         docs_embs_fpath = self.ds_dir_path / 'docs_embs.npy'
