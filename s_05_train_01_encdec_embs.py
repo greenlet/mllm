@@ -195,8 +195,8 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    # loss_fn = encdec_embs_loss_cos
-    loss_fn = encdec_embs_loss_mse
+    loss_fn = encdec_embs_loss_cos
+    # loss_fn = encdec_embs_loss_mse
 
     n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(

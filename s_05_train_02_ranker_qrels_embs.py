@@ -1,10 +1,12 @@
 import shutil
 from pathlib import Path
+from typing import Optional
 
 import torch
 import torch.utils.tensorboard as tb
-from pydantic import Field
+from pydantic import Field, BaseModel
 from pydantic_cli import run_and_exit
+from pydantic_yaml import parse_yaml_file_as
 from sklearn.linear_model import lasso_path
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
@@ -12,14 +14,21 @@ from transformers import GPT2Tokenizer
 
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import ArgsTokensChunksTrain
-from mllm.config.model import create_mllm_encdec_cfg, create_mllm_ranker_cfg
-from mllm.model.mllm_encdec import MllmEncdec
+from mllm.config.model import create_mllm_encdec_cfg, create_mllm_ranker_cfg, TokenizerCfg, MllmRankerCfg
+from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
-from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
+from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer, tokenizer_from_config
 from mllm.train.utils import find_create_train_path
 
 
-class ArgsQrelsTrain(ArgsTokensChunksTrain):
+class ArgsQrelsEmbsTrain(BaseModel):
+    ds_dir_path: Path = Field(
+        None,
+        required=False,
+        description='Embeddings dataset path. Must contain docs_embs.npy, docs_ids.tsv, qs_embs.npy, qs_ids.tsv files with'
+                    'Embeddings generated from previous step and doc/query ids corresponding to embeddings.',
+        cli=('--ds-dir-path',),
+    )
     ds_dir_paths: list[Path] = Field(
         [],
         required=True,
@@ -28,9 +37,78 @@ class ArgsQrelsTrain(ArgsTokensChunksTrain):
                     'will cause an error and exit.',
         cli=('--ds-dir-paths',),
     )
+    train_root_path: Path = Field(
+        ...,
+        required=True,
+        description='Path to train root directory. New train subdirectory will be created within each new run.',
+        cli=('--train-root-path',),
+    )
+    train_subdir: str = Field(
+        '',
+        required=False,
+        description='Train subdirectory. Can have values: "last", "<subdirectory-name>". When set to "last", '
+            'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
+        cli=('--train-subdir',)
+    )
+    model_cfg_fpath: Path = Field(
+        ...,
+        required=True,
+        description='Path to ranker model config Yaml file.',
+        cli=('--model-cfg-fpath',),
+    )
+    model_level: int = Field(
+        ...,
+        required=True,
+        description='Model level. 0 - start from tokens and produce embeddins_0. k - start from embeddings from level k - 1 '
+                    'and produce embeddings_k.',
+        cli=('--model-level',),
+    )
+    chunks_batch_size: int = Field(
+        3,
+        required=False,
+        description='Embeddings chunks batch size. Must be greater or equal than 2. Each chunk will contain a number'
+                    'of embeddings defined in ranker model config',
+        cli=('--chunks-batch-size',),
+    )
+    device: str = Field(
+        'cpu',
+        required=False,
+        description='Device to run training on. Can have values: "cpu", "cuda"',
+        cli=('--device',)
+    )
+    epochs: int = Field(
+        None,
+        required=True,
+        description='Number of training epochs.',
+        cli=('--epochs',),
+    )
+    learning_rate: float = Field(
+        0.001,
+        required=False,
+        description='Initial learning rate of the training process.',
+        cli=('--learning-rate',)
+    )
+    train_epoch_steps: Optional[int] = Field(
+        None,
+        required=False,
+        description='Number of training steps per epoch.',
+        cli=('--train-epoch-steps',),
+    )
+    val_epoch_steps: Optional[int] = Field(
+        None,
+        required=False,
+        description='Number of validation steps per epoch.',
+        cli=('--val-epoch-steps',),
+    )
+    encdec_pretrained_model_path: Optional[Path] = Field(
+        None,
+        required=False,
+        description='Path to Encoder-Decoder model weights pretrained on embeddings.',
+        cli=('--encdec-pretrained-model-path',),
+    )
 
 
-def main(args: ArgsQrelsTrain) -> int:
+def main(args: ArgsQrelsEmbsTrain) -> int:
     print(args)
 
     assert args.ds_dir_paths, '--ds-dir-paths is expected to list at least one Qrels datsaset'
@@ -52,8 +130,9 @@ def main(args: ArgsQrelsTrain) -> int:
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
 
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=10000)
-    tok_dict = gen_all_tokens(tokenizer)
+    tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
+    tokenizer = tokenizer_from_config(tkz_cfg)
+    tok_dict = tkz_cfg.custom_tokens
     ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
 
@@ -64,12 +143,8 @@ def main(args: ArgsQrelsTrain) -> int:
 
     torch.autograd.set_detect_anomaly(True)
 
-    model_cfg = create_mllm_ranker_cfg(
-        n_vocab=len(tokenizer), inp_len=args.emb_chunk_size, d_word_wec=256,
-        n_levels=1, enc_n_layers=1, dec_n_layers=1,
-        n_heads=8, d_k=32, d_v=32, d_model=256, d_inner=1024,
-        pad_idx=pad_tok, dropout_rate=0.0, enc_with_emb_mat=True,
-    )
+    model_cfg = parse_yaml_file_as(MllmRankerCfg, args.model_cfg_fpath)
+    n_emb_tokens = model_cfg.encoders[0].inp_len
     print(model_cfg)
     model = MllmRanker(model_cfg).to(device)
 
@@ -222,6 +297,6 @@ def main(args: ArgsQrelsTrain) -> int:
 if __name__ == '__main__':
     def rethrow(e):
         raise e
-    run_and_exit(ArgsQrelsTrain, main, 'Train Mllm Ranking model.', exception_handler=rethrow)
+    run_and_exit(ArgsQrelsEmbsTrain, main, 'Train Mllm Ranking model for embeddings.', exception_handler=rethrow)
 
 
