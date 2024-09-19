@@ -41,7 +41,7 @@ python s_05_train_02_ranker_qrels_embs.py \
   --ds-dir-paths $msmarco_data_path $fever_data_path \
   --train-root-path $train_ranker_root_path \
   --train-subdir "$train_subdir" \
-  --model-cfg-fpath $ranker_model_cfg_fpath \
+  --ranker-model-cfg-fpath $ranker_model_cfg_fpath \
   --model-level $model_level \
   --chunks-batch-size $chunks_batch_size \
   --device $device \
@@ -49,6 +49,7 @@ python s_05_train_02_ranker_qrels_embs.py \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
+  --encdec-model-cfg-fpath $encdec_model_cfg_fpath \
   --encdec-pretrained-model-path $encdec_pretrained_model_path
 #"
 

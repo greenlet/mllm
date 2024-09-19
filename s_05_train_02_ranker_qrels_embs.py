@@ -2,6 +2,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.utils.tensorboard as tb
 from pydantic import Field, BaseModel
@@ -12,11 +13,12 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import GPT2Tokenizer
 
+from mllm.data.dsqrels_embs import DsQrelsEmbs
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import ArgsTokensChunksTrain
-from mllm.config.model import create_mllm_encdec_cfg, create_mllm_ranker_cfg, TokenizerCfg, MllmRankerCfg
+from mllm.config.model import create_mllm_encdec_cfg, create_mllm_ranker_cfg, TokenizerCfg, MllmRankerCfg, MllmEncdecCfg
 from mllm.model.mllm_encdec import MllmEncdecLevel
-from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
+from mllm.model.mllm_ranker import MllmRanker, RankProbLoss, MllmRankerLevel
 from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer, tokenizer_from_config
 from mllm.train.utils import find_create_train_path
 
@@ -50,11 +52,23 @@ class ArgsQrelsEmbsTrain(BaseModel):
             'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
         cli=('--train-subdir',)
     )
-    model_cfg_fpath: Path = Field(
+    encdec_model_cfg_fpath: Optional[Path] = Field(
+        None,
+        required=False,
+        description='Path to Encoder-Decoder model config Yaml file.',
+        cli=('--encdec-model-cfg-fpath',),
+    )
+    encdec_pretrained_model_path: Optional[Path] = Field(
+        None,
+        required=False,
+        description='Path to Encoder-Decoder model weights pretrained on embeddings.',
+        cli=('--encdec-pretrained-model-path',),
+    )
+    ranker_model_cfg_fpath: Path = Field(
         ...,
         required=True,
-        description='Path to ranker model config Yaml file.',
-        cli=('--model-cfg-fpath',),
+        description='Path to Ranker model config Yaml file.',
+        cli=('--ranker-model-cfg-fpath',),
     )
     model_level: int = Field(
         ...,
@@ -100,12 +114,6 @@ class ArgsQrelsEmbsTrain(BaseModel):
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
-    encdec_pretrained_model_path: Optional[Path] = Field(
-        None,
-        required=False,
-        description='Path to Encoder-Decoder model weights pretrained on embeddings.',
-        cli=('--encdec-pretrained-model-path',),
-    )
 
 
 def main(args: ArgsQrelsEmbsTrain) -> int:
@@ -117,7 +125,7 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
 
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     train_path = find_create_train_path(
-        args.train_root_path, 'ranker', ds_names, args.train_subdir)
+        args.train_root_path, f'ranker-l{args.model_level}', ds_names, args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
@@ -130,58 +138,43 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
 
-    tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
-    tokenizer = tokenizer_from_config(tkz_cfg)
-    tok_dict = tkz_cfg.custom_tokens
-    ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)
-    pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
-
-    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.emb_chunk_size, device)
-    print(ds)
-
-    print(f'Creating model with vocab size = {len(tokenizer)}')
-
-    torch.autograd.set_detect_anomaly(True)
-
-    model_cfg = parse_yaml_file_as(MllmRankerCfg, args.model_cfg_fpath)
-    n_emb_tokens = model_cfg.encoders[0].inp_len
-    print(model_cfg)
-    model = MllmRanker(model_cfg).to(device)
-
-    if args.pretrained_model_path is not None and checkpoint is None:
-        pretrained_model_path = args.pretrained_model_path / 'best.pth'
-        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
-        pretrained_checkpoint = torch.load(pretrained_model_path)
-        model_encdec_cfg = create_mllm_encdec_cfg(
-            n_vocab=len(tokenizer), d_word_wec=256, inp_len=args.emb_chunk_size,
-            enc_n_layers=1, dec_n_layers=1,
-            n_heads=8, d_model=256, d_inner=1024,
-            pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
-        )
-        model_encdec = MllmEncdec(model_encdec_cfg).to(device)
-        model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
-        model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
-        print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
-        model.encoders[0].load_state_dict(model_encdec.encoder.state_dict())
-
-    params = model.parameters()
-    # params = [p for n, p in model.named_parameters()]
+    ranker_model_cfg = parse_yaml_file_as(MllmRankerCfg, args.ranker_model_cfg_fpath)
+    print(ranker_model_cfg)
+    model_ranker = MllmRankerLevel(ranker_model_cfg, args.model_level).to(device)
+    params = model_ranker.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
-    # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
-    # optimizer = torch.optim.LBFGS(model.parameters(), lr=args.learning_rate)
+    enc_cfg = model_ranker.enc_cfg
+
+    ds = DsQrelsEmbs(
+        ds_dir_path=args.ds_dir_path, chunk_size=enc_cfg.inp_len, emb_size=enc_cfg.d_model, emb_dtype=np.float32,
+        device=device
+    )
+
+    if args.encdec_pretrained_model_path is not None and checkpoint is None:
+        assert args.encdec_model_cfg_fpath is not None, '--encdec-model-cfg-fpath is not empty, but --encdec-pretrained-model-path is not set'
+        encdec_model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.encdec_model_cfg_fpath)
+        encdec_model_path = args.encdec_pretrained_model_path / 'best.pth'
+        print(f'Loading checkpoint with pretrained model from {encdec_model_path}')
+        pretrained_checkpoint = torch.load(encdec_model_path)
+        model_encdec = MllmEncdecLevel(encdec_model_cfg, args.model_level).to(device)
+        model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=True)
+        if model_ranker.vocab_encoder is not None:
+            print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
+            model_ranker.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
+        print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
+        model_ranker.encoder.load_state_dict(model_encdec.encoder.state_dict())
 
     last_epoch, val_loss_min = -1, None
     if checkpoint:
-        model.load_state_dict(checkpoint['model'])
+        model_ranker.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=5, threshold=1e-4, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=8, threshold=1e-4, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    ds_view = ds.get_view(batch_size=args.docs_batch_size)
+    ds_view = ds.get(batch_size=args.docs_batch_size)
     ds_view.shuffle()
     view_train, view_val = ds_view.split((-1, 0.05))
 
@@ -208,7 +201,7 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
     for epoch in range(last_epoch + 1, args.epochs):
         # model.eval()
         # model.decoders.train()
-        model.train()
+        model_ranker.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
@@ -216,7 +209,7 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
             docs_chunks, qs_chunks = batch.gen_tensors()
 
             optimizer.zero_grad()
-            out_rank, target_mask = model.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
+            out_rank, target_mask = model_ranker.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
             loss, loss_tgt, loss_nontgt = loss_fn(out_rank, target_mask)
             loss.backward()
             optimizer.step()
@@ -241,14 +234,14 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-        model.eval()
+        model_ranker.eval()
         val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             batch = next(val_batch_it)
             docs_chunks, qs_chunks = batch.gen_tensors()
 
-            out_rank, target_mask = model.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
+            out_rank, target_mask = model_ranker.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
             loss, loss_tgt, loss_nontgt = loss_fn(out_rank, target_mask)
 
             val_loss += loss.item()
@@ -278,7 +271,7 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
             best = True
 
         checkpoint = {
-            'model': model.state_dict(),
+            'model': model_ranker.state_dict(),
             'optimizer': optimizer.state_dict(),
             'last_epoch': epoch,
             'val_loss_min': val_loss_min,

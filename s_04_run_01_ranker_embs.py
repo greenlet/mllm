@@ -220,6 +220,9 @@ def main(args: ArgsRunRankerEmbs) -> int:
     print(f'Writing queries ids dataset of size {len(df_qs_ids)} in {qs_ids_fpath}')
     write_tsv(df_qs_ids, qs_ids_fpath)
 
+    qrels_fpath = args.out_ds_path / 'qrels.tsv'
+    write_tsv(ds.df_qrels, qrels_fpath)
+
     return 0
 
 

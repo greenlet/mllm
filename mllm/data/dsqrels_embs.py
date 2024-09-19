@@ -87,6 +87,8 @@ class DsQrelsEmbs:
     df_docs_ids: pd.DataFrame
     # query_emb_id: int (index), ds_id: int, ds_query_id: int
     df_qs_ids: pd.DataFrame
+    # qid: int, did: int, dsqid: int (generated), dsdid: int (generated)
+    df_qrels: pd.DataFrame
     docs_embs_file: BinVecsFile
     qs_file: BinVecsFile
     device: Optional[torch.device] = None
@@ -102,12 +104,23 @@ class DsQrelsEmbs:
         docs_embs_fpath = self.ds_dir_path / 'docs_embs.npy'
         qs_ids_fpath = self.ds_dir_path / 'qs_ids.tsv'
         qs_embs_fpath = self.ds_dir_path / 'qs_embs.npy'
+        qrels_fpath = self.ds_dir_path / 'qrels.tsv'
         self.df_docs_ids = read_tsv(docs_ids_fpath)
         self.df_docs_ids.set_index('doc_emb_id', inplace=True)
         self.df_qs_ids = read_tsv(qs_ids_fpath)
-        self.df_qs_ids.set_index('query_emb_id', inplace=True)
+        self.df_qs_ids.set_index('ds_query_id', inplace=True)
+        self.df_qrels = read_tsv(qrels_fpath)
+        self.df_qrels.set_index('dsdid', inplace=True)
         self.docs_embs_file = BinVecsFile(fpath=docs_embs_fpath, vec_size=self.emb_size, dtype=self.emb_dtype)
         self.qs_embs_file = BinVecsFile(fpath=qs_embs_fpath, vec_size=self.emb_size, dtype=self.emb_dtype)
+
+    # doc_emb_id: int (index), ds_id: int, ds_doc_id: int
+    def _get_qsrels(self, df_docs_ids: pd.DataFrame) -> pd.DataFrame:
+        ds_doc_ids = df_docs_ids['ds_doc_id']
+        ds_doc_ids = np.unique(ds_doc_ids)
+        df_qrels = self.df_qrels.loc[ds_doc_ids]
+        ds_qs_ids = np.unique(df_qrels['dsqid'])
+        df_qs_ids = self.df_qs_ids.loc[ds_qs_ids]
 
     def get_docs_embs_batch(self, doc_emb_ids: np.ndarray) -> QrelsDocsEmbsBatch:
         df_docs_ids = self.df_docs_ids.loc[doc_emb_ids]
