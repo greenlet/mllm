@@ -7,7 +7,7 @@ train_ranker_root_path=$data_path/train_mllm_ranker_qrels
 out_ds_path=$data_path/ranker_embs_msmarco_fever
 
 mllm_src_path=$code_path/mllm
-config_dir_path=$mllm_src_path/mllm/config/cfg_v001
+config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fname=tokenizer_cfg_01.yaml
 model_cfg_fname=ranker_model_cfg_01.yaml
 

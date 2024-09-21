@@ -4,12 +4,13 @@
 datasets==1.18.0
 jupyter
 matplotlib
-mteb
+#mteb
 mwparserfromhell
 numpy
 pandas
 pydantic-cli
 pydantic-yaml
+scikit-learn
 scipy
 tensorboard
 torch

@@ -6,7 +6,7 @@ msmarco_data_path=$data_path/msmarco
 fever_data_path=$data_path/fever
 
 mllm_src_path=$code_path/mllm
-config_dir_path=$mllm_src_path/mllm/config/cfg_v001
+config_dir_path=$mllm_src_path/mllm/config/cfg
 encdec_model_cfg_fname=encdec_model_cfg_02.yaml
 ranker_model_cfg_fname=encdec_model_cfg_02.yaml
 encdec_model_cfg_fpath=$config_dir_path/$encdec_model_cfg_fname

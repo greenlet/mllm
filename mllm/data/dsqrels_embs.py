@@ -14,15 +14,21 @@ class QrelsDocsEmbsBatch:
     # docs_embs [n_batch * chunk_size, emb_size]
     df_docs_ids: pd.DataFrame
     docs_embs: list[np.ndarray]
+    df_qrels: pd.DataFrame
+    df_qs_ids: pd.DataFrame
+    qs_embs: list[np.ndarray]
     chunk_size: int
     emb_size: int
     device: Optional[torch.device] = None
     docs_embs_tf: Optional[torch.Tensor] = None
 
-    def __init__(self, df_docs_ids: pd.DataFrame, docs_embs: list[np.ndarray], chunk_size: int,
-                 emb_size: int, device: Optional[torch.device] = None):
+    def __init__(self, df_docs_ids: pd.DataFrame, docs_embs: list[np.ndarray], df_qrels: pd.DataFrame, df_qs_ids: pd.DataFrame, qs_embs: list[np.ndarray],
+                 chunk_size: int, emb_size: int, device: Optional[torch.device] = None):
         self.df_docs_ids = df_docs_ids
         self.docs_embs = docs_embs
+        self.df_qrels = df_qrels
+        self.df_qs_ids = df_qs_ids
+        self.qs_embs = qs_embs
         self.chunk_size = chunk_size
         self.emb_size = emb_size
         self.device = device
@@ -115,12 +121,18 @@ class DsQrelsEmbs:
         self.qs_embs_file = BinVecsFile(fpath=qs_embs_fpath, vec_size=self.emb_size, dtype=self.emb_dtype)
 
     # doc_emb_id: int (index), ds_id: int, ds_doc_id: int
-    def _get_qsrels(self, df_docs_ids: pd.DataFrame) -> pd.DataFrame:
+    def _get_qs_embs(self, df_docs_ids: pd.DataFrame) -> [pd.DataFrame, pd.DataFrame, list[np.ndarray]]:
         ds_doc_ids = df_docs_ids['ds_doc_id']
         ds_doc_ids = np.unique(ds_doc_ids)
         df_qrels = self.df_qrels.loc[ds_doc_ids]
         ds_qs_ids = np.unique(df_qrels['dsqid'])
         df_qs_ids = self.df_qs_ids.loc[ds_qs_ids]
+        qs_embs: list[np.ndarray] = []
+        for _, row in df_qs_ids.iterrows():
+            off = row['query_emb_id'] * self.emb_bytes_size
+            query_emb = self.qs_embs_file.get_vec(off)
+            qs_embs.append(query_emb)
+        return df_qrels, self.df_qs_ids, qs_embs
 
     def get_docs_embs_batch(self, doc_emb_ids: np.ndarray) -> QrelsDocsEmbsBatch:
         df_docs_ids = self.df_docs_ids.loc[doc_emb_ids]
@@ -129,8 +141,11 @@ class DsQrelsEmbs:
         for off in offsets:
             doc_emb = self.docs_embs_file.get_vec(off)
             docs_embs.append(doc_emb)
-        batch = QrelsDocsEmbsBatch(df_docs_ids=df_docs_ids, docs_embs=docs_embs, chunk_size=self.chunk_size, emb_size=self.emb_size,
-                                   device=self.device)
+        df_qrels, df_qs_ids, qs_embs = self._get_qs_embs(df_docs_ids)
+        batch = QrelsDocsEmbsBatch(
+            df_docs_ids=df_docs_ids, docs_embs=docs_embs, df_qrels=df_qrels, df_qs_ids=df_qs_ids, qs_embs=qs_embs,
+            chunk_size=self.chunk_size, emb_size=self.emb_size, device=self.device
+        )
         return batch
 
     def get_docs_embs_view(self, batch_size: Optional[int] = None) -> DsQrelsDocsEmbsView:
