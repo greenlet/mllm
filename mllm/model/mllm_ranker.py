@@ -1,6 +1,7 @@
 from typing import Union, TypeVar, Optional
 
 import numpy as np
+import pandas as pd
 import torch
 from torch import nn, Tensor
 
@@ -147,6 +148,12 @@ class MllmRanker(nn.Module):
 
         out_rank = self.decoders[0](docs_enc.unsqueeze(0), qs_enc.unsqueeze(0))
         return out_rank
+
+    # df_docs_ids. doc_emb_id: int (index), ds_id: int, ds_doc_id: int
+    # df_qs_ids. query_emb_id: int (index), ds_id: int, ds_query_id: int
+    # df_qrels. qid: int, did: int, dsqid: int (generated), dsdid: int (generated)
+    def run_qrels_embs(self, docs_embs: Tensor, qs_embs: Tensor, df_docs_ids: pd.DataFrame, df_qs_ids: pd.DataFrame, df_qrels: pd.DataFrame):
+        pass
 
     def forward(self, target_chunks: Tensor, docs_chunks: Tensor) -> Tensor:
         level_num = 1

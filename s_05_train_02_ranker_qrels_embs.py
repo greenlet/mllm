@@ -20,7 +20,7 @@ from mllm.config.model import create_mllm_encdec_cfg, create_mllm_ranker_cfg, To
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.model.mllm_ranker import MllmRanker, RankProbLoss, MllmRankerLevel
 from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer, tokenizer_from_config
-from mllm.train.utils import find_create_train_path
+from mllm.train.utils import find_create_train_path, calc_print_batches
 
 
 class ArgsQrelsEmbsTrain(BaseModel):
@@ -174,27 +174,20 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=8, threshold=1e-4, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    ds_view = ds.get(batch_size=args.docs_batch_size)
+    ds_view = ds.get_embs_view(batch_size=args.chunks_batch_size)
     ds_view.shuffle()
     view_train, view_val = ds_view.split((-1, 0.05))
+    n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, ds_view.batch_size, 'EmbsChunks')
 
-    calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
-    n_qs_train, n_qs_val = len(view_train), len(view_val)
-    n_batches_train = calc_batches(n_qs_train)
-    n_batches_val = calc_batches(n_qs_val)
-    print(f'Queries train: {n_qs_train}')
-    print(f'Queries val: {n_qs_val}')
-    print(f'Batches train: {n_batches_train}')
-    print(f'Batches val: {n_batches_val}')
     loss_fn = RankProbLoss()
     n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(
-        n_batches=n_epochs * n_qs_train,
+        n_batches=n_epochs * n_batches_train,
         drop_last=False,
         shuffle_between_loops=True,
     )
     val_batch_it = view_val.get_batch_iterator(
-        n_batches=n_epochs * n_qs_train,
+        n_batches=n_epochs * n_batches_val,
         drop_last=False,
         shuffle_between_loops=True,
     )

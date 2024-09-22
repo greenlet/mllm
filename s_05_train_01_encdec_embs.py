@@ -14,7 +14,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import MllmEncdecCfg
-from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsDocsEmbsBatch
+from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsEmbsBatch
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.train.utils import find_create_train_path, calc_print_batches
 
@@ -174,7 +174,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
     ds = DsQrelsEmbs(
         ds_dir_path=args.ds_dir_path, chunk_size=enc_cfg.inp_len, emb_size=enc_cfg.d_model, emb_dtype=np.float32, device=device
     )
-    ds_view = ds.get_docs_embs_view(args.batch_size)
+    ds_view = ds.get_embs_view(args.batch_size)
     np.random.seed(12)
     ds_view.shuffle()
     view_train, view_val = ds_view.split((-1, 0.05))
@@ -214,7 +214,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch: QrelsDocsEmbsBatch = next(train_batch_it)
+            batch: QrelsEmbsBatch = next(train_batch_it)
             embs = batch.get_tensor()
 
             optimizer.zero_grad()
@@ -234,7 +234,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch: QrelsDocsEmbsBatch = next(val_batch_it)
+            batch: QrelsEmbsBatch = next(val_batch_it)
             embs = batch.get_tensor()
 
             out = model(embs)
