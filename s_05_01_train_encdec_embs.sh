@@ -33,7 +33,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_05_train_01_encdec_embs.py \
+python s_05_01_train_encdec_embs.py \
   --ds-dir-path $ds_dir_path \
   --ds-dir-paths $msmarco_data_path $fever_data_path \
   --train-root-path $train_root_path \
