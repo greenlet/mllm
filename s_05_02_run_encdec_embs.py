@@ -10,65 +10,62 @@ from pydantic import Field, BaseModel
 from pydantic_cli import run_and_exit
 from pydantic_yaml import to_yaml_file, parse_yaml_file_as
 from tqdm import trange
+
+from mllm.data.dsqrels_embs import DsQrelsEmbs
+from mllm.model.mllm_encdec import MllmEncdecLevel
 from transformers import GPT2Tokenizer
 
 from mllm.data.utils import load_qrels_datasets
-from mllm.config.model import create_mllm_ranker_cfg, TokenizerCfg, MllmRankerCfg
+from mllm.config.model import create_mllm_ranker_cfg, TokenizerCfg, MllmRankerCfg, MllmEncdecCfg
 from mllm.model.mllm_ranker import MllmRanker
 from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer, tokenizer_from_config
 from mllm.utils.utils import write_tsv
 
 
 class ArgsRunRankerEmbs(BaseModel):
-    ds_dir_paths: list[Path] = Field(
-        [],
-        required=True,
-        description='Qrels datasets directory paths. Supported datasets: Msmarco, Fever.'
-                    'Naming convention: directory name must contain the name of dataset: msmarco, fever. Unknown datasets '
-                    'will cause an error and exit.',
-        cli=('--ds-dir-paths',),
+    ds_dir_path: Path = Field(
+        None,
+        required=False,
+        description='Embeddings dataset path. Must contain docs_embs.npy, docs_ids.tsv, qs_embs.npy, qs_ids.tsv files with'
+                    'Embeddings generated from previous step and doc/query ids corresponding to embeddings.',
+        cli=('--ds-dir-path',),
     )
-    train_root_path: Path = Field(
+    train_dir_path: Path = Field(
         ...,
         required=True,
-        description='Path to train root directory. Used for loading model weights from subdirectory of interest.',
+        description='Path to encdec train directory.',
         cli=('--train-root-path',),
-    )
-    train_subdir: str = Field(
-        '',
-        required=True,
-        description='Train subdirectory. Must be name of TRAIN_ROOT_PATH subdirectory where model weights are stored (in a file "best.pth").',
-        cli=('--train-subdir',)
-    )
-    tokenizer_cfg_fpath: Path = Field(
-        ...,
-        required=True,
-        description='Path to tokenizer config Yaml file.',
-        cli=('--tokenizer-cfg-fpath',),
     )
     model_cfg_fpath: Path = Field(
         ...,
         required=True,
-        description='Path to ranker model config Yaml file.',
+        description='Path to encdec model config Yaml file.',
         cli=('--model-cfg-fpath',),
+    )
+    model_level: int = Field(
+        ...,
+        required=True,
+        description='Model level. 0 - start from tokens and produce embeddins_0. k - start from embeddings from level k - 1 '
+                    'and produce embeddings_k.',
+        cli=('--model-level',),
+    )
+    chunk_size: int = Field(
+        10,
+        required=False,
+        description='Number of embedding in a chunk.',
+        cli=('--chunk-size',),
     )
     batch_size: int = Field(
         3,
         required=False,
-        description='Documents batch size for inference.',
+        description='Embeddings chunks batch size for inference.',
         cli=('--batch-size',),
     )
-    n_docs: int = Field(
+    n_batches: int = Field(
         0,
         required=False,
-        description='Number of docs to run. If empty or <= 0 then all the docs will be processed.',
-        cli=('--n-docs',),
-    )
-    n_qs: int = Field(
-        0,
-        required=False,
-        description='Number of queries to run. If empty or <= 0 then all the queries will be processed.',
-        cli=('--n-qs',),
+        description='Number of batches to run. If empty or <= 0 then all the batches will be processed.',
+        cli=('--n-batches',),
     )
     device: str = Field(
         'cpu',
@@ -85,14 +82,11 @@ class ArgsRunRankerEmbs(BaseModel):
 
 
 class RunInfo(BaseModel):
-    ds_dir_paths: list[Path]
+    embs_ds_dir_path: Path
     model_fpath: Path
-    emb_chunk_size: int
-    n_docs: int = 0
-    n_docs_chunks: int = 0
-    n_qs: int = 0
-    n_qs_chunks: int = 0
-
+    embs_chunk_size: int
+    n_embs: int = 0
+    n_embs_chunks: int = 0
 
 
 def ids_fname(i: int) -> str:
@@ -102,35 +96,25 @@ def ids_fname(i: int) -> str:
 def main(args: ArgsRunRankerEmbs) -> int:
     print(args)
 
-    assert args.ds_dir_paths, '--ds-dir-paths is expected to list at least one Qrels datsaset'
-
     device = torch.device(args.device)
 
-    train_path = args.train_root_path / args.train_subdir
-    print(f'train_path: {train_path}')
-
-    best_checkpoint_path = train_path / 'best.pth'
+    best_checkpoint_path = args.train_dir_path / 'best.pth'
     checkpoint = torch.load(best_checkpoint_path, map_location=device)
 
-    tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
-    tokenizer = tokenizer_from_config(tkz_cfg)
-
-    model_cfg = parse_yaml_file_as(MllmRankerCfg, args.model_cfg_fpath)
-    n_emb_tokens = model_cfg.encoders[0].inp_len
+    model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
     print(model_cfg)
+    enc_cfg = model_cfg.encoders[args.model_level]
 
-    ch_tkz = ChunkTokenizer(tkz_cfg.custom_tokens, tokenizer, n_emb_tokens=n_emb_tokens, fixed_size=True)
-    pad_tok = tkz_cfg.custom_tokens['pad'].ind
+    ds = DsQrelsEmbs(args.ds_dir_path, args.chunk_size, enc_cfg.d_model, np.float32, device)
 
-    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, n_emb_tokens, device)
-    print(ds)
-
-    print(f'Creating model with vocab size = {len(tokenizer)}')
-    model = MllmRanker(model_cfg).to(device)
+    model = MllmEncdecLevel(model_cfg, args.model_level).to(device)
     model.load_state_dict(checkpoint['model'])
     # print(model)
 
     args.out_ds_path.mkdir(parents=True, exist_ok=True)
+
+    n_embs = len(ds.df_docs_ids)
+    n_embs_chunks = n_embs // args.chunk_size + min(n_embs % args.chunk_size, 1)
 
     n_docs_total = len(ds.df_off)
     n_docs = args.n_docs if args.n_docs > 0 else n_docs_total
