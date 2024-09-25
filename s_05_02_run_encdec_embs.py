@@ -85,6 +85,8 @@ class RunInfo(BaseModel):
     embs_ds_dir_path: Path
     model_fpath: Path
     embs_chunk_size: int
+    n_embs_total: int = 0
+    n_embs_chunks_total: int = 0
     n_embs: int = 0
     n_embs_chunks: int = 0
 
@@ -113,41 +115,42 @@ def main(args: ArgsRunRankerEmbs) -> int:
 
     args.out_ds_path.mkdir(parents=True, exist_ok=True)
 
-    n_embs = len(ds.df_docs_ids)
-    n_embs_chunks = n_embs // args.chunk_size + min(n_embs % args.chunk_size, 1)
-
-    n_docs_total = len(ds.df_off)
-    n_docs = args.n_docs if args.n_docs > 0 else n_docs_total
-    n_docs = min(n_docs, n_docs_total)
-    docs_chunks_it = ds.get_docs_chunks_iterator(n_docs=n_docs)
-
-    n_qs_total = len(ds.df_qs)
-    n_qs = args.n_qs if args.n_qs > 0 else n_qs_total
-    n_qs = min(n_qs, n_qs_total)
-    qs_chunks_it = ds.get_qs_chunks_iterator(n_qs=n_qs)
+    n_embs_total = len(ds.df_docs_ids)
+    n_embs_chunks_total = n_embs_total // args.chunk_size + min(n_embs_total % args.chunk_size, 1)
+    n_embs_batches_total = n_embs_chunks_total // args.batch_size + min(n_embs_chunks_total % args.batch_size, 1)
+    n_embs, n_embs_chunks, n_embs_batches = n_embs_total, n_embs_chunks_total, n_embs_batches_total
+    if args.n_batches > 0 and args.n_batches < n_embs_batches_total:
+        n_embs_batches = args.n_batches
+        n_embs_chunks = n_embs_batches * args.batch_size
+        n_embs = n_embs_chunks * args.chunk_size
 
     run_info = RunInfo(
-        ds_dir_paths=args.ds_dir_paths,
+        embs_ds_dir_path=args.ds_dir_path,
         model_fpath=best_checkpoint_path,
-        emb_chunk_size=n_emb_tokens,
-        n_docs=n_docs,
-        n_qs=n_qs,
+        embs_chunk_size=args.chunk_size,
+        n_embs_total=n_embs_total,
+        n_embs_chunks_total=n_embs_chunks_total,
+        n_embs=n_embs,
+        n_embs_chunks=n_embs_chunks,
     )
     run_info_fpath = args.out_ds_path / 'run_info.yaml'
     to_yaml_file(run_info_fpath, run_info)
 
-    def to_tensor(chunks: list[np.ndarray]) -> torch.Tensor:
-        chunks = np.stack(chunks, axis=0)
-        t = torch.from_numpy(chunks)
-        return t.to(device)
-
     model.eval()
 
-    print(f'Processing {n_docs} documents')
-    pbar = trange(n_docs, desc=f'Docs emb inference', unit='doc')
+    print(f'Processing {n_embs} embeddings, {n_embs_chunks} chunks, {n_embs_batches} batches')
+    pbar = trange(n_embs_batches, desc=f'Embs chunks emb inference', unit='doc')
     docs_embs_fpath = args.out_ds_path / 'docs_embs.npy'
-    ds_ids, ds_doc_ids, docs_chunks = [], [], []
-    n_docs_chunks = 0
+    docs_embs_ids, embs_chunks_ids, chunks_off_ids = [], [], []
+
+    view = ds.get_embs_view(args.batch_size)
+    batch_it = view.get_batch_iterator(
+        n_batches=n_embs_batches, batch_size=args.batch_size
+    )
+    for i in pbar:
+        batch = next(batch_it)
+
+
     with open(docs_embs_fpath, 'wb') as f:
         for i, _ in enumerate(pbar):
             dc = next(docs_chunks_it)
