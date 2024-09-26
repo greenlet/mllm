@@ -6,7 +6,7 @@ from mllm.utils.utils import SplitsType, split_range
 
 TDs = TypeVar('TDs')
 TBatch = TypeVar('TBatch')
-TGetBatchFunc = Callable[[np.ndarray], TBatch]
+TGetBatchFunc = Callable[[np.ndarray, ...], TBatch]
 
 
 class DsView(Generic[TDs, TBatch]):
@@ -36,7 +36,7 @@ class DsView(Generic[TDs, TBatch]):
         self.batch_size = batch_size
 
     def get_batch_iterator(self, n_batches: Optional[int] = None, batch_size: Optional[int] = None,
-                           drop_last: bool = False, shuffle_between_loops: bool = True)\
+                           drop_last: bool = False, shuffle_between_loops: bool = True, **kwargs)\
             -> Generator[TBatch, None, None]:
         batch_size = batch_size or self.batch_size
         n = len(self.ids)
@@ -67,7 +67,7 @@ class DsView(Generic[TDs, TBatch]):
                     rest = batch_size - batch_size_cur
                     inds = list(range(i, n)) + list(range(rest))
             ids = self.ids[inds]
-            batch = self.get_batch_fn(ids)
+            batch = self.get_batch_fn(ids, **kwargs)
             yield batch
 
     def __len__(self) -> int:
