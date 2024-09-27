@@ -15,18 +15,20 @@ class QrelsEmbsBatch:
     df_docs_ids: pd.DataFrame
     # docs_embs: [n_batch, chunk_size, emb_size]
     docs_embs: np.ndarray
-    # qid: int, did: int, dsqid: int (generated), dsdid: int (generated)
     batch_size: int
     chunk_size: int
     emb_size: int
     device: Optional[torch.device] = None
     docs_embs_tf: Optional[torch.Tensor] = None
-    df_qrels: Optional[pd.DataFrame]
+    # qid: int, did: int, dsqid: int (generated), dsdid: int (generated)
+    df_qrels: Optional[pd.DataFrame] = None
     # query_emb_id: int (index), ds_id: int, ds_query_id: int
-    df_qs_ids: Optional[pd.DataFrame]
-    qs_embs: Optional[list[np.ndarray]]
+    df_qs_ids: Optional[pd.DataFrame] = None
+    qs_embs: Optional[list[np.ndarray]] = None
     qs_embs_tf: Optional[torch.Tensor] = None
     masks_embs_tf: Optional[torch.Tensor] = None
+    did_to_qids: Optional[list[dict[int, list[int]]]] = None
+    qids: Optional[list[set[int]]] = None
 
     def __init__(
             self, df_docs_ids: pd.DataFrame, docs_embs: list[np.ndarray], chunk_size: int, emb_size: int, device: Optional[torch.device] = None,
@@ -48,20 +50,45 @@ class QrelsEmbsBatch:
         self._calc()
 
     def _calc(self):
+        if self.df_qrels is None:
+            return
         # [n_batch * chunk_size]
         ds_docs_ids = self.df_docs_ids['ds_doc_id'].to_numpy()
         # [n_batch, chunk_size]
         ds_docs_ids = ds_docs_ids.reshape((self.batch_size, self.chunk_size))
         df_qrels = self.df_qrels.set_index('dsdid')
-        batch_did_to_qid = {}
-        for i_batch, batch_dsdids in enumerate(ds_docs_ids):
-            did_to_qid = {}
-            batch_did_to_qid[i_batch] = did_to_qid
-            dsdids = np.unique(batch_dsdids)
-            dsqids = df_qrels['ds_query_id']
-            for dsdid in dsdids:
-                dsdidqids = list(dsqids.loc[dsdid])
-                did_to_qid[dsdid] = dsdidqids
+        did_to_qids, qids = [], []
+        for i_batch, ds_docs_ids_b in enumerate(ds_docs_ids):
+            did_to_qids_b, qids_b = {}, set()
+            ds_docs_ids_b = np.unique(ds_docs_ids_b)
+            ds_qs_ids_b = df_qrels['ds_query_id']
+            for dsdid in ds_docs_ids_b:
+                dsdidqids = list(ds_qs_ids_b.loc[dsdid])
+                did_to_qids_b[dsdid] = dsdidqids
+                qids_b.update(dsdidqids)
+            did_to_qids.append(did_to_qids_b)
+            qids.append(qids_b)
+        self.did_to_qids = did_to_qids
+        self.qids = qids
+
+        qs_ind_len = []
+        q_ind, q_len = 0, 0
+        qid_last = None
+        self.df_qs_ids.sort_values(['ds_query_id', 'query_emb_id'], inplace=True)
+        for i, (_, q_row) in enumerate(self.df_qs_ids.iterrows()):
+            qid = q_row['ds_query_id']
+            if qid_last != qid:
+                if qid_last is not None:
+                    qs_ind_len.append((qid, q_ind, q_len))
+                q_ind, q_len = i, 0
+                qid_last = qid
+            q_len += 1
+        qs_ind_len.append((qid_last, q_ind, q_len))
+
+        n_qs = len(qs_ind_len)
+        qs_masks = np.zeros((self.batch_size, n_qs), dtype=bool)
+        for qid, q_ind, q_len in qs_ind_len:
+            pass
 
 
     def get_docs_tensor(self, with_qs_ids: bool = False) -> Union[torch.Tensor, tuple[torch.Tensor, dict[int, int]]]:
