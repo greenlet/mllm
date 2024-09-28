@@ -27,8 +27,8 @@ class QrelsBatch:
     qs_chunks_padded: np.ndarray
     docs_off_len: list[tuple[int, int]]
     qs_off_len: list[tuple[int, int]]
-    docs_chunks_padded_tf: Optional[torch.Tensor] = None
-    qs_chunks_padded_tf: Optional[torch.Tensor] = None
+    docs_chunks_padded_t: Optional[torch.Tensor] = None
+    qs_chunks_padded_t: Optional[torch.Tensor] = None
     device: Optional[torch.device] = None
 
     def __init__(self, df_qs: pd.DataFrame, docs_chunks: list[list[np.ndarray]], qs_chunks: list[list[list[int]]], pad_tok: int, emb_chunk_size: int,
@@ -83,10 +83,10 @@ class QrelsBatch:
         return res
 
     def gen_tensors(self) -> tuple[torch.Tensor, torch.Tensor]:
-        if self.docs_chunks_padded_tf is None:
-            self.docs_chunks_padded_tf, self.qs_chunks_padded_tf = \
+        if self.docs_chunks_padded_t is None:
+            self.docs_chunks_padded_t, self.qs_chunks_padded_t = \
                 map(self._to_tensor, (self.docs_chunks_padded, self.qs_chunks_padded))
-        return self.docs_chunks_padded_tf, self.qs_chunks_padded_tf
+        return self.docs_chunks_padded_t, self.qs_chunks_padded_t
 
 
 class DocChunks:
