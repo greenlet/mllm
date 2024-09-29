@@ -145,10 +145,12 @@ def main(args: ArgsRunRankerEmbs) -> int:
 
     view = ds.get_embs_view(args.batch_size)
     batch_it = view.get_batch_iterator(
-        n_batches=n_embs_batches, batch_size=args.batch_size
+        n_batches=n_embs_batches, batch_size=args.batch_size, with_queries=False,
     )
     for i in pbar:
         batch = next(batch_it)
+        docs_embs, _ = batch.get_tensors()
+        docs_embs = model.run_enc_emb(docs_embs)
 
 
     with open(docs_embs_fpath, 'wb') as f:

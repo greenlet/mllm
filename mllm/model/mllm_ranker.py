@@ -249,6 +249,22 @@ class MllmRankerLevel(nn.Module):
         out_rank = self.decoder(docs_enc.unsqueeze(0), qs_enc.unsqueeze(0))
         return out_rank
 
+    # docs_embs: [n_batch, chunk_size, emb_size]
+    # qs_embs: [n_batch * (n_queries_chunks = 1 or 2 generally, varies per query), emb_size]
+    def run_qs_embs(self, docs_embs: Tensor, qs_embs: Tensor, qs_ind_len: list[tuple[int, int, int]]) -> list[Tensor]:
+        # docs_enc: [n_batch, emb_size]
+        _, docs_enc = self.run_encoder(docs_embs)
+        # docs_enc: [1, n_batch, emb_size]
+        docs_enc = docs_enc.unsqueeze(0)
+        ranks = []
+        for i, (qid, q_ind, q_len) in enumerate(qs_ind_len):
+            # qs_embs_item: [1, n_qs, emb_size]
+            qs_embs_item = qs_embs[q_ind:q_ind + q_len].unsqueeze(0)
+            # out_rank: [1, n_batch]
+            out_rank = self.decoder(docs_enc, qs_embs_item).squeeze(0)
+            ranks.append(out_rank)
+        return ranks
+
 
 def test_create_mllm_ranker():
     cfg_mllm = create_mllm_ranker_cfg(n_vocab=50_000)

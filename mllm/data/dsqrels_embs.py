@@ -38,7 +38,7 @@ class QrelsEmbsBatch:
     ):
         self.df_docs_ids = df_docs_ids
         # [n_batch * chunk_size, emb_size]
-        docs_embs = np.stack(self.docs_embs, axis=0)
+        docs_embs = np.stack(docs_embs, axis=0)
         # [n_batch, chunk_size, emb_size]
         docs_embs = docs_embs.reshape((-1, self.chunk_size, self.emb_size))
         self.docs_embs = docs_embs
@@ -65,7 +65,8 @@ class QrelsEmbsBatch:
             ds_docs_ids_b = np.unique(ds_docs_ids_b)
             ds_qs_ids_b = df_qrels['ds_query_id']
             for dsdid in ds_docs_ids_b:
-                dsdidqids = list(ds_qs_ids_b.loc[dsdid])
+                dsdidqids = ds_qs_ids_b.loc[dsdid]
+                dsdidqids = list(dsdidqids) if type(dsdidqids) == pd.Series else [dsdidqids]
                 did_to_qids_b[dsdid] = dsdidqids
                 qids_b.update(dsdidqids)
             did_to_qids.append(did_to_qids_b)
