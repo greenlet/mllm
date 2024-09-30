@@ -149,7 +149,9 @@ def main(args: ArgsRunRankerEmbs) -> int:
     )
     for i in pbar:
         batch = next(batch_it)
-        docs_embs, _ = batch.get_tensors()
+        # [n_batch, chunk_size, emb_size]
+        docs_embs = batch.get_docs_embs_tensor()
+        # [n_batch, emb_size]
         docs_embs = model.run_enc_emb(docs_embs)
 
 
