@@ -16,17 +16,16 @@ class QrelsEmbsBatch:
     # docs_embs: [n_batch, chunk_size, emb_size]
     docs_embs: np.ndarray
     # [n_batch * chunk_size, 2]
-    ds_docs_ids: np.ndarray
+    docs_embs_ids: np.ndarray
     batch_size: int
     chunk_size: int
     emb_size: int
-    docs_embs_ids: tuple[list[int], list[int]]
     device: Optional[torch.device] = None
     docs_embs_t: Optional[torch.Tensor] = None
 
     def __init__(
             self, df_docs_ids: pd.DataFrame, docs_embs: list[np.ndarray], chunk_size: int, emb_size: int,
-            df_qrels: Optional[pd.DataFrame], df_qs_ids: Optional[pd.DataFrame], device: Optional[torch.device] = None,
+            device: Optional[torch.device] = None,
     ):
         self.df_docs_ids = df_docs_ids
         # [n_batch * chunk_size, emb_size]
@@ -34,19 +33,17 @@ class QrelsEmbsBatch:
         # [n_batch, chunk_size, emb_size]
         docs_embs = docs_embs.reshape((-1, self.chunk_size, self.emb_size))
         # [n_batch * chunk_size]
-        ds_docs_ids = self.df_docs_ids['ds_doc_id'].to_numpy()
+        doc_emb_id = self.df_docs_ids['doc_emb_id'].to_numpy()
         batch_size = len(self.docs_embs)
         doc_emb_id_1 = np.arange(batch_size)
         doc_emb_id_1 = np.repeat(doc_emb_id_1, chunk_size)
-        ds_docs_ids = np.stack([ds_docs_ids, doc_emb_id_1], axis=1)
+        docs_embs_ids = np.stack([doc_emb_id, doc_emb_id_1], axis=1)
         self.docs_embs = docs_embs
-        self.ds_docs_ids = ds_docs_ids
+        self.docs_embs_ids = docs_embs_ids
         self.batch_size = batch_size
         self.chunk_size = chunk_size
         self.emb_size = emb_size
         self.device = device
-        self.df_qrels = df_qrels
-        self.df_qs_ids = df_qs_ids
 
     def _calc_old(self):
         # # qid: int, did: int, dsqid: int (generated), dsdid: int (generated)

@@ -36,7 +36,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_05_train_02_ranker_qrels_embs.py \
+python s_05_03_train_ranker_qrels_embs.py \
   --ds-dir-path $msmarco_data_path \
   --ds-dir-paths $msmarco_data_path $fever_data_path \
   --train-root-path $train_ranker_root_path \

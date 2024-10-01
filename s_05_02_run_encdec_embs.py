@@ -141,78 +141,29 @@ def main(args: ArgsRunRankerEmbs) -> int:
     print(f'Processing {n_embs} embeddings, {n_embs_chunks} chunks, {n_embs_batches} batches')
     pbar = trange(n_embs_batches, desc=f'Embs chunks emb inference', unit='doc')
     docs_embs_fpath = args.out_ds_path / 'docs_embs.npy'
-    docs_embs_ids, embs_chunks_ids, chunks_off_ids = [], [], []
+    run_info_fpath = args.out_ds_path / 'run_info.yaml'
+    docs_embs_ids_fpath = args.out_ds_path / 'docs_embs_ids.tsv'
+    docs_embs_ids = []
 
     view = ds.get_embs_view(args.batch_size)
     batch_it = view.get_batch_iterator(
         n_batches=n_embs_batches, batch_size=args.batch_size, with_queries=False,
     )
-    for i in pbar:
-        batch = next(batch_it)
-        # [n_batch, chunk_size, emb_size]
-        docs_embs = batch.get_docs_embs_tensor()
-        # [n_batch, emb_size]
-        docs_embs = model.run_enc_emb(docs_embs)
-
-
     with open(docs_embs_fpath, 'wb') as f:
-        for i, _ in enumerate(pbar):
-            dc = next(docs_chunks_it)
-            n_chunks = len(dc.doc_chunks)
-            ds_ids.extend([dc.ds_id] * n_chunks)
-            ds_doc_ids.extend([dc.ds_doc_id] * n_chunks)
-            docs_chunks.extend(dc.doc_chunks)
+        for i in pbar:
+            batch = next(batch_it)
+            # [n_batch, chunk_size, emb_size]
+            docs_embs = batch.get_docs_embs_tensor()
+            # [n_batch, emb_size]
+            docs_embs = model.run_enc_emb(docs_embs)
+            docs_embs = docs_embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
+            f.write(docs_embs)
+            docs_embs_ids.append(batch.docs_embs_ids)
 
-            while len(docs_chunks) >= args.batch_size or len(docs_chunks) > 0 and i == n_docs - 1:
-                batch, docs_chunks = docs_chunks[:args.batch_size], docs_chunks[args.batch_size:]
-                batch = to_tensor(batch)
-                docs_embs = model.run_enc_emb(batch)
-                docs_embs = docs_embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
-                f.write(docs_embs)
-                n_docs_chunks += len(batch)
-
-    run_info.n_docs_chunks = n_docs_chunks
     to_yaml_file(run_info_fpath, run_info)
-
-    df_docs_ids = pd.DataFrame({'doc_emb_id': np.arange(len(ds_ids)), 'ds_id': ds_ids, 'ds_doc_id': ds_doc_ids})
-    docs_ids_fpath = args.out_ds_path / 'docs_ids.tsv'
-    print(f'Writing docs ids dataset of size {len(df_docs_ids)} in {docs_ids_fpath}')
-    write_tsv(df_docs_ids, docs_ids_fpath)
-    del ds_ids
-    del ds_doc_ids
-    del df_docs_ids
-
-    print(f'Processing {n_qs} queries')
-    pbar = trange(n_qs, desc=f'Queries emb inference', unit='query')
-    qs_embs_fpath = args.out_ds_path / 'qs_embs.npy'
-    ds_ids, ds_query_ids, qs_chunks = [], [], []
-    n_qs_chunks = 0
-    with open(qs_embs_fpath, 'wb') as f:
-        for i, _ in enumerate(pbar):
-            qc = next(qs_chunks_it)
-            n_chunks = len(qc.query_chunks)
-            ds_ids.extend([qc.ds_id] * n_chunks)
-            ds_query_ids.extend([qc.ds_query_id] * n_chunks)
-            qs_chunks.extend(qc.query_chunks)
-
-            while len(qs_chunks) >= args.batch_size or len(qs_chunks) > 0 and i == n_qs - 1:
-                batch, qs_chunks = qs_chunks[:args.batch_size], qs_chunks[args.batch_size:]
-                batch = to_tensor(batch)
-                docs_embs = model.run_enc_emb(batch)
-                docs_embs = docs_embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
-                f.write(docs_embs)
-                n_qs_chunks += len(batch)
-
-    run_info.n_qs_chunks = n_qs_chunks
-    to_yaml_file(run_info_fpath, run_info)
-
-    df_qs_ids = pd.DataFrame({'query_emb_id': np.arange(len(ds_ids)), 'ds_id': ds_ids, 'ds_query_id': ds_query_ids})
-    qs_ids_fpath = args.out_ds_path / 'qs_ids.tsv'
-    print(f'Writing queries ids dataset of size {len(df_qs_ids)} in {qs_ids_fpath}')
-    write_tsv(df_qs_ids, qs_ids_fpath)
-
-    qrels_fpath = args.out_ds_path / 'qrels.tsv'
-    write_tsv(ds.df_qrels, qrels_fpath)
+    docs_embs_ids = np.concatenate(docs_embs_ids)
+    df_embs_ids = pd.DataFrame(docs_embs_ids, columns=['doc_emb_id', 'doc_emb_id_1'])
+    write_tsv(df_embs_ids, docs_embs_ids_fpath)
 
     return 0
 

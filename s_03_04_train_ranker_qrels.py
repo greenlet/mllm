@@ -19,7 +19,7 @@ from mllm.model.mllm_encdec import MllmEncdec
 from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
 from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
 from mllm.train.utils import find_create_train_path, calc_print_batches
-from s_01_diff_01_gen_gpt2_embs import ds_train
+from s_01_01_gen_gpt2_embs import ds_train
 
 
 class ArgsQrelsTrain(ArgsTokensChunksTrain):

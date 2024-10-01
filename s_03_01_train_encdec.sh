@@ -27,7 +27,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_03_train_01_encdec.py \
+python s_03_01_train_encdec.py \
   --ds-dir-path $wiki_ds_path \
   --train-root-path $train_root_path \
   --train-subdir "$train_subdir" \
