@@ -30,11 +30,18 @@ class ArgsRunRankerEmbs(BaseModel):
                     'Embeddings generated from previous step and doc/query ids corresponding to embeddings.',
         cli=('--ds-dir-path',),
     )
-    train_dir_path: Path = Field(
+    train_root_path: Path = Field(
         ...,
         required=True,
         description='Path to encdec train directory.',
         cli=('--train-root-path',),
+    )
+    train_subdir: str = Field(
+        '',
+        required=False,
+        description='Train subdirectory. Can have values: "last", "<subdirectory-name>". When set to "last", '
+                    'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
+        cli=('--train-subdir',)
     )
     model_cfg_fpath: Path = Field(
         ...,
@@ -100,7 +107,7 @@ def main(args: ArgsRunRankerEmbs) -> int:
 
     device = torch.device(args.device)
 
-    best_checkpoint_path = args.train_dir_path / 'best.pth'
+    best_checkpoint_path = args.train_root_path / args.train_subdir / 'best.pth'
     checkpoint = torch.load(best_checkpoint_path, map_location=device)
 
     model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
@@ -147,7 +154,7 @@ def main(args: ArgsRunRankerEmbs) -> int:
 
     view = ds.get_embs_view(args.batch_size)
     batch_it = view.get_batch_iterator(
-        n_batches=n_embs_batches, batch_size=args.batch_size, with_queries=False,
+        n_batches=n_embs_batches, batch_size=args.batch_size,
     )
     with open(docs_embs_fpath, 'wb') as f:
         for i in pbar:
