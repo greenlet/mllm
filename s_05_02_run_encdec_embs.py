@@ -146,15 +146,15 @@ def main(args: ArgsRunRankerEmbs) -> int:
     model.eval()
 
     print(f'Processing {n_embs} embeddings, {n_embs_chunks} chunks, {n_embs_batches} batches')
-    pbar = trange(n_embs_batches, desc=f'Embs chunks emb inference', unit='doc')
+    pbar = trange(n_embs_batches, desc=f'Embs chunks emb inference', unit='batch')
     docs_embs_fpath = args.out_ds_path / 'docs_embs.npy'
     run_info_fpath = args.out_ds_path / 'run_info.yaml'
     docs_embs_ids_fpath = args.out_ds_path / 'docs_embs_ids.tsv'
     docs_embs_ids = []
 
-    view = ds.get_embs_view(args.batch_size)
+    view = ds.get_embs_view()
     batch_it = view.get_batch_iterator(
-        n_batches=n_embs_batches, batch_size=args.batch_size,
+        n_batches=n_embs_batches, batch_size=args.batch_size * args.chunk_size,
     )
     with open(docs_embs_fpath, 'wb') as f:
         for i in pbar:
