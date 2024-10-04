@@ -1,11 +1,12 @@
 from pathlib import Path
-from typing import Optional, TextIO, Type, BinaryIO, Union
+from typing import Optional
 
 import numpy as np
 import pandas as pd
 import torch
 
 from mllm.data.common import DsView
+from mllm.data.utils import BinVecsFile
 from mllm.utils.utils import read_tsv
 
 
@@ -124,40 +125,11 @@ class DsQrelsEmbsView(DsView['DsQrelsEmbs', QrelsEmbsBatch]):
     pass
 
 
-class BinVecsFile:
-    fpath: Path
-    fid: BinaryIO
-    vec_size: int
-    dtype: np.dtype[int]
-    bytes_size: int
-    opened: bool
-
-    def __init__(self, fpath: Path, vec_size: int, dtype: np.dtype[int]):
-        self.fpath = fpath
-        self.fid = open(self.fpath, 'rb')
-        self.opened = True
-        self.vec_size = vec_size
-        self.dtype = np.dtype(dtype)
-        self.bytes_size = self.vec_size * self.dtype.itemsize
-
-    def get_vec(self, offset: int) -> np.ndarray:
-        assert self.opened
-        self.fid.seek(offset)
-        buf = self.fid.read(self.bytes_size)
-        vec = np.frombuffer(buf, self.dtype)
-        return vec
-
-    def close(self):
-        if self.opened:
-            self.fid.close()
-            self.opened = False
-
-
 class DsQrelsEmbs:
     ds_dir_path: Path
     chunk_size: int
     emb_size: int
-    emb_dtype: np.dtype[int]
+    emb_dtype: np.dtype
     emb_bytes_size: int
     # doc_emb_id: int (index), ds_id: int, ds_doc_id: int
     df_docs_ids: pd.DataFrame
@@ -169,7 +141,7 @@ class DsQrelsEmbs:
     qs_file: BinVecsFile
     device: Optional[torch.device] = None
 
-    def __init__(self, ds_dir_path: Path, chunk_size: int, emb_size: int, emb_dtype: np.dtype[int], device: Optional[torch.device] = None):
+    def __init__(self, ds_dir_path: Path, chunk_size: int, emb_size: int, emb_dtype: np.dtype, device: Optional[torch.device] = None):
         self.ds_dir_path = ds_dir_path
         self.chunk_size = chunk_size
         self.emb_size = emb_size

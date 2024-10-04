@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, BinaryIO
 
+import numpy as np
 import torch
 
 from mllm.data.dsqrels import DsQrels
@@ -28,3 +29,31 @@ def load_qrels_datasets(ds_dir_paths: list[Path], ch_tkz: ChunkTokenizer, emb_ch
     ds = DsQrels.join(dss)
     return ds
 
+
+class BinVecsFile:
+    fpath: Path
+    fid: BinaryIO
+    vec_size: int
+    dtype: np.dtype[int]
+    bytes_size: int
+    opened: bool
+
+    def __init__(self, fpath: Path, vec_size: int, dtype: np.dtype[int]):
+        self.fpath = fpath
+        self.fid = open(self.fpath, 'rb')
+        self.opened = True
+        self.vec_size = vec_size
+        self.dtype = np.dtype(dtype)
+        self.bytes_size = self.vec_size * self.dtype.itemsize
+
+    def get_vec(self, offset: int) -> np.ndarray:
+        assert self.opened
+        self.fid.seek(offset)
+        buf = self.fid.read(self.bytes_size)
+        vec = np.frombuffer(buf, self.dtype)
+        return vec
+
+    def close(self):
+        if self.opened:
+            self.fid.close()
+            self.opened = False

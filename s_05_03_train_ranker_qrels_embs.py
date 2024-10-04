@@ -24,20 +24,19 @@ from mllm.train.utils import find_create_train_path, calc_print_batches
 
 
 class ArgsQrelsEmbsTrain(BaseModel):
-    ds_dir_path: Path = Field(
+    embs_ds_dir_path: Path = Field(
         None,
         required=False,
-        description='Embeddings dataset path. Must contain docs_embs.npy, docs_ids.tsv, qs_embs.npy, qs_ids.tsv files with'
+        description='0 level embeddings dataset path. Must contain docs_embs.npy, docs_ids.tsv, qs_embs.npy, qs_ids.tsv files with'
                     'Embeddings generated from previous step and doc/query ids corresponding to embeddings.',
-        cli=('--ds-dir-path',),
+        cli=('--embs-ds-dir-path',),
     )
-    ds_dir_paths: list[Path] = Field(
-        [],
-        required=True,
-        description='Qrels datasets directory paths. Supported datasets: Msmarco, Fever.'
-                    'Naming convention: directory name must contain the name of dataset: msmarco, fever. Unknown datasets '
-                    'will cause an error and exit.',
-        cli=('--ds-dir-paths',),
+    embs_1_ds_dir_path: Path = Field(
+        None,
+        required=False,
+        description='1 level embeddings dataset path. Must contain docs_embs.npy, docs_embs_ids.tsv files with'
+                    'Embeddings generated from previous step.',
+        cli=('--embs-1-ds-dir-path',),
     )
     train_root_path: Path = Field(
         ...,
@@ -52,21 +51,9 @@ class ArgsQrelsEmbsTrain(BaseModel):
             'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
         cli=('--train-subdir',)
     )
-    encdec_model_cfg_fpath: Optional[Path] = Field(
+    ranker_model_cfg_fpath: Optional[Path] = Field(
         None,
         required=False,
-        description='Path to Encoder-Decoder model config Yaml file.',
-        cli=('--encdec-model-cfg-fpath',),
-    )
-    encdec_pretrained_model_path: Optional[Path] = Field(
-        None,
-        required=False,
-        description='Path to Encoder-Decoder model weights pretrained on embeddings.',
-        cli=('--encdec-pretrained-model-path',),
-    )
-    ranker_model_cfg_fpath: Path = Field(
-        ...,
-        required=True,
         description='Path to Ranker model config Yaml file.',
         cli=('--ranker-model-cfg-fpath',),
     )
@@ -118,8 +105,6 @@ class ArgsQrelsEmbsTrain(BaseModel):
 
 def main(args: ArgsQrelsEmbsTrain) -> int:
     print(args)
-
-    assert args.ds_dir_paths, '--ds-dir-paths is expected to list at least one Qrels datsaset'
 
     device = torch.device(args.device)
 

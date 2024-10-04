@@ -2,7 +2,8 @@
 code_path=$HOME/prog
 data_path=$HOME/data
 model_level=1
-ds_dir_path=$data_path/encdec_embs_${model_level}_msmarco_fever
+embs_ds_dir_path=$data_path/ranker_embs_msmarco_fever
+embs_1_ds_dir_path=$data_path/encdec_embs_1_msmarco_fever
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
@@ -31,7 +32,8 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 cd "$mllm_src_path" || exit 1
 #echo "
 python s_05_03_train_ranker_qrels_embs.py \
-  --ds-dir-path $ds_dir_path \
+  --embs-ds-dir-path $embs_ds_dir_path \
+  --embs-1-ds-dir-path $embs_1_ds_dir_path \
   --train-root-path $train_ranker_root_path \
   --train-subdir "$train_subdir" \
   --ranker-model-cfg-fpath $ranker_model_cfg_fpath \
