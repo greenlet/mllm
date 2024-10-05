@@ -4,8 +4,10 @@ data_path=$HOME/data
 model_level=1
 ds_dir_path=$data_path/ranker_embs_msmarco_fever
 train_encdec_root_path=$data_path/train_mllm_encdec_${model_level}
-train_subdir=encdec-l1-20240918_063547-msmarco-fever
-out_ds_path=$data_path/encdec_embs_${model_level}_msmarco_fever
+#train_subdir=encdec-l1-20240918_063547-msmarco-fever
+#out_ds_path=$data_path/encdec_embs_${model_level}_msmarco_fever
+train_subdir=encdec-l1-20241005_175446-msmarco-fever
+out_ds_path=$data_path/encdec_embs_${model_level}_msmarco_fever_v2
 chunk_size=100
 
 mllm_src_path=$code_path/mllm

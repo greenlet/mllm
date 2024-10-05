@@ -24,47 +24,59 @@ class QrelsEmbsBatch:
     device: Optional[torch.device] = None
     docs_embs_t: Optional[torch.Tensor] = None
 
+    # qid: int, did: int, dsqid: int (generated), dsdid: int (generated)
+    df_qrels: Optional[pd.DataFrame] = None
+    # query_emb_id: int (index), ds_id: int, ds_query_id: int
+    df_qs_ids: Optional[pd.DataFrame] = None
+    did_to_qids: Optional[list[dict[int, list[int]]]] = None
+    qids: Optional[list[set[int]]] = None
+    qs_ind_len: Optional[list[tuple[int, int, int]]] = None
+    qs_masks: Optional[np.ndarray] = None
+
     def __init__(
             self, df_docs_ids: pd.DataFrame, docs_embs: list[np.ndarray], chunk_size: int, emb_size: int,
-            device: Optional[torch.device] = None,
+            device: Optional[torch.device] = None, df_qrels: Optional[pd.DataFrame] = None, df_qs_ids: Optional[pd.DataFrame] = None,
     ):
         self.df_docs_ids = df_docs_ids
-
         # [n_batch * chunk_size, emb_size]
-        docs_embs = np.stack(docs_embs, axis=0)
-
-        # last batch might contain number of embeddings which is not a multiple of chunk_size
-        n_docs = len(docs_embs)
-        n_docs_chunk_rem = n_docs % chunk_size
-        if n_docs_chunk_rem > 0:
-            docs_embs = np.pad(docs_embs, ((0, chunk_size - n_docs_chunk_rem), (0, 0)))
-
-        # [n_batch, chunk_size, emb_size]
-        docs_embs = docs_embs.reshape((-1, chunk_size, emb_size))
-        # [n_batch * chunk_size]
-        doc_emb_id = self.df_docs_ids.index.to_numpy()
-        if n_docs_chunk_rem > 0:
-            doc_emb_id = np.pad(doc_emb_id, (0, chunk_size - n_docs_chunk_rem), constant_values=-1)
-
-        batch_size = len(docs_embs)
-        doc_emb_id_1 = np.arange(batch_size)
-        doc_emb_id_1 = np.repeat(doc_emb_id_1, chunk_size)
-        docs_embs_ids = np.stack([doc_emb_id, doc_emb_id_1], axis=1)
-        self.docs_embs = docs_embs
-        self.docs_embs_ids = docs_embs_ids
-        self.batch_size = batch_size
+        self.docs_embs = np.stack(docs_embs, axis=0)
         self.chunk_size = chunk_size
         self.emb_size = emb_size
         self.device = device
 
-    def _calc_old(self):
-        # # qid: int, did: int, dsqid: int (generated), dsdid: int (generated)
-        # df_qrels: Optional[pd.DataFrame] = None
-        # # query_emb_id: int (index), ds_id: int, ds_query_id: int
-        # df_qs_ids: Optional[pd.DataFrame] = None
-        # did_to_qids: Optional[list[dict[int, list[int]]]] = None
-        # qids: Optional[list[set[int]]] = None
-        # qs_ind_len: Optional[list[tuple[int, int, int]]]
+        self.df_qrels = df_qrels
+        self.df_qs_ids = df_qs_ids
+
+        self._calc_docs()
+        self._calc_qs()
+
+    def _calc_docs(self):
+        # last batch might contain number of embeddings which is not a multiple of chunk_size
+        n_docs = len(self.docs_embs)
+        n_docs_chunk_rem = n_docs % self.chunk_size
+        n_docs_chunk_pad = self.chunk_size - n_docs_chunk_rem
+        docs_embs = self.docs_embs
+        if n_docs_chunk_rem > 0:
+            docs_embs = np.pad(self.docs_embs, ((0, n_docs_chunk_pad), (0, 0)))
+
+        # [n_batch, chunk_size, emb_size]
+        docs_embs = docs_embs.reshape((-1, self.chunk_size, self.emb_size))
+        self.docs_embs = docs_embs
+
+        # [n_batch * chunk_size]
+        doc_emb_id = self.df_docs_ids.index.to_numpy()
+        if n_docs_chunk_rem > 0:
+            doc_emb_id = np.pad(doc_emb_id, (0, n_docs_chunk_pad), constant_values=-1)
+
+        batch_size = len(docs_embs)
+        doc_emb_id_1 = np.arange(batch_size)
+        doc_emb_id_1 = np.repeat(doc_emb_id_1, self.chunk_size)
+        self.batch_size = batch_size
+        self.docs_embs_ids = np.stack([doc_emb_id, doc_emb_id_1], axis=1)
+
+    def _calc_qs(self):
+        if self.df_qrels is None:
+            return
 
         # [n_batch * chunk_size]
         ds_docs_ids = self.df_docs_ids['ds_doc_id'].to_numpy()
@@ -101,13 +113,13 @@ class QrelsEmbsBatch:
         qs_ind_len.append((qid_last, q_ind, q_len))
         self.qs_ind_len = qs_ind_len
 
-        # n_qs = len(qs_ind_len)
-        # qs_masks = np.zeros((self.batch_size, n_qs), dtype=bool)
-        # for i_q, (qid, _, _) in enumerate(qs_ind_len):
-        #     for i_b, qids_b in enumerate(qids):
-        #         if qid in qids_b:
-        #             qs_masks[i_b, i_q] = True
-        # self.qs_masks = qs_masks
+        n_qs = len(qs_ind_len)
+        qs_masks = np.zeros((self.batch_size, n_qs), dtype=bool)
+        for i_q, (qid, _, _) in enumerate(qs_ind_len):
+            for i_b, qids_b in enumerate(qids):
+                if qid in qids_b:
+                    qs_masks[i_b, i_q] = True
+        self.qs_masks = qs_masks
 
     def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:
         res = torch.from_numpy(arr)
@@ -175,14 +187,16 @@ class DsQrelsEmbs:
         df_qs_ids = self.df_qs_ids.loc[ds_qs_ids]
         return df_qrels, df_qs_ids
 
-    def get_embs_batch(self, doc_emb_ids: np.ndarray) -> QrelsEmbsBatch:
+    def get_embs_batch(self, doc_emb_ids: np.ndarray, with_queries: bool = False) -> QrelsEmbsBatch:
         df_docs_ids = self.df_docs_ids.loc[doc_emb_ids]
         offsets = doc_emb_ids * self.emb_bytes_size
         docs_embs: list[np.ndarray] = []
         for off in offsets:
             doc_emb = self.docs_embs_file.get_vec(off)
             docs_embs.append(doc_emb)
-        # df_qrels, df_qs_ids = self._get_qs(df_docs_ids)
+        df_qrels, df_qs_ids = None, None
+        if with_queries:
+            df_qrels, df_qs_ids = self._get_qs(df_docs_ids)
 
         batch = QrelsEmbsBatch(
             df_docs_ids=df_docs_ids, docs_embs=docs_embs, chunk_size=self.chunk_size, emb_size=self.emb_size,

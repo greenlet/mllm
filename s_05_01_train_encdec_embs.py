@@ -165,12 +165,13 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
 
     model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
+    enc_cfg = model_cfg.encoders[args.model_level]
+
     print(model_cfg)
     model = MllmEncdecLevel(model_cfg, args.model_level).to(device)
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
-    enc_cfg = model_cfg.encoders[args.model_level]
     ds = DsQrelsEmbs(
         ds_dir_path=args.ds_dir_path, chunk_size=enc_cfg.inp_len, emb_size=enc_cfg.d_model, emb_dtype=np.float32, device=device
     )
@@ -215,7 +216,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             batch: QrelsEmbsBatch = next(train_batch_it)
-            embs = batch.get_tensor()
+            embs = batch.get_docs_embs_tensor()
 
             optimizer.zero_grad()
             out = model(embs)
@@ -235,7 +236,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             batch: QrelsEmbsBatch = next(val_batch_it)
-            embs = batch.get_tensor()
+            embs = batch.get_docs_embs_tensor()
 
             out = model(embs)
             loss = loss_fn(out, embs)

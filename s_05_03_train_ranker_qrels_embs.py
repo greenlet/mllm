@@ -31,13 +31,6 @@ class ArgsQrelsEmbsTrain(BaseModel):
                     'Embeddings generated from previous step and doc/query ids corresponding to embeddings.',
         cli=('--embs-ds-dir-path',),
     )
-    embs_1_ds_dir_path: Path = Field(
-        None,
-        required=False,
-        description='1 level embeddings dataset path. Must contain docs_embs.npy, docs_embs_ids.tsv files with'
-                    'Embeddings generated from previous step.',
-        cli=('--embs-1-ds-dir-path',),
-    )
     train_root_path: Path = Field(
         ...,
         required=True,

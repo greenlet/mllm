@@ -126,7 +126,7 @@ def main(args: ArgsRunRankerEmbs) -> int:
     n_embs_chunks_total = n_embs_total // args.chunk_size + min(n_embs_total % args.chunk_size, 1)
     n_embs_batches_total = n_embs_chunks_total // args.batch_size + min(n_embs_chunks_total % args.batch_size, 1)
     n_embs, n_embs_chunks, n_embs_batches = n_embs_total, n_embs_chunks_total, n_embs_batches_total
-    if args.n_batches > 0 and args.n_batches < n_embs_batches_total:
+    if 0 < args.n_batches < n_embs_batches_total:
         n_embs_batches = args.n_batches
         n_embs_chunks = n_embs_batches * args.batch_size
         n_embs = n_embs_chunks * args.chunk_size
@@ -157,6 +157,7 @@ def main(args: ArgsRunRankerEmbs) -> int:
         n_batches=n_embs_batches, batch_size=args.batch_size * args.chunk_size,
     )
     with open(docs_embs_fpath, 'wb') as f:
+        off = 0
         for i in pbar:
             batch = next(batch_it)
             # [n_batch, chunk_size, emb_size]
@@ -165,6 +166,8 @@ def main(args: ArgsRunRankerEmbs) -> int:
             docs_embs = model.run_enc_emb(docs_embs)
             docs_embs = docs_embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
             f.write(docs_embs)
+            docs_embs_ids_b = batch.docs_embs_ids + [[0, off]]
+            off = docs_embs_ids_b[:, 1].max() + 1
             docs_embs_ids.append(batch.docs_embs_ids)
 
     to_yaml_file(run_info_fpath, run_info)

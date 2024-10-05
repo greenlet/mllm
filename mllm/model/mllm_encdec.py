@@ -55,10 +55,11 @@ class MllmEncdecLevel(nn.Module):
 
     def run_encoder(self, inp: Tensor) -> tuple[Tensor, Tensor]:
         out = self.encoder(inp)[0]
-        if self.cfg_enc.with_emb_mat:
-            out_seq = out_emb = out
-        else:
-            out_seq, out_emb = out[..., :-1, :], out[..., -1, :]
+        out_seq = out_emb = out
+        # if self.cfg_enc.with_emb_mat:
+        #     out_seq = out_emb = out
+        # else:
+        #     out_seq, out_emb = out[..., :-1, :], out[..., -1, :]
         return out_seq, out_emb
 
     def run_decoder(self, inp: Tensor) -> Tensor:

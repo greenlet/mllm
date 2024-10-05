@@ -32,7 +32,7 @@ encoders:
   n_heads: 8
   n_layers: 1
   pad_idx: 50267
-  with_emb_mat: true
+  with_emb_mat: false
   with_graph_mat: false
 vocab_encoder:
   d_model: 256

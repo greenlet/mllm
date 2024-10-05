@@ -23,7 +23,7 @@ device=cuda
 epochs=300
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=10
+docs_batch_size=100
 #train_subdir=last
 
 learning_rate=0.0001

@@ -258,6 +258,8 @@ class Encoder(nn.Module):
             assert self.inp_len > 0
             self.w_em = nn.Linear(self.inp_len, 1, bias=False)
             # self.A_em = nn.Parameter(torch.zeros((self.inp_len, self.d_model), dtype=torch.float32))
+        else:
+            self.a_em = nn.Parameter(torch.tensor(1.0, dtype=torch.float32))
         self.layer_norm = nn.LayerNorm(self.d_model, eps=1e-6)
 
     def forward(self, src_seq: Tensor, src_mask: Optional[Tensor] = None, return_attns: bool = False) -> tuple[Tensor, list[Tensor]]:
@@ -275,6 +277,8 @@ class Encoder(nn.Module):
             enc_out = enc_out.squeeze(-1)
             # enc_out = self.A_em.unsqueeze(0) * enc_out
             # enc_out = torch.sum(enc_out, dim=1)
+        else:
+            enc_out = torch.sum(enc_out, dim=1, keepdim=False) * self.a_em
 
         enc_out = self.layer_norm(enc_out)
 
