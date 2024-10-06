@@ -14,12 +14,14 @@ class DsView(Generic[TDs, TBatch]):
     ids: np.ndarray
     get_batch_fn: TGetBatchFunc
     batch_size: Optional[int] = None
+    kwargs: dict
 
-    def __init__(self, ds: TDs, ids: np.ndarray, get_batch_fn: TGetBatchFunc, batch_size: Optional[int] = None):
+    def __init__(self, ds: TDs, ids: np.ndarray, get_batch_fn: TGetBatchFunc, batch_size: Optional[int] = None, **kwargs):
         self.ds = ds
         self.ids = ids.copy()
         self.get_batch_fn = get_batch_fn
         self.batch_size = batch_size
+        self.kwargs = kwargs or {}
 
     def split(self, splits: SplitsType) -> tuple['DsView', ...]:
         intervals = split_range(len(self.ids), splits)
@@ -38,6 +40,7 @@ class DsView(Generic[TDs, TBatch]):
     def get_batch_iterator(self, n_batches: Optional[int] = None, batch_size: Optional[int] = None,
                            drop_last: bool = False, shuffle_between_loops: bool = True, **kwargs)\
             -> Generator[TBatch, None, None]:
+        kwargs = {**self.kwargs, **kwargs}
         batch_size = batch_size or self.batch_size
         n = len(self.ids)
         n_batches_total = n // batch_size + min(n % batch_size, 1)

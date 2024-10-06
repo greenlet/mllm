@@ -15,7 +15,7 @@ class RankProbLoss(nn.Module):
         self.target_weight = target_weight
         self.register_buffer('prob_cap', torch.scalar_tensor(1e-6))
 
-    def forward(self, prob_pred: list[torch.Tensor], mask_gt: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, prob_pred: list[torch.Tensor], mask_gt: Union[torch.Tensor, list[torch.Tensor]]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         loss_tgt = torch.scalar_tensor(0, dtype=torch.float32, device=prob_pred[0].device)
         loss_nontgt = torch.scalar_tensor(0, dtype=torch.float32, device=prob_pred[0].device)
         n_batch = len(prob_pred)

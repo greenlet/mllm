@@ -13,7 +13,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import GPT2Tokenizer
 
-from mllm.data.dsqrels_embs import DsQrelsEmbs
+from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsEmbsBatch
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import ArgsTokensChunksTrain
 from mllm.config.model import create_mllm_encdec_cfg, create_mllm_ranker_cfg, TokenizerCfg, MllmRankerCfg, MllmEncdecCfg
@@ -57,6 +57,12 @@ class ArgsQrelsEmbsTrain(BaseModel):
                     'and produce embeddings_k.',
         cli=('--model-level',),
     )
+    chunk_size: int = Field(
+        100,
+        required=False,
+        description='Number of embedding in a chunk.',
+        cli=('--chunk-size',),
+    )
     chunks_batch_size: int = Field(
         3,
         required=False,
@@ -94,6 +100,18 @@ class ArgsQrelsEmbsTrain(BaseModel):
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
+    encdec_model_cfg_fpath: Optional[Path] = Field(
+        None,
+        required=False,
+        description='Path to Encdec model config Yaml file.',
+        cli=('--encdec-model-cfg-fpath',),
+    )
+    encdec_pretrained_model_path: Optional[Path] = Field(
+        None,
+        required=False,
+        description='Path to pretrained Encdec model weights.',
+        cli=('--encdec-pretrained-model-path',),
+    )
 
 
 def main(args: ArgsQrelsEmbsTrain) -> int:
@@ -101,9 +119,8 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
 
     device = torch.device(args.device)
 
-    ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     train_path = find_create_train_path(
-        args.train_root_path, f'ranker-l{args.model_level}', ds_names, args.train_subdir)
+        args.train_root_path, f'ranker-l{args.model_level}', '', args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
@@ -124,12 +141,12 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
     enc_cfg = model_ranker.enc_cfg
 
     ds = DsQrelsEmbs(
-        ds_dir_path=args.ds_dir_path, chunk_size=enc_cfg.inp_len, emb_size=enc_cfg.d_model, emb_dtype=np.float32,
+        ds_dir_path=args.embs_ds_dir_path, chunk_size=enc_cfg.inp_len, emb_size=enc_cfg.d_model, emb_dtype=np.float32,
         device=device
     )
 
     if args.encdec_pretrained_model_path is not None and checkpoint is None:
-        assert args.encdec_model_cfg_fpath is not None, '--encdec-model-cfg-fpath is not empty, but --encdec-pretrained-model-path is not set'
+        assert args.encdec_model_cfg_fpath is not None, '--encdec-pretrained-model-path is not empty, but --encdec-model-cfg-fpath is not set'
         encdec_model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.encdec_model_cfg_fpath)
         encdec_model_path = args.encdec_pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {encdec_model_path}')
@@ -152,10 +169,10 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=8, threshold=1e-4, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    ds_view = ds.get_embs_view(batch_size=args.chunks_batch_size)
-    ds_view.shuffle()
-    view_train, view_val = ds_view.split((-1, 0.05))
-    n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, ds_view.batch_size, 'EmbsChunks')
+    view = ds.get_embs_view(batch_size=args.chunks_batch_size * args.chunk_size, with_queries=True)
+    view.shuffle()
+    view_train, view_val = view.split((-1, 0.05))
+    n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, view.batch_size, 'EmbsChunks')
 
     loss_fn = RankProbLoss()
     n_epochs = args.epochs - (last_epoch + 1)
@@ -169,19 +186,19 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         drop_last=False,
         shuffle_between_loops=True,
     )
+    model_ranker.encoder.eval()
     for epoch in range(last_epoch + 1, args.epochs):
-        # model.eval()
-        # model.decoders.train()
-        model_ranker.train()
+        model_ranker.decoder.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = next(train_batch_it)
-            docs_chunks, qs_chunks = batch.gen_tensors()
+            batch: QrelsEmbsBatch = next(train_batch_it)
+            docs_embs = batch.get_docs_embs_tensor()
+            qs_embs, qs_masks = batch.get_qs_tensors()
 
             optimizer.zero_grad()
-            out_rank, target_mask = model_ranker.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
-            loss, loss_tgt, loss_nontgt = loss_fn(out_rank, target_mask)
+            out_rank = model_ranker.run_qs_embs(docs_embs, qs_embs, batch.qs_ind_len)
+            loss, loss_tgt, loss_nontgt = loss_fn(out_rank, qs_masks)
             loss.backward()
             optimizer.step()
 
@@ -205,15 +222,16 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-        model_ranker.eval()
+        model_ranker.decoder.eval()
         val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = next(val_batch_it)
-            docs_chunks, qs_chunks = batch.gen_tensors()
+            batch: QrelsEmbsBatch = next(train_batch_it)
+            docs_embs = batch.get_docs_embs_tensor()
+            qs_embs, qs_masks = batch.get_qs_tensors()
 
-            out_rank, target_mask = model_ranker.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
-            loss, loss_tgt, loss_nontgt = loss_fn(out_rank, target_mask)
+            out_rank = model_ranker.run_qs_embs(docs_embs, qs_embs, batch.qs_ind_len)
+            loss, loss_tgt, loss_nontgt = loss_fn(out_rank, qs_masks)
 
             val_loss += loss.item()
             val_loss_tgt += loss_tgt.item()
