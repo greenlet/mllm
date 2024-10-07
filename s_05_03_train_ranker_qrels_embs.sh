@@ -10,7 +10,7 @@ ranker_model_cfg_fpath=$config_dir_path/ranker_model_cfg_02.yaml
 train_encdec_root_path=$data_path/train_mllm_encdec_${model_level}
 
 encdec_model_cfg_fpath=$config_dir_path/encdec_model_cfg_02.yaml
-encdec_pretrained_model_path=$train_encdec_root_path/encdec-20240816_230618-wiki_20200501_en-ch_100_fixed
+encdec_pretrained_model_path=$train_encdec_root_path/encdec-l1-20241005_175446-msmarco-fever
 
 train_ranker_root_path=$data_path/train_mllm_ranker_qrels_${model_level}
 train_subdir=""
@@ -22,11 +22,11 @@ train_epoch_steps=20
 val_epoch_steps=20
 chunks_batch_size=10
 
-#device=cuda
-#epochs=5
-#train_epoch_steps=500
-#val_epoch_steps=50
-#chunks_batch_size=3
+device=cuda
+epochs=300
+train_epoch_steps=500
+val_epoch_steps=50
+chunks_batch_size=20
 
 learning_rate=0.0001
 

@@ -8,6 +8,7 @@ matplotlib
 mwparserfromhell
 numpy
 pandas
+pydantic
 pydantic-cli
 pydantic-yaml
 scikit-learn

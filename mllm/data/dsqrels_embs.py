@@ -87,12 +87,11 @@ class QrelsEmbsBatch:
         ds_docs_ids = self.df_docs_ids['ds_doc_id'].to_numpy()
         # [n_batch, chunk_size]
         ds_docs_ids = ds_docs_ids.reshape((self.batch_size, self.chunk_size))
-        df_qrels = self.df_qrels.set_index('dsdid')
         did_to_qids, qids = [], []
         for i_batch, ds_docs_ids_b in enumerate(ds_docs_ids):
             did_to_qids_b, qids_b = {}, set()
             ds_docs_ids_b = np.unique(ds_docs_ids_b)
-            ds_qs_ids_b = df_qrels['ds_query_id']
+            ds_qs_ids_b = self.df_qrels['dsqid']
             for dsdid in ds_docs_ids_b:
                 dsdidqids = ds_qs_ids_b.loc[dsdid]
                 dsdidqids = list(dsdidqids) if type(dsdidqids) == pd.Series else [dsdidqids]
@@ -106,8 +105,9 @@ class QrelsEmbsBatch:
         qs_ind_len = []
         q_ind, q_len = 0, 0
         qid_last = None
-        self.df_qs_ids.sort_values(['ds_query_id', 'query_emb_id'], inplace=True)
-        for i, (_, q_row) in enumerate(self.df_qs_ids.iterrows()):
+        df_qs_ids = self.df_qs_ids.reset_index(drop=False)
+        df_qs_ids.sort_values(['ds_query_id', 'query_emb_id'], inplace=True)
+        for i, (_, q_row) in enumerate(df_qs_ids.iterrows()):
             qid = q_row['ds_query_id']
             if qid_last != qid:
                 if qid_last is not None:
@@ -124,7 +124,7 @@ class QrelsEmbsBatch:
             for i_b, qids_b in enumerate(qids):
                 if qid in qids_b:
                     qs_masks[i_b, i_q] = True
-        self.qs_masks = qs_masks
+        self.qs_masks = qs_masks.transpose()
 
     def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:
         res = torch.from_numpy(arr)
@@ -155,6 +155,13 @@ class DsQrelsEmbs:
     emb_size: int
     emb_dtype: np.dtype
     emb_bytes_size: int
+    # When doc_id_driven = True then the index of docs embeddings dataset is based on ds_doc_id (dsdid)
+    # In case it's False doc_emb_id is an index of docs embeddings. In former case max_docs_embs restricts
+    # number of docs embeddings per ds_doc_id
+    doc_id_driven: bool
+    # If doc_id_driven = True, max_docs_embs sets the limit on a number of embeddings per document (ds_doc_id)
+    # If max_docs_embs <= 0 all embeddings will be retrieved for each document
+    max_docs_embs: int
     # doc_emb_id: int (index), ds_id: int, ds_doc_id: int
     df_docs_ids: pd.DataFrame
     # query_emb_id: int (index), ds_id: int, ds_query_id: int
@@ -165,12 +172,15 @@ class DsQrelsEmbs:
     qs_file: BinVecsFile
     device: Optional[torch.device] = None
 
-    def __init__(self, ds_dir_path: Path, chunk_size: int, emb_size: int, emb_dtype: np.dtype, device: Optional[torch.device] = None):
+    def __init__(self, ds_dir_path: Path, chunk_size: int, emb_size: int, emb_dtype: np.dtype,
+                 doc_id_driven: bool, max_docs_embs: int = 0, device: Optional[torch.device] = None):
         self.ds_dir_path = ds_dir_path
         self.chunk_size = chunk_size
         self.emb_size = emb_size
         self.emb_dtype = emb_dtype
         self.emb_bytes_size = self.emb_size * np.dtype(self.emb_dtype).itemsize
+        self.doc_id_driven = doc_id_driven
+        self.max_docs_embs = max_docs_embs
         self.device = device
         docs_ids_fpath = self.ds_dir_path / 'docs_ids.tsv'
         docs_embs_fpath = self.ds_dir_path / 'docs_embs.npy'
@@ -184,8 +194,9 @@ class DsQrelsEmbs:
         df_docs_ids = read_tsv(docs_ids_fpath)
         df_docs_ids.set_index('ds_doc_id', inplace=True)
         df_docs_ids = df_docs_ids.loc[self.df_qrels.index.unique().to_numpy()].copy()
-        df_docs_ids.reset_index(drop=False, inplace=True)
-        df_docs_ids.set_index('doc_emb_id', inplace=True)
+        if not self.doc_id_driven:
+            df_docs_ids.reset_index(drop=False, inplace=True)
+            df_docs_ids.set_index('doc_emb_id', inplace=True)
         self.df_docs_ids = df_docs_ids
         self.docs_embs_file = BinVecsFile(fpath=docs_embs_fpath, vec_size=self.emb_size, dtype=self.emb_dtype)
         self.qs_embs_file = BinVecsFile(fpath=qs_embs_fpath, vec_size=self.emb_size, dtype=self.emb_dtype)

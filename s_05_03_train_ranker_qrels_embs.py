@@ -8,18 +8,13 @@ import torch.utils.tensorboard as tb
 from pydantic import Field, BaseModel
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as
-from sklearn.linear_model import lasso_path
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
-from transformers import GPT2Tokenizer
 
+from mllm.config.model import MllmRankerCfg, MllmEncdecCfg
 from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsEmbsBatch
-from mllm.data.utils import load_qrels_datasets
-from mllm.exp.args import ArgsTokensChunksTrain
-from mllm.config.model import create_mllm_encdec_cfg, create_mllm_ranker_cfg, TokenizerCfg, MllmRankerCfg, MllmEncdecCfg
 from mllm.model.mllm_encdec import MllmEncdecLevel
-from mllm.model.mllm_ranker import MllmRanker, RankProbLoss, MllmRankerLevel
-from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer, tokenizer_from_config
+from mllm.model.mllm_ranker import RankProbLoss, MllmRankerLevel
 from mllm.train.utils import find_create_train_path, calc_print_batches
 
 
@@ -119,8 +114,11 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
 
     device = torch.device(args.device)
 
+    postfix = None
+    if args.encdec_pretrained_model_path:
+        postfix = args.encdec_pretrained_model_path.name
     train_path = find_create_train_path(
-        args.train_root_path, f'ranker-l{args.model_level}', '', args.train_subdir)
+        args.train_root_path, f'ranker-l{args.model_level}', postfix, args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
@@ -138,11 +136,11 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
     model_ranker = MllmRankerLevel(ranker_model_cfg, args.model_level).to(device)
     params = model_ranker.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
-    enc_cfg = model_ranker.enc_cfg
+    enc_cfg = model_ranker.cfg_enc
 
     ds = DsQrelsEmbs(
         ds_dir_path=args.embs_ds_dir_path, chunk_size=enc_cfg.inp_len, emb_size=enc_cfg.d_model, emb_dtype=np.float32,
-        device=device
+        doc_id_driven=True, max_docs_embs=0, device=device
     )
 
     if args.encdec_pretrained_model_path is not None and checkpoint is None:
@@ -150,7 +148,7 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         encdec_model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.encdec_model_cfg_fpath)
         encdec_model_path = args.encdec_pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {encdec_model_path}')
-        pretrained_checkpoint = torch.load(encdec_model_path)
+        pretrained_checkpoint = torch.load(encdec_model_path, map_location=device)
         model_encdec = MllmEncdecLevel(encdec_model_cfg, args.model_level).to(device)
         model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=True)
         if model_ranker.vocab_encoder is not None:
@@ -186,9 +184,10 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         drop_last=False,
         shuffle_between_loops=True,
     )
-    model_ranker.encoder.eval()
+    # model_ranker.encoder.eval()
     for epoch in range(last_epoch + 1, args.epochs):
-        model_ranker.decoder.train()
+        # model_ranker.decoder.train()
+        model_ranker.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
@@ -222,11 +221,12 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-        model_ranker.decoder.eval()
+        # model_ranker.decoder.eval()
+        model_ranker.eval()
         val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch: QrelsEmbsBatch = next(train_batch_it)
+            batch: QrelsEmbsBatch = next(val_batch_it)
             docs_embs = batch.get_docs_embs_tensor()
             qs_embs, qs_masks = batch.get_qs_tensors()
 

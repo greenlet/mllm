@@ -171,19 +171,19 @@ class MllmRanker(nn.Module):
 class MllmRankerLevel(nn.Module):
     cfg: MllmRankerCfg
     level: int
-    enc_cfg: EncoderCfg
-    dec_cfg: EncoderCfg
+    cfg_enc: EncoderCfg
+    cfg_dec: EncoderCfg
     encoder: Encoder
     decoder: DecoderRankSimple
     vocab_enc_cfg: Optional[VocabEncoderCfg] = None
-    vocab_enc: Optional[VocabEncoder] = None
+    vocab_encoder: Optional[VocabEncoder] = None
 
     def __init__(self, cfg:MllmRankerCfg, level: int):
         super().__init__()
         self.cfg = cfg.copy(deep=True)
         self.level = level
-        self.enc_cfg = self.cfg.encoders[self.level]
-        self.dec_cfg = self.cfg.decoders[self.level]
+        self.cfg_enc = self.cfg.encoders[self.level]
+        self.cfg_dec = self.cfg.decoders[self.level]
         if self.level == 0:
             self.vocab_enc_cfg = self.cfg.vocab_encoder
             self.vocab_encoder = VocabEncoder(
@@ -206,10 +206,11 @@ class MllmRankerLevel(nn.Module):
 
     def run_encoder(self, inp: Tensor) -> tuple[Tensor, Tensor]:
         out = self.encoder(inp)[0]
-        if self.cfg_enc.with_emb_mat:
-            out_seq = out_emb = out
-        else:
-            out_seq, out_emb = out[..., :-1, :], out[..., -1, :]
+        out_seq = out_emb = out
+        # if self.cfg_enc.with_emb_mat:
+        #     out_seq = out_emb = out
+        # else:
+        #     out_seq, out_emb = out[..., :-1, :], out[..., -1, :]
         return out_seq, out_emb
 
     def run_qs(self, docs_chunks: Tensor, qs_chunks: Tensor, docs_off_len: list[tuple[int, int]],

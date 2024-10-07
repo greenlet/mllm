@@ -13,9 +13,11 @@ SUBDIR_PAT_STR = re.compile(r'^\w+\-(%s)-.+$' % DT_PAT_RE)
 SUBDIR_PAT = re.compile(SUBDIR_PAT_STR)
 
 
-def gen_train_subdir(prefix: str, postfix: str) -> str:
+def gen_train_subdir(prefix: str, postfix: Optional[str]) -> str:
     dt_str = gen_dt_str()
-    subdir = f'{prefix}-{dt_str}-{postfix}'
+    subdir = f'{prefix}-{dt_str}'
+    if postfix:
+        subdir = f'{subdir}-{postfix}'
     return subdir
 
 

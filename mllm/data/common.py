@@ -29,7 +29,7 @@ class DsView(Generic[TDs, TBatch]):
         for i in range(1, len(intervals)):
             ids = self.ids[intervals[i - 1]:intervals[i]]
             view = DsView(
-                ds=self.ds, ids=ids, get_batch_fn=self.get_batch_fn, batch_size=self.batch_size,
+                ds=self.ds, ids=ids, get_batch_fn=self.get_batch_fn, batch_size=self.batch_size, **self.kwargs,
             )
             res.append(view)
         return tuple(res)
