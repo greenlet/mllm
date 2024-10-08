@@ -21,6 +21,7 @@ epochs=5
 train_epoch_steps=20
 val_epoch_steps=20
 chunks_batch_size=10
+max_docs_embs=3
 
 device=cuda
 epochs=300
@@ -42,6 +43,7 @@ python s_05_03_train_ranker_qrels_embs.py \
   --model-level $model_level \
   --chunk-size $chunk_size \
   --chunks-batch-size $chunks_batch_size \
+  --max-docs-embs $max_docs_embs \
   --device $device \
   --epochs $epochs \
   --learning-rate $learning_rate \

@@ -65,6 +65,12 @@ class ArgsQrelsEmbsTrain(BaseModel):
                     'of embeddings defined in ranker model config',
         cli=('--chunks-batch-size',),
     )
+    max_docs_embs: int = Field(
+        0,
+        required=False,
+        description='Limit for a number of embeddings per document. MAX_DOCS_EMBS <= 0 means there is no limit.',
+        cli=('--max-docs-embs',),
+    )
     device: str = Field(
         'cpu',
         required=False,
@@ -140,7 +146,7 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
 
     ds = DsQrelsEmbs(
         ds_dir_path=args.embs_ds_dir_path, chunk_size=enc_cfg.inp_len, emb_size=enc_cfg.d_model, emb_dtype=np.float32,
-        doc_id_driven=True, max_docs_embs=0, device=device
+        doc_id_driven=True, max_docs_embs=args.max_docs_embs, device=device,
     )
 
     if args.encdec_pretrained_model_path is not None and checkpoint is None:

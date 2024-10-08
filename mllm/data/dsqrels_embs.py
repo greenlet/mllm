@@ -21,6 +21,7 @@ class QrelsEmbsBatch:
     batch_size: int
     chunk_size: int
     emb_size: int
+    doc_id_driven: bool
     device: Optional[torch.device] = None
     docs_embs_t: Optional[torch.Tensor] = None
 
@@ -37,7 +38,7 @@ class QrelsEmbsBatch:
     qs_masks_t: Optional[torch.Tensor] = None
 
     def __init__(
-            self, df_docs_ids: pd.DataFrame, docs_embs: list[np.ndarray], chunk_size: int, emb_size: int,
+            self, df_docs_ids: pd.DataFrame, docs_embs: list[np.ndarray], chunk_size: int, emb_size: int, doc_id_driven: bool,
             device: Optional[torch.device] = None, df_qrels: Optional[pd.DataFrame] = None, df_qs_ids: Optional[pd.DataFrame] = None,
             qs_embs: Optional[list[np.ndarray]] = None,
     ):
@@ -46,6 +47,7 @@ class QrelsEmbsBatch:
         self.docs_embs = np.stack(docs_embs, axis=0)
         self.chunk_size = chunk_size
         self.emb_size = emb_size
+        self.doc_id_driven = doc_id_driven
         self.device = device
 
         self.df_qrels = df_qrels
@@ -192,6 +194,7 @@ class DsQrelsEmbs:
         self.df_qrels = read_tsv(qrels_fpath)
         self.df_qrels.set_index('dsdid', inplace=True)
         df_docs_ids = read_tsv(docs_ids_fpath)
+        df_docs_ids.sort_values(['ds_doc_id', 'doc_emb_id'], inplace=True)
         df_docs_ids.set_index('ds_doc_id', inplace=True)
         df_docs_ids = df_docs_ids.loc[self.df_qrels.index.unique().to_numpy()].copy()
         if not self.doc_id_driven:
@@ -203,7 +206,7 @@ class DsQrelsEmbs:
 
     # doc_emb_id: int (index), ds_id: int, ds_doc_id: int
     def _get_qs(self, df_docs_ids: pd.DataFrame) -> [pd.DataFrame, pd.DataFrame, list[np.ndarray]]:
-        ds_doc_ids = df_docs_ids['ds_doc_id']
+        ds_doc_ids = df_docs_ids.index if self.doc_id_driven else df_docs_ids['ds_doc_id']
         ds_doc_ids = np.unique(ds_doc_ids)
         df_qrels = self.df_qrels.loc[ds_doc_ids]
         ds_qs_ids = np.unique(df_qrels['dsqid'])
@@ -215,8 +218,31 @@ class DsQrelsEmbs:
             qs_embs.append(query_emb)
         return df_qrels, df_qs_ids, qs_embs
 
-    def get_embs_batch(self, doc_emb_ids: np.ndarray, with_queries: bool = False) -> QrelsEmbsBatch:
-        df_docs_ids = self.df_docs_ids.loc[doc_emb_ids]
+    def _get_df_docs_ids(self, ids: np.ndarray) -> tuple[pd.DataFrame, np.ndarray]:
+        df_docs_ids = self.df_docs_ids.loc[ids].copy()
+        doc_embs_ids = ids
+        if self.doc_id_driven:
+            if self.max_docs_embs > 0:
+                
+                doc_emb_ids = []
+                for ds_doc_id in ids:
+                    emb_ids = self.df_docs_ids.loc[ds_doc_id]
+                    n_embs = len(emb_ids)
+                    if n_embs > self.max_docs_embs:
+                        i = np.random.randint(n_embs - self.max_docs_embs)
+                        emb_ids = emb_ids[i:self.max_docs_embs]
+                    doc_emb_ids.append(emb_ids)
+                doc_emb_ids = np.concatenate(doc_emb_ids)
+                df_docs_ids.reset_index(drop=False, inplace=True)
+                df_docs_ids.set_index('doc_emb_id', inplace=True)
+                df_docs_ids = df_docs_ids.loc[doc_emb_ids].copy()
+                df_docs_ids.reset_index(drop=False, inplace=True)
+                df_docs_ids.set_index('ds_doc_id', inplace=True)
+            doc_embs_ids = df_docs_ids['doc_emb_id']
+        return df_docs_ids, doc_embs_ids
+
+    def get_embs_batch(self, ids: np.ndarray, with_queries: bool = False) -> QrelsEmbsBatch:
+        df_docs_ids, doc_emb_ids = self._get_df_docs_ids(ids)
         offsets = doc_emb_ids * self.emb_bytes_size
         docs_embs: list[np.ndarray] = []
         for off in offsets:
@@ -228,7 +254,7 @@ class DsQrelsEmbs:
 
         batch = QrelsEmbsBatch(
             df_docs_ids=df_docs_ids, docs_embs=docs_embs, chunk_size=self.chunk_size, emb_size=self.emb_size,
-            device=self.device, df_qrels=df_qrels, df_qs_ids=df_qs_ids, qs_embs=qs_embs,
+            doc_id_driven=self.doc_id_driven, device=self.device, df_qrels=df_qrels, df_qs_ids=df_qs_ids, qs_embs=qs_embs,
         )
         return batch
 
