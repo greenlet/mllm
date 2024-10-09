@@ -71,7 +71,8 @@ class QrelsEmbsBatch:
         self.docs_embs = docs_embs
 
         # [n_batch * chunk_size]
-        doc_emb_id = self.df_docs_ids.index.to_numpy()
+        doc_emb_id = self.df_docs_ids['doc_emb_id'] if self.doc_id_driven else self.df_docs_ids.index
+        doc_emb_id = doc_emb_id.to_numpy()
         if n_docs_chunk_rem > 0:
             doc_emb_id = np.pad(doc_emb_id, (0, n_docs_chunk_pad), constant_values=-1)
 
@@ -84,9 +85,9 @@ class QrelsEmbsBatch:
     def _calc_qs(self):
         if self.df_qrels is None:
             return
-
         # [n_batch * chunk_size]
-        ds_docs_ids = self.df_docs_ids['ds_doc_id'].to_numpy()
+        ds_docs_ids = self.df_docs_ids.index if self.doc_id_driven else self.df_docs_ids['ds_doc_id']
+        ds_docs_ids = ds_docs_ids.to_numpy()
         # [n_batch, chunk_size]
         ds_docs_ids = ds_docs_ids.reshape((self.batch_size, self.chunk_size))
         did_to_qids, qids = [], []
@@ -204,6 +205,41 @@ class DsQrelsEmbs:
         self.docs_embs_file = BinVecsFile(fpath=docs_embs_fpath, vec_size=self.emb_size, dtype=self.emb_dtype)
         self.qs_embs_file = BinVecsFile(fpath=qs_embs_fpath, vec_size=self.emb_size, dtype=self.emb_dtype)
 
+    def _get_docs(self, ids: np.ndarray) -> tuple[pd.DataFrame, list[np.ndarray]]:
+        df_docs_ids = self.df_docs_ids.loc[ids].copy()
+        docs_embs_ids = ids
+        docs_embs: list[np.ndarray] = []
+        if self.doc_id_driven:
+            dfs = [self.df_docs_ids.loc[[dsdid]] for dsdid in ids]
+            if self.max_docs_embs > 0:
+                for i in range(len(dfs)):
+                    n_embs = len(dfs[i])
+                    if n_embs > self.max_docs_embs:
+                        ir = np.random.randint(n_embs - self.max_docs_embs + 1)
+                        dfs[i] = dfs[i].iloc[ir:ir + self.max_docs_embs]
+
+            docs_embs = []
+            zeros = np.zeros(self.emb_size, dtype=self.emb_dtype)
+            for df in dfs:
+                docs_embs_part = []
+                for doc_emb_id in df['doc_emb_id']:
+                    off = doc_emb_id * self.emb_bytes_size
+                    doc_emb = self.docs_embs_file.get_vec(off)
+                    docs_embs_part.append(doc_emb)
+                n_part = len(docs_embs_part)
+                if n_part < self.max_docs_embs:
+                    for i in range(self.max_docs_embs - n_part):
+                        docs_embs_part.append(zeros.copy())
+                docs_embs.extend(docs_embs_part)
+            df_docs_ids = pd.concat(dfs, axis=0)
+        else:
+            offsets = docs_embs_ids * self.emb_bytes_size
+            for off in offsets:
+                doc_emb = self.docs_embs_file.get_vec(off)
+                docs_embs.append(doc_emb)
+
+        return df_docs_ids, docs_embs
+
     # doc_emb_id: int (index), ds_id: int, ds_doc_id: int
     def _get_qs(self, df_docs_ids: pd.DataFrame) -> [pd.DataFrame, pd.DataFrame, list[np.ndarray]]:
         ds_doc_ids = df_docs_ids.index if self.doc_id_driven else df_docs_ids['ds_doc_id']
@@ -218,36 +254,9 @@ class DsQrelsEmbs:
             qs_embs.append(query_emb)
         return df_qrels, df_qs_ids, qs_embs
 
-    def _get_df_docs_ids(self, ids: np.ndarray) -> tuple[pd.DataFrame, np.ndarray]:
-        df_docs_ids = self.df_docs_ids.loc[ids].copy()
-        doc_embs_ids = ids
-        if self.doc_id_driven:
-            if self.max_docs_embs > 0:
-                
-                doc_emb_ids = []
-                for ds_doc_id in ids:
-                    emb_ids = self.df_docs_ids.loc[ds_doc_id]
-                    n_embs = len(emb_ids)
-                    if n_embs > self.max_docs_embs:
-                        i = np.random.randint(n_embs - self.max_docs_embs)
-                        emb_ids = emb_ids[i:self.max_docs_embs]
-                    doc_emb_ids.append(emb_ids)
-                doc_emb_ids = np.concatenate(doc_emb_ids)
-                df_docs_ids.reset_index(drop=False, inplace=True)
-                df_docs_ids.set_index('doc_emb_id', inplace=True)
-                df_docs_ids = df_docs_ids.loc[doc_emb_ids].copy()
-                df_docs_ids.reset_index(drop=False, inplace=True)
-                df_docs_ids.set_index('ds_doc_id', inplace=True)
-            doc_embs_ids = df_docs_ids['doc_emb_id']
-        return df_docs_ids, doc_embs_ids
-
     def get_embs_batch(self, ids: np.ndarray, with_queries: bool = False) -> QrelsEmbsBatch:
-        df_docs_ids, doc_emb_ids = self._get_df_docs_ids(ids)
-        offsets = doc_emb_ids * self.emb_bytes_size
-        docs_embs: list[np.ndarray] = []
-        for off in offsets:
-            doc_emb = self.docs_embs_file.get_vec(off)
-            docs_embs.append(doc_emb)
+        df_docs_ids, docs_embs = self._get_docs(ids)
+
         df_qrels, df_qs_ids, qs_embs = None, None, None
         if with_queries:
             df_qrels, df_qs_ids, qs_embs = self._get_qs(df_docs_ids)

@@ -20,21 +20,22 @@ device=cpu
 epochs=5
 train_epoch_steps=20
 val_epoch_steps=20
-chunks_batch_size=10
-max_docs_embs=3
+chunks_batch_size=5
+max_docs_embs=10
 
-device=cuda
-epochs=300
-train_epoch_steps=500
-val_epoch_steps=50
-chunks_batch_size=20
+#device=cuda
+#epochs=300
+#train_epoch_steps=500
+#val_epoch_steps=50
+#chunks_batch_size=20
+#max_docs_embs=10
 
 learning_rate=0.0001
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-#echo "
+echo "
 python s_05_03_train_ranker_qrels_embs.py \
   --embs-ds-dir-path $embs_ds_dir_path \
   --train-root-path $train_ranker_root_path \
@@ -51,6 +52,6 @@ python s_05_03_train_ranker_qrels_embs.py \
   --val-epoch-steps $val_epoch_steps \
   --encdec-model-cfg-fpath $encdec_model_cfg_fpath \
   --encdec-pretrained-model-path $encdec_pretrained_model_path
-#"
+"
 
 

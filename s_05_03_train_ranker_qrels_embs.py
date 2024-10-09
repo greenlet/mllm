@@ -173,7 +173,8 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=8, threshold=1e-4, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    view = ds.get_embs_view(batch_size=args.chunks_batch_size * args.chunk_size, with_queries=True)
+    n_docs_per_chunk = args.chunk_size // args.max_docs_embs
+    view = ds.get_embs_view(batch_size=args.chunks_batch_size * n_docs_per_chunk, with_queries=True)
     view.shuffle()
     view_train, view_val = view.split((-1, 0.05))
     n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, view.batch_size, 'EmbsChunks')
