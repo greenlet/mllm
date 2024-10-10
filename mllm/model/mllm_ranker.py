@@ -252,18 +252,23 @@ class MllmRankerLevel(nn.Module):
 
     # docs_embs: [n_batch, chunk_size, emb_size]
     # qs_embs: [n_batch * (n_queries_chunks = 1 or 2 generally, varies per query), emb_size]
-    def run_qs_embs(self, docs_embs: Tensor, qs_embs: Tensor, qs_ind_len: list[tuple[int, int, int]]) -> list[Tensor]:
+    def run_qs_embs(self, docs_embs: Tensor, qs_embs: Tensor, qs_ind_len: list[tuple[int, int, int]]) -> Union[list[Tensor], Tensor]:
         # docs_enc: [n_batch, emb_size]
         _, docs_enc = self.run_encoder(docs_embs)
         # docs_enc: [1, n_batch, emb_size]
         docs_enc = docs_enc.unsqueeze(0)
-        ranks = []
-        for i, (qid, q_ind, q_len) in enumerate(qs_ind_len):
-            # qs_embs_item: [1, n_qs, emb_size]
-            qs_embs_item = qs_embs[q_ind:q_ind + q_len].unsqueeze(0)
-            # out_rank: [1, n_batch]
-            out_rank = self.decoder(docs_enc, qs_embs_item).squeeze(0)
-            ranks.append(out_rank)
+        if len(qs_ind_len) == len(qs_embs):
+            qs_embs = qs_embs.unsqueeze(1)
+            docs_enc = docs_enc.expand((len(qs_embs), *docs_enc.shape[1:]))
+            ranks = self.decoder(docs_enc, qs_embs)
+        else:
+            ranks = []
+            for i, (qid, q_ind, q_len) in enumerate(qs_ind_len):
+                # qs_embs_item: [1, n_qs, emb_size]
+                qs_embs_item = qs_embs[q_ind:q_ind + q_len].unsqueeze(0)
+                # out_rank: [1, n_batch]
+                out_rank = self.decoder(docs_enc, qs_embs_item).squeeze(0)
+                ranks.append(out_rank)
         return ranks
 
 

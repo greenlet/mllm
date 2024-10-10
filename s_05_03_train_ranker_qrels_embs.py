@@ -1,4 +1,5 @@
 import shutil
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -198,12 +199,19 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
+            # t1 = time.time()
             batch: QrelsEmbsBatch = next(train_batch_it)
+            # print(f'next_batch: {time.time() - t1:.3f}')
+            # t1 = time.time()
             docs_embs = batch.get_docs_embs_tensor()
             qs_embs, qs_masks = batch.get_qs_tensors()
+            # print(f'get_tensors: {time.time() - t1:.3f}')
 
             optimizer.zero_grad()
+            # t1 = time.time()
             out_rank = model_ranker.run_qs_embs(docs_embs, qs_embs, batch.qs_ind_len)
+            # print(f'run_qs_embs: {time.time() - t1:.3f}')
+
             loss, loss_tgt, loss_nontgt = loss_fn(out_rank, qs_masks)
             loss.backward()
             optimizer.step()
