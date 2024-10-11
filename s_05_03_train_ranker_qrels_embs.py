@@ -192,10 +192,10 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         drop_last=False,
         shuffle_between_loops=True,
     )
-    # model_ranker.encoder.eval()
+    model_ranker.encoder.eval()
     for epoch in range(last_epoch + 1, args.epochs):
-        # model_ranker.decoder.train()
-        model_ranker.train()
+        model_ranker.decoder.train()
+        # model_ranker.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
@@ -236,8 +236,8 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-        # model_ranker.decoder.eval()
-        model_ranker.eval()
+        model_ranker.decoder.eval()
+        # model_ranker.eval()
         val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:

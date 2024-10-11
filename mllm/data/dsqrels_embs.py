@@ -163,6 +163,20 @@ class DsQrelsEmbsView(DsView['DsQrelsEmbs', QrelsEmbsBatch]):
     pass
 
 
+def get_ind_len(ids: np.ndarray) -> list[tuple[int, int]]:
+    id1_last, ind, n = None, 0, 0
+    res = []
+    for id_ in ids:
+        if id_ != id1_last:
+            if id1_last is not None:
+                res.append((ind, n))
+                ind += n
+            id1_last, n = id_, 0
+        n += 1
+    res.append((ind, n))
+    return res
+
+
 class DsQrelsEmbs:
     ds_dir_path: Path
     chunk_size: int
@@ -217,29 +231,32 @@ class DsQrelsEmbs:
         self.qs_embs_file = BinVecsFile(fpath=qs_embs_fpath, vec_size=self.emb_size, dtype=self.emb_dtype)
 
     def _get_docs(self, ids: np.ndarray) -> tuple[pd.DataFrame, list[np.ndarray]]:
-        t1 = time.time()
+        # t1 = time.time()
         df_docs_ids = self.df_docs_ids.loc[ids].copy()
-        print(f'get_docs_loc: {time.time() - t1:.3f}')
+        # print(f'get_docs_loc: {time.time() - t1:.3f}')
         docs_embs_ids = ids
         docs_embs: list[np.ndarray] = []
         if self.doc_id_driven:
-            t1 = time.time()
-            dfs = [self.df_docs_ids.loc[[dsdid]] for dsdid in ids]
-            print(f'get_docs_loc_list: {time.time() - t1:.3f}')
-            if self.max_docs_embs > 0:
-                for i in range(len(dfs)):
-                    n_embs = len(dfs[i])
-                    if n_embs > self.max_docs_embs:
-                        ir = np.random.randint(n_embs - self.max_docs_embs + 1)
-                        dfs[i] = dfs[i].iloc[ir:ir + self.max_docs_embs]
+            # t1 = time.time()
+            ds_docs_ids, docs_embs_ids = df_docs_ids.index, df_docs_ids['doc_emb_id']
+            dsdid_ind_len = get_ind_len(ds_docs_ids)
+            docs_embs_ids_chunks = []
+            for ind, n_embs in dsdid_ind_len:
+                if n_embs > self.max_docs_embs:
+                    ir = np.random.randint(n_embs - self.max_docs_embs + 1)
+                    ir += ind
+                    docs_embs_ids_chunk = docs_embs_ids[ir:ir + self.max_docs_embs]
+                else:
+                    docs_embs_ids_chunk = docs_embs_ids[ind:ind + n_embs]
+                docs_embs_ids_chunks.append(docs_embs_ids_chunk)
 
             docs_embs = []
             zeros = np.zeros(self.emb_size, dtype=self.emb_dtype)
-            print(f'get_docs_split: {time.time() - t1:.3f}')
-            t1 = time.time()
-            for df in dfs:
+            # print(f'get_docs_split: {time.time() - t1:.3f}')
+            # t1 = time.time()
+            for docs_embs_ids_chunk in docs_embs_ids_chunks:
                 docs_embs_part = []
-                for doc_emb_id in df['doc_emb_id']:
+                for doc_emb_id in docs_embs_ids_chunk:
                     off = doc_emb_id * self.emb_bytes_size
                     doc_emb = self.docs_embs_file.get_vec(off)
                     docs_embs_part.append(doc_emb)
@@ -248,10 +265,16 @@ class DsQrelsEmbs:
                     for i in range(self.max_docs_embs - n_part):
                         docs_embs_part.append(zeros.copy())
                 docs_embs.extend(docs_embs_part)
-            print(f'get_docs_embs: {time.time() - t1:.3f}')
+
+            docs_embs_ids = np.concatenate(docs_embs_ids_chunks)
+            # print(f'get_docs_embs: {time.time() - t1:.3f}')
             t1 = time.time()
-            df_docs_ids = pd.concat(dfs, axis=0)
-            print(f'get_docs_concat: {time.time() - t1:.3f}')
+            df_docs_ids.reset_index(drop=False, inplace=True)
+            df_docs_ids.set_index('doc_emb_id', inplace=True)
+            df_docs_ids = df_docs_ids.loc[docs_embs_ids]
+            df_docs_ids.reset_index(drop=False, inplace=True)
+            df_docs_ids.set_index('ds_doc_id', inplace=True)
+            # print(f'get_docs_concat: {time.time() - t1:.3f}')
         else:
             offsets = docs_embs_ids * self.emb_bytes_size
             for off in offsets:
@@ -292,7 +315,7 @@ class DsQrelsEmbs:
         return batch
 
     def get_embs_view(self, batch_size: Optional[int] = None, **kwargs) -> DsQrelsEmbsView:
-        ids = self.df_docs_ids.index.values
+        ids = self.df_docs_ids.index.unique().values
         return DsQrelsEmbsView(self, ids, self.get_embs_batch, batch_size, **kwargs)
 
     def close(self):
