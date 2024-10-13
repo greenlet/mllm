@@ -242,7 +242,7 @@ class DsQrelsEmbs:
             dsdid_ind_len = get_ind_len(ds_docs_ids)
             docs_embs_ids_chunks = []
             for ind, n_embs in dsdid_ind_len:
-                if n_embs > self.max_docs_embs:
+                if self.max_docs_embs > 0 and n_embs > self.max_docs_embs:
                     ir = np.random.randint(n_embs - self.max_docs_embs + 1)
                     ir += ind
                     docs_embs_ids_chunk = docs_embs_ids[ir:ir + self.max_docs_embs]

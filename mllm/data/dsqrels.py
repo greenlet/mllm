@@ -206,6 +206,10 @@ class DsQrels:
         _, url, title, text = l.split('\t')
         text = text if text else ' '.join(url.split('/'))
         return title, text
+    
+    def get_doc(self, ds_doc_id: int) -> tuple[str, str]:
+        row = self.df_off.loc[ds_doc_id]
+        return self._get_doc_title_text(row.dsid, row.offset)
 
     def _tokenize_query(self, query: str) -> list[list[int]]:
         tokens = self.ch_tkz.tokenizer(query)['input_ids']
