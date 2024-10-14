@@ -120,7 +120,6 @@ class QrelsEmbsBatch:
         q_ind, q_len = 0, 0
         qid_last = None
         df_qs_ids = self.df_qs_ids.reset_index(drop=False)
-        df_qs_ids.sort_values(['ds_query_id', 'query_emb_id'], inplace=True)
         for i, (_, q_row) in enumerate(df_qs_ids.iterrows()):
             qid = q_row['ds_query_id']
             if qid_last != qid:
@@ -268,10 +267,10 @@ class DsQrelsEmbs:
 
             docs_embs_ids = np.concatenate(docs_embs_ids_chunks)
             # print(f'get_docs_embs: {time.time() - t1:.3f}')
-            t1 = time.time()
+            # t1 = time.time()
             df_docs_ids.reset_index(drop=False, inplace=True)
             df_docs_ids.set_index('doc_emb_id', inplace=True)
-            df_docs_ids = df_docs_ids.loc[docs_embs_ids]
+            df_docs_ids = df_docs_ids.loc[docs_embs_ids].copy()
             df_docs_ids.reset_index(drop=False, inplace=True)
             df_docs_ids.set_index('ds_doc_id', inplace=True)
             # print(f'get_docs_concat: {time.time() - t1:.3f}')
@@ -289,7 +288,8 @@ class DsQrelsEmbs:
         ds_doc_ids = np.unique(ds_doc_ids)
         df_qrels = self.df_qrels.loc[ds_doc_ids]
         ds_qs_ids = np.unique(df_qrels['dsqid'])
-        df_qs_ids = self.df_qs_ids.loc[ds_qs_ids]
+        df_qs_ids = self.df_qs_ids.loc[ds_qs_ids].copy()
+        df_qs_ids.sort_values(['ds_query_id', 'query_emb_id'], inplace=True)
         offsets = df_qs_ids['query_emb_id'] * self.emb_bytes_size
         qs_embs: list[np.ndarray] = []
         for off in offsets:
