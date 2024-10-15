@@ -127,10 +127,9 @@ def encdec_embs_loss_cos_masked(embs_pred: torch.Tensor, embs_gt: torch.Tensor, 
 # embs_gt [n_batch, seq_len, emb_size] float32 - ground truth embeddings
 def encdec_embs_loss_cos(embs_pred: torch.Tensor, embs_gt: torch.Tensor) -> torch.Tensor:
     # [n_batch, seq_len]
-    cos_dist = F.cosine_similarity(embs_pred, embs_gt, dim=-1)
-    cos_dist = torch.abs(cos_dist)
+    cos_sim = F.cosine_similarity(embs_pred, embs_gt, dim=-1)
     # []
-    loss = torch.mean(cos_dist)
+    loss = 1 - torch.mean(cos_sim)
     return loss
 
 
@@ -173,7 +172,8 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
     ds = DsQrelsEmbs(
-        ds_dir_path=args.ds_dir_path, chunk_size=enc_cfg.inp_len, emb_size=enc_cfg.d_model, emb_dtype=np.float32, device=device
+        ds_dir_path=args.ds_dir_path, chunk_size=enc_cfg.inp_len, emb_size=enc_cfg.d_model, emb_dtype=np.float32,
+        device=device, doc_id_driven=False,
     )
     ds_view = ds.get_embs_view(args.batch_size)
     np.random.seed(12)

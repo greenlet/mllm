@@ -12,18 +12,19 @@ model_level=1
 
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_${model_level}
+#train_subdir=encdec-l1-20241005_175446-msmarco-fever
 
 #device=cpu
 #epochs=5
 #train_epoch_steps=20
 #val_epoch_steps=20
-#docs_batch_size=3
+#docs_batch_size=100
 
 device=cuda
 epochs=300
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=100
+docs_batch_size=2000
 #train_subdir=last
 
 learning_rate=0.0001
