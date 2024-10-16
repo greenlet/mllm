@@ -7,7 +7,8 @@ fever_data_path=$data_path/fever
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
-model_cfg_fname=encdec_model_cfg_02.yaml
+# model_cfg_fname=encdec_model_cfg_02.yaml
+model_cfg_fname=encdec_model_cfg_03.yaml
 model_level=1
 
 model_cfg_fpath=$config_dir_path/$model_cfg_fname

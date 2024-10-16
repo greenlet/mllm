@@ -24,6 +24,25 @@ class ArgsTokensChunksTrain(BaseModel):
             'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
         cli=('--train-subdir',)
     )
+    tokenizer_cfg_fpath: Path = Field(
+        ...,
+        required=True,
+        description='Path to tokenizer config Yaml file.',
+        cli=('--tokenizer-cfg-fpath',),
+    )
+    model_cfg_fpath: Path = Field(
+        ...,
+        required=True,
+        description='Path to ranker model config Yaml file.',
+        cli=('--model-cfg-fpath',),
+    )
+    model_level: int = Field(
+        ...,
+        required=True,
+        description='Model level. 0 - start from tokens and produce embeddins_0. k - start from embeddings from level k - 1 '
+                    'and produce embeddings_k.',
+        cli=('--model-level',),
+    )
     docs_batch_size: int = Field(
         3,
         required=False,

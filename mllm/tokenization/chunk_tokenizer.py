@@ -60,11 +60,17 @@ def gen_dec_tokens() -> TokDict:
     return tokens
 
 
+def gen_train_tokens() -> TokDict:
+    tokens = gen_tokens(['mask'])
+    return tokens
+
+
 def gen_all_tokens(tokenizer: Optional[PreTrainedTokenizer] = None) -> TokDict:
     tokens = {
         **gen_doc_tokens(),
         **gen_special_tokens(),
         **gen_dec_tokens(),
+        **gen_train_tokens(),
     }
     if tokenizer is not None:
         add_tokens(tokenizer, tokens)

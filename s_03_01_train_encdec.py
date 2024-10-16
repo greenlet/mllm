@@ -6,6 +6,7 @@ from pydantic_cli import run_and_exit
 import torch
 
 import torch.utils.tensorboard as tb
+from pydantic_yaml import parse_yaml_file_as
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch import nn
 from tqdm import trange
@@ -14,9 +15,12 @@ from transformers import GPT2Tokenizer
 from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import ArgsTokensChunksTrain
 from mllm.train.utils import find_create_train_path
-from mllm.model.mllm_encdec import MllmEncdec
-from mllm.config.model import create_mllm_encdec_cfg
-from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens
+from mllm.model.mllm_encdec import MllmEncdecLevel
+from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmEncdecCfg
+from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
+
+TOKENIZER_CFG_FNAME = 'tokenizer_cfg.yaml'
+ENCDEC_MODEL_CFG_FNAME = 'encdec_model_cfg.yaml'
 
 
 def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
@@ -98,13 +102,26 @@ def main(args: ArgsTokensChunksTrain) -> int:
         assert last_checkpoint_path.exists(),\
             (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
              f'but file {last_checkpoint_path} does not exits.')
+
+    tokenizer_cfg_fpath = args.tokenizer_cfg_fpath
+    model_cfg_fpath = args.model_cfg_fpath
+    if last_checkpoint_path.exists():
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
+        tokenizer_cfg_fpath = train_path / TOKENIZER_CFG_FNAME
+        model_cfg_fpath = train_path / ENCDEC_MODEL_CFG_FNAME
+    else:
+        shutil.copy(args.tokenizer_cfg_fpath, train_path / TOKENIZER_CFG_FNAME)
+        shutil.copy(args.model_cfg_fpath, train_path / ENCDEC_MODEL_CFG_FNAME)
 
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2', model_max_length=100000)
-    tok_dict = gen_all_tokens(tokenizer)
+    print(f'Loading tokenizer config from {tokenizer_cfg_fpath}')
+    tkz_cfg = parse_yaml_file_as(TokenizerCfg, tokenizer_cfg_fpath)
+    tokenizer = tokenizer_from_config(tkz_cfg)
+
+    tok_dict = tkz_cfg.custom_tokens
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
+    mask_tok = tok_dict['mask'].ind
     ds_loader = WikiDsLoader(
         ds_path=args.ds_dir_path, docs_batch_size=args.docs_batch_size, max_chunks_per_doc=args.max_chunks_per_doc,
         pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device, n_total=0,
@@ -115,15 +132,10 @@ def main(args: ArgsTokensChunksTrain) -> int:
 
     torch.autograd.set_detect_anomaly(True)
 
-    model_cfg = create_mllm_encdec_cfg(
-        n_vocab=len(tokenizer), d_word_wec=256, inp_len=inp_len,
-        enc_n_layers=2, dec_n_layers=2,
-        n_heads=8, d_model=256, d_inner=1024,
-        pad_idx=pad_tok, dropout_rate=0.1, enc_with_emb_mat=True,
-    )
+    model_cfg = parse_yaml_file_as(MllmEncdecCfg, model_cfg_fpath)
     input_zeros_ratio = 0.3
     print(model_cfg)
-    model = MllmEncdec(model_cfg).to(device)
+    model = MllmEncdecLevel(model_cfg, args.model_level).to(device)
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
@@ -135,7 +147,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
         val_loss_min = checkpoint['val_loss_min']
         ds_loader.shuffle(train=True)
         ds_loader.shuffle(train=False)
-    
+
     # TODO: move into arguments
     # assert not checkpoint
     # checkpoint = torch.load(args.train_root_path / 'encdec-20240808_222352-wiki_20200501_en-ch_100_fixed' / 'best.pth', map_location=device)
@@ -164,7 +176,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
             docs_chunks, target_chunks, target_mask = batch.gen_tensors()
 
             chunks = concat_tokens(docs_chunks, target_chunks)
-            chunks_inp = remove_tokens(chunks, pad_tok, input_zeros_ratio)
+            chunks_inp = remove_tokens(chunks, mask_tok, input_zeros_ratio)
 
             optimizer.zero_grad()
 

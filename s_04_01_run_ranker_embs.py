@@ -120,7 +120,6 @@ def main(args: ArgsRunRankerEmbs) -> int:
     print(model_cfg)
 
     ch_tkz = ChunkTokenizer(tkz_cfg.custom_tokens, tokenizer, n_emb_tokens=n_emb_tokens, fixed_size=True)
-    pad_tok = tkz_cfg.custom_tokens['pad'].ind
 
     ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, n_emb_tokens, device)
     print(ds)
