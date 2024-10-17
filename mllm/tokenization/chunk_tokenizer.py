@@ -65,12 +65,13 @@ def gen_train_tokens() -> TokDict:
     return tokens
 
 
-def gen_all_tokens(tokenizer: Optional[PreTrainedTokenizer] = None) -> TokDict:
+def gen_all_tokens(tokenizer: Optional[PreTrainedTokenizer] = None, with_train: bool = False) -> TokDict:
+    train_tokens = {} if not with_train else gen_train_tokens()
     tokens = {
         **gen_doc_tokens(),
         **gen_special_tokens(),
         **gen_dec_tokens(),
-        **gen_train_tokens(),
+        **train_tokens,
     }
     if tokenizer is not None:
         add_tokens(tokenizer, tokens)

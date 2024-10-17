@@ -15,8 +15,8 @@ class MllmEncdecLevel(nn.Module):
     cfg_dec: EmbDecoderCfg
     encoder: Encoder
     decoder: EmbDecoder
-    vocab_encoder: Optional[VocabEncoder] = None
-    vocab_decoder: Optional[VocabDecoder] = None
+    # vocab_encoder: Optional[VocabEncoder] = None
+    # vocab_decoder: Optional[VocabDecoder] = None
 
     def __init__(self, cfg: MllmEncdecCfg, level: int):
         super().__init__()

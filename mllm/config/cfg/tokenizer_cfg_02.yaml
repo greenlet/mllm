@@ -1,0 +1,74 @@
+custom_tokens:
+  doc_begin:
+    ind: 50257
+    name: doc_begin
+    repr: <|doc_begin|>
+    special: false
+  doc_body_begin:
+    ind: 50265
+    name: doc_body_begin
+    repr: <|doc_body_begin|>
+    special: false
+  doc_body_end:
+    ind: 50266
+    name: doc_body_end
+    repr: <|doc_body_end|>
+    special: false
+  doc_end:
+    ind: 50258
+    name: doc_end
+    repr: <|doc_end|>
+    special: false
+  doc_id_begin:
+    ind: 50259
+    name: doc_id_begin
+    repr: <|doc_id_begin|>
+    special: false
+  doc_id_end:
+    ind: 50260
+    name: doc_id_end
+    repr: <|doc_id_end|>
+    special: false
+  doc_offset_begin:
+    ind: 50261
+    name: doc_offset_begin
+    repr: <|doc_offset_begin|>
+    special: false
+  doc_offset_end:
+    ind: 50262
+    name: doc_offset_end
+    repr: <|doc_offset_end|>
+    special: false
+  doc_title_begin:
+    ind: 50263
+    name: doc_title_begin
+    repr: <|doc_title_begin|>
+    special: false
+  doc_title_end:
+    ind: 50264
+    name: doc_title_end
+    repr: <|doc_title_end|>
+    special: false
+  mask:
+    ind: 50270
+    name: mask
+    repr: <|mask|>
+    special: false
+  pad:
+    ind: 50267
+    name: pad
+    repr: <|pad|>
+    special: true
+  query_begin:
+    ind: 50268
+    name: query_begin
+    repr: <|query_begin|>
+    special: false
+  query_end:
+    ind: 50269
+    name: query_end
+    repr: <|query_end|>
+    special: false
+model_max_length: 10000
+n_tokens_init: 50257
+name: gpt2

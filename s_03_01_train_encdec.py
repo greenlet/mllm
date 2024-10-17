@@ -148,11 +148,6 @@ def main(args: ArgsTokensChunksTrain) -> int:
         ds_loader.shuffle(train=True)
         ds_loader.shuffle(train=False)
 
-    # TODO: move into arguments
-    # assert not checkpoint
-    # checkpoint = torch.load(args.train_root_path / 'encdec-20240808_222352-wiki_20200501_en-ch_100_fixed' / 'best.pth', map_location=device)
-    # model.load_state_dict(checkpoint['model'], strict=False)
-
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8, threshold=1e-4, min_lr=1e-7)
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
