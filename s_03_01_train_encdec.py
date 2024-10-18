@@ -13,14 +13,11 @@ from tqdm import trange
 from transformers import GPT2Tokenizer
 
 from mllm.data.wiki.dswiki import WikiDsLoader
-from mllm.exp.args import ArgsTokensChunksTrain
+from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmEncdecCfg
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
-
-TOKENIZER_CFG_FNAME = 'tokenizer_cfg.yaml'
-ENCDEC_MODEL_CFG_FNAME = 'encdec_model_cfg.yaml'
 
 
 def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
@@ -79,11 +76,17 @@ def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
 
 
 # chunks: input token chunks of the shape [n_docs x n_tokens_per_doc]
-def remove_tokens(chunks: torch.Tensor, pad_tok: int, rem_ratio: float = 0.1) -> torch.Tensor:
-    p = rem_ratio
-    mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
+def remove_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, rem_conseq_ratio: float = 0.2) -> torch.Tensor:
     res = chunks.clone()
-    res[mask.bool()] = pad_tok
+    if torch.rand((1,)) > 1 / 2:
+        p = rem_ratio
+        mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
+        res[mask.bool()] = mask_tok
+    else:
+        n = chunks.shape[-1]
+        n_rem = int(n * rem_conseq_ratio)
+        i = np.random.randint(n - n_rem + 1)
+        res[:, i:i + n_rem] = mask_tok
     return res
 
 

@@ -15,27 +15,27 @@ tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_${model_level}
 
-device=cpu
-epochs=5
-train_epoch_steps=20
-val_epoch_steps=20
-docs_batch_size=10
-max_chunks_per_doc=3
+# device=cpu
+# epochs=5
+# train_epoch_steps=20
+# val_epoch_steps=20
+# docs_batch_size=10
+# max_chunks_per_doc=3
 
-#device=cuda
-#epochs=500
-#train_epoch_steps=500
-#val_epoch_steps=50
-#docs_batch_size=10
-#max_chunks_per_doc=3
-##train_subdir=last
+device=cuda
+epochs=500
+train_epoch_steps=500
+val_epoch_steps=50
+docs_batch_size=5
+max_chunks_per_doc=3
+#train_subdir=last
 
 learning_rate=0.0001
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-echo "
+# echo "
 python s_03_01_train_encdec.py \
   --ds-dir-path $wiki_ds_path \
   --train-root-path $train_root_path \
@@ -50,6 +50,6 @@ python s_03_01_train_encdec.py \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps
-"
+# "
 
 

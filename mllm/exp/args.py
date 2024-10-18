@@ -3,6 +3,9 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+TOKENIZER_CFG_FNAME = 'tokenizer_cfg.yaml'
+ENCDEC_MODEL_CFG_FNAME = 'encdec_model_cfg.yaml'
+
 
 class ArgsTokensChunksTrain(BaseModel):
     ds_dir_path: Path = Field(

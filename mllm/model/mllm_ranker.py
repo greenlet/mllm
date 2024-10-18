@@ -175,10 +175,10 @@ class MllmRankerLevel(nn.Module):
     cfg_dec: EncoderCfg
     encoder: Encoder
     decoder: DecoderRankSimple
-    vocab_enc_cfg: Optional[VocabEncoderCfg] = None
-    vocab_encoder: Optional[VocabEncoder] = None
+    # vocab_enc_cfg: Optional[VocabEncoderCfg] = None
+    # vocab_encoder: Optional[VocabEncoder] = None
 
-    def __init__(self, cfg:MllmRankerCfg, level: int):
+    def __init__(self, cfg: MllmRankerCfg, level: int):
         super().__init__()
         self.cfg = cfg.copy(deep=True)
         self.level = level
