@@ -271,6 +271,11 @@ class MllmRankerLevel(nn.Module):
                 ranks.append(out_rank)
         return ranks
 
+    def run_enc_emb(self, inp: Tensor) -> Tensor:
+        out = self.run_vocab_encoder(inp)
+        out = self.run_encoder(out)
+        return out[1]
+
 
 def test_create_mllm_ranker():
     cfg_mllm = create_mllm_ranker_cfg(n_vocab=50_000)

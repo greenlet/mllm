@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 TOKENIZER_CFG_FNAME = 'tokenizer_cfg.yaml'
 ENCDEC_MODEL_CFG_FNAME = 'encdec_model_cfg.yaml'
+RANKER_MODEL_CFG_FNAME = 'ranker_model_cfg.yaml'
 
 
 class ArgsTokensChunksTrain(BaseModel):

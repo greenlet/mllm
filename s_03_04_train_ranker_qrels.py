@@ -13,7 +13,7 @@ from tqdm import trange
 
 from mllm.config.model import TokenizerCfg, MllmEncdecCfg, MllmRankerCfg
 from mllm.data.utils import load_qrels_datasets
-from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME
+from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME, RANKER_MODEL_CFG_FNAME
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.model.mllm_ranker import MllmRankerLevel, RankProbLoss
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config
@@ -57,10 +57,10 @@ def main(args: ArgsQrelsTrain) -> int:
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
         tokenizer_cfg_fpath = train_path / TOKENIZER_CFG_FNAME
-        model_cfg_fpath = train_path / ENCDEC_MODEL_CFG_FNAME
+        model_cfg_fpath = train_path / RANKER_MODEL_CFG_FNAME
     else:
         shutil.copy(args.tokenizer_cfg_fpath, train_path / TOKENIZER_CFG_FNAME)
-        shutil.copy(args.model_cfg_fpath, train_path / ENCDEC_MODEL_CFG_FNAME)
+        shutil.copy(args.model_cfg_fpath, train_path / RANKER_MODEL_CFG_FNAME)
 
     print(f'Loading tokenizer config from {tokenizer_cfg_fpath}')
     tkz_cfg = parse_yaml_file_as(TokenizerCfg, tokenizer_cfg_fpath)
@@ -100,7 +100,7 @@ def main(args: ArgsQrelsTrain) -> int:
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
     # optimizer = torch.optim.LBFGS(model.parameters(), lr=args.learning_rate)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=5, threshold=1e-4, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=10, threshold=1e-6, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
     ds_view = ds.get_view(batch_size=args.docs_batch_size)
@@ -113,7 +113,7 @@ def main(args: ArgsQrelsTrain) -> int:
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
-        np.random.seed(int(time.time() * 1000))
+        np.random.seed(int(time.time() * 1000) % 10_000_000)
         view_train.shuffle()
         view_val.shuffle()
 
@@ -130,12 +130,11 @@ def main(args: ArgsQrelsTrain) -> int:
         drop_last=False,
         shuffle_between_loops=True,
     )
-    model.vocab_encoder.eval()
-    model.encoder.eval()
+    model.eval()
     for epoch in range(last_epoch + 1, args.epochs):
-        # model.train()
-        model.decoder.train()
-        model.vocab_encoder.train()
+        model.train()
+        # model.decoder.train()
+        # model.vocab_encoder.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
