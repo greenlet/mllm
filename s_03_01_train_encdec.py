@@ -151,7 +151,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
         ds_loader.shuffle(train=True)
         ds_loader.shuffle(train=False)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8, threshold=1e-4, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=10, threshold=1e-6, min_lr=1e-7)
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
@@ -212,8 +212,8 @@ def main(args: ArgsTokensChunksTrain) -> int:
         if loss_gt is not None:
             train_loss_gt /= args.train_epoch_steps
             train_loss_nongt /= args.train_epoch_steps
-            tbsw.add_scalar('LossGt/Val', train_loss_gt, epoch)
-            tbsw.add_scalar('LossNongt/Val', train_loss_nongt, epoch)
+            tbsw.add_scalar('LossGt/Train', train_loss_gt, epoch)
+            tbsw.add_scalar('LossNongt/Train', train_loss_nongt, epoch)
 
         model.eval()
         val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
