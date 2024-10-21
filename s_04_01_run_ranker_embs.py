@@ -14,7 +14,7 @@ from transformers import GPT2Tokenizer
 
 from mllm.data.utils import load_qrels_datasets
 from mllm.config.model import create_mllm_ranker_cfg, TokenizerCfg, MllmRankerCfg
-from mllm.model.mllm_ranker import MllmRanker
+from mllm.model.mllm_ranker import MllmRanker, MllmRankerLevel
 from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer, tokenizer_from_config
 from mllm.utils.utils import write_tsv
 
@@ -51,6 +51,13 @@ class ArgsRunRankerEmbs(BaseModel):
         required=True,
         description='Path to ranker model config Yaml file.',
         cli=('--model-cfg-fpath',),
+    )
+    model_level: int = Field(
+        ...,
+        required=True,
+        description='Model level. 0 - start from tokens and produce embeddins_0. k - start from embeddings from level k - 1 '
+                    'and produce embeddings_k.',
+        cli=('--model-level',),
     )
     batch_size: int = Field(
         3,
@@ -125,7 +132,7 @@ def main(args: ArgsRunRankerEmbs) -> int:
     print(ds)
 
     print(f'Creating model with vocab size = {len(tokenizer)}')
-    model = MllmRanker(model_cfg).to(device)
+    model = MllmRankerLevel(model_cfg, args.model_level).to(device)
     model.load_state_dict(checkpoint['model'])
     # print(model)
 

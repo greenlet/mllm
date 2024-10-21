@@ -132,9 +132,8 @@ def main(args: ArgsQrelsTrain) -> int:
     )
     model.eval()
     for epoch in range(last_epoch + 1, args.epochs):
-        model.train()
-        # model.decoder.train()
-        # model.vocab_encoder.train()
+        # model.train()
+        model.decoder.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:

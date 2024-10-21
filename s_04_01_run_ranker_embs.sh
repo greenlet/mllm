@@ -3,13 +3,14 @@ code_path=$HOME/prog
 data_path=$HOME/data
 msmarco_data_path=$data_path/msmarco
 fever_data_path=$data_path/fever
-train_ranker_root_path=$data_path/train_mllm_ranker_qrels
+train_ranker_root_path=$data_path/train_mllm_ranker_qrels_0
 out_ds_path=$data_path/ranker_embs_msmarco_fever
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
-tokenizer_cfg_fname=tokenizer_cfg_01.yaml
-model_cfg_fname=ranker_model_cfg_01.yaml
+tokenizer_cfg_fname=tokenizer_cfg_02.yaml
+model_cfg_fname=ranker_model_cfg_03.yaml
+model_level=0
 
 tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
@@ -24,7 +25,7 @@ device=cuda
 batch_size=2500
 n_docs=0
 n_qs=0
-train_subdir=ranker-20240903_215749-msmarco-fever
+train_subdir=ranker-20241021_062053-msmarco-fever
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
@@ -36,6 +37,7 @@ python s_04_01_run_ranker_embs.py \
   --train-subdir $train_subdir \
   --tokenizer-cfg-fpath $tokenizer_cfg_fpath \
   --model-cfg-fpath $model_cfg_fpath \
+  --model-level $model_level \
   --batch-size $batch_size \
   --n-docs $n_docs \
   --n-qs $n_qs \
