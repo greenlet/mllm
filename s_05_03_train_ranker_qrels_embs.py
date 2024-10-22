@@ -12,7 +12,7 @@ from pydantic_yaml import parse_yaml_file_as
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import MllmRankerCfg, MllmEncdecCfg
+from mllm.config.model import MllmRankerCfg, MllmEncdecCfg, gen_prefpostfix
 from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsEmbsBatch
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.model.mllm_ranker import RankProbLoss, MllmRankerLevel
@@ -121,11 +121,15 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
 
     device = torch.device(args.device)
 
+    ranker_model_cfg = parse_yaml_file_as(MllmRankerCfg, args.ranker_model_cfg_fpath)
+    print(ranker_model_cfg)
+
     postfix = None
     if args.encdec_pretrained_model_path:
         postfix = args.encdec_pretrained_model_path.name
+    prefix, _ = gen_prefpostfix(ranker_model_cfg, args.model_level)
     train_path = find_create_train_path(
-        args.train_root_path, f'ranker-l{args.model_level}', postfix, args.train_subdir)
+        args.train_root_path, prefix, postfix, args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
@@ -138,8 +142,6 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
 
-    ranker_model_cfg = parse_yaml_file_as(MllmRankerCfg, args.ranker_model_cfg_fpath)
-    print(ranker_model_cfg)
     model_ranker = MllmRankerLevel(ranker_model_cfg, args.model_level).to(device)
     params = model_ranker.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)

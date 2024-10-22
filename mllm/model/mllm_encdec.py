@@ -24,6 +24,8 @@ class MllmEncdecLevel(nn.Module):
         self.level = level
         self.cfg_enc = self.cfg.encoders[self.level]
         self.cfg_dec = self.cfg.decoders[self.level]
+        self.vocab_encoder = None
+        self.vocab_decoder = None
         if self.level == 0:
             self.vocab_encoder = VocabEncoder(**cfg.vocab_encoder.dict())
             self.vocab_decoder = VocabDecoder(

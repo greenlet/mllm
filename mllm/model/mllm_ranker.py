@@ -184,6 +184,8 @@ class MllmRankerLevel(nn.Module):
         self.level = level
         self.cfg_enc = self.cfg.encoders[self.level]
         self.cfg_dec = self.cfg.decoders[self.level]
+        self.vocab_enc_cfg = None
+        self.vocab_encoder = None
         if self.level == 0:
             self.vocab_enc_cfg = self.cfg.vocab_encoder
             self.vocab_encoder = VocabEncoder(

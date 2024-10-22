@@ -13,7 +13,7 @@ from pydantic_yaml import parse_yaml_file_as
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import MllmEncdecCfg
+from mllm.config.model import MllmEncdecCfg, gen_prefpostfix
 from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsEmbsBatch
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.train.utils import find_create_train_path, calc_print_batches
@@ -148,9 +148,13 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
 
     device = torch.device(args.device)
 
+    model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
+    enc_cfg = model_cfg.encoders[args.model_level]
+
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
+    prefix, suffix = gen_prefpostfix(model_cfg, args.model_level)
     train_path = find_create_train_path(
-        args.train_root_path, f'encdec-l{args.model_level}', ds_names, args.train_subdir)
+        args.train_root_path, prefix, f'{ds_names}-{suffix}', args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
@@ -162,9 +166,6 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-
-    model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
-    enc_cfg = model_cfg.encoders[args.model_level]
 
     print(model_cfg)
     model = MllmEncdecLevel(model_cfg, args.model_level).to(device)
