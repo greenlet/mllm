@@ -7,10 +7,10 @@ embs_ds_dir_path=$data_path/ranker_embs_msmarco_fever
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 ranker_model_cfg_fpath=$config_dir_path/ranker_model_cfg_02.yaml
+ranker_model_cfg_fpath=$config_dir_path/ranker_model_cfg_03.yaml
 train_encdec_root_path=$data_path/train_mllm_encdec_${model_level}
 
-encdec_model_cfg_fpath=$config_dir_path/encdec_model_cfg_02.yaml
-encdec_pretrained_model_path=$train_encdec_root_path/encdec-l1-20241005_175446-msmarco-fever
+encdec_pretrained_model_path=$train_encdec_root_path/encdec-lvl1-20241022_224217-msmarco-fever-enc-lrs2-embmatTrue-d256-h8-dec-lrs2-seqlen100-d256-h8
 
 train_ranker_root_path=$data_path/train_mllm_ranker_qrels_${model_level}
 train_subdir=""
@@ -50,7 +50,6 @@ python s_05_03_train_ranker_qrels_embs.py \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
-  --encdec-model-cfg-fpath $encdec_model_cfg_fpath \
   --encdec-pretrained-model-path $encdec_pretrained_model_path
 #"
 

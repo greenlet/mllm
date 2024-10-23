@@ -15,6 +15,7 @@ from tqdm import trange
 
 from mllm.config.model import MllmEncdecCfg, gen_prefpostfix
 from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsEmbsBatch
+from mllm.exp.args import ENCDEC_MODEL_CFG_FNAME
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.train.utils import find_create_train_path, calc_print_batches
 
@@ -163,9 +164,13 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         assert last_checkpoint_path.exists(),\
             (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
              f'but file {last_checkpoint_path} does not exits.')
+
+    if last_checkpoint_path.exists():
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
+    else:
+        shutil.copy(args.model_cfg_fpath, train_path / ENCDEC_MODEL_CFG_FNAME)
 
     print(model_cfg)
     model = MllmEncdecLevel(model_cfg, args.model_level).to(device)
@@ -193,7 +198,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
         view_train.shuffle()
         view_val.shuffle()
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8, threshold=1e-6, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=10, threshold=1e-6, min_lr=1e-7)
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 

@@ -14,9 +14,10 @@ from tqdm import trange
 
 from mllm.config.model import MllmRankerCfg, MllmEncdecCfg, gen_prefpostfix
 from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsEmbsBatch
+from mllm.exp.args import RANKER_MODEL_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.model.mllm_ranker import RankProbLoss, MllmRankerLevel
-from mllm.train.utils import find_create_train_path, calc_print_batches
+from mllm.train.utils import find_create_train_path, calc_print_batches, get_dt_from_subdir
 
 
 class ArgsQrelsEmbsTrain(BaseModel):
@@ -102,12 +103,6 @@ class ArgsQrelsEmbsTrain(BaseModel):
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
-    encdec_model_cfg_fpath: Optional[Path] = Field(
-        None,
-        required=False,
-        description='Path to Encdec model config Yaml file.',
-        cli=('--encdec-model-cfg-fpath',),
-    )
     encdec_pretrained_model_path: Optional[Path] = Field(
         None,
         required=False,
@@ -124,10 +119,11 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
     ranker_model_cfg = parse_yaml_file_as(MllmRankerCfg, args.ranker_model_cfg_fpath)
     print(ranker_model_cfg)
 
-    postfix = None
+    prefix, postfix = gen_prefpostfix(ranker_model_cfg, args.model_level)
     if args.encdec_pretrained_model_path:
-        postfix = args.encdec_pretrained_model_path.name
-    prefix, _ = gen_prefpostfix(ranker_model_cfg, args.model_level)
+        encdec_subdir_dt = get_dt_from_subdir(args.encdec_pretrained_model_path.name)
+        if encdec_subdir_dt:
+            postfix = f'{postfix}-encdec-{encdec_subdir_dt}'
     train_path = find_create_train_path(
         args.train_root_path, prefix, postfix, args.train_subdir)
     print(f'train_path: {train_path}')
@@ -138,9 +134,13 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         assert last_checkpoint_path.exists(),\
             (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
              f'but file {last_checkpoint_path} does not exits.')
+
+    if last_checkpoint_path.exists():
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
+    else:
+        shutil.copy(args.ranker_model_cfg_fpath, train_path / RANKER_MODEL_CFG_FNAME)
 
     model_ranker = MllmRankerLevel(ranker_model_cfg, args.model_level).to(device)
     params = model_ranker.parameters()
@@ -153,8 +153,8 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
     )
 
     if args.encdec_pretrained_model_path is not None and checkpoint is None:
-        assert args.encdec_model_cfg_fpath is not None, '--encdec-pretrained-model-path is not empty, but --encdec-model-cfg-fpath is not set'
-        encdec_model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.encdec_model_cfg_fpath)
+        encdec_model_cfg_fpath = args.encdec_pretrained_model_path / ENCDEC_MODEL_CFG_FNAME
+        encdec_model_cfg = parse_yaml_file_as(MllmEncdecCfg, encdec_model_cfg_fpath)
         encdec_model_path = args.encdec_pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {encdec_model_path}')
         pretrained_checkpoint = torch.load(encdec_model_path, map_location=device)
@@ -194,10 +194,10 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         drop_last=False,
         shuffle_between_loops=True,
     )
-    # model_ranker.encoder.eval()
+    model_ranker.eval()
     for epoch in range(last_epoch + 1, args.epochs):
-        # model_ranker.decoder.train()
-        model_ranker.train()
+        model_ranker.decoder.train()
+        # model_ranker.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
@@ -238,7 +238,6 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-        # model_ranker.decoder.eval()
         model_ranker.eval()
         val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')

@@ -11,6 +11,14 @@ from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
 
 SUBDIR_PAT_STR = re.compile(r'^\w+\-(%s)-.+$' % DT_PAT_RE)
 SUBDIR_PAT = re.compile(SUBDIR_PAT_STR)
+DT_PAT = re.compile(r'\d{8}_\d{6}')
+
+
+def get_dt_from_subdir(subdir: str) -> Optional[str]:
+    parts = subdir.split('-')
+    for part in parts:
+        if DT_PAT.match(part):
+            return part
 
 
 def gen_train_subdir(prefix: str, postfix: Optional[str]) -> str:

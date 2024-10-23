@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import TypeVar, Union
 
 from pydantic import BaseModel
-from transformers.models.pop2piano.convert_pop2piano_weights_to_hf import model, encoder
 
 T = TypeVar('T')
 MS = Union[T, tuple[T, ...]]
@@ -165,11 +164,12 @@ def create_mllm_ranker_cfg(
 def gen_prefpostfix(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_level: int) -> tuple[str, str]:
     enc_cfg, dec_cfg = model_cfg.encoders[model_level], model_cfg.decoders[model_level]
     enc_str = f'enc-lrs{enc_cfg.n_layers}-embmat{enc_cfg.with_emb_mat}-d{enc_cfg.d_model}-h{enc_cfg.n_heads}'
-    dec_str = f'dec-lrs{dec_cfg.n_layers}-seqlen{dec_cfg.seq_len}-d{dec_cfg.d_emb}-h{dec_cfg.n_heads}'
     if isinstance(model_cfg, MllmEncdecCfg):
         prefix = 'encdec'
+        dec_str = f'dec-lrs{dec_cfg.n_layers}-seqlen{dec_cfg.seq_len}-d{dec_cfg.d_emb}-h{dec_cfg.n_heads}'
     elif isinstance(model_cfg, MllmRankerCfg):
         prefix = 'ranker'
+        dec_str = f'dec-lrs{dec_cfg.n_layers}-d{dec_cfg.d_model}-h{dec_cfg.n_heads}'
     else:
         raise Exception(f'Unknown config type: {type(model_cfg)}.', model_cfg)
     prefix = f'{prefix}-lvl{model_level}'
