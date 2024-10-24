@@ -31,8 +31,8 @@ class RankProbLoss(nn.Module):
             # loss_tgt += 1 - torch.mean(prob_tgt)
             # loss_nontgt += 1 - torch.mean(prob_nontgt)
 
-        loss_tgt /= n_batch
-        loss_nontgt /= n_batch
+        loss_tgt = loss_tgt / n_batch
+        loss_nontgt = loss_nontgt / n_batch
         loss = self.target_weight * loss_tgt + (1 - self.target_weight) * loss_nontgt
         return loss, loss_tgt, loss_nontgt
 
@@ -259,7 +259,7 @@ class MllmRankerLevel(nn.Module):
         _, docs_enc = self.run_encoder(docs_embs)
         # docs_enc: [1, n_batch, emb_size]
         docs_enc = docs_enc.unsqueeze(0)
-        if len(qs_ind_len) == len(qs_embs):
+        if len(qs_ind_len) == len(qs_embs) and False:
             qs_embs = qs_embs.unsqueeze(1)
             docs_enc = docs_enc.expand((len(qs_embs), *docs_enc.shape[1:]))
             ranks = self.decoder(docs_enc, qs_embs)
