@@ -433,3 +433,65 @@ class DecoderRankSimple(nn.Module):
         return ranks_prob
 
 
+class DecoderRankTrans(nn.Module):
+    n_layers: int
+    n_heads: int
+    d_k: int
+    d_v: int
+    d_model: int
+    d_inner: int
+    inp_len: int
+    dropout_rate: float
+    dropout: nn.Dropout
+    layer_stack: nn.ModuleList
+    w: nn.Linear
+    layer_norm: nn.LayerNorm
+
+    def __init__(self, n_layers: int, n_heads: int, d_k: int, d_v: int, d_model: int, d_inner: int, inp_len: int,
+                 dropout_rate: float = 0.1):
+        super().__init__()
+        self.n_layers = n_layers
+        self.n_heads = n_heads
+        self.d_k = d_k
+        self.d_v = d_v
+        self.d_model = d_model
+        self.d_inner = d_inner
+        self.inp_len = inp_len
+        self.dropout_rate = dropout_rate
+
+        self.dropout = nn.Dropout(p=self.dropout_rate)
+        self.layer_stack = nn.ModuleList([
+            EncoderLayer(self.n_heads, self.d_model, self.d_inner, self.d_k, self.d_v, False, self.inp_len, dropout_rate=self.dropout_rate)
+            for _ in range(n_layers)])
+        self.w = nn.Linear(d_model, d_model, bias=False)
+        self.layer_norm = nn.LayerNorm(self.d_model, eps=1e-6)
+
+    # docs_chunks: (batch_size, docs_chunks_len, d_model)
+    # query_chunks: (batch_size, query_chunks_len, d_model)
+    # res: (batch_size, 1)
+    def forward(self, docs_chunks: Tensor, query_chunks: Tensor) -> Tensor:
+        enc_out = docs_chunks
+        for enc_layer in self.layer_stack:
+            enc_out, _ = enc_layer(enc_out)
+
+        enc_out = self.layer_norm(enc_out)
+
+        # (batch_size, query_chunks_len, d_model)
+        query_chunks = self.w(query_chunks)
+
+        # (batch_size, d_model, docs_chunks_len)
+        docs_chunks = enc_out.transpose(-2, -1)
+
+        # (batch_size, query_chunks_len, docs_chunks_len)
+        ranks = torch.matmul(query_chunks, docs_chunks)
+
+        # (batch_size, docs_chunks_len)
+        ranks = torch.max(ranks, 1)[0]
+
+        # (batch_size, docs_chunks_len)
+        # ranks_prob = torch.sigmoid(ranks)
+        ranks_prob = torch.softmax(ranks, dim=-1)
+
+        return ranks_prob
+
+

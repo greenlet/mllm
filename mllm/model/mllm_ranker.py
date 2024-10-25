@@ -6,7 +6,7 @@ import torch
 from torch import nn, Tensor
 
 from mllm.config.model import MllmRankerCfg, create_mllm_ranker_cfg, EncoderCfg, VocabEncoderCfg
-from mllm.model.modules import VocabEncoder, Encoder, Decoder, DecoderRankSimple
+from mllm.model.modules import VocabEncoder, Encoder, Decoder, DecoderRankSimple, DecoderRankTrans
 
 
 class RankProbLoss(nn.Module):
@@ -174,7 +174,8 @@ class MllmRankerLevel(nn.Module):
     cfg_enc: EncoderCfg
     cfg_dec: EncoderCfg
     encoder: Encoder
-    decoder: DecoderRankSimple
+    # decoder: DecoderRankSimple
+    decoder: DecoderRankTrans
     # vocab_enc_cfg: Optional[VocabEncoderCfg] = None
     # vocab_encoder: Optional[VocabEncoder] = None
 
@@ -192,7 +193,17 @@ class MllmRankerLevel(nn.Module):
                 **self.vocab_enc_cfg.dict(),
             )
         self.encoder = Encoder(**self.cfg_enc.dict())
-        self.decoder = DecoderRankSimple(self.cfg_dec.d_model)
+        # self.decoder = DecoderRankSimple(self.cfg_dec.d_model)
+        self.decoder = DecoderRankTrans(
+            n_layers=self.cfg_dec.n_layers,
+            n_heads=self.cfg_dec.n_heads,
+            d_k=self.cfg_dec.d_k,
+            d_v=self.cfg_dec.d_v,
+            d_model=self.cfg_dec.d_model,
+            d_inner=self.cfg_dec.d_inner,
+            inp_len=self.cfg_dec.inp_len,
+            dropout_rate=self.cfg_dec.dropout_rate,
+        )
         for n, p in self.named_parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
@@ -259,7 +270,7 @@ class MllmRankerLevel(nn.Module):
         _, docs_enc = self.run_encoder(docs_embs)
         # docs_enc: [1, n_batch, emb_size]
         docs_enc = docs_enc.unsqueeze(0)
-        if len(qs_ind_len) == len(qs_embs) and False:
+        if len(qs_ind_len) == len(qs_embs):
             qs_embs = qs_embs.unsqueeze(1)
             docs_enc = docs_enc.expand((len(qs_embs), *docs_enc.shape[1:]))
             ranks = self.decoder(docs_enc, qs_embs)

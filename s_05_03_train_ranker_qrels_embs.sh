@@ -27,8 +27,8 @@ device=cuda
 epochs=300
 train_epoch_steps=500
 val_epoch_steps=50
-#chunks_batch_size=20
-chunks_batch_size=5
+chunks_batch_size=20
+#chunks_batch_size=5
 max_docs_embs=10
 
 learning_rate=0.0001
