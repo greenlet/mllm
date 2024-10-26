@@ -20,14 +20,27 @@ from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmEncdecCf
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
 
 
-def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
+def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    device = logits_pred.device
+    tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
     probs_pred = torch.softmax(logits_pred, dim=-1)
-    probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt.to(torch.int64).unsqueeze(-1))
-    loss = -torch.mean(torch.log(probs_gt))
-    return loss
+    prob_cap = torch.tensor(1e-8, dtype=torch.float32, device=device)
+    probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
+    probs_gt = torch.maximum(probs_gt, prob_cap)
+    loss_gt = -torch.mean(torch.log(probs_gt))
+    loss_nongt = torch.tensor(0, dtype=torch.float32, device=device)
+    for i in range(probs_pred.shape[0]):
+        mask = torch.full((logits_pred.shape[-2], logits_pred.shape[-1],), True, device=device)
+        mask = mask.scatter(1, tokens_gt[i], 0)
+        probs_nongt = 1 - probs_pred[i][mask]
+        probs_nongt = torch.maximum(probs_nongt, prob_cap)
+        loss_nongt += -torch.mean(torch.log(probs_nongt))
+    loss_nongt = loss_nongt / logits_pred.shape[0]
+    loss = loss_gt + loss_nongt
+    return loss_gt, loss_nongt, loss
 
 
-def encdec_prob_loss_sigmoid(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+def encdec_prob_loss_sigmoid(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     device = logits_pred.device
     tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
     probs_pred = torch.sigmoid(logits_pred)
@@ -158,8 +171,8 @@ def main(args: ArgsTokensChunksTrain) -> int:
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
     n_batches_train = calc_batches(ds_loader.n_docs_train)
     n_batches_val = calc_batches(ds_loader.n_docs_val)
-    # loss_fn = encdec_prob_loss_softmax
-    loss_fn = encdec_prob_loss_sigmoid
+    loss_fn = encdec_prob_loss_softmax
+    # loss_fn = encdec_prob_loss_sigmoid
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
     # loss_fn = nn.CrossEntropyLoss()
     graph_written = True

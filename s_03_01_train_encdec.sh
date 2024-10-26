@@ -8,8 +8,8 @@ wiki_ds_path=$wiki_data_path/$ds_subdir
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fname=tokenizer_cfg_02.yaml
-#model_cfg_fname=encdec_model_cfg_03.yaml
-model_cfg_fname=encdec_model_cfg_04.yaml
+model_cfg_fname=encdec_model_cfg_03.yaml
+#model_cfg_fname=encdec_model_cfg_04.yaml
 model_level=0
 
 tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
