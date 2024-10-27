@@ -59,6 +59,13 @@ class ArgsTokensChunksTrain(BaseModel):
         description='Number of Decoder transformer layers. When greater then 0 will override corresponding value in model\'s config.',
         cli=('--n-dec-layers',),
     )
+    dec_with_vocab_decoder: str = Field(
+        'true',
+        required=True,
+        description='Boolean flag determining whether Encode-Decoder level 0 model last layer should be VocabDecoder. ' \
+            'Can have values: true, false (default: true)',
+        cli=('--dec-with-vocab-decoder',),
+    )
     docs_batch_size: int = Field(
         3,
         required=False,

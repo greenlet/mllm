@@ -49,6 +49,11 @@ custom_tokens:
     name: doc_title_end
     repr: <|doc_title_end|>
     special: false
+  mask:
+    ind: 50270
+    name: mask
+    repr: <|mask|>
+    special: false
   pad:
     ind: 50267
     name: pad

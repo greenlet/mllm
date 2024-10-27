@@ -67,6 +67,7 @@ class MllmEncdecCfg(BaseModel):
     vocab_encoder: VocabEncoderCfg
     encoders: list[EncoderCfg]
     decoders: list[EmbDecoderCfg]
+    with_vocab_decoder: bool
 
 
 class MllmRankerCfg(BaseModel):
@@ -80,7 +81,7 @@ def create_mllm_encdec_cfg(
         n_levels: int = 2,
         enc_n_layers: MS[int] = (3, 2), n_heads: int = 8, d_model: int = 512,
         d_inner: int = 2048, enc_with_graph_mat: bool = False, enc_with_emb_mat: MS[bool] = False,
-        dec_n_layers: MS[int] = 3, pad_idx: int = 0,
+        dec_n_layers: MS[int] = 3, pad_idx: int = 0, with_vocab_decoder: bool = True,
 ) -> MllmEncdecCfg:
     enc_n_layers = to_tuple(enc_n_layers, n_levels)
     assert len(enc_n_layers) == n_levels
@@ -112,7 +113,7 @@ def create_mllm_encdec_cfg(
         cfgs_dec.append(cfg_dec)
 
     cfg_mllm_encdec = MllmEncdecCfg(
-        vocab_encoder=cfg_vocab_enc, encoders=cfgs_enc, decoders=cfgs_dec,
+        vocab_encoder=cfg_vocab_enc, encoders=cfgs_enc, decoders=cfgs_dec, with_vocab_decoder=with_vocab_decoder,
     )
 
     return cfg_mllm_encdec
@@ -165,9 +166,11 @@ def gen_prefpostfix(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_level:
     enc_cfg, dec_cfg = model_cfg.encoders[model_level], model_cfg.decoders[model_level]
     enc_str = f'enc-lrs{enc_cfg.n_layers}-embmat{enc_cfg.with_emb_mat}-d{enc_cfg.d_model}-h{enc_cfg.n_heads}'
     if isinstance(model_cfg, MllmEncdecCfg):
+        assert isinstance(dec_cfg, EmbDecoderCfg)
         prefix = 'encdec'
         dec_str = f'dec-lrs{dec_cfg.n_layers}-seqlen{dec_cfg.seq_len}-d{dec_cfg.d_emb}-h{dec_cfg.n_heads}'
     elif isinstance(model_cfg, MllmRankerCfg):
+        assert isinstance(dec_cfg, EncoderCfg)
         prefix = 'ranker'
         dec_str = f'dec-lrs{dec_cfg.n_layers}-d{dec_cfg.d_model}-h{dec_cfg.n_heads}'
     else:
