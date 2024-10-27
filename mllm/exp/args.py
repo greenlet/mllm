@@ -47,6 +47,18 @@ class ArgsTokensChunksTrain(BaseModel):
                     'and produce embeddings_k.',
         cli=('--model-level',),
     )
+    n_enc_layers: int = Field(
+        0,
+        required=True,
+        description='Number of Encoder transformer layers. When greater then 0 will override corresponding value in model\'s config.',
+        cli=('--n-enc-layers',),
+    )
+    n_dec_layers: int = Field(
+        0,
+        required=True,
+        description='Number of Decoder transformer layers. When greater then 0 will override corresponding value in model\'s config.',
+        cli=('--n-dec-layers',),
+    )
     docs_batch_size: int = Field(
         3,
         required=False,

@@ -11,6 +11,9 @@ tokenizer_cfg_fname=tokenizer_cfg_02.yaml
 model_cfg_fname=encdec_model_cfg_03.yaml
 #model_cfg_fname=encdec_model_cfg_04.yaml
 model_level=0
+n_enc_layers=3
+n_dec_layers=3
+
 
 tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
@@ -29,7 +32,7 @@ train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=7
 max_chunks_per_doc=3
-train_subdir=last
+#train_subdir=last
 
 learning_rate=0.0001
 
@@ -44,6 +47,8 @@ python s_03_01_train_encdec.py \
   --tokenizer-cfg-fpath $tokenizer_cfg_fpath \
   --model-cfg-fpath $model_cfg_fpath \
   --model-level $model_level \
+  --n-enc-layers $n_enc_layers \
+  --n-dec-layers $n_dec_layers \
   --docs-batch-size $docs_batch_size \
   --max-chunks-per-doc $max_chunks_per_doc \
   --device $device \

@@ -16,28 +16,16 @@ from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdecLevel
-from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmEncdecCfg
+from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmEncdecCfg, gen_prefpostfix
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
 
 
-def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    device = logits_pred.device
+def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
     tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
     probs_pred = torch.softmax(logits_pred, dim=-1)
-    prob_cap = torch.tensor(1e-8, dtype=torch.float32, device=device)
     probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
-    probs_gt = torch.maximum(probs_gt, prob_cap)
-    loss_gt = -torch.mean(torch.log(probs_gt))
-    loss_nongt = torch.tensor(0, dtype=torch.float32, device=device)
-    for i in range(probs_pred.shape[0]):
-        mask = torch.full((logits_pred.shape[-2], logits_pred.shape[-1],), True, device=device)
-        mask = mask.scatter(1, tokens_gt[i], 0)
-        probs_nongt = 1 - probs_pred[i][mask]
-        probs_nongt = torch.maximum(probs_nongt, prob_cap)
-        loss_nongt += -torch.mean(torch.log(probs_nongt))
-    loss_nongt = loss_nongt / logits_pred.shape[0]
-    loss = loss_gt + loss_nongt
-    return loss_gt, loss_nongt, loss
+    loss = -torch.mean(torch.log(probs_gt))
+    return loss
 
 
 def encdec_prob_loss_sigmoid(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -108,8 +96,15 @@ def main(args: ArgsTokensChunksTrain) -> int:
 
     device = torch.device(args.device)
 
-    train_path = find_create_train_path(
-        args.train_root_path, 'encdec', f'{args.ds_dir_path.parent.name}-{args.ds_dir_path.name}', args.train_subdir)
+    tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
+    model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
+    enc_cfg, dec_cfg = model_cfg.encoders[args.model_level], model_cfg.decoders[args.model_level]
+    enc_cfg.n_layers = args.n_enc_layers if args.n_enc_layers > 0 else enc_cfg.n_layers
+    dec_cfg.n_layers = args.n_dec_layers if args.n_dec_layers > 0 else dec_cfg.n_layers
+
+    prefix, suffix = gen_prefpostfix(model_cfg, args.model_level)
+    suffix = f'{args.ds_dir_path.parent.name}-{args.ds_dir_path.name}-{suffix}'
+    train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
@@ -119,20 +114,18 @@ def main(args: ArgsTokensChunksTrain) -> int:
             (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
              f'but file {last_checkpoint_path} does not exits.')
 
-    tokenizer_cfg_fpath = args.tokenizer_cfg_fpath
-    model_cfg_fpath = args.model_cfg_fpath
     if last_checkpoint_path.exists():
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        tokenizer_cfg_fpath = train_path / TOKENIZER_CFG_FNAME
-        model_cfg_fpath = train_path / ENCDEC_MODEL_CFG_FNAME
+        chkpt_tkz_cfg = parse_yaml_file_as(TokenizerCfg, train_path / TOKENIZER_CFG_FNAME)
+        chkpt_model_cfg = parse_yaml_file_as(MllmEncdecCfg, train_path / ENCDEC_MODEL_CFG_FNAME)
+        assert tkz_cfg == chkpt_tkz_cfg, f'{args.tokenizer_cfg_fpath} != {chkpt_tkz_cfg}'
+        assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
         shutil.copy(args.tokenizer_cfg_fpath, train_path / TOKENIZER_CFG_FNAME)
         shutil.copy(args.model_cfg_fpath, train_path / ENCDEC_MODEL_CFG_FNAME)
 
-    print(f'Loading tokenizer config from {tokenizer_cfg_fpath}')
-    tkz_cfg = parse_yaml_file_as(TokenizerCfg, tokenizer_cfg_fpath)
     tokenizer = tokenizer_from_config(tkz_cfg)
 
     tok_dict = tkz_cfg.custom_tokens
@@ -148,7 +141,6 @@ def main(args: ArgsTokensChunksTrain) -> int:
 
     torch.autograd.set_detect_anomaly(True)
 
-    model_cfg = parse_yaml_file_as(MllmEncdecCfg, model_cfg_fpath)
     input_zeros_ratio = 0.3
     print(model_cfg)
     model = MllmEncdecLevel(model_cfg, args.model_level).to(device)
