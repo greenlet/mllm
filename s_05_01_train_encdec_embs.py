@@ -17,6 +17,7 @@ from mllm.config.model import MllmEncdecCfg, gen_prefpostfix
 from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsEmbsBatch
 from mllm.exp.args import ENCDEC_MODEL_CFG_FNAME
 from mllm.model.mllm_encdec import MllmEncdecLevel
+from mllm.model.mllm_encdec import encdec_embs_loss_cos
 from mllm.train.utils import find_create_train_path, calc_print_batches
 
 
@@ -126,14 +127,6 @@ def encdec_embs_loss_cos_masked(embs_pred: torch.Tensor, embs_gt: torch.Tensor, 
 
 # embs_pred [n_batch, seq_len, emb_size] float32 - embeddings sequence predicted by model
 # embs_gt [n_batch, seq_len, emb_size] float32 - ground truth embeddings
-def encdec_embs_loss_cos(embs_pred: torch.Tensor, embs_gt: torch.Tensor) -> torch.Tensor:
-    # [n_batch, seq_len]
-    cos_sim = F.cosine_similarity(embs_pred, embs_gt, dim=-1)
-    # []
-    loss = 1 - torch.mean(cos_sim)
-    return loss
-
-
 # embs_pred [n_batch, seq_len, emb_size] float32 - embeddings sequence predicted by model
 # embs_gt [n_batch, seq_len, emb_size] float32 - ground truth embeddings
 def encdec_embs_loss_mse(embs_pred: torch.Tensor, embs_gt: torch.Tensor) -> torch.Tensor:

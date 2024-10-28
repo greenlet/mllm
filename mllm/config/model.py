@@ -169,6 +169,8 @@ def gen_prefpostfix(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_level:
         assert isinstance(dec_cfg, EmbDecoderCfg)
         prefix = 'encdec'
         dec_str = f'dec-lrs{dec_cfg.n_layers}-seqlen{dec_cfg.seq_len}-d{dec_cfg.d_emb}-h{dec_cfg.n_heads}'
+        if model_level == 0:
+            dec_str = f'{dec_str}-vocdec{model_cfg.with_vocab_decoder}'
     elif isinstance(model_cfg, MllmRankerCfg):
         assert isinstance(dec_cfg, EncoderCfg)
         prefix = 'ranker'

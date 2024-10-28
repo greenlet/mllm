@@ -15,7 +15,7 @@ from transformers import GPT2Tokenizer
 from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME
 from mllm.train.utils import find_create_train_path
-from mllm.model.mllm_encdec import MllmEncdecLevel
+from mllm.model.mllm_encdec import MllmEncdecLevel, encdec_embs_loss_cos
 from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmEncdecCfg, gen_prefpostfix
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
 
@@ -98,9 +98,9 @@ def main(args: ArgsTokensChunksTrain) -> int:
 
     tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
     model_cfg = parse_yaml_file_as(MllmEncdecCfg, args.model_cfg_fpath)
-    enc_cfg, dec_cfg = model_cfg.encoders[args.model_level], model_cfg.decoders[args.model_level]
-    enc_cfg.n_layers = args.n_enc_layers if args.n_enc_layers > 0 else enc_cfg.n_layers
-    dec_cfg.n_layers = args.n_dec_layers if args.n_dec_layers > 0 else dec_cfg.n_layers
+    model_cfg.encoders[args.model_level].n_layers = args.n_enc_layers
+    model_cfg.decoders[args.model_level].n_layers = args.n_dec_layers
+    model_cfg.with_vocab_decoder = args.dec_with_vocab_decoder_bool
 
     prefix, suffix = gen_prefpostfix(model_cfg, args.model_level)
     suffix = f'{args.ds_dir_path.parent.name}-{args.ds_dir_path.name}-{suffix}'
@@ -148,25 +148,46 @@ def main(args: ArgsTokensChunksTrain) -> int:
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
     last_epoch, val_loss_min = -1, None
-    if checkpoint:
+    if checkpoint is not None:
         model.load_state_dict(checkpoint['model'], strict=False)
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
         ds_loader.shuffle(train=True)
         ds_loader.shuffle(train=False)
+    elif args.pretrained_model_path is not None:
+        pretrained_model_path = args.pretrained_model_path / 'best.pth'
+        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
+        pretrained_checkpoint = torch.load(pretrained_model_path)
+        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_MODEL_CFG_FNAME
+        model_encdec_cfg = parse_yaml_file_as(MllmEncdecCfg, model_encdec_cfg_fpath)
+        model_encdec = MllmEncdecLevel(model_encdec_cfg, args.model_level).to(device)
+        model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        # if args.model_level == 0:
+        #     assert model.vocab_encoder is not None and model_encdec.vocab_encoder is not None
+        #     print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
+        #     model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
+        # print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
+        # model.encoder.load_state_dict(model_encdec.encoder.state_dict())
+        print(f'Load model weights:', list(model_encdec.state_dict().keys()))
+        model.load_state_dict(model_encdec.state_dict(), strict=False)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=10, threshold=1e-6, min_lr=1e-7)
+    sched_wait_steps = 50
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-7)
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
     n_batches_train = calc_batches(ds_loader.n_docs_train)
     n_batches_val = calc_batches(ds_loader.n_docs_val)
-    loss_fn = encdec_prob_loss_softmax
-    # loss_fn = encdec_prob_loss_sigmoid
-    # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
-    # loss_fn = nn.CrossEntropyLoss()
+    if model_cfg.with_vocab_decoder:
+        # loss_fn = encdec_prob_loss_sigmoid
+        # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
+        # loss_fn = nn.CrossEntropyLoss()
+        loss_fn = encdec_prob_loss_softmax
+    else:
+        loss_fn = encdec_embs_loss_cos
+    
     graph_written = True
     i_train, i_val = 0, 0
     loss_gt, loss_nongt = None, None
@@ -184,13 +205,21 @@ def main(args: ArgsTokensChunksTrain) -> int:
             optimizer.zero_grad()
 
             out_logits = model(chunks_inp)
+            inp_tok_embs = None
+            if not model_cfg.with_vocab_decoder and model.level == 0:
+                inp_tok_embs = model.run_vocab_encoder(chunks)
+
             if not graph_written:
                 tbsw.add_graph(model, docs_chunks, verbose=True, use_strict_trace=False)
                 graph_written = True
 
-            loss = loss_fn(out_logits, chunks)
+            if model_cfg.with_vocab_decoder or model.level != 0:
+                loss = loss_fn(out_logits, chunks)
+            else:
+                loss = loss_fn(out_logits, inp_tok_embs)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
+            
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -229,10 +258,17 @@ def main(args: ArgsTokensChunksTrain) -> int:
             
             chunks = concat_tokens(docs_chunks, target_chunks)
             out_logits = model(chunks)
+            inp_tok_embs = None
+            if not model_cfg.with_vocab_decoder and model.level == 0:
+                inp_tok_embs = model.run_vocab_encoder(chunks)
 
-            loss = loss_fn(out_logits, chunks)
+            if model_cfg.with_vocab_decoder or model.level != 0:
+                loss = loss_fn(out_logits, chunks)
+            else:
+                loss = loss_fn(out_logits, inp_tok_embs)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
+
             val_loss += loss.item()
             if loss_gt is not None:
                 val_loss_gt += loss_gt.item()
@@ -256,7 +292,8 @@ def main(args: ArgsTokensChunksTrain) -> int:
             tbsw.add_scalar('LossGt/Val', val_loss_gt, epoch)
             tbsw.add_scalar('LossNongt/Val', val_loss_nongt, epoch)
 
-        scheduler.step(val_loss)
+        if epoch >= sched_wait_steps:
+            scheduler.step(val_loss)
         last_lr = scheduler.get_last_lr()[0]
         tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 

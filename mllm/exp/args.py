@@ -63,9 +63,15 @@ class ArgsTokensChunksTrain(BaseModel):
         'true',
         required=True,
         description='Boolean flag determining whether Encode-Decoder level 0 model last layer should be VocabDecoder. ' \
-            'Can have values: true, false (default: true)',
+            'Can have values: true, yes, 1, false, no, 0. (default: true)',
         cli=('--dec-with-vocab-decoder',),
     )
+    @property
+    def dec_with_vocab_decoder_bool(self) -> bool:
+        val = self.dec_with_vocab_decoder.lower()
+        assert val in ('true', 't', 'yes', 'y', '1', 'false', 'f', 'no', 'n', '0'), f'--dec-with-vocab-decoder argument value ("{val}") cannot be converted to bool'
+        return self.dec_with_vocab_decoder in ('true', 't', 'yes', 'y', '1')
+
     docs_batch_size: int = Field(
         3,
         required=False,

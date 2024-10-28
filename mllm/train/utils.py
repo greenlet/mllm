@@ -9,9 +9,9 @@ import torch
 from mllm.data.common import DsView, TDs, TBatch
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
 
-SUBDIR_PAT_STR = re.compile(r'^\w+\-(%s)-.+$' % DT_PAT_RE)
+SUBDIR_PAT_STR = re.compile(r'^[\w-]+?\-(%s)-.+$' % DT_PAT_RE)
 SUBDIR_PAT = re.compile(SUBDIR_PAT_STR)
-DT_PAT = re.compile(r'\d{8}_\d{6}')
+DT_PAT = re.compile(DT_PAT_RE)
 
 
 def get_dt_from_subdir(subdir: str) -> Optional[str]:
@@ -21,15 +21,16 @@ def get_dt_from_subdir(subdir: str) -> Optional[str]:
             return part
 
 
-def gen_train_subdir(prefix: str, postfix: Optional[str]) -> str:
-    dt_str = gen_dt_str()
-    subdir = f'{prefix}-{dt_str}'
+def gen_train_subdir(prefix: Optional[str], postfix: Optional[str]) -> str:
+    subdir = gen_dt_str()
+    if prefix:
+        subdir = f'{prefix}-{subdir}'
     if postfix:
         subdir = f'{subdir}-{postfix}'
     return subdir
 
 
-def find_last_train_subdir(train_root_path: Path) -> Optional[Path]:
+def find_last_train_subdir_old(train_root_path: Path) -> Optional[Path]:
     dt_last: Optional[datetime] = None
     subdir_last: Optional[str] = None
     for subpath in train_root_path.iterdir():
@@ -46,11 +47,40 @@ def find_last_train_subdir(train_root_path: Path) -> Optional[Path]:
         return train_root_path / subdir_last
 
 
+def find_last_train_subdir(train_root_path: Path, prefix: Optional[str] = None, postfix: Optional[str] = None) -> Optional[Path]:
+    dt_last: Optional[datetime] = None
+    subdir_last: Optional[str] = None
+    for subpath in train_root_path.iterdir():
+        if not subpath.is_dir():
+            continue
+        subdir = subpath.name
+        if prefix:
+            if not subdir.startswith(prefix):
+                continue
+            subdir = subdir[len(prefix):]
+        if postfix:
+            if not subpath.name.endswith(postfix):
+                continue
+            subdir = subdir[:-len(postfix)]
+        assert subdir, f'prefix: {prefix}. postfix: {postfix}. subdir: {subpath.name}'
+        m = SUBDIR_PAT.match(subdir)
+        if not m:
+            continue
+        dt_cur = parse_dt_str(m.group(1))
+        if dt_cur is None:
+            continue
+        if dt_last is None or dt_cur > dt_last:
+            dt_last = dt_cur
+            subdir_last = subpath.name
+    if subdir_last is not None:
+        return train_root_path / subdir_last
+
+
 def find_create_train_path(train_root_path: Path, prefix: Optional[str] = None, postfix: Optional[str] = None, subdir: Optional[str] = None) -> Path:
     if subdir == 'last':
-        train_path = find_last_train_subdir(train_root_path)
+        train_path = find_last_train_subdir(train_root_path, prefix, postfix)
         if train_path is None:
-            raise Exception(f'Cannot find last subdirectory of the format `{SUBDIR_PAT_STR}` in {train_root_path}')
+            raise Exception(f'Cannot find last subdirectory of the format `{SUBDIR_PAT_STR}` (prefix = {prefix}, postfix = {postfix}) in {train_root_path}')
     elif subdir:
         train_path = train_root_path / subdir
         assert train_path.exists(), f'Directory {train_path} does not exist'

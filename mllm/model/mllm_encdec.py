@@ -3,9 +3,20 @@ from typing import Optional
 import numpy as np
 import torch
 from torch import nn, Tensor
+import torch.nn.functional as F
 
 from mllm.config.model import MllmEncdecCfg, EncoderCfg, EmbDecoderCfg
 from mllm.model.modules import EncoderLayer, VocabEncoder, EmbDecoder, VocabDecoder, Encoder
+
+
+# embs_pred [n_batch, seq_len, emb_size] float32 - embeddings sequence predicted by model
+# embs_gt [n_batch, seq_len, emb_size] float32 - ground truth embeddings
+def encdec_embs_loss_cos(embs_pred: torch.Tensor, embs_gt: torch.Tensor) -> torch.Tensor:
+    # [n_batch, seq_len]
+    cos_sim = F.cosine_similarity(embs_pred, embs_gt, dim=-1)
+    # []
+    loss = 1 - torch.mean(cos_sim)
+    return loss
 
 
 class MllmEncdecLevel(nn.Module):
@@ -28,10 +39,11 @@ class MllmEncdecLevel(nn.Module):
         self.vocab_decoder = None
         if self.level == 0:
             self.vocab_encoder = VocabEncoder(**cfg.vocab_encoder.dict())
-            self.vocab_decoder = VocabDecoder(
-                d_model=self.cfg_enc.d_model,
-                n_vocab=cfg.vocab_encoder.n_vocab,
-            )
+            if self.cfg.with_vocab_decoder:
+                self.vocab_decoder = VocabDecoder(
+                    d_model=self.cfg_enc.d_model,
+                    n_vocab=cfg.vocab_encoder.n_vocab,
+                )
         self.encoder = Encoder(**self.cfg_enc.dict())
         self.decoder = EmbDecoder(**self.cfg_dec.dict())
 
@@ -86,4 +98,5 @@ class MllmEncdecLevel(nn.Module):
         out_dec_1 = self.run_vocab_decoder(out_dec_0)
 
         return out_dec_1
+
 

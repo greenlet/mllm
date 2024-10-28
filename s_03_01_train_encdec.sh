@@ -19,6 +19,9 @@ tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_${model_level}
 
+pretrained_model_path=$train_root_path/encdec-lvl0-20241027_124832-wiki_20200501_en-ch_100_fixed-enc-lrs2-embmatFalse-d256-h8-dec-lrs2-seqlen100-d256-h8-vocdecTrue
+
+
 # device=cpu
 # epochs=5
 # train_epoch_steps=20
@@ -56,7 +59,8 @@ python s_03_01_train_encdec.py \
   --epochs $epochs \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
-  --val-epoch-steps $val_epoch_steps
+  --val-epoch-steps $val_epoch_steps \
+  --pretrained-model-path $pretrained_model_path
 # "
 
 
