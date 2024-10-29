@@ -6,7 +6,7 @@ from pydantic_cli import run_and_exit
 import torch
 
 import torch.utils.tensorboard as tb
-from pydantic_yaml import parse_yaml_file_as
+from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch import nn
 from tqdm import trange
@@ -77,15 +77,17 @@ def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
 
 
 # chunks: input token chunks of the shape [n_docs x n_tokens_per_doc]
-def remove_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, rem_conseq_ratio: float = 0.2) -> torch.Tensor:
+def remove_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, rem_conseq_ratio: float = 0.3) -> torch.Tensor:
     res = chunks.clone()
-    if torch.rand((1,)) > 1 / 2:
+    rv = np.random.rand()
+    if rv < 1 / 3:
         p = rem_ratio
         mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
         res[mask.bool()] = mask_tok
-    else:
+    elif rv < 2 / 3:
         n = chunks.shape[-1]
         n_rem = int(n * rem_conseq_ratio)
+        n_rem = np.random.randint(1, n_rem)
         i = np.random.randint(n - n_rem + 1)
         res[:, i:i + n_rem] = mask_tok
     return res
@@ -123,8 +125,8 @@ def main(args: ArgsTokensChunksTrain) -> int:
         assert tkz_cfg == chkpt_tkz_cfg, f'{args.tokenizer_cfg_fpath} != {chkpt_tkz_cfg}'
         assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
-        shutil.copy(args.tokenizer_cfg_fpath, train_path / TOKENIZER_CFG_FNAME)
-        shutil.copy(args.model_cfg_fpath, train_path / ENCDEC_MODEL_CFG_FNAME)
+        to_yaml_file(train_path / TOKENIZER_CFG_FNAME, tkz_cfg)
+        to_yaml_file(train_path / ENCDEC_MODEL_CFG_FNAME, model_cfg)
 
     tokenizer = tokenizer_from_config(tkz_cfg)
 
@@ -155,7 +157,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
         val_loss_min = checkpoint['val_loss_min']
         ds_loader.shuffle(train=True)
         ds_loader.shuffle(train=False)
-    elif args.pretrained_model_path is not None:
+    elif args.pretrained_model_path and args.pretrained_model_path.name:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
