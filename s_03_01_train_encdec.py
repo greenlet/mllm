@@ -174,7 +174,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
         print(f'Load model weights:', list(model_encdec.state_dict().keys()))
         model.load_state_dict(model_encdec.state_dict(), strict=False)
 
-    sched_wait_steps = 50
+    sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-7)
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))

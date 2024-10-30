@@ -15,7 +15,8 @@ def encdec_embs_loss_cos(embs_pred: torch.Tensor, embs_gt: torch.Tensor) -> torc
     # [n_batch, seq_len]
     cos_sim = F.cosine_similarity(embs_pred, embs_gt, dim=-1)
     # []
-    loss = 1 - torch.mean(cos_sim)
+    # loss = 1 - torch.mean(cos_sim)
+    loss = torch.max(1 - cos_sim)
     return loss
 
 
