@@ -474,7 +474,8 @@ class DecoderRankTrans(nn.Module):
         for enc_layer in self.layer_stack:
             enc_out, _ = enc_layer(enc_out)
 
-        enc_out = self.layer_norm(enc_out)
+        if len(self.layer_stack) > 0:
+            enc_out = self.layer_norm(enc_out)
 
         # (batch_size, query_chunks_len, d_model)
         query_chunks = self.w(query_chunks)

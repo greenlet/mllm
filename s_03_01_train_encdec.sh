@@ -21,9 +21,8 @@ model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_${model_level}
 
 #pretrained_model_path=$train_root_path/encdec-lvl0-20241028_212210-wiki_20200501_en-ch_100_fixed-enc-lrs2-embmatFalse-d256-h8-dec-lrs2-seqlen100-d256-h8-vocdecTrue
-#pretrained_model_path=$train_root_path/encdec-lvl0-20241029_140645-wiki_20200501_en-ch_100_fixed-enc-lrs3-embmatFalse-d256-h8-dec-lrs3-seqlen100-d256-h8-vocdecTrue
+pretrained_model_path=$train_root_path/encdec-lvl0-20241029_140645-wiki_20200501_en-ch_100_fixed-enc-lrs3-embmatFalse-d256-h8-dec-lrs3-seqlen100-d256-h8-vocdecTrue
 #pretrained_model_path=$train_root_path/encdec-lvl0-20241030_090802-wiki_20200501_en-ch_100_fixed-enc-lrs4-embmatFalse-d256-h8-dec-lrs4-seqlen100-d256-h8-vocdecTrue
-pretrained_model_path=$train_root_path/encdec-lvl0-20241030_220111-wiki_20200501_en-ch_100_fixed-enc-lrs4-embmatFalse-d256-h8-dec-lrs4-seqlen100-d256-h8-vocdecFalse
 
 device=cpu
 epochs=5

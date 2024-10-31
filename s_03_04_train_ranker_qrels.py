@@ -7,11 +7,11 @@ import torch
 import torch.utils.tensorboard as tb
 from pydantic import Field
 from pydantic_cli import run_and_exit
-from pydantic_yaml import parse_yaml_file_as
+from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import TokenizerCfg, MllmEncdecCfg, MllmRankerCfg
+from mllm.config.model import TokenizerCfg, MllmEncdecCfg, MllmRankerCfg, gen_prefpostfix
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME, RANKER_MODEL_CFG_FNAME
 from mllm.model.mllm_encdec import MllmEncdecLevel
@@ -38,9 +38,16 @@ def main(args: ArgsQrelsTrain) -> int:
 
     device = torch.device(args.device)
 
+    tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
+    model_cfg = parse_yaml_file_as(MllmRankerCfg, args.model_cfg_fpath)
+    model_cfg.encoders[args.model_level].n_layers = args.n_enc_layers
+    model_cfg.decoders[args.model_level].n_layers = args.n_dec_layers
+    print(model_cfg)
+
+    prefix, suffix = gen_prefpostfix(model_cfg, args.model_level)
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
-    train_path = find_create_train_path(
-        args.train_root_path, 'ranker', ds_names, args.train_subdir)
+    suffix = f'{ds_names}-{suffix}'
+    train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
@@ -50,20 +57,18 @@ def main(args: ArgsQrelsTrain) -> int:
             (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
              f'but file {last_checkpoint_path} does not exits.')
 
-    tokenizer_cfg_fpath = args.tokenizer_cfg_fpath
-    model_cfg_fpath = args.model_cfg_fpath
     if last_checkpoint_path.exists():
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        tokenizer_cfg_fpath = train_path / TOKENIZER_CFG_FNAME
-        model_cfg_fpath = train_path / RANKER_MODEL_CFG_FNAME
+        chkpt_tkz_cfg = parse_yaml_file_as(TokenizerCfg, train_path / TOKENIZER_CFG_FNAME)
+        chkpt_model_cfg = parse_yaml_file_as(MllmEncdecCfg, train_path / ENCDEC_MODEL_CFG_FNAME)
+        assert tkz_cfg == chkpt_tkz_cfg, f'{args.tokenizer_cfg_fpath} != {chkpt_tkz_cfg}'
+        assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
-        shutil.copy(args.tokenizer_cfg_fpath, train_path / TOKENIZER_CFG_FNAME)
-        shutil.copy(args.model_cfg_fpath, train_path / RANKER_MODEL_CFG_FNAME)
+        to_yaml_file(train_path / TOKENIZER_CFG_FNAME, tkz_cfg)
+        to_yaml_file(train_path / RANKER_MODEL_CFG_FNAME, model_cfg)
 
-    print(f'Loading tokenizer config from {tokenizer_cfg_fpath}')
-    tkz_cfg = parse_yaml_file_as(TokenizerCfg, tokenizer_cfg_fpath)
     tokenizer = tokenizer_from_config(tkz_cfg)
 
     tok_dict = tkz_cfg.custom_tokens
@@ -77,8 +82,6 @@ def main(args: ArgsQrelsTrain) -> int:
 
     torch.autograd.set_detect_anomaly(True)
 
-    model_cfg = parse_yaml_file_as(MllmRankerCfg, model_cfg_fpath)
-    print(model_cfg)
     model = MllmRankerLevel(model_cfg, args.model_level).to(device)
 
     if args.pretrained_model_path is not None and checkpoint is None:
