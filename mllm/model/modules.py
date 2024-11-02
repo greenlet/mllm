@@ -443,7 +443,7 @@ class DecoderRankTrans(nn.Module):
     inp_len: int
     dropout_rate: float
     dropout: nn.Dropout
-    layer_stack: nn.ModuleList
+    att_layers: nn.ModuleList
     w: nn.Linear
     layer_norm: nn.LayerNorm
 
@@ -460,7 +460,7 @@ class DecoderRankTrans(nn.Module):
         self.dropout_rate = dropout_rate
 
         self.dropout = nn.Dropout(p=self.dropout_rate)
-        self.layer_stack = nn.ModuleList([
+        self.att_layers = nn.ModuleList([
             EncoderLayer(self.n_heads, self.d_model, self.d_inner, self.d_k, self.d_v, False, self.inp_len, dropout_rate=self.dropout_rate)
             for _ in range(n_layers)])
         self.w = nn.Linear(d_model, d_model, bias=False)
@@ -471,10 +471,10 @@ class DecoderRankTrans(nn.Module):
     # res: (batch_size, 1)
     def forward(self, docs_chunks: Tensor, query_chunks: Tensor) -> Tensor:
         enc_out = docs_chunks
-        for enc_layer in self.layer_stack:
-            enc_out, _ = enc_layer(enc_out)
+        for att_layer in self.att_layers:
+            enc_out, _ = att_layer(enc_out)
 
-        if len(self.layer_stack) > 0:
+        if len(self.att_layers) > 0:
             enc_out = self.layer_norm(enc_out)
 
         # (batch_size, query_chunks_len, d_model)

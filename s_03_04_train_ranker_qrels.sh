@@ -18,13 +18,13 @@ tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
 ranker_model_cfg_fpath=$config_dir_path/$ranker_model_cfg_fname
 
 
-#device=cpu
-#epochs=5
-#train_epoch_steps=20
-#val_epoch_steps=20
-#docs_batch_size=3
-#max_chunks_per_doc=3
-#pretrained_model_path=$train_encdec_root_path/encdec-20241018_092135-wiki_20200501_en-ch_100_fixed
+device=cpu
+epochs=5
+train_epoch_steps=20
+val_epoch_steps=20
+docs_batch_size=3
+max_chunks_per_doc=3
+pretrained_model_path=$train_encdec_root_path/encdec-lvl0-20241029_140645-wiki_20200501_en-ch_100_fixed-enc-lrs3-embmatFalse-d256-h8-dec-lrs3-seqlen100-d256-h8-vocdecTrue
 
 
 device=cuda

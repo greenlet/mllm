@@ -1,6 +1,8 @@
 import shutil
 import time
+from email.policy import strict
 from pathlib import Path
+from typing import Union
 
 import numpy as np
 import torch
@@ -29,6 +31,16 @@ class ArgsQrelsTrain(ArgsTokensChunksTrain):
                     'will cause an error and exit.',
         cli=('--ds-dir-paths',),
     )
+
+
+def ranker_prob_loss_softmax(prob_pred: list[torch.Tensor], mask_gt: Union[torch.Tensor, list[torch.Tensor]]) -> torch.Tensor:
+    loss = torch.scalar_tensor(0, dtype=torch.float32, device=prob_pred[0].device)
+    n_batch = len(prob_pred)
+    for i in range(n_batch):
+        prob = torch.masked_select(prob_pred[i], mask_gt[i])
+        loss -= torch.sum(torch.log(prob))
+    loss /= n_batch
+    return loss
 
 
 def main(args: ArgsQrelsTrain) -> int:
@@ -96,6 +108,8 @@ def main(args: ArgsQrelsTrain) -> int:
         model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
         print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
         model.encoder.load_state_dict(model_encdec.encoder.state_dict())
+        print(f'Load model weights for decoder:', list(model_encdec.decoder.state_dict().keys()))
+        model.decoder.load_state_dict(model_encdec.decoder.state_dict(), strict=False)
 
     params = model.parameters()
     # params = [p for n, p in model.named_parameters()]
@@ -121,7 +135,8 @@ def main(args: ArgsQrelsTrain) -> int:
         view_val.shuffle()
 
     n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, args.docs_batch_size, 'Queries')
-    loss_fn = RankProbLoss()
+    # loss_fn = RankProbLoss()
+    loss_fn = ranker_prob_loss_softmax
     n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(
         n_batches=n_epochs * n_batches_train,
@@ -134,9 +149,10 @@ def main(args: ArgsQrelsTrain) -> int:
         shuffle_between_loops=True,
     )
     model.eval()
+    loss_tgt, loss_nontgt = None, None
     for epoch in range(last_epoch + 1, args.epochs):
-        # model.train()
-        model.decoder.train()
+        model.train()
+        # model.decoder.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
@@ -145,26 +161,33 @@ def main(args: ArgsQrelsTrain) -> int:
 
             optimizer.zero_grad()
             out_rank, target_mask = model.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
-            loss, loss_tgt, loss_nontgt = loss_fn(out_rank, target_mask)
+            loss = loss_fn(out_rank, target_mask)
+            if type(loss) == tuple:
+                loss, loss_tgt, loss_nontgt = loss
             loss.backward()
             optimizer.step()
 
             train_loss += loss.item()
-            train_loss_tgt += loss_tgt.item()
-            train_loss_nontgt += loss_nontgt.item()
+            if loss_tgt is not None:
+                train_loss_tgt += loss_tgt.item()
+                train_loss_nontgt += loss_nontgt.item()
 
             # if i == 2:
             #     import sys
             #     sys.exit()
 
-            pbar.set_postfix_str(f'Train. loss: {loss.item():.6f}. loss_tgt: {loss_tgt.item():.6f}. loss_nontgt: {loss_nontgt.item():.6f}')
+            s = f'Train. loss: {loss.item():.6f}'
+            if loss_tgt is not None:
+                s = f'{s}. loss_tgt: {loss_tgt.item():.6f}. loss_nontgt: {loss_nontgt.item():.6f}'
+            pbar.set_postfix_str(s)
         pbar.close()
         train_loss /= args.train_epoch_steps
-        train_loss_tgt /= args.train_epoch_steps
-        train_loss_nontgt /= args.train_epoch_steps
         tbsw.add_scalar('Loss/Train', train_loss, epoch)
-        tbsw.add_scalar('LossTgt/Train', train_loss_tgt, epoch)
-        tbsw.add_scalar('LossNontgt/Train', train_loss_nontgt, epoch)
+        if loss_tgt is not None:
+            train_loss_tgt /= args.train_epoch_steps
+            train_loss_nontgt /= args.train_epoch_steps
+            tbsw.add_scalar('LossTgt/Train', train_loss_tgt, epoch)
+            tbsw.add_scalar('LossNontgt/Train', train_loss_nontgt, epoch)
 
         if device.type == 'cuda':
             torch.cuda.empty_cache()
@@ -177,20 +200,27 @@ def main(args: ArgsQrelsTrain) -> int:
             docs_chunks, qs_chunks = batch.gen_tensors()
 
             out_rank, target_mask = model.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
-            loss, loss_tgt, loss_nontgt = loss_fn(out_rank, target_mask)
+            loss = loss_fn(out_rank, target_mask)
+            if type(loss) == tuple:
+                loss, loss_tgt, loss_nontgt = loss
 
             val_loss += loss.item()
-            val_loss_tgt += loss_tgt.item()
-            val_loss_nontgt += loss_nontgt.item()
+            if loss_tgt is not None:
+                val_loss_tgt += loss_tgt.item()
+                val_loss_nontgt += loss_nontgt.item()
 
-            pbar.set_postfix_str(f'Val. loss: {loss.item():.6f}. loss_tgt: {loss_tgt.item():.6f}. loss_nontgt: {loss_nontgt.item():.6f}')
+            s = f'Val. loss: {loss.item():.6f}'
+            if loss_tgt is not None:
+                s = f'{s}. loss_tgt: {loss_tgt.item():.6f}. loss_nontgt: {loss_nontgt.item():.6f}'
+            pbar.set_postfix_str(s)
         pbar.close()
         val_loss /= args.val_epoch_steps
-        val_loss_tgt /= args.val_epoch_steps
-        val_loss_nontgt /= args.val_epoch_steps
         tbsw.add_scalar('Loss/Val', val_loss, epoch)
-        tbsw.add_scalar('LossTgt/Val', val_loss_tgt, epoch)
-        tbsw.add_scalar('LossNontgt/Val', val_loss_nontgt, epoch)
+        if loss_tgt is not None:
+            val_loss_tgt /= args.val_epoch_steps
+            val_loss_nontgt /= args.val_epoch_steps
+            tbsw.add_scalar('LossTgt/Val', val_loss_tgt, epoch)
+            tbsw.add_scalar('LossNontgt/Val', val_loss_nontgt, epoch)
 
         scheduler.step(val_loss)
         last_lr = scheduler.get_last_lr()[0]
