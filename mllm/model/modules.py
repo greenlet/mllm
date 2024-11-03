@@ -474,8 +474,8 @@ class DecoderRankTrans(nn.Module):
         for att_layer in self.att_layers:
             enc_out, _ = att_layer(enc_out)
 
-        if len(self.att_layers) > 0:
-            enc_out = self.layer_norm(enc_out)
+        # if len(self.att_layers) > 0:
+        #     enc_out = self.layer_norm(enc_out)
 
         # (batch_size, query_chunks_len, d_model)
         query_chunks = self.w(query_chunks)
@@ -490,8 +490,8 @@ class DecoderRankTrans(nn.Module):
         ranks = torch.max(ranks, 1)[0]
 
         # (batch_size, docs_chunks_len)
-        # ranks_prob = torch.sigmoid(ranks)
-        ranks_prob = torch.softmax(ranks, dim=-1)
+        ranks_prob = torch.sigmoid(ranks)
+        # ranks_prob = torch.softmax(ranks, dim=-1)
 
         return ranks_prob
 

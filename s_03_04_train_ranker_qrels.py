@@ -34,12 +34,12 @@ class ArgsQrelsTrain(ArgsTokensChunksTrain):
 
 
 def ranker_prob_loss_softmax(prob_pred: list[torch.Tensor], mask_gt: Union[torch.Tensor, list[torch.Tensor]]) -> torch.Tensor:
-    loss = torch.scalar_tensor(0, dtype=torch.float32, device=prob_pred[0].device)
     n_batch = len(prob_pred)
+    losses = torch.zeros(n_batch, dtype=torch.float32, device=prob_pred[0].device)
     for i in range(n_batch):
         prob = torch.masked_select(prob_pred[i], mask_gt[i])
-        loss -= torch.sum(torch.log(prob))
-    loss /= n_batch
+        losses[i] = -torch.sum(torch.log(prob))
+    loss = torch.mean(losses)
     return loss
 
 
@@ -135,8 +135,8 @@ def main(args: ArgsQrelsTrain) -> int:
         view_val.shuffle()
 
     n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, args.docs_batch_size, 'Queries')
-    # loss_fn = RankProbLoss()
-    loss_fn = ranker_prob_loss_softmax
+    loss_fn = RankProbLoss()
+    # loss_fn = ranker_prob_loss_softmax
     n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(
         n_batches=n_epochs * n_batches_train,
@@ -151,8 +151,8 @@ def main(args: ArgsQrelsTrain) -> int:
     model.eval()
     loss_tgt, loss_nontgt = None, None
     for epoch in range(last_epoch + 1, args.epochs):
-        model.train()
-        # model.decoder.train()
+        # model.train()
+        model.decoder.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
