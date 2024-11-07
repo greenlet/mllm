@@ -29,7 +29,7 @@ class ArgsGenBertEmbs(BaseModel):
         cli=('--data-path',),
     )
     wiki_ds_name: str = Field(
-        '20220301.en',
+        '20200501.en',
         required=False,
         description='Wikipedia dataset name of the format YYYYMMDD.LANG, for example: 20220301.en',
         cli=('--wiki-ds-name',),
@@ -40,11 +40,17 @@ class ArgsGenBertEmbs(BaseModel):
         description='Path to a directory where embeddings generated will be stored',
         cli=('--out-ds-path',),
     )
-    max_tokens_chunk_size: str = Field(
+    tokens_chunk_size: str = Field(
         512,
         required=True,
-        description='Maximum tokens per input chunk number.',
-        cli=('--max-tokens-chunk-size',)
+        description='Number of tokens in input chunk.',
+        cli=('--tokens-chunk-size',)
+    )
+    max_chunks_per_doc: str = Field(
+        10,
+        required=True,
+        description='Maximum tokens chunks per document.',
+        cli=('--max-chunks-per-doc',)
     )
     batch_size: int = Field(
         3,
@@ -58,6 +64,32 @@ class ArgsGenBertEmbs(BaseModel):
         description='Device to run inference on. Can have values: "cpu", "cuda"',
         cli=('--device',)
     )
+    max_docs: int = Field(
+        0,
+        required=False,
+        description='Maximum number of Wikipedia documents to process. If MAX_DOCS <= 0, all documents will be processed.',
+        cli=('--max-docs',),
+    )
+
+
+def split_toks(toks: list[int], chunk_sz: int, max_chunks: int, pad_tok: int) -> np.ndarray:
+    n = len(toks)
+    nd, nm = divmod(n, chunk_sz)
+    if nd == 0:
+        res = np.zeros(chunk_sz, dtype=np.int32)
+        res[:nm] = toks
+        return res
+    chunks = []
+    n_chunks = nd + min(nm, 1)
+    for i in range(n_chunks):
+        chunk = toks[i * chunk_sz:(i + 1) * chunk_sz]
+        if len(chunk) < chunk_sz:
+            chunk += [pad_tok] * (chunk_sz - len(chunk))
+        chunks.append(chunk)
+        if len(chunks) == max_chunks:
+            break
+
+    return np.array(chunks, dtype=np.int32)
 
 
 def main(args: ArgsGenBertEmbs) -> int:
@@ -67,11 +99,30 @@ def main(args: ArgsGenBertEmbs) -> int:
     args.out_ds_path.mkdir(parents=True, exist_ok=True)
 
     model = BertModel.from_pretrained("bert-base-uncased", torch_dtype=torch.float32, attn_implementation="sdpa")
+    model.to(device)
     model.eval()
+    model.config.max_position_embeddings = args.tokens_chunk_size
+    tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased")
 
     print(f'Loading Wikipedia dataset: {args.wiki_ds_name}')
-    ds = load_dataset('wikipedia', args.wiki_ds_name, cache_dir=str(args.data_path))
+    ds = load_dataset('wikipedia', args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
+    ds = ds['train']
+    n_docs = len(ds)
+    print(f'Wikipedia {args.wiki_ds_name} docs: {n_docs}')
+    n_docs = min(n_docs, args.max_docs) if args.max_docs > 0 else n_docs
+    pbar = trange(n_docs, desc=f'Bert inference', unit='doc')
+    chunks = []
+    for i in pbar:
+        doc = ds[i]
+        title, text = doc['title'], doc['test']
+        doc_txt = f'{title} {text}'
+        doc_toks = tokenizer(doc_txt)['input_ids']
 
+
+
+
+
+    pbar.close()
 
     return 0
 
