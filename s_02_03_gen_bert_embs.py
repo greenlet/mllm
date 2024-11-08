@@ -40,13 +40,13 @@ class ArgsGenBertEmbs(BaseModel):
         description='Path to a directory where embeddings generated will be stored',
         cli=('--out-ds-path',),
     )
-    tokens_chunk_size: str = Field(
+    tokens_chunk_size: int = Field(
         512,
         required=True,
         description='Number of tokens in input chunk.',
         cli=('--tokens-chunk-size',)
     )
-    max_chunks_per_doc: str = Field(
+    max_chunks_per_doc: int = Field(
         10,
         required=True,
         description='Maximum tokens chunks per document.',
@@ -72,24 +72,24 @@ class ArgsGenBertEmbs(BaseModel):
     )
 
 
-def split_toks(toks: list[int], chunk_sz: int, max_chunks: int, pad_tok: int) -> np.ndarray:
+def tokens_to_chunks(toks: list[int], chunk_size: int, max_chunks: int, pad_tok: int) -> np.ndarray:
     n = len(toks)
-    nd, nm = divmod(n, chunk_sz)
-    if nd == 0:
-        res = np.zeros(chunk_sz, dtype=np.int32)
-        res[:nm] = toks
-        return res
-    chunks = []
-    n_chunks = nd + min(nm, 1)
-    for i in range(n_chunks):
-        chunk = toks[i * chunk_sz:(i + 1) * chunk_sz]
-        if len(chunk) < chunk_sz:
-            chunk += [pad_tok] * (chunk_sz - len(chunk))
-        chunks.append(chunk)
-        if len(chunks) == max_chunks:
-            break
+    assert n > 0
+    nd, nm = divmod(n, chunk_size)
+    n_chunks = nd
+    if nd == 0  or nm >= 10:
+        n_chunks += 1
+    n_chunks = min(n_chunks, max_chunks)
+    chunks = np.full(n_chunks * chunk_size, pad_tok, dtype=np.int32)
+    nc = min(n, len(chunks))
+    chunks[:nc] = toks[:nc]
+    chunks = chunks.reshape((n_chunks, chunk_size))
+    return chunks
 
-    return np.array(chunks, dtype=np.int32)
+
+def gen_mask(chunks: torch.Tensor, pad_tok: int) -> torch.Tensor:
+    mask = chunks == pad_tok
+    return mask.to(torch.uint8)
 
 
 def main(args: ArgsGenBertEmbs) -> int:
@@ -103,6 +103,7 @@ def main(args: ArgsGenBertEmbs) -> int:
     model.eval()
     model.config.max_position_embeddings = args.tokens_chunk_size
     tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased")
+    pad_tok = tokenizer.pad_token_id
 
     print(f'Loading Wikipedia dataset: {args.wiki_ds_name}')
     ds = load_dataset('wikipedia', args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
@@ -114,12 +115,22 @@ def main(args: ArgsGenBertEmbs) -> int:
     chunks = []
     for i in pbar:
         doc = ds[i]
-        title, text = doc['title'], doc['test']
+        title, text = doc['title'], doc['text']
         doc_txt = f'{title} {text}'
         doc_toks = tokenizer(doc_txt)['input_ids']
-
-
-
+        doc_chunks = tokens_to_chunks(doc_toks, args.tokens_chunk_size, args.max_chunks_per_doc, pad_tok)
+        chunks.extend(list(doc_chunks))
+        n_chunks = len(chunks)
+        if n_chunks >= args.batch_size:
+            chunks_batch, chunks = chunks[:args.batch_size], chunks[args.batch_size:]
+            chunks_batch = np.stack(chunks_batch)
+            chunks_batch = torch.tensor(chunks_batch, dtype=torch.int32, device=device)
+            masks_batch = gen_mask(chunks_batch, pad_tok)
+            out = model(chunks_batch, masks_batch)
+            last_hidden_state, pooler_output = out['last_hidden_state'], out['pooler_output']
+            chunks_out = pooler_output
+            print(chunks_batch.shape, last_hidden_state.shape, chunks_out.shape)
+            # embs =
 
 
     pbar.close()
