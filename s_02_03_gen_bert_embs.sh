@@ -8,18 +8,22 @@ max_chunks_per_doc=10
 
 mllm_src_path=$code_path/mllm
 
-device=cpu
-batch_size=5
-max_docs=1000
+#device=cpu
+#batch_size=5
+#max_docs=100
 
 #device=cuda
-#batch_size=50
-#max_docs=0
+#batch_size=5
+#max_docs=100
+
+device=cuda
+batch_size=7
+max_docs=1000
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-echo "
+#echo "
 python s_02_03_gen_bert_embs.py \
   --data-path $data_path \
   --wiki-ds-name $wiki_ds_name \
@@ -29,4 +33,4 @@ python s_02_03_gen_bert_embs.py \
   --batch-size $batch_size \
   --device $device \
   --max-docs $max_docs
-"
+#"
