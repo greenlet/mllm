@@ -115,6 +115,80 @@ class DsQrelsView(DsView['DsQrels', QrelsBatch]):
     pass
 
 
+class QrelsPlainBatch:
+    df_qs: pd.DataFrame
+    df_qrels: pd.DataFrame
+    df_docs: pd.DataFrame
+    qs_toks: list[list[int]]
+    qs_masks: list[list[int]]
+    docs_toks: list[list[int]]
+    docs_masks: list[list[int]]
+    device: Optional[torch.device] = None
+
+    def __init__(self, df_qs: pd.DataFrame, df_qrels: pd.DataFrame, df_docs: pd.DataFrame, qs_toks: list[list[int]],
+            qs_masks: list[list[int]], docs_toks: list[list[int]], docs_masks: list[list[int]], device: Optional[torch.device] = None):
+        self.df_qs = df_qs
+        self.df_qrels = df_qrels
+        self.df_docs = df_docs
+        self.qs_toks = qs_toks
+        self.qs_masks = qs_masks
+        self.docs_toks = docs_toks
+        self.docs_masks = docs_masks
+        self.device = device
+        self.calc_np()
+
+    def calc_np(self):
+        assert len(self.docs_chunks) == len(self.qs_chunks), f'# of docs ({len(self.docs_chunks)}) != # of queries ({len(self.qs_chunks)})'
+
+        max_chunks_sz = 0
+        docs_off_len, docs_off = [], 0
+        for chunk in self.docs_chunks:
+            max_chunks_sz = max(max_chunks_sz, max(len(tokens) for tokens in chunk))
+            n_chunk = len(chunk)
+            docs_off_len.append((docs_off, n_chunk))
+            docs_off += n_chunk
+
+        qs_off_len, qs_off = [], 0
+        for chunk in self.qs_chunks:
+            max_chunks_sz = max(max_chunks_sz, max(len(tokens) for tokens in chunk))
+            n_chunk = len(chunk)
+            qs_off_len.append((qs_off, n_chunk))
+            qs_off += n_chunk
+
+        docs_chunks_padded = np.full((docs_off, max_chunks_sz), self.pad_tok, dtype=np.int32)
+        for i_doc, doc_chunk in enumerate(self.docs_chunks):
+            for i_tok, tokens in enumerate(doc_chunk):
+                off = docs_off_len[i_doc][0]
+                docs_chunks_padded[off + i_tok, :len(tokens)] = tokens
+
+        qs_chunks_padded = np.full((qs_off, max_chunks_sz), self.pad_tok, dtype=np.int32)
+        for i_query, query_chunk in enumerate(self.qs_chunks):
+            for i_tok, tokens in enumerate(query_chunk):
+                off = qs_off_len[i_query][0]
+                qs_chunks_padded[off + i_tok, :len(tokens)] = tokens
+
+        self.docs_chunks_padded = docs_chunks_padded
+        self.qs_chunks_padded = qs_chunks_padded
+        self.docs_off_len = docs_off_len
+        self.qs_off_len = qs_off_len
+
+    def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:
+        res = torch.from_numpy(arr)
+        if self.device is not None:
+            res = res.to(self.device)
+        return res
+
+    def gen_tensors(self) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.docs_chunks_padded_t is None:
+            self.docs_chunks_padded_t, self.qs_chunks_padded_t = \
+                map(self._to_tensor, (self.docs_chunks_padded, self.qs_chunks_padded))
+        return self.docs_chunks_padded_t, self.qs_chunks_padded_t
+
+
+class DsQrelsPlainView(DsView['DsQrels', QrelsPlainBatch]):
+    pass
+
+
 class DocsFile:
     fpath: Path
     fid: TextIO
@@ -199,6 +273,10 @@ class DsQrels:
         ids = self.df_qs.index.values
         return DsQrelsView(self, ids, self.get_batch, batch_size)
 
+    def get_view_plain(self, batch_size: Optional[int] = None) -> DsQrelsView:
+        ids = self.df_qs.index.values
+        return DsQrelsView(self, ids, self.get_batch, batch_size)
+
     def _get_doc_title_text(self, ds_id: int, offset: int) -> tuple[str, str]:
         ds_id_ = DsQrelsId(ds_id)
         docs_file = self.docs_files[ds_id_]
@@ -259,6 +337,45 @@ class DsQrels:
         return QrelsBatch(
             df_qs=df_qs, docs_chunks=docs_chunks, qs_chunks=qs_chunks, pad_tok=self.ch_tkz.pad_tok, emb_chunk_size=self.emb_chunk_size,
             device=self.device,
+        )
+
+    def get_batch_plain(self, dsqids: np.ndarray) -> QrelsPlainBatch:
+        df_qs = self.df_qs.loc[dsqids].copy()
+        qs_toks, qs_masks = [], []
+        for query in df_qs['query']:
+            query_toks = self.ch_tkz.tokenizer(query)['input_ids'][:self.emb_chunk_size]
+            query_mask = [1] * len(query_toks)
+            if len(query_toks) < self.emb_chunk_size:
+                n_diff = self.emb_chunk_size - len(query_toks)
+                query_toks += [self.ch_tkz.pad_tok] * n_diff
+                query_mask += [0] * n_diff
+                qs_toks.append(query_toks)
+                qs_masks.append(query_mask)
+
+        df_qrels = self.df_qrels.loc[dsqids].copy()
+        dsdids = df_qrels['dsdid'].unique()
+        df_docs = self.df_off.loc[dsdids].copy()
+        df_docs['text'] = ''
+        df_docs['title'] = ''
+        docs_toks, docs_masks = [], []
+        for dsdid in df_docs.index:
+            doc_row = df_docs.loc[dsdid]
+            title, text = self._get_doc_title_text(doc_row['dsid'], doc_row['offset'])
+            df_docs.loc[dsdid, 'title'] = title
+            df_docs.loc[dsdid, 'text'] = text
+            txt = f'{title} {text}'
+            doc_toks = self.ch_tkz.tokenizer(txt)['input_ids'][:self.emb_chunk_size]
+            doc_mask = [1] * len(doc_toks)
+            if len(doc_toks) < self.emb_chunk_size:
+                n_diff = self.emb_chunk_size - len(doc_toks)
+                doc_toks += [self.ch_tkz.pad_tok] * n_diff
+                doc_mask += [0] * n_diff
+                docs_toks.append(doc_toks)
+                docs_masks.append(doc_mask)
+
+        return QrelsPlainBatch(
+            df_qs=df_qs, df_qrels=df_qrels, df_docs=df_docs, qs_toks=qs_toks, qs_masks=qs_masks,
+            docs_toks=docs_toks, docs_masks=docs_masks, device=self.device,
         )
 
     @staticmethod
