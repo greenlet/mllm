@@ -230,6 +230,7 @@ class DsQrels:
     df_qs: pd.DataFrame
     # qid: int, did: int, dsqid: int (generated), dsdid: int (generated)
     df_qrels: pd.DataFrame
+    df_qrels_dsdid: pd.DataFrame
     # did: int, offset: int, dsdid: int (generated), dsid: int (added)
     df_off: pd.DataFrame
     docs_files: dict[DsQrelsId, DocsFile]
@@ -247,6 +248,7 @@ class DsQrels:
         ds_ids_int = [ds_id.value for ds_id in ds_ids]
         self.df_qs, self.df_qrels, self.df_off = join_qrels_datasets(ds_ids_int, dfs_qs, dfs_qrels, dfs_off)
         self.df_qs.set_index('dsqid', inplace=True, drop=False)
+        self.df_qrels_dsdid = self.df_qrels.set_index('dsdid', drop=False)
         self.df_qrels.set_index('dsqid', inplace=True, drop=False)
         self.df_off.set_index('dsdid', inplace=True, drop=False)
         self.docs_files = docs_files
@@ -258,9 +260,13 @@ class DsQrels:
         ids = self.df_qs.index.values
         return DsQrelsView(self, ids, self.get_batch, batch_size)
 
-    def get_view_plain(self, batch_size: Optional[int] = None) -> DsQrelsView:
+    def get_view_plain_qids(self, batch_size: Optional[int] = None) -> DsQrelsView:
         ids = self.df_qs.index.values
-        return DsQrelsView(self, ids, self.get_batch, batch_size)
+        return DsQrelsView(self, ids, self.get_batch_plain_qids, batch_size)
+
+    def get_view_plain_dids(self, batch_size: Optional[int] = None) -> DsQrelsView:
+        ids = self.df_off.index.values
+        return DsQrelsView(self, ids, self.get_batch_plain_dids, batch_size)
 
     def _get_doc_title_text(self, ds_id: int, offset: int) -> tuple[str, str]:
         ds_id_ = DsQrelsId(ds_id)
@@ -324,7 +330,7 @@ class DsQrels:
             device=self.device,
         )
 
-    def get_batch_plain(self, dsqids: np.ndarray) -> QrelsPlainBatch:
+    def get_batch_plain_qids(self, dsqids: np.ndarray) -> QrelsPlainBatch:
         df_qs = self.df_qs.loc[dsqids].copy()
         n_qs = len(df_qs)
         qs_toks = np.full((n_qs, self.emb_chunk_size), self.ch_tkz.pad_tok, dtype=np.int32)
@@ -351,6 +357,39 @@ class DsQrels:
             doc_toks = self.ch_tkz.tokenizer(txt)['input_ids'][:self.emb_chunk_size]
             docs_toks[i, :len(doc_toks)] = doc_toks
             docs_masks[i, :len(doc_toks)] = 1
+
+        return QrelsPlainBatch(
+            df_qs=df_qs, df_qrels=df_qrels, df_docs=df_docs, qs_toks=qs_toks, qs_masks=qs_masks, docs_toks=docs_toks,
+            docs_masks=docs_masks, device=self.device,
+        )
+
+    def get_batch_plain_dids(self, dsdids: np.ndarray) -> QrelsPlainBatch:
+        df_docs = self.df_off.loc[dsdids].copy()
+        df_docs['text'] = ''
+        df_docs['title'] = ''
+        n_docs = len(df_docs)
+        docs_toks = np.full((n_docs, self.emb_chunk_size), self.ch_tkz.pad_tok, dtype=np.int32)
+        docs_masks = np.full((n_docs, self.emb_chunk_size), 0, dtype=np.int32)
+        for i, dsdid in enumerate(df_docs.index):
+            doc_row = df_docs.loc[dsdid]
+            title, text = self._get_doc_title_text(doc_row['dsid'], doc_row['offset'])
+            df_docs.loc[dsdid, 'title'] = title
+            df_docs.loc[dsdid, 'text'] = text
+            txt = f'{title} {text}'
+            doc_toks = self.ch_tkz.tokenizer(txt)['input_ids'][:self.emb_chunk_size]
+            docs_toks[i, :len(doc_toks)] = doc_toks
+            docs_masks[i, :len(doc_toks)] = 1
+
+        df_qrels = self.df_qrels_dsdid.loc[dsdids].copy()
+        dsqids = df_qrels['dsqid'].unique()
+        df_qs = self.df_qs.loc[dsqids].copy()
+        n_qs = len(df_qs)
+        qs_toks = np.full((n_qs, self.emb_chunk_size), self.ch_tkz.pad_tok, dtype=np.int32)
+        qs_masks = np.full((n_qs, self.emb_chunk_size), 0, dtype=np.int32)
+        for i, query in enumerate(df_qs['query']):
+            query_toks = self.ch_tkz.tokenizer(query)['input_ids'][:self.emb_chunk_size]
+            qs_toks[i, :len(query_toks)] = query_toks
+            qs_masks[i, :len(query_toks)] = 1
 
         return QrelsPlainBatch(
             df_qs=df_qs, df_qrels=df_qrels, df_docs=df_docs, qs_toks=qs_toks, qs_masks=qs_masks, docs_toks=docs_toks,
