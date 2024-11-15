@@ -48,6 +48,18 @@ class ArgsGenBertQrelsEmbs(BaseModel):
         description='Number of tokens in input chunk.',
         cli=('--tokens-chunk-size',)
     )
+    n_docs: int = Field(
+        0,
+        required=False,
+        description='Number of docs to run. If empty or <= 0 then all the docs will be processed.',
+        cli=('--n-docs',),
+    )
+    n_qs: int = Field(
+        0,
+        required=False,
+        description='Number of queries to run. If empty or <= 0 then all the queries will be processed.',
+        cli=('--n-qs',),
+    )
     batch_size: int = Field(
         3,
         required=False,
@@ -59,12 +71,6 @@ class ArgsGenBertQrelsEmbs(BaseModel):
         required=False,
         description='Device to run inference on. Can have values: "cpu", "cuda"',
         cli=('--device',)
-    )
-    max_docs: int = Field(
-        0,
-        required=False,
-        description='Maximum number of Wikipedia documents to process. If MAX_DOCS <= 0, all documents will be processed.',
-        cli=('--max-docs',),
     )
 
 
@@ -99,13 +105,15 @@ def main(args: ArgsGenBertQrelsEmbs) -> int:
     ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.tokens_chunk_size, device)
     print(ds)
 
-    ds_view = ds.get_view_plain_dids(args.batch_size)
+    n_docs_total = len(ds.df_off)
+    n_docs = args.n_docs if args.n_docs > 0 else n_docs_total
+    n_docs = min(n_docs, n_docs_total)
+    docs_it = ds.get_docs_iterator(n_docs=n_docs)
 
-    n_total = len(ds_view)
-    if args.max_docs > 0:
-        n_total = args.max_docs
-    n_batches = n_total // args.batch_size + min(n_total % args.batch_size, 1)
-    batch_it = ds_view.get_batch_iterator(n_batches=n_batches)
+    n_qs_total = len(ds.df_qs)
+    n_qs = args.n_qs if args.n_qs > 0 else n_qs_total
+    n_qs = min(n_qs, n_qs_total)
+    qs_it = ds.get_qs_iterator(n_qs=n_qs)
 
     run_info = RunInfo(
         ds_dir_paths=args.ds_dir_paths,
@@ -115,56 +123,61 @@ def main(args: ArgsGenBertQrelsEmbs) -> int:
         emb_bytes_size=args.tokens_chunk_size * 4,
     )
 
+    def to_tensor(chunks: list[np.ndarray]) -> torch.Tensor:
+        chunks = np.stack(chunks, axis=0)
+        t = torch.from_numpy(chunks)
+        return t.to(device)
+
     docs_embs_fpath = args.out_ds_path / DOCS_EMBS_FNAME
     qs_embs_fpath = args.out_ds_path / QS_EMBS_FNAME
     run_info_fpath = args.out_ds_path / RUN_INFO_FNAME
-    docs_fout = open(docs_embs_fpath, 'wb')
-    qs_fout = open(qs_embs_fpath, 'wb')
-    pbar = trange(n_batches, desc=f'Bert inference', unit='batch')
-    for ib in pbar:
-        batch: QrelsPlainBatch = next(batch_it)
-        doc = ds[i]
-        title, text = doc['title'], doc['text']
-        doc_txt = f'{title} {text}'
-        doc_toks = tokenizer(doc_txt)['input_ids']
-        doc_chunks = tokens_to_chunks(doc_toks, args.tokens_chunk_size, args.max_chunks_per_doc, pad_tok)
-        chunks.extend(list(doc_chunks))
-        chunks_docs_ids.extend([i] * len(doc_chunks))
-        chunks_embs_ids.extend(list(range(len(doc_chunks))))
-        n_chunks = len(chunks)
-        if n_chunks >= args.batch_size or n_chunks > 0 and i == n_docs - 1:
-            chunks_batch, chunks = chunks[:n_chunks], chunks[n_chunks:]
-            docs_ids_batch, chunks_docs_ids = chunks_docs_ids[:n_chunks], chunks_docs_ids[n_chunks:]
-            embs_ids_batch, chunks_embs_ids = chunks_embs_ids[:n_chunks], chunks_embs_ids[n_chunks:]
-            chunks_batch = np.stack(chunks_batch)
-            chunks_batch = torch.tensor(chunks_batch, dtype=torch.int32, device=device)
-            masks_batch = gen_mask(chunks_batch, pad_tok)
-            out = model(chunks_batch, masks_batch)
-            last_hidden_state, pooler_output = out['last_hidden_state'], out['pooler_output']
-            chunks_out = pooler_output
-            # print(chunks_batch.shape, last_hidden_state.shape, chunks_out.shape)
-            embs = chunks_out
-            emb_size = embs.shape[-1]
-            embs = chunks_out.detach().cpu().numpy().astype(np.float32).tobytes('C')
-            fout.write(embs)
-            run_info.emb_size = emb_size
-            run_info.emb_bytes_size = run_info.emb_size * 4
-            run_info.n_docs_written = docs_ids_batch[-1] + 1
-            run_info.n_embs_written += n_chunks
-            docs_off_next = docs_off + n_chunks
-            docs_ids[docs_off:docs_off_next] = docs_ids_batch
-            embs_ids[docs_off:docs_off_next] = embs_ids_batch
-            docs_off = docs_off_next
+    to_yaml_file(run_info_fpath, run_info)
 
-    pbar.close()
-    docs_fout.close()
-    qs_fout.close()
+    print(f'Processing {n_docs} documents')
+    pbar = trange(n_docs, desc=f'Docs emb inference', unit='doc')
+    batch_toks_np = np.full((args.batch_size, args.tokens_chunk_size), pad_tok, dtype=np.int32)
+    batch_masks_np = np.full((args.batch_size, args.tokens_chunk_size), 0, dtype=np.int32)
+    batch_ind = 0
+    with open(docs_embs_fpath, 'wb') as f:
+        for i, _ in enumerate(pbar):
+            dc = next(docs_it)
+            batch_toks_np[batch_ind, :len(dc.doc_tokens)] = dc.doc_tokens
+            batch_masks_np[batch_ind, :len(dc.doc_tokens)] = 1
+            batch_ind += 1
+            if batch_ind == args.batch_size or i == n_docs - 1:
+                batch_toks_t = torch.from_numpy(batch_toks_np[:batch_ind]).to(device)
+                batch_masks_t = torch.from_numpy(batch_masks_np[:batch_ind]).to(device)
+                out = model(batch_toks_t, batch_masks_t)
+                last_hidden_state, pooler_output = out['last_hidden_state'], out['pooler_output']
+                embs = pooler_output
+                embs = embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
+                f.write(embs)
+                run_info.n_docs_written += batch_ind
+                batch_ind = 0
+                batch_toks_np.fill(pad_tok)
+                batch_masks_np.fill(0)
+    to_yaml_file(run_info_fpath, run_info)
 
-    docs_ids, embs_ids = docs_ids[:docs_off], embs_ids[:docs_off]
-    df_ids = pd.DataFrame({'doc_id': docs_ids, 'emb_id': embs_ids})
-    print(f'Write {len(df_ids)} rows to {ids_fpath}')
-    write_tsv(df_ids, ids_fpath)
-    print(f'Run info: {run_info}')
+    print(f'Processing {n_qs} queries')
+    pbar = trange(n_qs, desc=f'Queries emb inference', unit='query')
+    with open(qs_embs_fpath, 'wb') as f:
+        for i, _ in enumerate(pbar):
+            qc = next(qs_it)
+            batch_toks_np[batch_ind, :len(qc.query_tokens)] = qc.query_tokens
+            batch_masks_np[batch_ind, :len(qc.query_tokens)] = 1
+            batch_ind += 1
+            if batch_ind == args.batch_size or i == n_qs - 1:
+                batch_toks_t = torch.from_numpy(batch_toks_np[:batch_ind]).to(device)
+                batch_masks_t = torch.from_numpy(batch_masks_np[:batch_ind]).to(device)
+                out = model(batch_toks_t, batch_masks_t)
+                last_hidden_state, pooler_output = out['last_hidden_state'], out['pooler_output']
+                embs = pooler_output
+                embs = embs.detach().cpu().numpy().astype(np.float32).tobytes('C')
+                f.write(embs)
+                run_info.n_qs_written += batch_ind
+                batch_ind = 0
+                batch_toks_np.fill(pad_tok)
+                batch_masks_np.fill(0)
     to_yaml_file(run_info_fpath, run_info)
 
     return 0
@@ -173,6 +186,6 @@ def main(args: ArgsGenBertQrelsEmbs) -> int:
 if __name__ == '__main__':
     def rethrow(e):
         raise e
-    run_and_exit(ArgsGenBertEmbs, main, 'Run Bert model embeddings inference for Wikipedia dataset.', exception_handler=rethrow)
+    run_and_exit(ArgsGenBertQrelsEmbs, main, 'Run Bert model embeddings inference for Wikipedia dataset.', exception_handler=rethrow)
 
 

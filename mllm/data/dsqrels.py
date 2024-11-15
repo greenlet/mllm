@@ -111,6 +111,28 @@ class QueryChunks:
         self.query_chunks = query_chunks
 
 
+class DocChunk:
+    ds_id: int
+    ds_doc_id: int
+    doc_tokens: list[int]
+
+    def __init__(self, ds_id: int, ds_doc_id: int, doc_tokens: list[int]):
+        self.ds_id = ds_id
+        self.ds_doc_id = ds_doc_id
+        self.doc_tokens = doc_tokens
+
+
+class QueryChunk:
+    ds_id: int
+    ds_query_id: int
+    query_tokens: list[int]
+
+    def __init__(self, ds_id: int, ds_query_id: int, query_tokens: list[int]):
+        self.ds_id = ds_id
+        self.ds_query_id = ds_query_id
+        self.query_tokens = query_tokens
+
+
 class DsQrelsView(DsView['DsQrels', QrelsBatch]):
     pass
 
@@ -475,5 +497,34 @@ class DsQrels:
             ds_id, ds_query_id, query = q_row.dsid, q_row.dsqid, q_row.query
             query_chunks = self._tokenize_query(query)
             yield QueryChunks(ds_id=ds_id, ds_query_id=ds_query_id, query_chunks=query_chunks)
+
+    def get_docs_iterator(self, n_docs: int = 0) -> Generator[DocChunk, None, None]:
+        n_docs_total = len(self.df_off)
+        if n_docs > 0:
+            n_docs = min(n_docs, n_docs_total)
+        else:
+            n_docs = n_docs_total
+        docs_files = {ds_id.value: ds_file for ds_id, ds_file in self.docs_files.items()}
+        for i_doc in range(n_docs):
+            off_row = self.df_off.iloc[i_doc]
+            did, offset, dsdid, dsid = off_row.did, off_row.offset, off_row.dsdid, off_row.dsid
+            title, text = self._get_doc_title_text(dsid, offset)
+            txt = f'{title} {text}'
+            doc_tokens = self.ch_tkz.tokenizer(txt)['input_ids'][:self.emb_chunk_size]
+            yield DocChunk(ds_id=dsid, ds_doc_id=dsdid, doc_tokens=doc_tokens)
+        for f in docs_files.values():
+            f.close()
+
+    def get_qs_iterator(self, n_qs: int = 0) -> Generator[QueryChunk, None, None]:
+        n_qs_total = len(self.df_qs)
+        if n_qs > 0:
+            n_qs = min(n_qs, n_qs_total)
+        else:
+            n_qs = n_qs_total
+        for i_query in range(n_qs):
+            q_row = self.df_qs.iloc[i_query]
+            ds_id, ds_query_id, query = q_row.dsid, q_row.dsqid, q_row.query
+            query_tokens = self.ch_tkz.tokenizer(query)['input_ids'][:self.emb_chunk_size]
+            yield QueryChunk(ds_id=ds_id, ds_query_id=ds_query_id, query_tokens=query_tokens)
 
 

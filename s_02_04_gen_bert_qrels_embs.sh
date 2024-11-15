@@ -10,15 +10,13 @@ mllm_src_path=$code_path/mllm
 
 device=cpu
 batch_size=5
-max_docs=100
+n_docs=100
+n_qs=100
 
 #device=cuda
 #batch_size=5
-#max_docs=100
-
-#device=cuda
-#batch_size=7
-#max_docs=1000
+#n_docs=0
+#n_qs=0
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
@@ -29,6 +27,7 @@ python s_02_04_gen_bert_qrels_embs.py \
   --out-ds-path $out_ds_path \
   --tokens-chunk-size $tokens_chunk_size \
   --batch-size $batch_size \
-  --device $device \
-  --max-docs $max_docs
+  --n-docs $n_docs \
+  --n-qs $n_qs \
+  --device $device
 #"
