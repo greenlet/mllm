@@ -13,10 +13,10 @@ batch_size=5
 n_docs=100
 n_qs=100
 
-#device=cuda
-#batch_size=5
-#n_docs=0
-#n_qs=0
+device=cuda
+batch_size=5
+n_docs=0
+n_qs=0
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 

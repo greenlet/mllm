@@ -499,6 +499,7 @@ class DsQrels:
             yield QueryChunks(ds_id=ds_id, ds_query_id=ds_query_id, query_chunks=query_chunks)
 
     def get_docs_iterator(self, n_docs: int = 0) -> Generator[DocChunk, None, None]:
+        self.df_off.sort_values(['dsid', 'offset'], inplace=True)
         n_docs_total = len(self.df_off)
         if n_docs > 0:
             n_docs = min(n_docs, n_docs_total)

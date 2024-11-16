@@ -101,7 +101,8 @@ def main(args: ArgsGenBertQrelsEmbs) -> int:
     pad_tok = tokenizer.pad_token_id
 
     print(f'Loading Qrels datasets: {args.ds_dir_paths}')
-    ch_tkz = ChunkTokenizer({}, tokenizer, n_emb_tokens=args.tokens_chunk_size, fixed_size=True)
+    custom_tokens = gen_all_tokens()
+    ch_tkz = ChunkTokenizer(custom_tokens, tokenizer, n_emb_tokens=args.tokens_chunk_size, fixed_size=True)
     ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.tokens_chunk_size, device)
     print(ds)
 
