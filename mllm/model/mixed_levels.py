@@ -1,24 +1,13 @@
+from typing import Optional
 
 import numpy as np
 from pydantic import BaseModel
 import torch
 from torch import nn, Tensor
-import torch.functional as T
+import torch.functional as F
 
 from mllm.config.model import VocabEncoderCfg
-from mllm.model.modules import VocabEncoder, EncoderLayer
-
-
-class MixedLevelCfg(BaseModel):
-    vocab_encoder: VocabEncoderCfg
-    n_heads: int
-    d_k: int
-    d_v: int
-    d_model: int
-    d_inner: int
-    pad_idx: int
-    with_graph_mat: bool
-    dropout_rate: float
+from mllm.model.modules import VocabEncoder, VocabDecoder
 
 
 class ScaledDotProductAttention(nn.Module):
@@ -73,7 +62,7 @@ class MultiHeadAttention(nn.Module):
         temp = d_k ** 0.5
         temp = 1
         self.attention = ScaledDotProductAttention(
-            temperature=temp, inp_len=inp_len,
+            temperature=temp, inp_len=10000,
             dropout_rate=dropout_rate,
         )
 
@@ -173,9 +162,9 @@ class PositionwiseFeedForward(nn.Module):
 class EncoderLayer(nn.Module):
     ''' Compose with two layers '''
 
-    def __init__(self, n_heads, d_model, d_inner, d_k, d_v, with_graph_mat: bool, inp_len: int, dropout_rate: float = 0.1):
+    def __init__(self, n_heads, d_model, d_inner, d_k, d_v, dropout_rate: float = 0.1):
         super(EncoderLayer, self).__init__()
-        self.slf_attn = MultiHeadAttention(n_heads, d_model, d_k, d_v, with_graph_mat, inp_len, dropout_rate=dropout_rate)
+        self.slf_attn = MultiHeadAttention(n_heads, d_model, d_k, d_v, dropout_rate=dropout_rate)
         self.pos_ffn = PositionwiseFeedForward(d_model, d_inner, dropout_rate=dropout_rate)
 
     def forward(self, enc_input: Optional[Tensor], enc_input_kv: Optional[Tensor] = None, slf_attn_mask: Optional[Tensor] = None):
@@ -187,16 +176,48 @@ class EncoderLayer(nn.Module):
         return enc_output, enc_slf_attn
 
 
-class MixedLevel(Module):
+class MixedLevelCfg(BaseModel):
+    vocab_encoder: VocabEncoderCfg
+    n_heads: int
+    d_k: int
+    d_v: int
+    d_model: int
+    d_inner: int
+    pad_idx: int
+    with_graph_mat: bool
+    dropout_rate: float
+    n_layers: int
+    inp_chunk_size: int
+
+
+
+class MixedLevel(nn.Module):
     cfg: MixedLevelCfg
     vocab_encoder: VocabEncoder
+    enc_layers: nn.ModuleList
+    inp_chunk_len: int
 
     def __init__(self, cfg: MixedLevelCfg):
-        vocab_encoder = VocabEncoder(**cfg.vocab_encoder.dict())
-        self.level1 = EncoderLayer(
-            n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner, d_k=cfg.d_k, d_v=cfg.d_v,
-            with_graph_mat=False, inp_len=0, dropout_rate=cfg.dropout_rate,
-        )
+        super().__init__()
+        self.cfg = cfg
+        self.vocab_encoder = VocabEncoder(**cfg.vocab_encoder.dict())
+        self.enc_layers = nn.ModuleList([
+            EncoderLayer(
+                n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner, d_k=cfg.d_k, d_v=cfg.d_v,
+                dropout_rate=cfg.dropout_rate,
+            ) for _ in range(cfg.n_layers)
+        ])
+        self.vocab_decoder = VocabDecoder(cfg.d_model, cfg.vocab_encoder.n_vocab)
+        self.inp_chunk_len = 2 ** cfg.n_layers
+
+    # Tensor of integer tokens: [batch_size, seq_len]
+    def run(self, inp: Tensor):
+        batch_size, seq_len = inp.shape
+        mask = inp == self.cfg.pad_idx
+        # [batch_size, seq_len, d_model]
+        embs = self.vocab_encoder(inp)
+        n_chunks_div, n_chunks_mod = seq_len // self.cfg.inp_chunk_size, seq_len % self.cfg.inp_chunk_size
+
 
 
 
