@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 from typing import TypeVar, Union
 
@@ -162,7 +163,59 @@ def create_mllm_ranker_cfg(
     return cfg_mllm_ranker
 
 
-def gen_prefpostfix(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_level: int) -> tuple[str, str]:
+class EncPyrCfg(BaseModel):
+    vocab_encoder: VocabEncoderCfg
+    pad_idx: int
+    d_model: int
+    n_heads: int
+    d_k: int
+    d_v: int
+    d_inner: int
+    inp_len: int
+    step: int
+    n_layers: int
+    dropout_rate: float
+
+
+class DecPyrCfg(BaseModel):
+    d_model: int
+    n_heads: int
+    d_k: int
+    d_v: int
+    d_inner: int
+    inp_len: int
+    step: int
+    n_layers: int
+    dropout_rate: float
+    with_vocab_decoder: bool
+    n_vocab: int
+
+
+class EncdecHgCfg(BaseModel):
+    enc_pyr: EncPyrCfg
+    dec_pyr: DecPyrCfg
+
+
+def create_encdec_hg_cfg(
+        n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
+        step: int = 2, dropout_rate: float = 0.0, with_vacab_decoder: bool = True) -> EncdecHgCfg:
+    d_word_vec = d_model
+    d_k = d_v = d_model // n_heads
+    n_layers = math.ceil(math.log(inp_len, step))
+    cfg_vocab_enc = VocabEncoderCfg(
+        n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
+    )
+    cfg_enc_pyr = EncPyrCfg(
+        vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
+    )
+    cfg_dec_pyr = DecPyrCfg(
+        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate, with_vocab_decoder=with_vacab_decoder, n_vocab=n_vocab,
+    )
+    cfg_encdec_hg = EncdecHgCfg(enc_pyr=cfg_enc_pyr, dec_pyr=cfg_dec_pyr)
+    return cfg_encdec_hg
+
+
+def gen_prefpostfix_level(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_level: int) -> tuple[str, str]:
     enc_cfg, dec_cfg = model_cfg.encoders[model_level], model_cfg.decoders[model_level]
     enc_str = f'enc-lrs{enc_cfg.n_layers}-embmat{enc_cfg.with_emb_mat}-d{enc_cfg.d_model}-h{enc_cfg.n_heads}'
     if isinstance(model_cfg, MllmEncdecCfg):
@@ -182,3 +235,8 @@ def gen_prefpostfix(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_level:
     return prefix, postfix
 
 
+def gen_prefpostfix_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
+    prefix = f'encdechg'
+    enc, dec = model_cfg.enc_pyr, model_cfg.dec_pyr
+    postfix = f'ilen{enc.inp_len}-lrs{enc.n_layers}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}'
+    return prefix, postfix

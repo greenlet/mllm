@@ -13,7 +13,7 @@ from pydantic_yaml import parse_yaml_file_as
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import MllmEncdecCfg, gen_prefpostfix
+from mllm.config.model import MllmEncdecCfg, gen_prefpostfix_level
 from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsEmbsBatch
 from mllm.exp.args import ENCDEC_MODEL_CFG_FNAME
 from mllm.model.mllm_encdec import MllmEncdecLevel
@@ -146,7 +146,7 @@ def main(args: ArgsTrainEncdecEmbs) -> int:
     enc_cfg = model_cfg.encoders[args.model_level]
 
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
-    prefix, suffix = gen_prefpostfix(model_cfg, args.model_level)
+    prefix, suffix = gen_prefpostfix_level(model_cfg, args.model_level)
     train_path = find_create_train_path(
         args.train_root_path, prefix, f'{ds_names}-{suffix}', args.train_subdir)
     print(f'train_path: {train_path}')

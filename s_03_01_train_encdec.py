@@ -16,7 +16,7 @@ from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdecLevel, encdec_embs_loss_cos
-from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmEncdecCfg, gen_prefpostfix
+from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmEncdecCfg, gen_prefpostfix_level
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
 
 
@@ -104,7 +104,7 @@ def main(args: ArgsTokensChunksTrain) -> int:
     model_cfg.decoders[args.model_level].n_layers = args.n_dec_layers
     model_cfg.with_vocab_decoder = args.dec_with_vocab_decoder_bool
 
-    prefix, suffix = gen_prefpostfix(model_cfg, args.model_level)
+    prefix, suffix = gen_prefpostfix_level(model_cfg, args.model_level)
     suffix = f'{args.ds_dir_path.parent.name}-{args.ds_dir_path.name}-{suffix}'
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')

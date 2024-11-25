@@ -12,7 +12,7 @@ from pydantic_yaml import parse_yaml_file_as
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import MllmRankerCfg, MllmEncdecCfg, gen_prefpostfix
+from mllm.config.model import MllmRankerCfg, MllmEncdecCfg, gen_prefpostfix_level
 from mllm.data.dsqrels_embs import DsQrelsEmbs, QrelsEmbsBatch
 from mllm.exp.args import RANKER_MODEL_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME
 from mllm.model.mllm_encdec import MllmEncdecLevel
@@ -119,7 +119,7 @@ def main(args: ArgsQrelsEmbsTrain) -> int:
     ranker_model_cfg = parse_yaml_file_as(MllmRankerCfg, args.ranker_model_cfg_fpath)
     print(ranker_model_cfg)
 
-    prefix, postfix = gen_prefpostfix(ranker_model_cfg, args.model_level)
+    prefix, postfix = gen_prefpostfix_level(ranker_model_cfg, args.model_level)
     if args.encdec_pretrained_model_path:
         encdec_subdir_dt = get_dt_from_subdir(args.encdec_pretrained_model_path.name)
         if encdec_subdir_dt:
