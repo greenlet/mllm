@@ -1,28 +1,31 @@
-from typing import Optional
+import math
+import sys
+from typing import Optional, Union
+if '..' not in sys.path: sys.path.append('..')
 
 import numpy as np
+from pprint import pprint
 from pydantic import BaseModel
 import torch
 from torch import nn, Tensor
-import torch.functional as F
+import torch.nn.functional as F
+from transformers import PreTrainedTokenizer, GPT2Tokenizer
 
-from mllm.config.model import VocabEncoderCfg
+
+from mllm.config.model import VocabEncoderCfg, EmbDecoderCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
 
 class ScaledDotProductAttention(nn.Module):
     temperature: float
-    inp_len: int
     dropout_rate: float
-    # dropout: nn.Module
+    dropout: nn.Module
 
-    def __init__(self, temperature: float, inp_len: int = 0,
+    def __init__(self, temperature: float,
                  dropout_rate: float = 0.1):
         super().__init__()
         self.temperature = temperature
-        self.inp_len = inp_len
         self.dropout_rate = dropout_rate
-
         self.dropout = nn.Dropout(self.dropout_rate)
 
     def forward(self, q, k, v, mask=None):
@@ -30,6 +33,8 @@ class ScaledDotProductAttention(nn.Module):
         attn = torch.matmul(attn, k.transpose(2, 3))
 
         if mask is not None:
+            # print_dtype_shape(attn)
+            # print_dtype_shape(mask)
             attn = attn.masked_fill(mask == 0, -1e9)
 
         attn = self.dropout(F.softmax(attn, dim=-1))
@@ -62,8 +67,7 @@ class MultiHeadAttention(nn.Module):
         temp = d_k ** 0.5
         temp = 1
         self.attention = ScaledDotProductAttention(
-            temperature=temp, inp_len=10000,
-            dropout_rate=dropout_rate,
+            temperature=temp, dropout_rate=dropout_rate,
         )
 
         self.dropout = nn.Dropout(dropout_rate)
@@ -81,10 +85,7 @@ class MultiHeadAttention(nn.Module):
         q = self.w_qs(q)
         k = self.w_ks(k)
         v = self.w_vs(v)
-        if self.with_graph_mat:
-            q = torch.matmul(self.Q, q)
-            k = torch.matmul(self.K, k)
-            v = torch.matmul(self.V, v)
+
         q = q.view(sz_b, len_q, n_heads, d_k)
         k = k.view(sz_b, len_k, n_heads, d_k)
         v = v.view(sz_b, len_v, n_heads, d_v)
@@ -160,8 +161,6 @@ class PositionwiseFeedForward(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-    ''' Compose with two layers '''
-
     def __init__(self, n_heads, d_model, d_inner, d_k, d_v, dropout_rate: float = 0.1):
         super(EncoderLayer, self).__init__()
         self.slf_attn = MultiHeadAttention(n_heads, d_model, d_k, d_v, dropout_rate=dropout_rate)
@@ -176,28 +175,42 @@ class EncoderLayer(nn.Module):
         return enc_output, enc_slf_attn
 
 
-class MixedLevelCfg(BaseModel):
-    vocab_encoder: VocabEncoderCfg
-    n_heads: int
-    d_k: int
-    d_v: int
+class ReduceLayer(nn.Module):
     d_model: int
-    d_inner: int
-    pad_idx: int
-    with_graph_mat: bool
-    dropout_rate: float
-    n_layers: int
-    inp_chunk_size: int
+    step: int
+    reducer: nn.Linear
+
+    def __init__(self, d_model: int, step: int) -> None:
+        super().__init__()
+        self.d_model = d_model
+        self.step = step
+        self.reducer = nn.Linear(in_features=d_model * step, out_features=d_model, bias=False)
+
+    def forward(self, inp: Tensor) -> Tensor:
+        batch_size, seq_len, d_model = inp.shape
+        assert d_model == self.d_model, f'self.d_model = {self.d_model}. inp d_model = {d_model}'
+        len_mod = seq_len % self.step
+        # print_dtype_shape(inp, 'rdc_inp')
+        if len_mod > 0:
+            n_seq_add = self.step - len_mod
+            inp = F.pad(inp, (0, 0, n_seq_add, 0), value=0)
+            seq_len += n_seq_add
+            # print_dtype_shape(inp, 'rdc_inp_pad')
+        inp = inp.reshape(batch_size, seq_len // self.step, self.d_model * self.step)
+        # print_dtype_shape(inp, 'rds_reshape')
+        out = self.reducer(inp)
+        # print_dtype_shape(out, 'rdc_reduce')
+        return out
 
 
-
-class MixedLevel(nn.Module):
-    cfg: MixedLevelCfg
+class EncoderPyramid(nn.Module):
+    cfg: EncPyrCfg
     vocab_encoder: VocabEncoder
     enc_layers: nn.ModuleList
+    rdc_layers: nn.ModuleList
     inp_chunk_len: int
 
-    def __init__(self, cfg: MixedLevelCfg):
+    def __init__(self, cfg: EncPyrCfg):
         super().__init__()
         self.cfg = cfg
         self.vocab_encoder = VocabEncoder(**cfg.vocab_encoder.dict())
@@ -207,17 +220,104 @@ class MixedLevel(nn.Module):
                 dropout_rate=cfg.dropout_rate,
             ) for _ in range(cfg.n_layers)
         ])
-        self.vocab_decoder = VocabDecoder(cfg.d_model, cfg.vocab_encoder.n_vocab)
-        self.inp_chunk_len = 2 ** cfg.n_layers
+        self.rdc_layers = nn.ModuleList([
+            ReduceLayer(d_model=cfg.d_model, step=cfg.step) for _ in range(cfg.n_layers)
+        ])
 
     # Tensor of integer tokens: [batch_size, seq_len]
-    def run(self, inp: Tensor):
+    def forward(self, inp: Tensor) -> Tensor:
         batch_size, seq_len = inp.shape
-        mask = inp == self.cfg.pad_idx
+        mask = (inp == self.cfg.pad_idx).to(torch.bool)
+        mask = np.matmul(mask.unsqueeze(-1), mask.unsqueeze(-2))
+        assert seq_len == self.cfg.inp_len, f'seq_len = {seq_len}. inp_len = {inp_len}'
         # [batch_size, seq_len, d_model]
-        embs = self.vocab_encoder(inp)
-        n_chunks_div, n_chunks_mod = seq_len // self.cfg.inp_chunk_size, seq_len % self.cfg.inp_chunk_size
+        out = self.vocab_encoder(inp)
+        # print_dtype_shape(out, 'vocab_enc')
+        for enc_layer, rdc_layer in zip(self.enc_layers, self.rdc_layers):
+            out, _ = enc_layer(out, slf_attn_mask=mask)
+            inds = slice(0, out.shape[1], 2)
+            # print_dtype_shape(mask, 'mask 1')
+            mask = mask[:, inds, inds]
+            # print_dtype_shape(mask, 'mask 2')
+            out = rdc_layer(out)
+        return out
 
 
+class EnhanceLayer(nn.Module):
+    d_model: int
+    step: int
+    enhancer: nn.Linear
+
+    def __init__(self, d_model: int, step: int) -> None:
+        super().__init__()
+        self.d_model = d_model
+        self.step = step
+        self.enhancer = nn.Linear(in_features=d_model, out_features=d_model * step, bias=False)
+
+    def forward(self, inp: Tensor) -> Tensor:
+        batch_size, seq_len, d_model = inp.shape
+        assert d_model == self.d_model, f'self.d_model = {self.d_model}. inp d_model = {d_model}'
+        # print_dtype_shape(inp, 'enh_inp')
+        out = self.enhancer(inp)
+        # print_dtype_shape(out, 'enh_out')
+        out = out.reshape(batch_size, seq_len * self.step, self.d_model)
+        # print_dtype_shape(out, 'enh_out_reshape')
+        return out
+
+
+class DecoderPyramid(nn.Module):
+    cfg: DecPyrCfg
+    enc_layers: nn.ModuleList
+    enh_layers: nn.ModuleList
+    inp_chunk_len: int
+    # vocab_decoder: Optional[VocabDecoder]
+
+    def __init__(self, cfg: DecPyrCfg):
+        super().__init__()
+        self.cfg = cfg
+        self.enc_layers = nn.ModuleList([
+            EncoderLayer(
+                n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner, d_k=cfg.d_k, d_v=cfg.d_v,
+                dropout_rate=cfg.dropout_rate,
+            ) for _ in range(cfg.n_layers)
+        ])
+        self.enh_layers = nn.ModuleList([
+            EnhanceLayer(d_model=cfg.d_model, step=cfg.step) for _ in range(cfg.n_layers)
+        ])
+        self.vocab_decoder = None
+        if self.cfg.with_vocab_decoder:
+            self.vocab_decoder = VocabDecoder(d_model=self.cfg.d_model, n_vocab=self.cfg.n_vocab)
+
+    # Tensor with embeddings: [batch_size, 1, d_model]
+    def forward(self, inp: Tensor) -> Tensor:
+        out = inp
+        for enc_layer, enh_layer in zip(self.enc_layers, self.enh_layers):
+            out = enh_layer(out)
+            out, _ = enc_layer(out)
+
+        if self.vocab_decoder is not None:
+            # [batch_size, seq_len, d_model]
+            out = self.vocab_decoder(out)
+            # [batch_size, seq_len, n_vocab]
+
+        return out
+
+
+class EncdecHg(nn.Module):
+    cfg: EncdecHgCfg
+    enc_pyr: EncoderPyramid
+    dec_pyr: DecoderPyramid
+
+    def __init__(self, cfg: EncdecHgCfg):
+        super().__init__()
+        self.cfg = cfg
+        self.enc_pyr = EncoderPyramid(cfg.enc_pyr)
+        self.dec_pyr = DecoderPyramid(cfg.dec_pyr)
+
+    def forward(self, inp: Tensor) -> Tensor:
+        out = inp
+        out = self.enc_pyr(out)
+        out = self.dec_pyr(out)
+        return out
 
 
