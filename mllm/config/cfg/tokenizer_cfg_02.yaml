@@ -1,0 +1,9 @@
+custom_tokens:
+  pad:
+    ind: 50257
+    name: pad
+    repr: <|pad|>
+    special: true
+model_max_length: 10000
+n_tokens_init: 50257
+name: gpt2
