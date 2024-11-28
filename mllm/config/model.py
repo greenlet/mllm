@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import TypeVar, Union
 
 from pydantic import BaseModel
+from torchtext.datasets import dataset_module
 
 T = TypeVar('T')
 MS = Union[T, tuple[T, ...]]
@@ -198,7 +199,7 @@ class EncdecHgCfg(BaseModel):
 
 def create_encdec_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
-        step: int = 2, dropout_rate: float = 0.0, with_vacab_decoder: bool = True) -> EncdecHgCfg:
+        step: int = 2, dropout_rate: float = 0.0) -> EncdecHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
     n_layers = math.ceil(math.log(inp_len, step))
@@ -213,6 +214,31 @@ def create_encdec_hg_cfg(
     )
     cfg_encdec_hg = EncdecHgCfg(enc_pyr=cfg_enc_pyr, dec_pyr=cfg_dec_pyr)
     return cfg_encdec_hg
+
+
+def copy_override_encdec_hg_cfg(cfg: EncdecHgCfg, inp_len: int = 0) -> EncdecHgCfg:
+    n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
+    pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
+    d_model = cfg.enc_pyr.d_model
+    n_heads = cfg.enc_pyr.n_heads
+    d_inner = cfg.enc_pyr.d_inner
+    # inp_len = cfg.enc_pyr.inp_len
+    step = cfg.enc_pyr.step
+    dropout_rate = cfg.enc_pyr.dropout_rate
+
+    changed = False
+    if 0 < inp_len != cfg.enc_pyr.inp_len:
+        assert inp_len & (inp_len - 1) == 0, f'inp_len = {inp_len} is not power of 2'
+        changed = True
+    else:
+        inp_len = cfg.enc_pyr.inp_len
+
+    if changed:
+        return create_encdec_hg_cfg(
+            n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
+            dropout_rate=dropout_rate,
+        )
+    return cfg
 
 
 def gen_prefpostfix_level(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_level: int) -> tuple[str, str]:
