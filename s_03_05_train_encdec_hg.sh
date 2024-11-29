@@ -7,10 +7,11 @@ wiki_ds_path=$wiki_data_path/$ds_subdir
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
-tokenizer_cfg_fname=tokenizer_cfg_02.yaml
+tokenizer_cfg_fname=tokenizer_cfg_01.yaml
 model_cfg_fname=encdec_hg_cfg_01.yaml
 inp_len=256
 
+config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_hg
@@ -34,7 +35,7 @@ learning_rate=0.0001
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-#echo "
+# echo "
 python s_03_05_train_encdec.py \
   --ds-dir-path $wiki_ds_path \
   --train-root-path $train_root_path \
@@ -48,6 +49,6 @@ python s_03_05_train_encdec.py \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps
-#"
+# "
 
 

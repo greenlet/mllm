@@ -1,4 +1,9 @@
 custom_tokens:
+  mask:
+    ind: 50258
+    name: mask
+    repr: <|mask|>
+    special: false
   pad:
     ind: 50257
     name: pad

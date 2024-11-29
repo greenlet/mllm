@@ -188,7 +188,6 @@ class DecPyrCfg(BaseModel):
     step: int
     n_layers: int
     dropout_rate: float
-    with_vocab_decoder: bool
     n_vocab: int
 
 
@@ -210,7 +209,7 @@ def create_encdec_hg_cfg(
         vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
     )
     cfg_dec_pyr = DecPyrCfg(
-        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate, with_vocab_decoder=with_vacab_decoder, n_vocab=n_vocab,
+        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate, n_vocab=n_vocab,
     )
     cfg_encdec_hg = EncdecHgCfg(enc_pyr=cfg_enc_pyr, dec_pyr=cfg_dec_pyr)
     return cfg_encdec_hg

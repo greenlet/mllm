@@ -12,16 +12,14 @@ from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch import nn
 from tqdm import trange
-from transformers import GPT2Tokenizer
 
 from mllm.data.wiki.dswiki import WikiDsLoader
-from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME
+from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_hg import EncdecHg
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdecLevel, encdec_embs_loss_cos
-from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmEncdecCfg, gen_prefpostfix_level, EncdecHgCfg, \
-    create_encdec_hg_cfg, copy_override_encdec_hg_cfg, gen_prefpostfix_hg
-from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
+from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg_cfg, gen_prefpostfix_hg
+from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, tokenizer_from_config
 
 
 class ArgsEncdecHgTrain(BaseModel):
@@ -213,18 +211,18 @@ def main(args: ArgsEncdecHgTrain) -> int:
         assert last_checkpoint_path.exists(),\
             (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
              f'but file {last_checkpoint_path} does not exits.')
-###
+
     if last_checkpoint_path.exists():
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
         chkpt_tkz_cfg = parse_yaml_file_as(TokenizerCfg, train_path / TOKENIZER_CFG_FNAME)
-        chkpt_model_cfg = parse_yaml_file_as(MllmEncdecCfg, train_path / ENCDEC_MODEL_CFG_FNAME)
+        chkpt_model_cfg = parse_yaml_file_as(EncdecHgCfg, train_path / ENCDEC_HG_MODEL_CFG_FNAME)
         assert tkz_cfg == chkpt_tkz_cfg, f'{args.tokenizer_cfg_fpath} != {chkpt_tkz_cfg}'
         assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
         to_yaml_file(train_path / TOKENIZER_CFG_FNAME, tkz_cfg)
-        to_yaml_file(train_path / ENCDEC_MODEL_CFG_FNAME, model_cfg)
+        to_yaml_file(train_path / ENCDEC_HG_MODEL_CFG_FNAME, model_cfg)
 
     tokenizer = tokenizer_from_config(tkz_cfg)
 
@@ -243,7 +241,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
 
     input_zeros_ratio = 0.3
     print(model_cfg)
-    model = MllmEncdecLevel(model_cfg, args.model_level).to(device)
+    model = EncdecHg(model_cfg).to(device)
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
@@ -259,16 +257,10 @@ def main(args: ArgsEncdecHgTrain) -> int:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
-        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_MODEL_CFG_FNAME
-        model_encdec_cfg = parse_yaml_file_as(MllmEncdecCfg, model_encdec_cfg_fpath)
-        model_encdec = MllmEncdecLevel(model_encdec_cfg, args.model_level).to(device)
+        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_HG_MODEL_CFG_FNAME
+        model_encdec_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_cfg_fpath)
+        model_encdec = EncdecHg(model_encdec_cfg).to(device)
         model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        # if args.model_level == 0:
-        #     assert model.vocab_encoder is not None and model_encdec.vocab_encoder is not None
-        #     print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
-        #     model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
-        # print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
-        # model.encoder.load_state_dict(model_encdec.encoder.state_dict())
         print(f'Load model weights:', list(model_encdec.state_dict().keys()))
         model.load_state_dict(model_encdec.state_dict(), strict=False)
 
@@ -280,15 +272,12 @@ def main(args: ArgsEncdecHgTrain) -> int:
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
     n_batches_train = calc_batches(ds_loader.n_docs_train)
     n_batches_val = calc_batches(ds_loader.n_docs_val)
-    if model_cfg.with_vocab_decoder:
-        # loss_fn = encdec_prob_loss_sigmoid
-        # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
-        # loss_fn = nn.CrossEntropyLoss()
-        loss_fn = encdec_prob_loss_softmax
-    else:
-        loss_fn = encdec_embs_loss_cos
-    
-    graph_written = True
+
+    # loss_fn = encdec_prob_loss_sigmoid
+    # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
+    # loss_fn = nn.CrossEntropyLoss()
+    loss_fn = encdec_prob_loss_softmax
+
     i_train, i_val = 0, 0
     loss_gt, loss_nongt = None, None
     for epoch in range(last_epoch + 1, args.epochs):
@@ -305,21 +294,10 @@ def main(args: ArgsEncdecHgTrain) -> int:
             optimizer.zero_grad()
 
             out_logits = model(chunks_inp)
-            inp_tok_embs = None
-            if not model_cfg.with_vocab_decoder and model.level == 0:
-                inp_tok_embs = model.run_vocab_encoder(chunks)
-
-            if not graph_written:
-                tbsw.add_graph(model, docs_chunks, verbose=True, use_strict_trace=False)
-                graph_written = True
-
-            if model_cfg.with_vocab_decoder or model.level != 0:
-                loss = loss_fn(out_logits, chunks)
-            else:
-                loss = loss_fn(out_logits, inp_tok_embs)
+            loss = loss_fn(out_logits, chunks)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
-            
+
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -358,14 +336,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
             
             chunks = concat_tokens(docs_chunks, target_chunks)
             out_logits = model(chunks)
-            inp_tok_embs = None
-            if not model_cfg.with_vocab_decoder and model.level == 0:
-                inp_tok_embs = model.run_vocab_encoder(chunks)
-
-            if model_cfg.with_vocab_decoder or model.level != 0:
-                loss = loss_fn(out_logits, chunks)
-            else:
-                loss = loss_fn(out_logits, inp_tok_embs)
+            loss = loss_fn(out_logits, chunks)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
 
@@ -424,6 +395,5 @@ def main(args: ArgsEncdecHgTrain) -> int:
 if __name__ == '__main__':
     def rethrow(e):
         raise e
-    run_and_exit(ArgsTokensChunksTrain, main, 'Train Mllm model.', exception_handler=rethrow)
-
+    run_and_exit(ArgsEncdecHgTrain, main, 'Train Encoder-Decoder Hourglass model.', exception_handler=rethrow)
 

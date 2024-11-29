@@ -7,9 +7,8 @@ dec_pyr:
   inp_len: 256
   n_heads: 8
   n_layers: 8
-  n_vocab: 50258
+  n_vocab: 50259
   step: 2
-  with_vocab_decoder: true
 enc_pyr:
   d_inner: 1024
   d_k: 32
@@ -26,5 +25,5 @@ enc_pyr:
     d_word_vec: 256
     dropout_rate: 0.0
     inp_len: 256
-    n_vocab: 50258
+    n_vocab: 50259
     pad_idx: 50257
