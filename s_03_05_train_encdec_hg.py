@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Union, Optional
 
 import numpy as np
+from datasets import load_dataset
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 import torch
@@ -23,11 +24,17 @@ from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, tokenizer_from_
 
 
 class ArgsEncdecHgTrain(BaseModel):
-    ds_dir_path: Path = Field(
-        None,
+    data_path: Path = Field(
+        ...,
+        required=True,
+        description='Root data path. Must contain subpath `wikipedia/WIKI_DS_NAME` with Wikipedia dataset.',
+        cli=('--data-path',),
+    )
+    wiki_ds_name: str = Field(
+        '20200501.en',
         required=False,
-        description='Dataset directory path. Must contain .csv and .np files with tokenized text.',
-        cli=('--ds-dir-path',),
+        description='Wikipedia dataset name of the format YYYYMMDD.LANG, for example: 20220301.en',
+        cli=('--wiki-ds-name',),
     )
     train_root_path: Path = Field(
         ...,
@@ -66,13 +73,6 @@ class ArgsEncdecHgTrain(BaseModel):
         description='Documents batch size. Must be greater or equal than 2.',
         cli=('--docs-batch-size',),
     )
-    max_chunks_per_doc: int = Field(
-        3,
-        required=False,
-        description='Maximum number of consecutive chunks per document taken in each butch. '
-                    'Batch chunk max size will be DOCS_BATCH_SIZE * MAX_CHUNKS_PER_DOC.',
-        cli=('--max-chunks-per-doc',),
-    )
     device: str = Field(
         'cpu',
         required=False,
@@ -103,19 +103,12 @@ class ArgsEncdecHgTrain(BaseModel):
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
-    pretrained_model_path: Optional[Path] = Field(
-        None,
-        required=False,
-        description='Path to pretrained model weights.',
-        cli=('--pretrained-model-path',),
-    )
     emb_chunk_size: Optional[int] = Field(
         100,
         required=False,
         description='Number of tokens in chunk converted to a single embedding vector.',
         cli=('--embs-chunk-size',),
     )
-
 
 
 def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
@@ -201,7 +194,6 @@ def main(args: ArgsEncdecHgTrain) -> int:
     model_cfg = copy_override_encdec_hg_cfg(model_cfg, inp_len=args.inp_len)
 
     prefix, suffix = gen_prefpostfix_hg(model_cfg)
-    suffix = f'{args.ds_dir_path.parent.name}-{args.ds_dir_path.name}-{suffix}'
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -224,20 +216,21 @@ def main(args: ArgsEncdecHgTrain) -> int:
         to_yaml_file(train_path / TOKENIZER_CFG_FNAME, tkz_cfg)
         to_yaml_file(train_path / ENCDEC_HG_MODEL_CFG_FNAME, model_cfg)
 
-    tokenizer = tokenizer_from_config(tkz_cfg)
-
+    tkz = tokenizer_from_config(tkz_cfg)
     tok_dict = tkz_cfg.custom_tokens
-    pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
-    mask_tok = tok_dict['mask'].ind
-    ds_loader = WikiDsLoader(
-        ds_path=args.ds_dir_path, docs_batch_size=args.docs_batch_size, max_chunks_per_doc=args.max_chunks_per_doc,
-        pad_tok=pad_tok, qbeg_tok=qbeg_tok, qend_tok=qend_tok, device=device, n_total=0,
-    )
+    pad_tok = tok_dict['pad'].ind
+    print(f'Loading Wikipedia dataset: {args.wiki_ds_name}')
+    wiki_ds_subdir = 'wikipedia'
+    ds = load_dataset(wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
+    ds = ds['train']
+    n_docs = len(ds)
+    print(f'Wikipedia {args.wiki_ds_name} docs: {n_docs}')
 
-    inp_len = ds_loader.emb_chunk_size if ds_loader.fixed_size else calc_max_inp_size(ds_loader.emb_chunk_size)
-    print(f'Creating model with vocab size = {len(tokenizer)}')
-
-    torch.autograd.set_detect_anomaly(True)
+    doc_inds = list(range(n_docs))
+    val_ratio = 0.05
+    n_docs_val = int(n_docs * val_ratio)
+    n_docs_train = n_docs - n_docs_val
+    doc_inds_train, doc_inds_val = doc_inds[:n_docs_train], doc_inds[n_docs_train:]
 
     input_zeros_ratio = 0.3
     print(model_cfg)
@@ -251,18 +244,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
-        ds_loader.shuffle(train=True)
-        ds_loader.shuffle(train=False)
-    elif args.pretrained_model_path and args.pretrained_model_path.name:
-        pretrained_model_path = args.pretrained_model_path / 'best.pth'
-        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
-        pretrained_checkpoint = torch.load(pretrained_model_path)
-        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_HG_MODEL_CFG_FNAME
-        model_encdec_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_cfg_fpath)
-        model_encdec = EncdecHg(model_encdec_cfg).to(device)
-        model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        print(f'Load model weights:', list(model_encdec.state_dict().keys()))
-        model.load_state_dict(model_encdec.state_dict(), strict=False)
+        np.random.shuffle(doc_inds_train)
+        np.random.shuffle(doc_inds_val)
 
     sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-7)
@@ -270,8 +253,37 @@ def main(args: ArgsEncdecHgTrain) -> int:
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
     calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
-    n_batches_train = calc_batches(ds_loader.n_docs_train)
-    n_batches_val = calc_batches(ds_loader.n_docs_val)
+    n_batches_train = calc_batches(n_docs_train)
+    n_batches_val = calc_batches(n_docs_val)
+
+    def get_batch_tokens(doc_inds: list[int]) -> torch.Tensor:
+        docs_toks = np.full((len(doc_inds), args.emb_chunk_size), pad_tok)
+        for i, doc_ind in enumerate(doc_inds):
+            doc = ds[doc_ind]
+            title, text = doc['title'], doc['text']
+            doc_txt = f'{title} {text}'
+            doc_toks = tkz(doc_txt)['input_ids']
+            n_toks = len(docs_toks)
+            if n_toks > args.emb_chunk_size:
+                i_off = np.random.randint(n_toks - args.emb_chunk_size + 1)
+                doc_toks = doc_toks[i_off:i_off + args.emb_chunk_size]
+            docs_toks[i, :len(doc_toks)] = doc_toks
+        docs_toks_t = torch.from_numpy(docs_toks)
+        return docs_toks_t
+
+    def get_batch(inds: list[int], i_batch: int) -> tuple[torch.Tensor, int]:
+        i1 = i_batch * args.docs_batch_size
+        i2 = i1 + args.docs_batch_size
+        batch_inds = inds[i1:i2]
+        rest_batch_size = args.docs_batch_size - len(batch_inds)
+        if rest_batch_size > 0:
+            batch_inds = batch_inds + inds[:rest_batch_size * args.docs_batch_size]
+        if i2 >= len(batch_inds):
+            i_batch = 0
+            np.random.shuffle(inds)
+        batch_toks = get_batch_tokens(batch_inds)
+        return batch_toks, i_batch
+
 
     # loss_fn = encdec_prob_loss_sigmoid
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)

@@ -229,7 +229,7 @@ class EncoderPyramid(nn.Module):
         batch_size, seq_len = inp.shape
         mask = (inp == self.cfg.pad_idx).to(torch.bool)
         mask = np.matmul(mask.unsqueeze(-1), mask.unsqueeze(-2))
-        assert seq_len == self.cfg.inp_len, f'seq_len = {seq_len}. inp_len = {inp_len}'
+        assert seq_len == self.cfg.inp_len, f'seq_len = {seq_len}. inp_len = {self.cfg.inp_len}'
         # [batch_size, seq_len, d_model]
         out = self.vocab_encoder(inp)
         # print_dtype_shape(out, 'vocab_enc')
@@ -270,7 +270,7 @@ class DecoderPyramid(nn.Module):
     enc_layers: nn.ModuleList
     enh_layers: nn.ModuleList
     inp_chunk_len: int
-    # vocab_decoder: Optional[VocabDecoder]
+    vocab_decoder: VocabDecoder
 
     def __init__(self, cfg: DecPyrCfg):
         super().__init__()
@@ -284,9 +284,7 @@ class DecoderPyramid(nn.Module):
         self.enh_layers = nn.ModuleList([
             EnhanceLayer(d_model=cfg.d_model, step=cfg.step) for _ in range(cfg.n_layers)
         ])
-        self.vocab_decoder = None
-        if self.cfg.with_vocab_decoder:
-            self.vocab_decoder = VocabDecoder(d_model=self.cfg.d_model, n_vocab=self.cfg.n_vocab)
+        self.vocab_decoder = VocabDecoder(d_model=self.cfg.d_model, n_vocab=self.cfg.n_vocab)
 
     # Tensor with embeddings: [batch_size, 1, d_model]
     def forward(self, inp: Tensor) -> Tensor:

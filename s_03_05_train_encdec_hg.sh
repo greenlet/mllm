@@ -1,9 +1,7 @@
 
 code_path=$HOME/prog
 data_path=$HOME/data
-wiki_data_path=$data_path/wiki_20200501_en
-ds_subdir=ch_100_fixed
-wiki_ds_path=$wiki_data_path/$ds_subdir
+wiki_ds_name=20200501.en
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
@@ -36,8 +34,9 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 # echo "
-python s_03_05_train_encdec.py \
-  --ds-dir-path $wiki_ds_path \
+python s_03_05_train_encdec_hg.py \
+  --data-path $data_path \
+  --wiki-ds-nmae $wiki_ds_name \
   --train-root-path $train_root_path \
   --train-subdir "$train_subdir" \
   --tokenizer-cfg-fpath $tokenizer_cfg_fpath \
