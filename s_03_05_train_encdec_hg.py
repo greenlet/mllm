@@ -103,12 +103,6 @@ class ArgsEncdecHgTrain(BaseModel):
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
-    emb_chunk_size: Optional[int] = Field(
-        100,
-        required=False,
-        description='Number of tokens in chunk converted to a single embedding vector.',
-        cli=('--embs-chunk-size',),
-    )
 
 
 def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
@@ -218,7 +212,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
 
     tkz = tokenizer_from_config(tkz_cfg)
     tok_dict = tkz_cfg.custom_tokens
-    pad_tok = tok_dict['pad'].ind
+    pad_tok, mask_tok = tok_dict['pad'].ind, tok_dict['mask'].ind
     print(f'Loading Wikipedia dataset: {args.wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
     ds = load_dataset(wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
@@ -257,16 +251,16 @@ def main(args: ArgsEncdecHgTrain) -> int:
     n_batches_val = calc_batches(n_docs_val)
 
     def get_batch_tokens(doc_inds: list[int]) -> torch.Tensor:
-        docs_toks = np.full((len(doc_inds), args.emb_chunk_size), pad_tok)
+        docs_toks = np.full((len(doc_inds), args.inp_len), pad_tok)
         for i, doc_ind in enumerate(doc_inds):
             doc = ds[doc_ind]
             title, text = doc['title'], doc['text']
             doc_txt = f'{title} {text}'
             doc_toks = tkz(doc_txt)['input_ids']
-            n_toks = len(docs_toks)
-            if n_toks > args.emb_chunk_size:
-                i_off = np.random.randint(n_toks - args.emb_chunk_size + 1)
-                doc_toks = doc_toks[i_off:i_off + args.emb_chunk_size]
+            n_toks = len(doc_toks)
+            if n_toks > args.inp_len:
+                i_off = np.random.randint(n_toks - args.inp_len + 1)
+                doc_toks = doc_toks[i_off:i_off + args.inp_len]
             docs_toks[i, :len(doc_toks)] = doc_toks
         docs_toks_t = torch.from_numpy(docs_toks)
         return docs_toks_t
@@ -284,7 +278,6 @@ def main(args: ArgsEncdecHgTrain) -> int:
         batch_toks = get_batch_tokens(batch_inds)
         return batch_toks, i_batch
 
-
     # loss_fn = encdec_prob_loss_sigmoid
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
     # loss_fn = nn.CrossEntropyLoss()
@@ -297,16 +290,13 @@ def main(args: ArgsEncdecHgTrain) -> int:
         train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = ds_loader.get_batch(i_train, train=True)
-            docs_chunks, target_chunks, target_mask = batch.gen_tensors()
-
-            chunks = concat_tokens(docs_chunks, target_chunks)
-            chunks_inp = remove_tokens(chunks, mask_tok, input_zeros_ratio)
+            tokens_inp, i_train = get_batch(doc_inds_train, i_train)
+            # tokens_inp = remove_tokens(tokens_inp, mask_tok, input_zeros_ratio)
 
             optimizer.zero_grad()
 
-            out_logits = model(chunks_inp)
-            loss = loss_fn(out_logits, chunks)
+            out_logits = model(tokens_inp)
+            loss = loss_fn(out_logits, tokens_inp)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
 
@@ -316,11 +306,6 @@ def main(args: ArgsEncdecHgTrain) -> int:
             if loss_gt is not None:
                 train_loss_gt += loss_gt.item()
                 train_loss_nongt += loss_nongt.item()
-
-            i_train += 1
-            if i_train == n_batches_train:
-                ds_loader.shuffle(train=True)
-                i_train %= n_batches_train
 
             # if i_train == 2:
             #     import sys
@@ -343,12 +328,10 @@ def main(args: ArgsEncdecHgTrain) -> int:
         val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = ds_loader.get_batch(i_val, train=False)
-            docs_chunks, target_chunks, target_mask = batch.gen_tensors()
-            
-            chunks = concat_tokens(docs_chunks, target_chunks)
-            out_logits = model(chunks)
-            loss = loss_fn(out_logits, chunks)
+            tokens_inp, i_val = get_batch(doc_inds_train, i_val)
+
+            out_logits = model(tokens_inp)
+            loss = loss_fn(out_logits, tokens_inp)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
 
@@ -356,11 +339,6 @@ def main(args: ArgsEncdecHgTrain) -> int:
             if loss_gt is not None:
                 val_loss_gt += loss_gt.item()
                 val_loss_nongt += loss_nongt.item()
-
-            i_val += 1
-            if i_val == n_batches_val:
-                ds_loader.shuffle(train=False)
-                i_val %= n_batches_val
 
             s = f'Val. loss: {loss.item():.6f}'
             if loss_gt is not None:
