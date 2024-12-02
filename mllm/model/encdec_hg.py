@@ -227,8 +227,8 @@ class EncoderPyramid(nn.Module):
     # Tensor of integer tokens: [batch_size, seq_len]
     def forward(self, inp: Tensor) -> Tensor:
         batch_size, seq_len = inp.shape
-        mask = (inp == self.cfg.pad_idx).to(torch.bool)
-        mask = np.matmul(mask.unsqueeze(-1), mask.unsqueeze(-2))
+        mask = (inp == self.cfg.pad_idx).to(torch.float32).to(inp.device)
+        mask = torch.matmul(mask.unsqueeze(-1), mask.unsqueeze(-2)).to(torch.int32)
         assert seq_len == self.cfg.inp_len, f'seq_len = {seq_len}. inp_len = {self.cfg.inp_len}'
         # [batch_size, seq_len, d_model]
         out = self.vocab_encoder(inp)

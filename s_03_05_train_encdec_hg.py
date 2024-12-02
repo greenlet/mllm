@@ -262,7 +262,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
                 i_off = np.random.randint(n_toks - args.inp_len + 1)
                 doc_toks = doc_toks[i_off:i_off + args.inp_len]
             docs_toks[i, :len(doc_toks)] = doc_toks
-        docs_toks_t = torch.from_numpy(docs_toks)
+        docs_toks_t = torch.from_numpy(docs_toks).to(device)
         return docs_toks_t
 
     def get_batch(inds: list[int], i_batch: int) -> tuple[torch.Tensor, int]:
