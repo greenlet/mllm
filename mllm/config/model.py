@@ -176,6 +176,7 @@ class EncPyrCfg(BaseModel):
     step: int
     n_layers: int
     dropout_rate: float
+    n_similar_layers: int = 1
 
 
 class DecPyrCfg(BaseModel):
@@ -189,6 +190,7 @@ class DecPyrCfg(BaseModel):
     n_layers: int
     dropout_rate: float
     n_vocab: int
+    n_similar_layers: int = 1
 
 
 class EncdecHgCfg(BaseModel):
@@ -198,7 +200,7 @@ class EncdecHgCfg(BaseModel):
 
 def create_encdec_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
-        step: int = 2, dropout_rate: float = 0.0) -> EncdecHgCfg:
+        step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1) -> EncdecHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
     n_layers = math.ceil(math.log(inp_len, step))
@@ -207,21 +209,22 @@ def create_encdec_hg_cfg(
     )
     cfg_enc_pyr = EncPyrCfg(
         vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
+        n_similar_layers=n_similar_layers,
     )
     cfg_dec_pyr = DecPyrCfg(
         d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate, n_vocab=n_vocab,
+        n_similar_layers=n_similar_layers,
     )
     cfg_encdec_hg = EncdecHgCfg(enc_pyr=cfg_enc_pyr, dec_pyr=cfg_dec_pyr)
     return cfg_encdec_hg
 
 
-def copy_override_encdec_hg_cfg(cfg: EncdecHgCfg, inp_len: int = 0) -> EncdecHgCfg:
+def copy_override_encdec_hg_cfg(cfg: EncdecHgCfg, inp_len: int = 0, n_similar_layers: int = 1) -> EncdecHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
     d_model = cfg.enc_pyr.d_model
     n_heads = cfg.enc_pyr.n_heads
     d_inner = cfg.enc_pyr.d_inner
-    # inp_len = cfg.enc_pyr.inp_len
     step = cfg.enc_pyr.step
     dropout_rate = cfg.enc_pyr.dropout_rate
 
@@ -232,10 +235,16 @@ def copy_override_encdec_hg_cfg(cfg: EncdecHgCfg, inp_len: int = 0) -> EncdecHgC
     else:
         inp_len = cfg.enc_pyr.inp_len
 
+    if n_similar_layers != cfg.enc_pyr.n_similar_layers:
+        assert n_similar_layers > 0, f'n_similar_layers = {n_similar_layers}, but must be > 0'
+        assert cfg.enc_pyr.n_similar_layers == cfg.dec_pyr.n_similar_layers, \
+            f'enc n_similar_layers = {cfg.enc_pyr.n_similar_layers} != dec n_similar_layers = {cfg.dec_pyr.n_similar_layers}'
+        changed = True
+
     if changed:
         return create_encdec_hg_cfg(
             n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
-            dropout_rate=dropout_rate,
+            dropout_rate=dropout_rate, n_similar_layers=n_similar_layers,
         )
     return cfg
 
@@ -263,5 +272,5 @@ def gen_prefpostfix_level(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_
 def gen_prefpostfix_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
     prefix = f'encdechg'
     enc, dec = model_cfg.enc_pyr, model_cfg.dec_pyr
-    postfix = f'ilen{enc.inp_len}-lrs{enc.n_layers}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}'
+    postfix = f'ilen{enc.inp_len}-lrs{enc.n_layers}x{enc.n_similar_layers}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}'
     return prefix, postfix

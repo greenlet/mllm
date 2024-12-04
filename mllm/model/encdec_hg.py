@@ -1,3 +1,4 @@
+import itertools
 import math
 import sys
 from typing import Optional, Union
@@ -218,7 +219,7 @@ class EncoderPyramid(nn.Module):
             EncoderLayer(
                 n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner, d_k=cfg.d_k, d_v=cfg.d_v,
                 dropout_rate=cfg.dropout_rate,
-            ) for _ in range(cfg.n_layers)
+            ) for _ in range(cfg.n_layers * cfg.n_similar_layers)
         ])
         self.rdc_layers = nn.ModuleList([
             ReduceLayer(d_model=cfg.d_model, step=cfg.step) for _ in range(cfg.n_layers)
@@ -227,17 +228,21 @@ class EncoderPyramid(nn.Module):
     # Tensor of integer tokens: [batch_size, seq_len]
     def forward(self, inp: Tensor) -> Tensor:
         batch_size, seq_len = inp.shape
-        mask = (inp == self.cfg.pad_idx).to(torch.float32).to(inp.device)
-        mask = torch.matmul(mask.unsqueeze(-1), mask.unsqueeze(-2)).to(torch.int32)
+        # mask = (inp == self.cfg.pad_idx).to(torch.float32).to(inp.device)
+        # mask = torch.matmul(mask.unsqueeze(-1), mask.unsqueeze(-2)).to(torch.int32)
+        mask = None
         assert seq_len == self.cfg.inp_len, f'seq_len = {seq_len}. inp_len = {self.cfg.inp_len}'
         # [batch_size, seq_len, d_model]
         out = self.vocab_encoder(inp)
         # print_dtype_shape(out, 'vocab_enc')
-        for enc_layer, rdc_layer in zip(self.enc_layers, self.rdc_layers):
-            out, _ = enc_layer(out, slf_attn_mask=mask)
-            inds = slice(0, out.shape[1], 2)
+        enc_layers_it = iter(self.enc_layers)
+        for rdc_layer in self.rdc_layers:
+            for _ in range(self.cfg.n_similar_layers):
+                enc_layer = next(enc_layers_it)
+                out, _ = enc_layer(out, slf_attn_mask=mask)
+            # inds = slice(0, out.shape[1], 2)
             # print_dtype_shape(mask, 'mask 1')
-            mask = mask[:, inds, inds]
+            # mask = mask[:, inds, inds]
             # print_dtype_shape(mask, 'mask 2')
             out = rdc_layer(out)
         return out
@@ -279,7 +284,7 @@ class DecoderPyramid(nn.Module):
             EncoderLayer(
                 n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner, d_k=cfg.d_k, d_v=cfg.d_v,
                 dropout_rate=cfg.dropout_rate,
-            ) for _ in range(cfg.n_layers)
+            ) for _ in range(cfg.n_layers * cfg.n_similar_layers)
         ])
         self.enh_layers = nn.ModuleList([
             EnhanceLayer(d_model=cfg.d_model, step=cfg.step) for _ in range(cfg.n_layers)
@@ -289,9 +294,12 @@ class DecoderPyramid(nn.Module):
     # Tensor with embeddings: [batch_size, 1, d_model]
     def forward(self, inp: Tensor) -> Tensor:
         out = inp
-        for enc_layer, enh_layer in zip(self.enc_layers, self.enh_layers):
+        enc_layers_it = iter(self.enc_layers)
+        for enh_layer in self.enh_layers:
             out = enh_layer(out)
-            out, _ = enc_layer(out)
+            for _ in range(self.cfg.n_similar_layers):
+                enc_layer = next(enc_layers_it)
+                out, _ = enc_layer(out)
 
         if self.vocab_decoder is not None:
             # [batch_size, seq_len, d_model]

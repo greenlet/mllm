@@ -14,7 +14,8 @@ model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_hg
 
 inp_len=256
-
+#n_similar_layers=1
+n_similar_layers=2
 
 #device=cpu
 #epochs=5
@@ -43,6 +44,7 @@ python s_03_05_train_encdec_hg.py \
   --tokenizer-cfg-fpath $tokenizer_cfg_fpath \
   --model-cfg-fpath $model_cfg_fpath \
   --inp-len $inp_len \
+  --n-similar-layers $n_similar_layers \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

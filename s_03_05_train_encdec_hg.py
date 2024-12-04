@@ -67,6 +67,12 @@ class ArgsEncdecHgTrain(BaseModel):
         description='Input tokens number. Must be a power of 2. INP_LEN = 2^k will produce model with k layers.',
         cli=('--inp-len',),
     )
+    n_similar_layers: int = Field(
+        ...,
+        required=True,
+        description='Number of consecutive similar attention layers for each level dedicated of increasing/decreasing input size.',
+        cli=('--n-similar-layers',),
+    )
     docs_batch_size: int = Field(
         3,
         required=False,
@@ -185,7 +191,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
 
     tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
     model_cfg = parse_yaml_file_as(EncdecHgCfg, args.model_cfg_fpath)
-    model_cfg = copy_override_encdec_hg_cfg(model_cfg, inp_len=args.inp_len)
+    model_cfg = copy_override_encdec_hg_cfg(model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers)
 
     prefix, suffix = gen_prefpostfix_hg(model_cfg)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
