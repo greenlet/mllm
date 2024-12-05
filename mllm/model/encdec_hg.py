@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from transformers import PreTrainedTokenizer, GPT2Tokenizer
 
 
-from mllm.config.model import VocabEncoderCfg, EmbDecoderCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg
+from mllm.config.model import VocabEncoderCfg, EmbDecoderCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
 
@@ -179,13 +179,18 @@ class EncoderLayer(nn.Module):
 class ReduceLayer(nn.Module):
     d_model: int
     step: int
-    reducer: nn.Linear
+    reduct_type: HgReductType
+    # reducer: nn.Linear
 
-    def __init__(self, d_model: int, step: int) -> None:
+    def __init__(self, d_model: int, step: int, reduct_type: HgReductType) -> None:
         super().__init__()
         self.d_model = d_model
         self.step = step
-        self.reducer = nn.Linear(in_features=d_model * step, out_features=d_model, bias=False)
+        self.reduct_type = reduct_type
+        if reduct_type == HgReductType.Matmul:
+            self.reducer = nn.Linear(in_features=d_model * step, out_features=d_model, bias=False)
+        else:
+            self.reducer = None
 
     def forward(self, inp: Tensor) -> Tensor:
         batch_size, seq_len, d_model = inp.shape
@@ -197,10 +202,13 @@ class ReduceLayer(nn.Module):
             inp = F.pad(inp, (0, 0, n_seq_add, 0), value=0)
             seq_len += n_seq_add
             # print_dtype_shape(inp, 'rdc_inp_pad')
-        inp = inp.reshape(batch_size, seq_len // self.step, self.d_model * self.step)
-        # print_dtype_shape(inp, 'rds_reshape')
-        out = self.reducer(inp)
-        # print_dtype_shape(out, 'rdc_reduce')
+        if self.reduct_type == HgReductType.Matmul:
+            inp = inp.reshape(batch_size, seq_len // self.step, self.d_model * self.step)
+            # print_dtype_shape(inp, 'rds_reshape')
+            out = self.reducer(inp)
+            # print_dtype_shape(out, 'rdc_reduce')
+        else:
+            out = inp[:, ::self.step]
         return out
 
 
@@ -222,7 +230,7 @@ class EncoderPyramid(nn.Module):
             ) for _ in range(cfg.n_layers * cfg.n_similar_layers)
         ])
         self.rdc_layers = nn.ModuleList([
-            ReduceLayer(d_model=cfg.d_model, step=cfg.step) for _ in range(cfg.n_layers)
+            ReduceLayer(d_model=cfg.d_model, step=cfg.step, ) for _ in range(cfg.n_layers)
         ])
 
     # Tensor of integer tokens: [batch_size, seq_len]

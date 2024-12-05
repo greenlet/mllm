@@ -1,4 +1,5 @@
 import math
+from enum import Enum
 from pathlib import Path
 from typing import TypeVar, Union
 
@@ -164,6 +165,11 @@ def create_mllm_ranker_cfg(
     return cfg_mllm_ranker
 
 
+class HgReductType(str, Enum):
+    Matmul = 'matmul'
+    Decim = 'decim'
+
+
 class EncPyrCfg(BaseModel):
     vocab_encoder: VocabEncoderCfg
     pad_idx: int
@@ -177,6 +183,7 @@ class EncPyrCfg(BaseModel):
     n_layers: int
     dropout_rate: float
     n_similar_layers: int = 1
+    reduct_type: HgReductType = HgReductType.Matmul
 
 
 class DecPyrCfg(BaseModel):
@@ -200,7 +207,7 @@ class EncdecHgCfg(BaseModel):
 
 def create_encdec_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
-        step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1) -> EncdecHgCfg:
+        step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul) -> EncdecHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
     n_layers = math.ceil(math.log(inp_len, step))
@@ -209,7 +216,7 @@ def create_encdec_hg_cfg(
     )
     cfg_enc_pyr = EncPyrCfg(
         vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
-        n_similar_layers=n_similar_layers,
+        n_similar_layers=n_similar_layers, reduct_type=reduct_type,
     )
     cfg_dec_pyr = DecPyrCfg(
         d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate, n_vocab=n_vocab,
@@ -219,7 +226,7 @@ def create_encdec_hg_cfg(
     return cfg_encdec_hg
 
 
-def copy_override_encdec_hg_cfg(cfg: EncdecHgCfg, inp_len: int = 0, n_similar_layers: int = 1) -> EncdecHgCfg:
+def copy_override_encdec_hg_cfg(cfg: EncdecHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul) -> EncdecHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
     d_model = cfg.enc_pyr.d_model
@@ -241,10 +248,13 @@ def copy_override_encdec_hg_cfg(cfg: EncdecHgCfg, inp_len: int = 0, n_similar_la
             f'enc n_similar_layers = {cfg.enc_pyr.n_similar_layers} != dec n_similar_layers = {cfg.dec_pyr.n_similar_layers}'
         changed = True
 
+    if reduct_type != cfg.enc_pyr.reduct_type:
+        changed = True
+
     if changed:
         return create_encdec_hg_cfg(
             n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
-            dropout_rate=dropout_rate, n_similar_layers=n_similar_layers,
+            dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type,
         )
     return cfg
 

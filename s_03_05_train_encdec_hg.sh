@@ -13,9 +13,12 @@ tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_hg
 
-inp_len=256
-#n_similar_layers=1
-n_similar_layers=2
+#inp_len=256
+inp_len=128
+n_similar_layers=1
+#n_similar_layers=2
+#reduct_type=matmul
+reduct_type=decim
 
 #device=cpu
 #epochs=5
@@ -27,7 +30,7 @@ device=cuda
 epochs=500
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=10
+docs_batch_size=20
 #train_subdir=last
 
 learning_rate=0.0001
@@ -45,6 +48,7 @@ python s_03_05_train_encdec_hg.py \
   --model-cfg-fpath $model_cfg_fpath \
   --inp-len $inp_len \
   --n-similar-layers $n_similar_layers \
+  --reduct-type $reduct_type \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

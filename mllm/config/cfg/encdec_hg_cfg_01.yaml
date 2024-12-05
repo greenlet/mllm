@@ -7,6 +7,7 @@ dec_pyr:
   inp_len: 256
   n_heads: 8
   n_layers: 8
+  n_similar_layers: 1
   n_vocab: 50271
   step: 2
 enc_pyr:
@@ -18,7 +19,9 @@ enc_pyr:
   inp_len: 256
   n_heads: 8
   n_layers: 8
+  n_similar_layers: 1
   pad_idx: 50267
+  reduct_type: matmul
   step: 2
   vocab_encoder:
     d_model: 256

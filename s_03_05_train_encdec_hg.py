@@ -19,7 +19,7 @@ from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_hg import EncdecHg
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdecLevel, encdec_embs_loss_cos
-from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg_cfg, gen_prefpostfix_hg
+from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg_cfg, gen_prefpostfix_hg, HgReductType
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, tokenizer_from_config
 
 
@@ -72,6 +72,12 @@ class ArgsEncdecHgTrain(BaseModel):
         required=True,
         description='Number of consecutive similar attention layers for each level dedicated of increasing/decreasing input size.',
         cli=('--n-similar-layers',),
+    )
+    reduct_type: HgReductType = Field(
+        HgReductType.Matmul,
+        required=False,
+        description=f'Encoder layer reduct type. Can have values: {list(x.value for x in HgReductType)}',
+        cli=('--reduct-type',),
     )
     docs_batch_size: int = Field(
         3,
@@ -191,7 +197,9 @@ def main(args: ArgsEncdecHgTrain) -> int:
 
     tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
     model_cfg = parse_yaml_file_as(EncdecHgCfg, args.model_cfg_fpath)
-    model_cfg = copy_override_encdec_hg_cfg(model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers)
+    model_cfg = copy_override_encdec_hg_cfg(
+        model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
+    )
 
     prefix, suffix = gen_prefpostfix_hg(model_cfg)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
@@ -252,10 +260,6 @@ def main(args: ArgsEncdecHgTrain) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    calc_batches = lambda n_docs: n_docs // args.docs_batch_size + (n_docs % args.docs_batch_size > 1)
-    n_batches_train = calc_batches(n_docs_train)
-    n_batches_val = calc_batches(n_docs_val)
-
     def get_batch_tokens(doc_inds: list[int]) -> torch.Tensor:
         docs_toks = np.full((len(doc_inds), args.inp_len), pad_tok)
         for i, doc_ind in enumerate(doc_inds):
@@ -288,6 +292,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
     # loss_fn = nn.CrossEntropyLoss()
     loss_fn = encdec_prob_loss_softmax
+
+    print(model)
 
     i_train, i_val = 0, 0
     loss_gt, loss_nongt = None, None
