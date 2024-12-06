@@ -1,0 +1,32 @@
+dec_pyr:
+  d_inner: 2048
+  d_k: 64
+  d_model: 512
+  d_v: 64
+  dropout_rate: 0.0
+  inp_len: 128
+  n_heads: 8
+  n_layers: 7
+  n_similar_layers: 1
+  n_vocab: 50271
+  step: 2
+enc_pyr:
+  d_inner: 2048
+  d_k: 64
+  d_model: 512
+  d_v: 64
+  dropout_rate: 0.0
+  inp_len: 128
+  n_heads: 8
+  n_layers: 7
+  n_similar_layers: 1
+  pad_idx: 50267
+  reduct_type: matmul
+  step: 2
+  vocab_encoder:
+    d_model: 512
+    d_word_vec: 512
+    dropout_rate: 0.0
+    inp_len: 128
+    n_vocab: 50271
+    pad_idx: 50267

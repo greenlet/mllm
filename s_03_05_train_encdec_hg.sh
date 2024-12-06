@@ -6,7 +6,8 @@ wiki_ds_name=20200501.en
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fname=tokenizer_cfg_01.yaml
-model_cfg_fname=encdec_hg_cfg_01.yaml
+# model_cfg_fname=encdec_hg_cfg_01.yaml
+model_cfg_fname=encdec_hg_cfg_02.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
@@ -17,8 +18,8 @@ train_root_path=$data_path/train_mllm_encdec_hg
 inp_len=128
 n_similar_layers=1
 #n_similar_layers=2
-#reduct_type=matmul
-reduct_type=decim
+reduct_type=matmul
+# reduct_type=decim
 
 #device=cpu
 #epochs=5

@@ -230,7 +230,7 @@ class EncoderPyramid(nn.Module):
             ) for _ in range(cfg.n_layers * cfg.n_similar_layers)
         ])
         self.rdc_layers = nn.ModuleList([
-            ReduceLayer(d_model=cfg.d_model, step=cfg.step, ) for _ in range(cfg.n_layers)
+            ReduceLayer(d_model=cfg.d_model, step=cfg.step, reduct_type=cfg.reduct_type) for _ in range(cfg.n_layers)
         ])
 
     # Tensor of integer tokens: [batch_size, seq_len]
