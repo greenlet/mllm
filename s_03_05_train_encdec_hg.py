@@ -190,6 +190,28 @@ def remove_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, 
     return res
 
 
+def calc_params_grads_stats(params: torch.nn.Parameter) -> tuple[tuple[float, float], Optional[tuple[float, float]]]:
+    gres = None
+    pres = params.mean().detach().cpu().item(), params.std().detach().cpu().item()
+    if params.grad is not None:
+        gres = params.grad.mean().detach().cpu().item(), params.grad.std().detach().cpu().item()
+    return pres, gres
+
+
+def log_weights_grads_stats(step: int, model: torch.nn.Module, tbsw: tb.SummaryWriter):
+    for i, (pname, params) in enumerate(model.named_parameters()):
+        pname = f'{i:02d}-{pname}'
+        pms, gms = calc_params_grads_stats(params)
+        # print(pname, pms, gms)
+        weight_mean, weight_std = pms
+        tbsw.add_scalar(f'{pname}/WeightMean', weight_mean, step)
+        tbsw.add_scalar(f'{pname}/WeightStd', weight_std, step)
+        if gms is not None:
+            grad_mean, grad_std = gms
+            tbsw.add_scalar(f'{pname}/GradMean', grad_mean, step)
+            tbsw.add_scalar(f'{pname}/GradStd', grad_std, step)
+
+
 def main(args: ArgsEncdecHgTrain) -> int:
     print(args)
 
@@ -297,6 +319,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
 
     i_train, i_val = 0, 0
     loss_gt, loss_nongt = None, None
+    grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     for epoch in range(last_epoch + 1, args.epochs):
         model.train()
         train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
@@ -313,6 +336,12 @@ def main(args: ArgsEncdecHgTrain) -> int:
                 loss_gt, loss_nongt, loss = loss
 
             loss.backward()
+            # Gradients must be available after loss.backward()
+            if grad_log_ind % grad_log_interval == 0:
+                log_weights_grads_stats(grad_log_step, model, tbsw)
+                grad_log_step += 1
+            grad_log_ind += 1
+
             optimizer.step()
             train_loss += loss.item()
             if loss_gt is not None:

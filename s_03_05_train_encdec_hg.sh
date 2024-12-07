@@ -6,8 +6,8 @@ wiki_ds_name=20200501.en
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fname=tokenizer_cfg_01.yaml
-# model_cfg_fname=encdec_hg_cfg_01.yaml
-model_cfg_fname=encdec_hg_cfg_02.yaml
+ model_cfg_fname=encdec_hg_cfg_01.yaml
+#model_cfg_fname=encdec_hg_cfg_02.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
