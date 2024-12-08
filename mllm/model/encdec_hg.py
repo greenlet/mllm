@@ -1,19 +1,14 @@
-import itertools
-import math
 import sys
-from typing import Optional, Union
+from typing import Optional
+
 if '..' not in sys.path: sys.path.append('..')
 
 import numpy as np
-from pprint import pprint
-from pydantic import BaseModel
 import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
-from transformers import PreTrainedTokenizer, GPT2Tokenizer
 
-
-from mllm.config.model import VocabEncoderCfg, EmbDecoderCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType
+from mllm.config.model import EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
 
@@ -207,8 +202,13 @@ class ReduceLayer(nn.Module):
             # print_dtype_shape(inp, 'rds_reshape')
             out = self.reducer(inp)
             # print_dtype_shape(out, 'rdc_reduce')
-        else:
+        elif self.reduct_type == HgReductType.Decim:
             out = inp[:, ::self.step]
+        elif self.reduct_type == HgReductType.Avg:
+            out = inp.reshape((batch_size, seq_len // self.step, self.step, d_model))
+            out = torch.mean(out, dim=2, keepdim=False)
+        else:
+            raise Exception(f'Reduction type {self.reduct_type} is not supported')
         return out
 
 
@@ -281,7 +281,7 @@ class EnhanceLayer(nn.Module):
 class DecoderPyramid(nn.Module):
     cfg: DecPyrCfg
     enc_layers: nn.ModuleList
-    enh_layers: nn.ModuleList
+    # enh_layers: nn.ModuleList
     inp_chunk_len: int
     vocab_decoder: VocabDecoder
 
@@ -294,27 +294,45 @@ class DecoderPyramid(nn.Module):
                 dropout_rate=cfg.dropout_rate,
             ) for _ in range(cfg.n_layers * cfg.n_similar_layers)
         ])
-        self.enh_layers = nn.ModuleList([
-            EnhanceLayer(d_model=cfg.d_model, step=cfg.step) for _ in range(cfg.n_layers)
-        ])
+        self.enh_layers, self.enh_beg_layer = None, None
+        if cfg.enhance_type == HgEnhanceType.Matmul:
+            self.enh_layers = nn.ModuleList([
+                EnhanceLayer(d_model=cfg.d_model, step=cfg.step) for _ in range(cfg.n_layers)
+            ])
+        elif cfg.enhance_type == HgEnhanceType.MatmulBegin:
+            self.enh_beg_layer = nn.Linear(in_features=cfg.d_model, out_features=cfg.d_model * cfg.inp_len, bias=False)
+        else:
+            raise Exception(f'Enhance type {cfg.enhance_type} is not supported')
         self.vocab_decoder = VocabDecoder(d_model=self.cfg.d_model, n_vocab=self.cfg.n_vocab)
 
     # Tensor with embeddings: [batch_size, 1, d_model]
     def forward(self, inp: Tensor) -> Tensor:
+        batch_size, one, d_model = inp.shape
+        assert one == 1
         out = inp
-        enc_layers_it = iter(self.enc_layers)
-        for enh_layer in self.enh_layers:
-            out = enh_layer(out)
-            for _ in range(self.cfg.n_similar_layers):
-                enc_layer = next(enc_layers_it)
+        if self.cfg.enhance_type == HgEnhanceType.MatmulBegin:
+            # [batch_size, 1, d_model] -> [batch_size, 1, d_model * inp_len]
+            out = self.enh_beg_layer(out)
+            # [batch_size, 1, d_model * inp_len] -> [batch_size, d_model * inp_len]
+            out = out.reshape((batch_size, self.cfg.inp_len, self.cfg.d_model))
+
+        if self.cfg.enhance_type == HgEnhanceType.Matmul:
+            enc_layers_it = iter(self.enc_layers)
+            for enh_layer in self.enh_layers:
+                out = enh_layer(out)
+                for _ in range(self.cfg.n_similar_layers):
+                    enc_layer = next(enc_layers_it)
+                    out, _ = enc_layer(out)
+        else:
+            for enc_layer in self.enc_layers:
                 out, _ = enc_layer(out)
 
-        if self.vocab_decoder is not None:
-            # [batch_size, seq_len, d_model]
-            out = self.vocab_decoder(out)
-            # [batch_size, seq_len, n_vocab]
+        # [batch_size, inp_len, d_model] -> [batch_size, inp_len, n_vocab]
+        out = self.vocab_decoder(out)
 
         return out
+
+
 
 
 class EncdecHg(nn.Module):

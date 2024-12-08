@@ -6,7 +6,7 @@ wiki_ds_name=20200501.en
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fname=tokenizer_cfg_01.yaml
- model_cfg_fname=encdec_hg_cfg_01.yaml
+model_cfg_fname=encdec_hg_cfg_01.yaml
 #model_cfg_fname=encdec_hg_cfg_02.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
@@ -18,8 +18,12 @@ train_root_path=$data_path/train_mllm_encdec_hg
 inp_len=128
 n_similar_layers=1
 #n_similar_layers=2
-reduct_type=matmul
-# reduct_type=decim
+#reduct_type=matmul
+#reduct_type=decim
+reduct_type=avg
+
+#enhance_type=matmul
+enhance_type=mmbeg
 
 #device=cpu
 #epochs=5
@@ -50,6 +54,7 @@ python s_03_05_train_encdec_hg.py \
   --inp-len $inp_len \
   --n-similar-layers $n_similar_layers \
   --reduct-type $reduct_type \
+  --enhance-type $enhance_type \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

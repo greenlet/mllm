@@ -19,7 +19,8 @@ from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_hg import EncdecHg
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdecLevel, encdec_embs_loss_cos
-from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg_cfg, gen_prefpostfix_hg, HgReductType
+from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg_cfg, gen_prefpostfix_hg, HgReductType, \
+    HgEnhanceType
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, tokenizer_from_config
 
 
@@ -78,6 +79,12 @@ class ArgsEncdecHgTrain(BaseModel):
         required=False,
         description=f'Encoder layer reduct type. Can have values: {list(x.value for x in HgReductType)}',
         cli=('--reduct-type',),
+    )
+    enhance_type: HgEnhanceType = Field(
+        HgEnhanceType.Matmul,
+        required=False,
+        description=f'Decoder layer enhance type. Can have values: {list(x.value for x in HgEnhanceType)}',
+        cli=('--enhance-type',),
     )
     docs_batch_size: int = Field(
         3,
@@ -221,6 +228,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
     model_cfg = parse_yaml_file_as(EncdecHgCfg, args.model_cfg_fpath)
     model_cfg = copy_override_encdec_hg_cfg(
         model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
+        enhance_type=args.enhance_type,
     )
 
     prefix, suffix = gen_prefpostfix_hg(model_cfg)
