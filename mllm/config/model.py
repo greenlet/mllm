@@ -174,6 +174,7 @@ class HgReductType(str, Enum):
 class HgEnhanceType(str, Enum):
     Matmul = 'matmul'
     MatmulBegin = 'mmbeg'
+    MatmulBeginBias = 'mmbb'
 
 
 class EncPyrCfg(BaseModel):

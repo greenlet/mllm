@@ -23,7 +23,8 @@ n_similar_layers=1
 reduct_type=avg
 
 #enhance_type=matmul
-enhance_type=mmbeg
+#enhance_type=mmbeg
+enhance_type=mmbb
 
 #device=cpu
 #epochs=5
@@ -39,6 +40,7 @@ docs_batch_size=20
 #train_subdir=last
 
 learning_rate=0.0001
+learning_rate=0.001
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 

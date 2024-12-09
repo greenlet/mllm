@@ -299,8 +299,9 @@ class DecoderPyramid(nn.Module):
             self.enh_layers = nn.ModuleList([
                 EnhanceLayer(d_model=cfg.d_model, step=cfg.step) for _ in range(cfg.n_layers)
             ])
-        elif cfg.enhance_type == HgEnhanceType.MatmulBegin:
-            self.enh_beg_layer = nn.Linear(in_features=cfg.d_model, out_features=cfg.d_model * cfg.inp_len, bias=False)
+        elif cfg.enhance_type in (HgEnhanceType.MatmulBegin, HgEnhanceType.MatmulBeginBias):
+            bias = cfg.enhance_type == HgEnhanceType.MatmulBeginBias
+            self.enh_beg_layer = nn.Linear(in_features=cfg.d_model, out_features=cfg.d_model * cfg.inp_len, bias=bias)
         else:
             raise Exception(f'Enhance type {cfg.enhance_type} is not supported')
         self.vocab_decoder = VocabDecoder(d_model=self.cfg.d_model, n_vocab=self.cfg.n_vocab)
