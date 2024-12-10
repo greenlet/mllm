@@ -311,7 +311,7 @@ class DecoderPyramid(nn.Module):
         batch_size, one, d_model = inp.shape
         assert one == 1
         out = inp
-        if self.cfg.enhance_type == HgEnhanceType.MatmulBegin:
+        if self.cfg.enhance_type in (HgEnhanceType.MatmulBegin, HgEnhanceType.MatmulBeginBias):
             # [batch_size, 1, d_model] -> [batch_size, 1, d_model * inp_len]
             out = self.enh_beg_layer(out)
             # [batch_size, 1, d_model * inp_len] -> [batch_size, d_model * inp_len]
