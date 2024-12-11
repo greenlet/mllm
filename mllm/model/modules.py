@@ -5,6 +5,8 @@ import torch
 from torch import nn, Tensor
 from torch.nn import functional as F
 
+from mllm.config.model import PosEncType
+
 
 class ScaledDotProductAttention(nn.Module):
     temperature: float
@@ -194,8 +196,9 @@ class VocabEncoder(nn.Module):
     pad_idx: int
     inp_len: int
     dropout_rate: float
+    pos_enc_type: PosEncType
 
-    def __init__(self, n_vocab: int, d_word_vec: int, d_model: int, pad_idx: int, inp_len: int, dropout_rate: float):
+    def __init__(self, n_vocab: int, d_word_vec: int, d_model: int, pad_idx: int, inp_len: int, dropout_rate: float, pos_enc_type: PosEncType = PosEncType.Num):
         super().__init__()
         self.n_vocab = n_vocab
         self.d_word_vec = d_word_vec
@@ -204,14 +207,26 @@ class VocabEncoder(nn.Module):
         self.inp_len = inp_len
         self.dropout_rate = dropout_rate
         self.src_word_emb = nn.Embedding(self.n_vocab, self.d_word_vec, padding_idx=self.pad_idx)
-        self.position_enc = PositionalEncoding(self.d_word_vec, n_position=self.inp_len * 10)
+        self.pos_enc_type = pos_enc_type
+        if self.pos_enc_type == PosEncType.Num:
+            self.position_enc = PositionalEncoding(self.d_word_vec, n_position=self.inp_len * 10)
+        elif self.pos_enc_type == PosEncType.Emb:
+            self.position_enc = nn.Embedding(self.inp_len, self.d_word_vec)
+        else:
+            raise Exception(f'Unspoorted position encoding type: {self.pos_enc_type}')
         self.dropout = nn.Dropout(p=self.dropout_rate)
         self.layer_norm = nn.LayerNorm(self.d_word_vec, eps=1e-6)
 
     def forward(self, src_seq: Tensor) -> Tensor:
         enc_out = self.src_word_emb(src_seq)
         enc_out *= self.d_model**0.5
-        enc_out = self.position_enc(enc_out)
+        if self.pos_enc_type == PosEncType.Num:
+            enc_out = self.position_enc(enc_out)
+        elif self.pos_enc_type == PosEncType.Emb:
+            # inds = torch.arange(self.inp_len).expand(len(src_seq), self.inp_len)
+            # pos_embs = self.position_enc(inds)
+            pos_embs = self.position_enc.weight.expand(len(src_seq), self.inp_len, self.d_word_vec)
+            enc_out = enc_out + pos_embs
         enc_out = self.dropout(enc_out)
         enc_out = self.layer_norm(enc_out)
         return enc_out

@@ -9,11 +9,15 @@ from torchtext.datasets import dataset_module
 T = TypeVar('T')
 MS = Union[T, tuple[T, ...]]
 
+class PosEncType(str, Enum):
+    Num = 'num'
+    Emb = 'emb'
+
+
 def to_tuple(t: MS[T], n: int) -> tuple[T, ...]:
     if isinstance(t, tuple):
         return t
     return tuple(t for _ in range(n))
-
 
 
 class CustomToken(BaseModel):
@@ -41,6 +45,7 @@ class VocabEncoderCfg(BaseModel):
     pad_idx: int
     inp_len: int
     dropout_rate: float
+    pos_enc_type: PosEncType = PosEncType.Num
 
 
 class EncoderCfg(BaseModel):
@@ -216,13 +221,14 @@ class EncdecHgCfg(BaseModel):
 def create_encdec_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
+        enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num,
         ) -> EncdecHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
     n_layers = math.ceil(math.log(inp_len, step))
     cfg_vocab_enc = VocabEncoderCfg(
         n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
+        pos_enc_type=pos_enc_type,
     )
     cfg_enc_pyr = EncPyrCfg(
         vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
@@ -238,7 +244,7 @@ def create_encdec_hg_cfg(
 
 def copy_override_encdec_hg_cfg(
         cfg: EncdecHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
+        enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num,
         ) -> EncdecHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
@@ -267,10 +273,14 @@ def copy_override_encdec_hg_cfg(
     if enhance_type != cfg.dec_pyr.enhance_type:
         changed = True
 
+    if pos_enc_type != cfg.enc_pyr.vocab_encoder.pos_enc_type:
+        changed = True
+
     if changed:
         return create_encdec_hg_cfg(
             n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
             dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type, enhance_type=enhance_type,
+            pos_enc_type=pos_enc_type,
         )
     return cfg
 
