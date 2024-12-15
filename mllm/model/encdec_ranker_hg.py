@@ -334,8 +334,6 @@ class DecoderPyramid(nn.Module):
         return out
 
 
-
-
 class EncdecHg(nn.Module):
     cfg: EncdecHgCfg
     enc_pyr: EncoderPyramid
@@ -347,10 +345,12 @@ class EncdecHg(nn.Module):
         self.enc_pyr = EncoderPyramid(cfg.enc_pyr)
         self.dec_pyr = DecoderPyramid(cfg.dec_pyr)
 
-    def forward(self, inp: Tensor) -> Tensor:
+    def forward(self, inp: Tensor, enc_only: bool = False) -> Tensor:
         out = inp
         out = self.enc_pyr(out)
-        out = self.dec_pyr(out)
+        if not enc_only:
+            out = self.dec_pyr(out)
         return out
+
 
 

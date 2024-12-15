@@ -7,8 +7,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.data.msmarco.dsmsmarco import MsmDsLoader
-from mllm.model.mllm_ranker import MllmRanker, RankProbLoss
-from mllm.model.mllm_encdec import MllmEncdec
+from mllm.model.losses import RankProbLoss
+from mllm.model.mllm_ranker import MllmRanker
+from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.config.model import create_mllm_encdec_cfg, create_mllm_ranker_cfg
 from mllm.tokenization.chunk_tokenizer import gen_all_tokens, ChunkTokenizer
 from mllm.exp.args import ArgsTokensChunksTrain

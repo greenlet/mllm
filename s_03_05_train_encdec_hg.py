@@ -16,7 +16,7 @@ from tqdm import trange
 
 from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
-from mllm.model.encdec_hg import EncdecHg
+from mllm.model.encdec_ranker_hg import EncdecHg
 from mllm.train.utils import find_create_train_path
 from mllm.model.mllm_encdec import MllmEncdecLevel, encdec_embs_loss_cos
 from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg_cfg, gen_prefpostfix_hg, HgReductType, \

@@ -33,16 +33,6 @@ class ArgsQrelsTrain(ArgsTokensChunksTrain):
     )
 
 
-def ranker_prob_loss_softmax(prob_pred: list[torch.Tensor], mask_gt: Union[torch.Tensor, list[torch.Tensor]]) -> torch.Tensor:
-    n_batch = len(prob_pred)
-    losses = torch.zeros(n_batch, dtype=torch.float32, device=prob_pred[0].device)
-    for i in range(n_batch):
-        prob = torch.masked_select(prob_pred[i], mask_gt[i])
-        losses[i] = -torch.sum(torch.log(prob))
-    loss = torch.mean(losses)
-    return loss
-
-
 def main(args: ArgsQrelsTrain) -> int:
     print(args)
 

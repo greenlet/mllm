@@ -218,6 +218,10 @@ class EncdecHgCfg(BaseModel):
     dec_pyr: DecPyrCfg
 
 
+class RankerHgCfg(BaseModel):
+    enc_pyr: EncPyrCfg
+
+
 def create_encdec_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
