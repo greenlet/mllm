@@ -17,8 +17,9 @@ from mllm.config.model import TokenizerCfg, MllmEncdecCfg, MllmRankerCfg, gen_pr
     copy_override_encdec_hg_cfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME, RANKER_MODEL_CFG_FNAME
+from mllm.model.encdec_ranker_hg import EncdecHg
 from mllm.model.mllm_encdec import MllmEncdecLevel
-from mllm.model.mllm_ranker import MllmRankerLevel, RankProbLoss
+from mllm.model.mllm_ranker import MllmRankerLevel
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config
 from mllm.train.utils import find_create_train_path, calc_print_batches
 
@@ -125,6 +126,12 @@ class ArgsRankerHgQrelsTrain(BaseModel):
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
+    pretrained_model_path: Optional[Path] = Field(
+        None,
+        required=False,
+        description='Path to pretrained EncdecHg model weights.',
+        cli=('--pretrained-model-path',),
+    )
 
 
 def main(args: ArgsRankerHgQrelsTrain) -> int:
@@ -133,6 +140,22 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     assert args.ds_dir_paths, '--ds-dir-paths is expected to list at least one Qrels datsaset'
 
     device = torch.device(args.device)
+
+    pretrained_model_path = args.pretrained_model_path / 'best.pth'
+    print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
+    pretrained_checkpoint = torch.load(pretrained_model_path)
+    model_encdec_hg_cfg_fpath = args.pretrained_model_path / ENCDEC_MODEL_CFG_FNAME
+    model_encdec_hg_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_hg_cfg_fpath)
+    model_encdec = EncdecHg(model_encdec_hg_cfg).to(device)
+    model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=True)
+
+
+    print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
+    model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
+    print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
+    model.encoder.load_state_dict(model_encdec.encoder.state_dict())
+    print(f'Load model weights for decoder:', list(model_encdec.decoder.state_dict().keys()))
+    model.decoder.load_state_dict(model_encdec.decoder.state_dict(), strict=False)
 
     tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
     model_cfg = parse_yaml_file_as(EncdecHgCfg, args.model_cfg_fpath)
@@ -183,20 +206,6 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
 
     model = MllmRankerLevel(model_cfg, args.model_level).to(device)
 
-    if args.pretrained_model_path is not None and checkpoint is None:
-        pretrained_model_path = args.pretrained_model_path / 'best.pth'
-        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
-        pretrained_checkpoint = torch.load(pretrained_model_path)
-        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_MODEL_CFG_FNAME
-        model_encdec_cfg = parse_yaml_file_as(MllmEncdecCfg, model_encdec_cfg_fpath)
-        model_encdec = MllmEncdecLevel(model_encdec_cfg, args.model_level).to(device)
-        model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
-        model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
-        print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
-        model.encoder.load_state_dict(model_encdec.encoder.state_dict())
-        print(f'Load model weights for decoder:', list(model_encdec.decoder.state_dict().keys()))
-        model.decoder.load_state_dict(model_encdec.decoder.state_dict(), strict=False)
 
     params = model.parameters()
     # params = [p for n, p in model.named_parameters()]

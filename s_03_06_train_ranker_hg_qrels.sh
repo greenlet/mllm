@@ -29,17 +29,17 @@ train_epoch_steps=20
 val_epoch_steps=20
 docs_batch_size=3
 max_chunks_per_doc=3
-pretrained_model_path=$train_encdec_root_path/encdec-lvl0-20241029_140645-wiki_20200501_en-ch_100_fixed-enc-lrs3-embmatFalse-d256-h8-dec-lrs3-seqlen100-d256-h8-vocdecTrue
+pretrained_model_path=$train_encdec_root_path/encdechg-20241209_215611-inp128-lrs7x1-rdc_avg-enh_mmbb-step2-d256-h8
 
 
-device=cuda
-epochs=300
-train_epoch_steps=500
-val_epoch_steps=50
-docs_batch_size=20
-max_chunks_per_doc=5
-pretrained_model_path=$train_encdec_root_path/encdec-lvl0-20241029_140645-wiki_20200501_en-ch_100_fixed-enc-lrs3-embmatFalse-d256-h8-dec-lrs3-seqlen100-d256-h8-vocdecTrue
-#train_subdir="last"
+#device=cuda
+#epochs=300
+#train_epoch_steps=500
+#val_epoch_steps=50
+#docs_batch_size=20
+#max_chunks_per_doc=5
+#pretrained_model_path=$train_encdec_root_path/encdechg-20241209_215611-inp128-lrs7x1-rdc_avg-enh_mmbb-step2-d256-h8
+##train_subdir="last"
 
 learning_rate=0.0001
 
