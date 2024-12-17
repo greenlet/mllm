@@ -14,7 +14,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import TokenizerCfg, MllmEncdecCfg, MllmRankerCfg, gen_prefpostfix_level, \
-    copy_override_encdec_hg_cfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType
+    copy_override_encdec_hg_cfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType, RankerHgCfg, gen_prefpostfix_ranker_hg
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME, RANKER_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg
@@ -126,12 +126,20 @@ class ArgsRankerHgQrelsTrain(BaseModel):
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
-    pretrained_model_path: Optional[Path] = Field(
+    pretrained_model_dpath: Optional[Path] = Field(
         None,
         required=False,
-        description='Path to pretrained EncdecHg model weights.',
+        description='Path to EncdecHg model train directory.',
         cli=('--pretrained-model-path',),
     )
+
+
+def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
+    prefix = f'rankerhg'
+    enc = model_cfg.enc_pyr
+    postfix = (f'inp{enc.inp_len}-lrs{enc.n_layers}x{enc.n_similar_layers}-rdc_{enc.reduct_type.value}'
+               f'-step{enc.step}-d{enc.d_model}-h{enc.n_heads}')
+    return prefix, postfix
 
 
 def main(args: ArgsRankerHgQrelsTrain) -> int:
@@ -144,29 +152,22 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     pretrained_model_path = args.pretrained_model_path / 'best.pth'
     print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
     pretrained_checkpoint = torch.load(pretrained_model_path)
-    model_encdec_hg_cfg_fpath = args.pretrained_model_path / ENCDEC_MODEL_CFG_FNAME
+    model_encdec_hg_cfg_fpath = args.pretrained_model_dpath / ENCDEC_MODEL_CFG_FNAME
     model_encdec_hg_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_hg_cfg_fpath)
+    tkz_cfg_fpath = args.pretrained_model_dpath / TOKENIZER_CFG_FNAME
+    tkz_cfg = parse_yaml_file_as(TokenizerCfg, tkz_cfg_fpath)
     model_encdec = EncdecHg(model_encdec_hg_cfg).to(device)
     model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=True)
-
-
-    print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
-    model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
-    print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
-    model.encoder.load_state_dict(model_encdec.encoder.state_dict())
-    print(f'Load model weights for decoder:', list(model_encdec.decoder.state_dict().keys()))
-    model.decoder.load_state_dict(model_encdec.decoder.state_dict(), strict=False)
-
-    tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
-    model_cfg = parse_yaml_file_as(EncdecHgCfg, args.model_cfg_fpath)
-    model_cfg = copy_override_encdec_hg_cfg(
-        model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
+    model_encdec_cfg = copy_override_encdec_hg_cfg(
+        model_encdec_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
         enhance_type=args.enhance_type, pos_enc_type=args.pos_enc_type,
     )
 
+    model_cfg = RankerHgCfg(enc_pyr=model_encdec_hg_cfg.enc_pyr)
+
     print(model_cfg)
 
-    prefix, suffix = gen_prefpostfix_level(model_cfg, args.model_level)
+    prefix, suffix = gen_prefpostfix_rnaker_hg(model_cfg, args.model_level)
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     suffix = f'{ds_names}-{suffix}'
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
@@ -185,8 +186,8 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
         chkpt_tkz_cfg = parse_yaml_file_as(TokenizerCfg, train_path / TOKENIZER_CFG_FNAME)
         chkpt_model_cfg = parse_yaml_file_as(MllmEncdecCfg, train_path / ENCDEC_MODEL_CFG_FNAME)
-        assert tkz_cfg == chkpt_tkz_cfg, f'{args.tokenizer_cfg_fpath} != {chkpt_tkz_cfg}'
-        assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
+        assert tkz_cfg == chkpt_tkz_cfg, f'{tkz_cfg} != {chkpt_tkz_cfg}'
+        assert model_cfg == chkpt_model_cfg, f'{model_cfg} != {chkpt_model_cfg}'
     else:
         to_yaml_file(train_path / TOKENIZER_CFG_FNAME, tkz_cfg)
         to_yaml_file(train_path / RANKER_MODEL_CFG_FNAME, model_cfg)
