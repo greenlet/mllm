@@ -53,3 +53,53 @@ def ranker_prob_loss_softmax(prob_pred: list[torch.Tensor], mask_gt: Union[torch
     loss = torch.mean(losses)
     return loss
 
+
+def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
+    tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
+    probs_pred = torch.softmax(logits_pred, dim=-1)
+    probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
+    loss = -torch.mean(torch.log(probs_gt))
+    return loss
+
+
+def encdec_prob_loss_sigmoid(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    device = logits_pred.device
+    tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
+    probs_pred = torch.sigmoid(logits_pred)
+    prob_cap = torch.tensor(1e-6, dtype=torch.float32, device=device)
+    probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
+    probs_gt = torch.maximum(probs_gt, prob_cap)
+    loss_gt = -torch.mean(torch.log(probs_gt))
+    loss_nongt = torch.tensor(0, dtype=torch.float32, device=device)
+    for i in range(probs_pred.shape[0]):
+        mask = torch.full((logits_pred.shape[-2], logits_pred.shape[-1],), True, device=device)
+        mask = mask.scatter(1, tokens_gt[i], 0)
+        probs_nongt = 1 - probs_pred[i][mask]
+        probs_nongt = torch.maximum(probs_nongt, prob_cap)
+        loss_nongt += -torch.mean(torch.log(probs_nongt))
+    loss_nongt = loss_nongt / logits_pred.shape[0]
+    loss = loss_gt + loss_nongt
+    return loss_gt, loss_nongt, loss
+
+
+class EncdecProbLossSigmoid(nn.Module):
+    def __init__(self, seq_len: int, n_tokens: int, device: torch.device):
+        super().__init__()
+        mask = torch.full((seq_len, n_tokens), True, device=device)
+        self.register_buffer('mask', mask)
+
+    def forward(self, logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
+        tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
+        probs_pred = torch.sigmoid(logits_pred)
+        probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
+        loss_gt = -torch.mean(torch.log(probs_gt))
+        loss_nongt = 0
+        for i in range(probs_pred.shape[0]):
+            self.mask.scatter_(1, tokens_gt[i], 0)
+            loss_nongt += -torch.mean(torch.log(1 - probs_pred[i][self.mask]))
+            self.mask.scatter_(1, tokens_gt[i], 1)
+        loss_nongt = loss_nongt / logits_pred.shape[0]
+        loss = loss_gt + loss_nongt
+        return loss
+
+

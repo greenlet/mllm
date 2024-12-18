@@ -39,7 +39,7 @@ epochs=500
 train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=20
-#train_subdir=last
+train_subdir=last
 
 learning_rate=0.0001
 #learning_rate=0.001
@@ -67,5 +67,4 @@ python s_03_05_train_encdec_hg.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps
 #"
-
 

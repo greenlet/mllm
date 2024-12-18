@@ -134,14 +134,6 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     )
 
 
-def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
-    prefix = f'rankerhg'
-    enc = model_cfg.enc_pyr
-    postfix = (f'inp{enc.inp_len}-lrs{enc.n_layers}x{enc.n_similar_layers}-rdc_{enc.reduct_type.value}'
-               f'-step{enc.step}-d{enc.d_model}-h{enc.n_heads}')
-    return prefix, postfix
-
-
 def main(args: ArgsRankerHgQrelsTrain) -> int:
     print(args)
 
@@ -149,7 +141,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
 
     device = torch.device(args.device)
 
-    pretrained_model_path = args.pretrained_model_path / 'best.pth'
+    pretrained_model_path = args.pretrained_model_dpath / 'best.pth'
     print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
     pretrained_checkpoint = torch.load(pretrained_model_path)
     model_encdec_hg_cfg_fpath = args.pretrained_model_dpath / ENCDEC_MODEL_CFG_FNAME
@@ -158,16 +150,15 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     tkz_cfg = parse_yaml_file_as(TokenizerCfg, tkz_cfg_fpath)
     model_encdec = EncdecHg(model_encdec_hg_cfg).to(device)
     model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=True)
-    model_encdec_cfg = copy_override_encdec_hg_cfg(
-        model_encdec_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
+    model_encdec_hg_cfg = copy_override_encdec_hg_cfg(
+        model_encdec_hg_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
         enhance_type=args.enhance_type, pos_enc_type=args.pos_enc_type,
     )
 
     model_cfg = RankerHgCfg(enc_pyr=model_encdec_hg_cfg.enc_pyr)
-
     print(model_cfg)
 
-    prefix, suffix = gen_prefpostfix_rnaker_hg(model_cfg, args.model_level)
+    prefix, suffix = gen_prefpostfix_ranker_hg(model_cfg)
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     suffix = f'{ds_names}-{suffix}'
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
@@ -193,6 +184,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         to_yaml_file(train_path / RANKER_MODEL_CFG_FNAME, model_cfg)
 
     tokenizer = tokenizer_from_config(tkz_cfg)
+
 
     tok_dict = tkz_cfg.custom_tokens
     ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)

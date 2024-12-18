@@ -312,7 +312,15 @@ def gen_prefpostfix_level(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_
 def gen_prefpostfix_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
     prefix = f'encdechg'
     enc, dec = model_cfg.enc_pyr, model_cfg.dec_pyr
-    postfix = (f'inp{enc.inp_len}-lrs{enc.n_layers}x{enc.n_similar_layers}-rdc_{enc.reduct_type.value}-enh_{dec.enhance_type.value}'
-               f'-step{enc.step}-d{enc.d_model}-h{enc.n_heads}')
+    postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{enc.n_layers}x{enc.n_similar_layers}-'
+               f'rdc_{enc.reduct_type.value}-enh_{dec.enhance_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}')
+    return prefix, postfix
+
+
+def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
+    prefix = f'rankerhg'
+    enc = model_cfg.enc_pyr
+    postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{enc.n_layers}x{enc.n_similar_layers}-'
+               f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}')
     return prefix, postfix
 

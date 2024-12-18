@@ -14,83 +14,11 @@ from transformers import GPT2Tokenizer
 
 from mllm.data.wiki.dswiki import WikiDsLoader
 from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME
-from mllm.train.utils import find_create_train_path
+from mllm.model.losses import encdec_prob_loss_softmax
+from mllm.train.utils import find_create_train_path, concat_tokens, remove_tokens
 from mllm.model.mllm_encdec import MllmEncdecLevel, encdec_embs_loss_cos
 from mllm.config.model import create_mllm_encdec_cfg, TokenizerCfg, MllmEncdecCfg, gen_prefpostfix_level
 from mllm.tokenization.chunk_tokenizer import calc_max_inp_size, gen_all_tokens, tokenizer_from_config
-
-
-def encdec_prob_loss_softmax(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
-    tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
-    probs_pred = torch.softmax(logits_pred, dim=-1)
-    probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
-    loss = -torch.mean(torch.log(probs_gt))
-    return loss
-
-
-def encdec_prob_loss_sigmoid(logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    device = logits_pred.device
-    tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
-    probs_pred = torch.sigmoid(logits_pred)
-    prob_cap = torch.tensor(1e-6, dtype=torch.float32, device=device)
-    probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
-    probs_gt = torch.maximum(probs_gt, prob_cap)
-    loss_gt = -torch.mean(torch.log(probs_gt))
-    loss_nongt = torch.tensor(0, dtype=torch.float32, device=device)
-    for i in range(probs_pred.shape[0]):
-        mask = torch.full((logits_pred.shape[-2], logits_pred.shape[-1],), True, device=device)
-        mask = mask.scatter(1, tokens_gt[i], 0)
-        probs_nongt = 1 - probs_pred[i][mask]
-        probs_nongt = torch.maximum(probs_nongt, prob_cap)
-        loss_nongt += -torch.mean(torch.log(probs_nongt))
-    loss_nongt = loss_nongt / logits_pred.shape[0]
-    loss = loss_gt + loss_nongt
-    return loss_gt, loss_nongt, loss
-
-
-class EncdecProbLossSigmoid(nn.Module):
-    def __init__(self, seq_len: int, n_tokens: int, device: torch.device):
-        super().__init__()
-        mask = torch.full((seq_len, n_tokens), True, device=device)
-        self.register_buffer('mask', mask)
-
-    def forward(self, logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
-        tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
-        probs_pred = torch.sigmoid(logits_pred)
-        probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
-        loss_gt = -torch.mean(torch.log(probs_gt))
-        loss_nongt = 0
-        for i in range(probs_pred.shape[0]):
-            self.mask.scatter_(1, tokens_gt[i], 0)
-            loss_nongt += -torch.mean(torch.log(1 - probs_pred[i][self.mask]))
-            self.mask.scatter_(1, tokens_gt[i], 1)
-        loss_nongt = loss_nongt / logits_pred.shape[0]
-        loss = loss_gt + loss_nongt
-        return loss
-
-
-def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
-    if shuffle:
-        chunks = list(chunks)
-        np.random.shuffle(chunks)
-    return torch.concat(chunks, dim=0)
-
-
-# chunks: input token chunks of the shape [n_docs x n_tokens_per_doc]
-def remove_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, rem_conseq_ratio: float = 0.3) -> torch.Tensor:
-    res = chunks.clone()
-    rv = np.random.rand()
-    if rv < 1 / 3:
-        p = rem_ratio
-        mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
-        res[mask.bool()] = mask_tok
-    elif rv < 2 / 3:
-        n = chunks.shape[-1]
-        n_rem = int(n * rem_conseq_ratio)
-        n_rem = np.random.randint(1, n_rem)
-        i = np.random.randint(n - n_rem + 1)
-        res[:, i:i + n_rem] = mask_tok
-    return res
 
 
 def main(args: ArgsTokensChunksTrain) -> int:

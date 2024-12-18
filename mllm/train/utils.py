@@ -9,7 +9,7 @@ import torch
 from mllm.data.common import DsView, TDs, TBatch
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
 
-SUBDIR_PAT_STR = re.compile(r'^[\w-]+?\-(%s)-.+$' % DT_PAT_RE)
+SUBDIR_PAT_STR = re.compile(r'^[\w-]*?-(%s)-.*$' % DT_PAT_RE)
 SUBDIR_PAT = re.compile(SUBDIR_PAT_STR)
 DT_PAT = re.compile(DT_PAT_RE)
 
@@ -55,14 +55,17 @@ def find_last_train_subdir(train_root_path: Path, prefix: Optional[str] = None, 
             continue
         subdir = subpath.name
         if prefix:
+            # print(subdir, subdir.startswith(prefix))
             if not subdir.startswith(prefix):
                 continue
             subdir = subdir[len(prefix):]
         if postfix:
+            # print(subdir, subdir.endswith(prefix))
             if not subpath.name.endswith(postfix):
                 continue
             subdir = subdir[:-len(postfix)]
         assert subdir, f'prefix: {prefix}. postfix: {postfix}. subdir: {subpath.name}'
+        print(subdir)
         m = SUBDIR_PAT.match(subdir)
         if not m:
             continue
@@ -110,4 +113,50 @@ def calc_print_batches(view_train: DsView[TDs, TBatch], view_val: DsView[TDs, TB
     print(f'Batches train: {n_batches_train}')
     print(f'Batches val: {n_batches_val}')
     return n_batches_train, n_batches_val
+
+
+def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
+    if shuffle:
+        chunks = list(chunks)
+        np.random.shuffle(chunks)
+    return torch.concat(chunks, dim=0)
+
+
+# chunks: input token chunks of the shape [n_docs x n_tokens_per_doc]
+def remove_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, rem_conseq_ratio: float = 0.3) -> torch.Tensor:
+    res = chunks.clone()
+    rv = np.random.rand()
+    if rv < 1 / 3:
+        p = rem_ratio
+        mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
+        res[mask.bool()] = mask_tok
+    elif rv < 2 / 3:
+        n = chunks.shape[-1]
+        n_rem = int(n * rem_conseq_ratio)
+        n_rem = np.random.randint(1, n_rem)
+        i = np.random.randint(n - n_rem + 1)
+        res[:, i:i + n_rem] = mask_tok
+    return res
+
+
+def calc_params_grads_stats(params: torch.nn.Parameter) -> tuple[tuple[float, float], Optional[tuple[float, float]]]:
+    gres = None
+    pres = params.mean().detach().cpu().item(), params.std().detach().cpu().item()
+    if params.grad is not None:
+        gres = params.grad.mean().detach().cpu().item(), params.grad.std().detach().cpu().item()
+    return pres, gres
+
+
+def log_weights_grads_stats(step: int, model: torch.nn.Module, tbsw: tb.SummaryWriter):
+    for i, (pname, params) in enumerate(model.named_parameters()):
+        pname = f'{i:02d}-{pname}'
+        pms, gms = calc_params_grads_stats(params)
+        # print(pname, pms, gms)
+        weight_mean, weight_std = pms
+        tbsw.add_scalar(f'{pname}/WeightMean', weight_mean, step)
+        tbsw.add_scalar(f'{pname}/WeightStd', weight_std, step)
+        if gms is not None:
+            grad_mean, grad_std = gms
+            tbsw.add_scalar(f'{pname}/GradMean', grad_mean, step)
+            tbsw.add_scalar(f'{pname}/GradStd', grad_std, step)
 
