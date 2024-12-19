@@ -187,17 +187,17 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
 
 
     tok_dict = tkz_cfg.custom_tokens
-    ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)
+    ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.inp_len, fixed_size=True)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
 
-    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.emb_chunk_size, device)
+    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.inp_len, device)
     print(ds)
 
     print(f'Creating model with vocab size = {len(tokenizer)}')
 
     torch.autograd.set_detect_anomaly(True)
 
-    model = MllmRankerLevel(model_cfg, args.model_level).to(device)
+    model = MllmRankerHg(model_cfg, args.model_level).to(device)
 
 
     params = model.parameters()

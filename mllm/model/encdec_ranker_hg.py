@@ -8,7 +8,7 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
-from mllm.config.model import EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType
+from mllm.config.model import EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
 
@@ -353,4 +353,19 @@ class EncdecHg(nn.Module):
         return out
 
 
+class RankerHg(nn.Module):
+    cfg: RankerHgCfg
+    enc_pyr: EncoderPyramid
+
+    def __init__(self, cfg: RankerHgCfg):
+        super().__init__()
+        self.cfg = cfg
+        self.enc_pyr = EncoderPyramid(cfg.enc_pyr)
+
+    def forward(self, inp: Tensor, enc_only: bool = False) -> Tensor:
+        out = inp
+        out = self.enc_pyr(out)
+        if not enc_only:
+            out = self.dec_pyr(out)
+        return out
 

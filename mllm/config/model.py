@@ -1,7 +1,7 @@
 import math
 from enum import Enum
 from pathlib import Path
-from typing import TypeVar, Union
+from typing import TypeVar, Union, Optional
 
 from pydantic import BaseModel
 from torchtext.datasets import dataset_module
@@ -218,8 +218,31 @@ class EncdecHgCfg(BaseModel):
     dec_pyr: DecPyrCfg
 
 
+class DecRankType(str, Enum):
+    Simple = 'smp'
+    Trans = 'trn'
+
+
+class DecRankSimpleCfg(BaseModel):
+    d_model: int
+
+
+class DecRankTransCfg(BaseModel):
+    n_layers: int
+    n_heads: int
+    d_k: int
+    d_v: int
+    d_model: int
+    d_inner: int
+    inp_len: int
+    dropout_rate: float
+
+
 class RankerHgCfg(BaseModel):
     enc_pyr: EncPyrCfg
+    dec_type: DecRankType
+    dec_simple: Optional[DecRankSimpleCfg] = None
+    dec_trans: Optional[DecRankTransCfg] = None
 
 
 def create_encdec_hg_cfg(
@@ -243,6 +266,28 @@ def create_encdec_hg_cfg(
         n_similar_layers=n_similar_layers, enhance_type=enhance_type,
     )
     cfg_encdec_hg = EncdecHgCfg(enc_pyr=cfg_enc_pyr, dec_pyr=cfg_dec_pyr)
+    return cfg_encdec_hg
+
+
+def create_ranker_hg_cfg(
+        enc_pyr: EncPyrCfg, dec_type: DecRankType, dec_n_layers: Optional[int] = None, dec_dropout_rate: Optional[float] = None,
+        ) -> RankerHgCfg:
+    dec_simple: Optional[DecRankSimpleCfg] = None
+    dec_trans: Optional[DecRankTransCfg] = None
+    if dec_type == DecRankType.Simple:
+        dec_simple = DecRankSimpleCfg(d_model=enc_pyr.d_model)
+    elif dec_type == DecRankType.Trans:
+        if dec_n_layers is None:
+            dec_n_layers = enc_pyr.n_layers
+        if dec_dropout_rate is None:
+            dec_dropout_rate = enc_pyr.dropout_rate
+        dec_trans = DecRankTransCfg(
+            n_layers=dec_n_layers, n_heads=enc_pyr.n_heads, d_k=enc_pyr.d_k, d_v=enc_pyr.d_v, d_model=enc_pyr.d_model,
+            d_inner=enc_pyr.d_inner, dec_dropout_rate=dec_dropout_rate,
+        )
+    else:
+        raise f'Unsupported Ranker Decoder type: {dec_type}'
+    cfg_encdec_hg = RankerHgCfg(enc_pyr=enc_pyr, dec_type=dec_type, dec_simple=dec_simple, dec_trans=dec_trans)
     return cfg_encdec_hg
 
 
