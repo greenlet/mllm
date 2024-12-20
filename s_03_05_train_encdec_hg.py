@@ -56,7 +56,7 @@ class ArgsEncdecHgTrain(BaseModel):
     model_cfg_fpath: Path = Field(
         ...,
         required=True,
-        description='Path to ranker model config Yaml file.',
+        description='Path to EncdecHg model config Yaml file.',
         cli=('--model-cfg-fpath',),
     )
     inp_len: int = Field(

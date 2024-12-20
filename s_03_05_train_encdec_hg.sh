@@ -25,7 +25,7 @@ reduct_type=avg
 #enhance_type=matmul
 enhance_type=mmbeg
 #enhance_type=mmbb
-pos_enc_type=num
+#pos_enc_type=num
 pos_enc_type=emb
 
 #device=cpu

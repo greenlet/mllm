@@ -46,16 +46,16 @@ class ArgsRankerHgQrelsTrain(BaseModel):
             'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
         cli=('--train-subdir',)
     )
-    encdec_hg_train_path: Path = Field(
+    tokenizer_cfg_fpath: Path = Field(
         ...,
         required=True,
-        description='Path to directory with EncdecHg trained models.',
-        cli=('--encdec-hg-train-path',),
+        description='Path to tokenizer config Yaml file.',
+        cli=('--tokenizer-cfg-fpath',),
     )
     model_cfg_fpath: Path = Field(
         ...,
         required=True,
-        description='Path to ranker model config Yaml file.',
+        description='Path to RankerHg model config Yaml file.',
         cli=('--model-cfg-fpath',),
     )
     inp_len: int = Field(
@@ -126,7 +126,7 @@ class ArgsRankerHgQrelsTrain(BaseModel):
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
-    pretrained_model_dpath: Optional[Path] = Field(
+    pretrained_model_path: Optional[Path] = Field(
         None,
         required=False,
         description='Path to EncdecHg model train directory.',
