@@ -5,6 +5,7 @@ from typing import Optional
 
 import numpy as np
 import torch
+import torch.utils.tensorboard as tb
 
 from mllm.data.common import DsView, TDs, TBatch
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str

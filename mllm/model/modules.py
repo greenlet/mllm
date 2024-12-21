@@ -442,8 +442,8 @@ class DecoderRankSimple(nn.Module):
         ranks = torch.max(ranks, 1)[0]
 
         # (batch_size, docs_chunks_len)
-        # ranks_prob = torch.sigmoid(ranks)
-        ranks_prob = torch.softmax(ranks, dim=-1)
+        ranks_prob = torch.sigmoid(ranks)
+        # ranks_prob = torch.softmax(ranks, dim=-1)
 
         return ranks_prob
 

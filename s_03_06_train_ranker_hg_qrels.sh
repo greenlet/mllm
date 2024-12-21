@@ -22,7 +22,9 @@ enhance_type=mmbeg
 #enhance_type=mmbb
 #pos_enc_type=num
 pos_enc_type=emb
-
+dec_type=smp
+dec_n_layers=-1
+dec_dropout_rate=-1
 
 device=cpu
 epochs=5
@@ -45,7 +47,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_03_04_train_ranker_qrels.py \
+python s_03_06_train_ranker_hg_qrels.py \
   --ds-dir-paths $msmarco_data_path $fever_data_path \
   --train-root-path $train_ranker_root_path \
   --train-subdir "$train_subdir" \
@@ -56,6 +58,9 @@ python s_03_04_train_ranker_qrels.py \
   --reduct-type $reduct_type \
   --enhance-type $enhance_type \
   --pos-enc-type $pos_enc_type \
+  --dec-type $dec_type \
+  --dec-n-layers $dec_n_layers \
+  --dec-dropout-rate $dec_dropout_rate \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

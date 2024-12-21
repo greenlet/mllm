@@ -3,6 +3,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TypeVar, Union, Optional
 
+from jsonschema.validators import create
 from pydantic import BaseModel
 from torchtext.datasets import dataset_module
 
@@ -270,24 +271,38 @@ def create_encdec_hg_cfg(
 
 
 def create_ranker_hg_cfg(
-        enc_pyr: EncPyrCfg, dec_type: DecRankType, dec_n_layers: Optional[int] = None, dec_dropout_rate: Optional[float] = None,
+        n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
+        step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
+        pos_enc_type: PosEncType = PosEncType.Num, dec_type: DecRankType = DecRankType.Simple, dec_n_layers: int = -1, dec_dropout_rate: float = - 1,
         ) -> RankerHgCfg:
-    dec_simple: Optional[DecRankSimpleCfg] = None
-    dec_trans: Optional[DecRankTransCfg] = None
+    d_word_vec = d_model
+    d_k = d_v = d_model // n_heads
+    n_layers = math.ceil(math.log(inp_len, step))
+    cfg_vocab_enc = VocabEncoderCfg(
+        n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
+        pos_enc_type=pos_enc_type,
+    )
+    cfg_enc_pyr = EncPyrCfg(
+        vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
+        n_similar_layers=n_similar_layers, reduct_type=reduct_type,
+    )
+
+    cfg_dec_simple: Optional[DecRankSimpleCfg] = None
+    cfg_dec_trans: Optional[DecRankTransCfg] = None
     if dec_type == DecRankType.Simple:
-        dec_simple = DecRankSimpleCfg(d_model=enc_pyr.d_model)
+        cfg_dec_simple = DecRankSimpleCfg(d_model=d_model)
     elif dec_type == DecRankType.Trans:
-        if dec_n_layers is None:
-            dec_n_layers = enc_pyr.n_layers
-        if dec_dropout_rate is None:
-            dec_dropout_rate = enc_pyr.dropout_rate
-        dec_trans = DecRankTransCfg(
-            n_layers=dec_n_layers, n_heads=enc_pyr.n_heads, d_k=enc_pyr.d_k, d_v=enc_pyr.d_v, d_model=enc_pyr.d_model,
-            d_inner=enc_pyr.d_inner, dec_dropout_rate=dec_dropout_rate,
+        if dec_n_layers < 0:
+            dec_n_layers = n_layers
+        if dec_dropout_rate < 0:
+            dec_dropout_rate = dropout_rate
+        cfg_dec_trans = DecRankTransCfg(
+            n_layers=dec_n_layers, n_heads=n_heads, d_k=d_k, d_v=d_v, d_model=d_model,
+            d_inner=d_inner, dec_dropout_rate=dec_dropout_rate,
         )
     else:
         raise f'Unsupported Ranker Decoder type: {dec_type}'
-    cfg_encdec_hg = RankerHgCfg(enc_pyr=enc_pyr, dec_type=dec_type, dec_simple=dec_simple, dec_trans=dec_trans)
+    cfg_encdec_hg = RankerHgCfg(enc_pyr=cfg_enc_pyr, dec_type=dec_type, dec_simple=cfg_dec_simple, dec_trans=cfg_dec_trans)
     return cfg_encdec_hg
 
 
@@ -334,6 +349,34 @@ def copy_override_encdec_hg_cfg(
     return cfg
 
 
+def copy_override_ranker_hg_cfg(
+        cfg: RankerHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
+        pos_enc_type: PosEncType = PosEncType.Num, dec_type: DecRankType = DecRankType.Simple,
+        dec_n_layers: int = -1, dec_dropout_rate: float = - 1,
+        ) -> RankerHgCfg:
+    n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
+    pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
+    d_model = cfg.enc_pyr.d_model
+    n_heads = cfg.enc_pyr.n_heads
+    d_inner = cfg.enc_pyr.d_inner
+    step = cfg.enc_pyr.step
+    dropout_rate = cfg.enc_pyr.dropout_rate
+
+    if 0 < inp_len != cfg.enc_pyr.inp_len:
+        assert inp_len & (inp_len - 1) == 0, f'inp_len = {inp_len} is not power of 2'
+    else:
+        inp_len = cfg.enc_pyr.inp_len
+
+    if n_similar_layers != cfg.enc_pyr.n_similar_layers:
+        assert n_similar_layers > 0, f'n_similar_layers = {n_similar_layers}, but must be > 0'
+
+    return create_ranker_hg_cfg(
+        n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
+        dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type,
+        pos_enc_type=pos_enc_type, dec_type=dec_type, dec_n_layers=dec_n_layers, dec_dropout_rate=dec_dropout_rate,
+    )
+
+
 def gen_prefpostfix_level(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_level: int) -> tuple[str, str]:
     enc_cfg, dec_cfg = model_cfg.encoders[model_level], model_cfg.decoders[model_level]
     enc_str = f'enc-lrs{enc_cfg.n_layers}-embmat{enc_cfg.with_emb_mat}-d{enc_cfg.d_model}-h{enc_cfg.n_heads}'
@@ -354,7 +397,7 @@ def gen_prefpostfix_level(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_
     return prefix, postfix
 
 
-def gen_prefpostfix_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
+def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
     prefix = f'encdechg'
     enc, dec = model_cfg.enc_pyr, model_cfg.dec_pyr
     postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{enc.n_layers}x{enc.n_similar_layers}-'
@@ -366,6 +409,9 @@ def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
     prefix = f'rankerhg'
     enc = model_cfg.enc_pyr
     postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{enc.n_layers}x{enc.n_similar_layers}-'
-               f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}')
+               f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-dec_{model_cfg.dec_type}')
+    if model_cfg.dec_type == DecRankType.Trans:
+        dec = model_cfg.dec_trans
+        postfix = f'{postfix}-dlrs{dec.n_layers}'
     return prefix, postfix
 

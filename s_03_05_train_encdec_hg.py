@@ -12,7 +12,7 @@ from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg_cfg, gen_prefpostfix_hg, HgReductType, \
+from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg_cfg, gen_prefpostfix_encdec_hg, HgReductType, \
     HgEnhanceType, PosEncType
 from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg
@@ -142,7 +142,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
         enhance_type=args.enhance_type, pos_enc_type=args.pos_enc_type,
     )
 
-    prefix, suffix = gen_prefpostfix_hg(model_cfg)
+    prefix, suffix = gen_prefpostfix_encdec_hg(model_cfg)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
