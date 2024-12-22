@@ -18,7 +18,7 @@ from mllm.config.model import TokenizerCfg, MllmEncdecCfg, MllmRankerCfg, gen_pr
     gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg, DecRankType
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME, RANKER_MODEL_CFG_FNAME
-from mllm.model.encdec_ranker_hg import EncdecHg
+from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.model.mllm_ranker import MllmRankerLevel
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config
@@ -161,18 +161,16 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     assert args.ds_dir_paths, '--ds-dir-paths is expected to list at least one Qrels datsaset'
 
     device = torch.device(args.device)
-    import sys
-    sys.exit(0)
 
     tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
     model_cfg = parse_yaml_file_as(RankerHgCfg, args.model_cfg_fpath)
     model_cfg = copy_override_ranker_hg_cfg(
         model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
-        pos_enc_type=args.pos_enc_type, dec_type=args.de
+        pos_enc_type=args.pos_enc_type, dec_type=args.dec_type, dec_n_layers=args.dec_n_layers, dec_dropout_rate=args.dec_dropout_rate,
     )
     print(model_cfg)
 
-    prefix, suffix = gen_prefpostfix_level(model_cfg, args.model_level)
+    prefix, suffix = gen_prefpostfix_ranker_hg(model_cfg)
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     suffix = f'{ds_names}-{suffix}'
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
@@ -190,7 +188,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
         chkpt_tkz_cfg = parse_yaml_file_as(TokenizerCfg, train_path / TOKENIZER_CFG_FNAME)
-        chkpt_model_cfg = parse_yaml_file_as(MllmEncdecCfg, train_path / ENCDEC_MODEL_CFG_FNAME)
+        chkpt_model_cfg = parse_yaml_file_as(RankerHgCfg, train_path / RANKER_MODEL_CFG_FNAME)
         assert tkz_cfg == chkpt_tkz_cfg, f'{args.tokenizer_cfg_fpath} != {chkpt_tkz_cfg}'
         assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
@@ -198,27 +196,25 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         to_yaml_file(train_path / RANKER_MODEL_CFG_FNAME, model_cfg)
 
     tokenizer = tokenizer_from_config(tkz_cfg)
-
     tok_dict = tkz_cfg.custom_tokens
     ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
-
-    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.emb_chunk_size, device)
+    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.inp_len, device)
     print(ds)
 
     print(f'Creating model with vocab size = {len(tokenizer)}')
 
     torch.autograd.set_detect_anomaly(True)
 
-    model = MllmRankerLevel(model_cfg, args.model_level).to(device)
+    model = RankerHg(model_cfg).to(device)
 
     if args.pretrained_model_path is not None and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
         model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_MODEL_CFG_FNAME
-        model_encdec_cfg = parse_yaml_file_as(MllmEncdecCfg, model_encdec_cfg_fpath)
-        model_encdec = MllmEncdecLevel(model_encdec_cfg, args.model_level).to(device)
+        model_encdec_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_cfg_fpath)
+        model_encdec = EncdecHg(model_encdec_cfg).to(device)
         model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
         print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
         model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())

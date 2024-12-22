@@ -75,3 +75,25 @@ Query processing:
 2. Memory mechanism allows to attend any token in a database with log(N) time complexity, where N - size of document database.
 3. The memory is easily expandable.
 4. Any part of the memory can be removed completely or masked out temporary.
+
+
+## Experiments
+### Encoder-Decoder convergence
+Input tokens: 128. d_model=512.
+![Encoder-Decoder with inp_len=128, d_model=512](imgs/img08_encdec_convergence.png)
+Input texts example:
+```
+000 "Yangliuqing" Yangliuqing () is a market town in Xiqing District, in the western suburbs of Tianjin, People's Republic of China. Despite its relatively small size, it has been named since 2006 in the "famous historical and cultural market towns in China".\n\nIt is best known in China for creating nianhua or Yangl
+001 "Orana Australia Ltd" Orana Australia Ltd is a not-for-profit organisation that provides a diverse range of training and support services to over 650 people with disabilities and their families in South Australia.\n\nHistory\nThe Mentally Retarded Children’s Society of SA Inc. was established in 1950 by a group of parent
+002 "St. Mary's Church, Sønderborg" The St. Mary's Church is a church owned by the Church of Denmark in Sønderborg, Denmark and the church of the parish with the same name. Thanks to its location on a hill, the church building is very iconic for the city.\n\nHistory \nIn the Middle Ages there was a leper colony on a hill just outside 
+003 "Kalitta" Kalitta may refer to:\n\nConnie Kalitta (born 1938), a retired American drag racer and CEO of the eponymous Kallita Air.\nDoug Kalitta (born 1964), an American drag racer, nephew of Connie Kalitta and owner of Kalitta Charters.\nScott Kalitta (1962-2008), an American drag racer and son of Connie Kal
+004 "Where Is Freedom?" Where Is Freedom? () is a 1954 Italian comedy-drama film directed by Roberto Rossellini. \n \nThe film had a troubled production because, after shooting some scenes, Rossellini lost interest in the film and abandoned the set. The work was completed after about a year, mainly from Mario Monicelli, wi
+```
+Encdec output:
+```
+000 qliuqing Yangliuqing () is a market mall in Fengqing District, in the western suburbs of Tianjin, People's Republic of China. Despite its relatively very size, it has been named since 2006 in the "most historical and cultural cultural market in China".\n\nIt is best known in China in Chinese nian culture or qinguqing nyhua.
+001  Fareana Australia Australia Orana Australia ) is a not-for-profit organisation that provides a diverse range of training and support people to provide 650 people with disabilities and their families in South Australia.\n\nHistory\nThe Retally Retarded Society’s Society of SA Inc. was established in 1985 by a group of parents
+002 St. Mary's Church, Sønderborg The St. Mary's Church is a church owned by the Church of Denmark in Sønderborg, Denmark and the church of the parish with the same name. Similar to its location on a hill, the church building is very alternative for the city.\n\nHistory \nIn the Middle Ages there was a leper parish on a hill just outside
+003 Kalitta Kalitta may refer to:\n\nOlitta Kalitta (born 1929), a retired American drag racer and CEO of the eponymous Kallitta Medal.\nDoug Kalitta (born 1934), American American cargo racer, nephew of Felix Kalitta and owner of Kalitta Charters.\nScott Kalitta (1962-1973), an American aircraft racer and son of Felix Kalitta.
+004  Answer Is Victory? Where Is Right?? is a 1954 Italian comedy-drama film directed by Roberto Rossellini. \n \nThe film had a troubled production due, after many some scenes, Rossellini lost interest in the film and abandoned the set. The work was completed after about a year, mainly by Mario Malicelli, with some scenes
+```

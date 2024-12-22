@@ -31,23 +31,6 @@ def gen_train_subdir(prefix: Optional[str], postfix: Optional[str]) -> str:
     return subdir
 
 
-def find_last_train_subdir_old(train_root_path: Path) -> Optional[Path]:
-    dt_last: Optional[datetime] = None
-    subdir_last: Optional[str] = None
-    for subpath in train_root_path.iterdir():
-        if not subpath.is_dir():
-            continue
-        m = SUBDIR_PAT.match(subpath.name)
-        dt_cur = parse_dt_str(m.group(1))
-        if dt_cur is None:
-            continue
-        if dt_last is None or dt_cur > dt_last:
-            dt_last = dt_cur
-            subdir_last = subpath.name
-    if subdir_last is not None:
-        return train_root_path / subdir_last
-
-
 def find_last_train_subdir(train_root_path: Path, prefix: Optional[str] = None, postfix: Optional[str] = None) -> Optional[Path]:
     dt_last: Optional[datetime] = None
     subdir_last: Optional[str] = None
@@ -61,8 +44,8 @@ def find_last_train_subdir(train_root_path: Path, prefix: Optional[str] = None, 
                 continue
             subdir = subdir[len(prefix):]
         if postfix:
-            # print(subdir, subdir.endswith(prefix))
-            if not subpath.name.endswith(postfix):
+            # print(subdir, subdir.endswith(postfix), postfix)
+            if not subdir.endswith(postfix):
                 continue
             subdir = subdir[:-len(postfix)]
         assert subdir, f'prefix: {prefix}. postfix: {postfix}. subdir: {subpath.name}'
