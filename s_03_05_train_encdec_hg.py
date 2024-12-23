@@ -18,7 +18,7 @@ from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg
 from mllm.model.losses import encdec_prob_loss_softmax
 from mllm.tokenization.chunk_tokenizer import tokenizer_from_config
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, remove_tokens
 
 
 class ArgsEncdecHgTrain(BaseModel):
@@ -129,6 +129,21 @@ class ArgsEncdecHgTrain(BaseModel):
     )
 
 
+def mask_random_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, rem_conseq_ratio: float = 0.3) -> torch.Tensor:
+    res = chunks.clone()
+    rv = np.random.rand()
+    if rv < 1 / 5:
+        p = rem_ratio
+        mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
+        res[mask.bool()] = mask_tok
+    elif rv < 2 / 5:
+        n = chunks.shape[-1]
+        n_rem = int(n * rem_conseq_ratio)
+        n_rem = np.random.randint(1, n_rem)
+        i = np.random.randint(n - n_rem + 1)
+        res[:, i:i + n_rem] = mask_tok
+    return res
+
 
 def main(args: ArgsEncdecHgTrain) -> int:
     print(args)
@@ -206,7 +221,11 @@ def main(args: ArgsEncdecHgTrain) -> int:
         for i, doc_ind in enumerate(doc_inds):
             doc = ds[doc_ind]
             title, text = doc['title'], doc['text']
-            doc_txt = f'{title} {text}'
+            if np.random.rand() < 1 / 2:
+                doc_txt = title
+            else:
+                doc_txt = text
+            # doc_txt = f'{title} {text}'
             doc_toks = tkz(doc_txt)['input_ids']
             n_toks = len(doc_toks)
             if n_toks > args.inp_len:
@@ -245,11 +264,11 @@ def main(args: ArgsEncdecHgTrain) -> int:
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             tokens_inp, i_train = get_batch(doc_inds_train, i_train)
-            # tokens_inp = remove_tokens(tokens_inp, mask_tok, input_zeros_ratio)
+            tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
 
             optimizer.zero_grad()
 
-            out_logits = model(tokens_inp)
+            out_logits = model(tokens_inp_aug)
             loss = loss_fn(out_logits, tokens_inp)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
@@ -285,6 +304,9 @@ def main(args: ArgsEncdecHgTrain) -> int:
             tbsw.add_scalar('LossNongt/Train', train_loss_nongt, epoch)
 
         model.eval()
+        if device.type == 'cuda':
+            torch.cuda.empty_cache()
+        
         val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:

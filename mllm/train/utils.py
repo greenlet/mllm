@@ -106,7 +106,7 @@ def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
     return torch.concat(chunks, dim=0)
 
 
-# chunks: input token chunks of the shape [n_docs x n_tokens_per_doc]
+# chunks: input token chunks of the shape [n_docs, n_tokens_per_doc]
 def remove_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, rem_conseq_ratio: float = 0.3) -> torch.Tensor:
     res = chunks.clone()
     rv = np.random.rand()
