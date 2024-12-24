@@ -16,9 +16,11 @@ from tqdm import trange
 from mllm.config.model import TokenizerCfg, MllmEncdecCfg, MllmRankerCfg, gen_prefpostfix_level, \
     copy_override_encdec_hg_cfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType, RankerHgCfg, \
     gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg, DecRankType
+from mllm.data.dsqrels import QrelsPlainBatch
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME, RANKER_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg
+from mllm.model.losses import RankProbLoss
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.model.mllm_ranker import MllmRankerLevel
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config
@@ -216,12 +218,8 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         model_encdec_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_cfg_fpath)
         model_encdec = EncdecHg(model_encdec_cfg).to(device)
         model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        print(f'Load model weights for vocab_encoder:', list(model_encdec.vocab_encoder.state_dict().keys()))
-        model.vocab_encoder.load_state_dict(model_encdec.vocab_encoder.state_dict())
-        print(f'Load model weights for encoder:', list(model_encdec.encoder.state_dict().keys()))
-        model.encoder.load_state_dict(model_encdec.encoder.state_dict())
-        print(f'Load model weights for decoder:', list(model_encdec.decoder.state_dict().keys()))
-        model.decoder.load_state_dict(model_encdec.decoder.state_dict(), strict=False)
+        print(f'Load model weights for enc_pyr:', list(model_encdec.enc_pyr.state_dict().keys()))
+        model.enc_pyr.load_state_dict(model_encdec.enc_pyr.state_dict())
 
     params = model.parameters()
     # params = [p for n, p in model.named_parameters()]
@@ -232,7 +230,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=10, threshold=1e-6, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    ds_view = ds.get_view(batch_size=args.docs_batch_size)
+    ds_view = ds.get_view_plain_qids(batch_size=args.docs_batch_size)
     ds_view.shuffle()
     view_train, view_val = ds_view.split((-1, 0.05))
 
@@ -263,13 +261,12 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     model.eval()
     loss_tgt, loss_nontgt = None, None
     for epoch in range(last_epoch + 1, args.epochs):
-        # model.train()
-        model.decoder.train()
+        model.dec.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = next(train_batch_it)
-            docs_chunks, qs_chunks = batch.gen_tensors()
+            batch: QrelsPlainBatch = next(train_batch_it)
+            qs_toks, qs_masks, docs_toks, docs_masks, qrels_masks = batch.gen_tensors()
 
             optimizer.zero_grad()
             out_rank, target_mask = model.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
@@ -308,7 +305,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         val_loss, val_loss_tgt, val_loss_nontgt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch = next(val_batch_it)
+            batch: QrelsPlainBatch = next(val_batch_it)
             docs_chunks, qs_chunks = batch.gen_tensors()
 
             out_rank, target_mask = model.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)

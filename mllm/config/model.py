@@ -219,31 +219,14 @@ class EncdecHgCfg(BaseModel):
     dec_pyr: DecPyrCfg
 
 
-class DecRankType(str, Enum):
-    Simple = 'smp'
-    Trans = 'trn'
-
-
-class DecRankSimpleCfg(BaseModel):
+class DecRankHgCfg(BaseModel):
     d_model: int
-
-
-class DecRankTransCfg(BaseModel):
-    n_layers: int
-    n_heads: int
-    d_k: int
-    d_v: int
-    d_model: int
-    d_inner: int
-    inp_len: int
-    dropout_rate: float
+    with_bias: bool
 
 
 class RankerHgCfg(BaseModel):
     enc_pyr: EncPyrCfg
-    dec_type: DecRankType
-    dec_simple: Optional[DecRankSimpleCfg] = None
-    dec_trans: Optional[DecRankTransCfg] = None
+    dec_rank: DecRankHgCfg
 
 
 def create_encdec_hg_cfg(
@@ -273,7 +256,7 @@ def create_encdec_hg_cfg(
 def create_ranker_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        pos_enc_type: PosEncType = PosEncType.Num, dec_type: DecRankType = DecRankType.Simple, dec_n_layers: int = -1, dec_dropout_rate: float = - 1,
+        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False,
         ) -> RankerHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
@@ -351,7 +334,7 @@ def copy_override_encdec_hg_cfg(
 
 def copy_override_ranker_hg_cfg(
         cfg: RankerHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        pos_enc_type: PosEncType = PosEncType.Num, dec_type: DecRankType = DecRankType.Simple,
+        pos_enc_type: PosEncType = PosEncType.Num,
         dec_n_layers: int = -1, dec_dropout_rate: float = - 1,
         ) -> RankerHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab

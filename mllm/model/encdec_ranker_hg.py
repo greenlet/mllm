@@ -353,6 +353,30 @@ class EncdecHg(nn.Module):
         return out
 
 
+class DecoderRankHg(nn.Module):
+    d_model: int
+    with_bias: bool
+
+    def __init__(self, d_model: int, with_bias: bool):
+        super().__init__()
+        self.d_model = d_model
+        self.with_bias = with_bias
+        self.w = nn.Linear(d_model, d_model, bias=with_bias)
+        self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
+
+    # embs_batch: (batch_size, inp_len, d_model)
+    def forward(self, embs_batch: Tensor) -> Tensor:
+        # docs_chunks = self.layer_norm(docs_chunks)
+        # query_chunks = self.layer_norm(query_chunks)
+        # docs_chunks = docs_chunks / docs_chunks.norm(dim=-1, keepdim=True)
+        # query_chunks = query_chunks / query_chunks.norm(dim=-1, keepdim=True)
+
+        # (batch_size, inp_len, d_model)
+        embs_batch = self.w(embs_batch)
+
+        return embs_batch
+
+
 class RankerHg(nn.Module):
     cfg: RankerHgCfg
     enc_pyr: EncoderPyramid
@@ -361,11 +385,14 @@ class RankerHg(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.enc_pyr = EncoderPyramid(cfg.enc_pyr)
+        if self.cfg.dec_type == DecRankType.Simple:
+            self.dec_rank = DecoderRankSimple(**self.cfg.dec_simple.dict())
+        else:
+            self.dec_rank = DecoderRankTrans(**self.cfg.dec_trans.dict())
 
-    def forward(self, inp: Tensor, enc_only: bool = False) -> Tensor:
+    def forward(self, inp: Tensor) -> Tensor:
         out = inp
         out = self.enc_pyr(out)
-        if not enc_only:
-            out = self.dec_pyr(out)
+        out = self.dec_rank(out)
         return out
 

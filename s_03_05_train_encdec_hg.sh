@@ -2,6 +2,7 @@
 code_path=$HOME/prog
 data_path=$HOME/data
 wiki_ds_name=20200501.en
+#wiki_ds_name=20220301.en
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg

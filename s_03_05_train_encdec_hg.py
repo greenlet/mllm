@@ -264,7 +264,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             tokens_inp, i_train = get_batch(doc_inds_train, i_train)
-            tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
+            # tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
+            tokens_inp_aug = tokens_inp
 
             optimizer.zero_grad()
 
