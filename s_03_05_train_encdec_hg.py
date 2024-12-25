@@ -221,11 +221,12 @@ def main(args: ArgsEncdecHgTrain) -> int:
         for i, doc_ind in enumerate(doc_inds):
             doc = ds[doc_ind]
             title, text = doc['title'], doc['text']
-            if np.random.rand() < 1 / 2:
-                doc_txt = title
-            else:
-                doc_txt = text
+            # if np.random.rand() < 1 / 2:
+            #     doc_txt = title
+            # else:
+            #     doc_txt = text
             # doc_txt = f'{title} {text}'
+            doc_txt = text
             doc_toks = tkz(doc_txt)['input_ids']
             n_toks = len(doc_toks)
             if n_toks > args.inp_len:
@@ -264,8 +265,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             tokens_inp, i_train = get_batch(doc_inds_train, i_train)
-            # tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
-            tokens_inp_aug = tokens_inp
+            tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
+            # tokens_inp_aug = tokens_inp
 
             optimizer.zero_grad()
 
