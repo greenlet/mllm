@@ -91,6 +91,12 @@ class ArgsEncdecHgTrain(BaseModel):
         f'trigonometric numerical values generated. {PosEncType.Emb} - learned embeddings.',
         cli=('--pos-enc-type',),
     )
+    dropout_rate: float = Field(
+        0.0,
+        required=False,
+        description='Dropout rate for all layers (vocab encoder, encoder, decoder).',
+        cli=('--dropout-rate',),
+    )
     docs_batch_size: int = Field(
         3,
         required=False,
@@ -154,7 +160,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
     model_cfg = parse_yaml_file_as(EncdecHgCfg, args.model_cfg_fpath)
     model_cfg = copy_override_encdec_hg_cfg(
         model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
-        enhance_type=args.enhance_type, pos_enc_type=args.pos_enc_type,
+        enhance_type=args.enhance_type, pos_enc_type=args.pos_enc_type, dropout_rate=args.dropout_rate,
     )
 
     prefix, suffix = gen_prefpostfix_encdec_hg(model_cfg)
@@ -225,8 +231,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
             #     doc_txt = title
             # else:
             #     doc_txt = text
-            # doc_txt = f'{title} {text}'
-            doc_txt = text
+            doc_txt = f'{title} {text}'
+            # doc_txt = text
             doc_toks = tkz(doc_txt)['input_ids']
             n_toks = len(doc_toks)
             if n_toks > args.inp_len:

@@ -29,6 +29,7 @@ enhance_type=mmbeg
 #enhance_type=mmbb
 #pos_enc_type=num
 pos_enc_type=emb
+dropout_rate=0.1
 
 #device=cpu
 #epochs=5
@@ -64,6 +65,7 @@ python s_03_05_train_encdec_hg.py \
   --reduct-type $reduct_type \
   --enhance-type $enhance_type \
   --pos-enc-type $pos_enc_type \
+  --dropout-rate $dropout_rate \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

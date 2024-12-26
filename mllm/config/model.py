@@ -3,6 +3,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TypeVar, Union, Optional
 
+import numpy as np
 from jsonschema.validators import create
 from pydantic import BaseModel
 from torchtext.datasets import dataset_module
@@ -278,7 +279,7 @@ def create_ranker_hg_cfg(
 
 def copy_override_encdec_hg_cfg(
         cfg: EncdecHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num,
+        enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num, dropout_rate: float = 0.0,
         ) -> EncdecHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
@@ -286,12 +287,9 @@ def copy_override_encdec_hg_cfg(
     n_heads = cfg.enc_pyr.n_heads
     d_inner = cfg.enc_pyr.d_inner
     step = cfg.enc_pyr.step
-    dropout_rate = cfg.enc_pyr.dropout_rate
 
-    changed = False
     if 0 < inp_len != cfg.enc_pyr.inp_len:
         assert inp_len & (inp_len - 1) == 0, f'inp_len = {inp_len} is not power of 2'
-        changed = True
     else:
         inp_len = cfg.enc_pyr.inp_len
 
@@ -299,24 +297,12 @@ def copy_override_encdec_hg_cfg(
         assert n_similar_layers > 0, f'n_similar_layers = {n_similar_layers}, but must be > 0'
         assert cfg.enc_pyr.n_similar_layers == cfg.dec_pyr.n_similar_layers, \
             f'enc n_similar_layers = {cfg.enc_pyr.n_similar_layers} != dec n_similar_layers = {cfg.dec_pyr.n_similar_layers}'
-        changed = True
 
-    if reduct_type != cfg.enc_pyr.reduct_type:
-        changed = True
-
-    if enhance_type != cfg.dec_pyr.enhance_type:
-        changed = True
-
-    if pos_enc_type != cfg.enc_pyr.vocab_encoder.pos_enc_type:
-        changed = True
-
-    if changed:
-        return create_encdec_hg_cfg(
-            n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
-            dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type, enhance_type=enhance_type,
-            pos_enc_type=pos_enc_type,
-        )
-    return cfg
+    return create_encdec_hg_cfg(
+        n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
+        dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type, enhance_type=enhance_type,
+        pos_enc_type=pos_enc_type,
+    )
 
 
 def copy_override_ranker_hg_cfg(
@@ -370,8 +356,12 @@ def gen_prefpostfix_level(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_
 def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
     prefix = f'encdechg'
     enc, dec = model_cfg.enc_pyr, model_cfg.dec_pyr
+    dp_rate = np.round(enc.dropout_rate, 2)
+    if dp_rate < 1e-6:
+        dp_rate = 0
     postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{enc.n_layers}x{enc.n_similar_layers}-'
-               f'rdc_{enc.reduct_type.value}-enh_{dec.enhance_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}')
+               f'rdc_{enc.reduct_type.value}-enh_{dec.enhance_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-'
+               f'dp{dp_rate}')
     return prefix, postfix
 
 
