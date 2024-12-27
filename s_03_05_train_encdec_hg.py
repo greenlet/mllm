@@ -9,6 +9,7 @@ from datasets import load_dataset
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
+from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
@@ -135,6 +136,55 @@ class ArgsEncdecHgTrain(BaseModel):
     )
 
 
+class RankMaskPadLoss(nn.Module):
+    pad_tok: int
+    pad_weight: float
+    nonpad_weight: float
+    # prob_cap: float
+
+    def __init__(self, pad_tok: int, pad_weight: float = 0.01, prob_cap: float = 1e-6):
+        super().__init__()
+        pad_weight = min(max(pad_weight, 0), 1)
+        assert 0 <= prob_cap <= 1, f'prob_cap (={prob_cap}) must pertain to [0, 1] interval'
+        self.pad_tok = pad_tok
+        self.pad_weight = pad_weight
+        self.nonpad_weight = 1 - pad_weight
+        self.register_buffer('prob_cap', torch.scalar_tensor(prob_cap))
+
+    # logits_pred: (batch_size, inp_len, vocab_size)
+    # tokens_gt: (batch_size, inp_len)
+    def forward(self, logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
+        # tokens_gt: (batch_size, inp_len, 1)
+        tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
+        # mask_pad: (batch_size, inp_len, 1)
+        mask_pad = tokens_gt == self.pad_tok
+        # mask_npad: (batch_size, inp_len, 1)
+        mask_npad = ~mask_pad
+
+        # probs_pred: (batch_size, inp_len, vocab_size)
+        probs_pred = torch.softmax(logits_pred, dim=-1)
+        # probs_gt: (batch_size, inp_len, 1)
+        probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
+        # probs_gt = torch.maximum(probs_gt, self.prob_cap)
+
+        # probs_gt_pad: (n_pad_tokens, )
+        # probs_gt_npad: (n_nonpad_tokens, )
+        # n_pad_tokens + n_nonpad_tokens = batch_size * inp_len
+        probs_gt_pad, probs_gt_npad = probs_gt[mask_pad], probs_gt[mask_npad]
+
+        # loss_pad: (1,)
+        # loss_npad: (1,)
+        loss_pad = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
+        loss_npad = loss_pad
+        if probs_gt_pad.size()[0] > 0:
+            loss_pad = -torch.mean(torch.log(probs_gt_pad))
+        if probs_gt_npad.size()[0] > 0:
+            loss_npad = -torch.mean(torch.log(probs_gt_npad))
+        # loss: (1,)
+        loss = loss_npad * self.nonpad_weight + loss_pad * self.pad_weight
+        return loss
+
+
 def mask_random_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, rem_conseq_ratio: float = 0.3) -> torch.Tensor:
     res = chunks.clone()
     rv = np.random.rand()
@@ -258,7 +308,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
     # loss_fn = encdec_prob_loss_sigmoid
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
     # loss_fn = nn.CrossEntropyLoss()
-    loss_fn = encdec_prob_loss_softmax
+    # loss_fn = encdec_prob_loss_softmax
+    loss_fn = RankMaskPadLoss(pad_tok=pad_tok, pad_weight=0.01)
 
     print(model)
 
@@ -271,8 +322,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             tokens_inp, i_train = get_batch(doc_inds_train, i_train)
-            tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
-            # tokens_inp_aug = tokens_inp
+            # tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
+            tokens_inp_aug = tokens_inp
 
             optimizer.zero_grad()
 

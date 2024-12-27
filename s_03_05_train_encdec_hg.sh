@@ -8,8 +8,8 @@ mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fname=tokenizer_cfg_01.yaml
 #model_cfg_fname=encdec_hg_cfg_01.yaml
-#model_cfg_fname=encdec_hg_cfg_02.yaml
-model_cfg_fname=encdec_hg_cfg_03.yaml
+model_cfg_fname=encdec_hg_cfg_02.yaml
+#model_cfg_fname=encdec_hg_cfg_03.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
@@ -29,7 +29,8 @@ enhance_type=mmbeg
 #enhance_type=mmbb
 #pos_enc_type=num
 pos_enc_type=emb
-dropout_rate=0.1
+dropout_rate=0
+#dropout_rate=0.1
 
 #device=cpu
 #epochs=5
@@ -42,8 +43,8 @@ epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
 #docs_batch_size=20
-docs_batch_size=10
-#docs_batch_size=15
+#docs_batch_size=10
+docs_batch_size=15
 #train_subdir=last
 
 learning_rate=0.0001
