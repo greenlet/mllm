@@ -16,8 +16,11 @@ tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_hg
 
-inp_len=128
+#inp_len=128
+#dec_n_layers=0
 inp_len=256
+dec_n_layers=7
+
 n_similar_layers=1
 #n_similar_layers=2
 #reduct_type=matmul
@@ -67,6 +70,7 @@ python s_03_05_train_encdec_hg.py \
   --enhance-type $enhance_type \
   --pos-enc-type $pos_enc_type \
   --dropout-rate $dropout_rate \
+  --dec-n-layers $dec_n_layers \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

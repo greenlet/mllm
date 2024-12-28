@@ -5,8 +5,24 @@ from pydantic import BaseModel, Field
 
 TOKENIZER_CFG_FNAME = 'tokenizer_cfg.yaml'
 ENCDEC_MODEL_CFG_FNAME = 'encdec_model_cfg.yaml'
-ENCDEC_HG_MODEL_CFG_FNAME = 'encdec_hg_model_cfg.yaml'
 RANKER_MODEL_CFG_FNAME = 'ranker_model_cfg.yaml'
+ENCDEC_HG_MODEL_CFG_FNAME = 'encdec_hg_model_cfg.yaml'
+RANKER_HG_MODEL_CFG_FNAME = 'ranker_hg_model_cfg.yaml'
+
+
+ARG_TRUE_VALUES = ('true', 't', 'yes', 'y', '1')
+ARG_FALSE_VALUES = ('false', 'f', 'no', 'n', '0')
+ARG_TRUE_VALUES_STR = f'[{",".join(ARG_TRUE_VALUES)}]'
+ARG_FALSE_VALUES_STR = f'[{",".join(ARG_FALSE_VALUES)}]'
+
+def is_arg_true(name: str, val) -> bool:
+    val = val.lower()
+    if val in ARG_TRUE_VALUES:
+        return True
+    if val in ARG_FALSE_VALUES:
+        return False
+    raise Exception(f'{name} value can either have value from {ARG_TRUE_VALUES_STR} which means True '
+                    f'or {ARG_FALSE_VALUES_STR} to be False (case insensitive). Value given: "{val}"')
 
 
 class ArgsTokensChunksTrain(BaseModel):
@@ -64,14 +80,12 @@ class ArgsTokensChunksTrain(BaseModel):
         'true',
         required=True,
         description='Boolean flag determining whether Encode-Decoder level 0 model last layer should be VocabDecoder. ' \
-            'Can have values: true, yes, 1, false, no, 0. (default: true)',
+            f'Can have one value from {ARG_TRUE_VALUES_STR} to be True or {ARG_FALSE_VALUES_STR} to be False. (default: true)',
         cli=('--dec-with-vocab-decoder',),
     )
     @property
     def dec_with_vocab_decoder_bool(self) -> bool:
-        val = self.dec_with_vocab_decoder.lower()
-        assert val in ('true', 't', 'yes', 'y', '1', 'false', 'f', 'no', 'n', '0'), f'--dec-with-vocab-decoder argument value ("{val}") cannot be converted to bool'
-        return self.dec_with_vocab_decoder in ('true', 't', 'yes', 'y', '1')
+        return is_arg_true('--dec-with-vocab-decoder', self.dec_with_vocab_decoder)
 
     docs_batch_size: int = Field(
         3,

@@ -18,7 +18,8 @@ from mllm.config.model import TokenizerCfg, MllmEncdecCfg, MllmRankerCfg, gen_pr
     gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg, DecRankType
 from mllm.data.dsqrels import QrelsPlainBatch
 from mllm.data.utils import load_qrels_datasets
-from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME, RANKER_MODEL_CFG_FNAME
+from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME, RANKER_MODEL_CFG_FNAME, \
+    ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR, is_arg_true, ENCDEC_HG_MODEL_CFG_FNAME, RANKER_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg
 from mllm.model.losses import RankProbLoss
 from mllm.model.mllm_encdec import MllmEncdecLevel
@@ -93,14 +94,17 @@ class ArgsRankerHgQrelsTrain(BaseModel):
         f'trigonometric numerical values generated. {PosEncType.Emb} - learned embeddings.',
         cli=('--pos-enc-type',),
     )
-    dec_type: DecRankType = Field(
-        DecRankType.Simple,
-        required=False,
-        description=
-        f'Hourglass ranker decoder type: {list(x.value for x in DecRankType)}. {DecRankType.Simple} - '
-        f'Simple linear transform of encoder embeddings. {DecRankType.Trans} - Transformer decoder ranker.',
-        cli=('--dec-type',),
+    dec_with_bias: str = Field(
+        'false',
+        required=True,
+        description='Boolean flag determining whether decoder linear layer should have bias. ' \
+            f'DEC_WITH_BIAS can take value from {ARG_TRUE_VALUES_STR} to be True or {ARG_FALSE_VALUES_STR} to be False. (default: true)',
+        cli=('--dec-with-bias',),
     )
+    @property
+    def dec_with_bias_bool(self) -> bool:
+        return is_arg_true('--dec-with-bias', self.dec_with_bias)
+
     dec_n_layers: int = Field(
         -1,
         required=False,
@@ -168,7 +172,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     model_cfg = parse_yaml_file_as(RankerHgCfg, args.model_cfg_fpath)
     model_cfg = copy_override_ranker_hg_cfg(
         model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
-        pos_enc_type=args.pos_enc_type, dec_type=args.dec_type, dec_n_layers=args.dec_n_layers, dec_dropout_rate=args.dec_dropout_rate,
+        pos_enc_type=args.pos_enc_type, dec_with_bias=args.dec_with_bias_bool,
     )
     print(model_cfg)
 
@@ -190,16 +194,16 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
         chkpt_tkz_cfg = parse_yaml_file_as(TokenizerCfg, train_path / TOKENIZER_CFG_FNAME)
-        chkpt_model_cfg = parse_yaml_file_as(RankerHgCfg, train_path / RANKER_MODEL_CFG_FNAME)
+        chkpt_model_cfg = parse_yaml_file_as(RankerHgCfg, train_path / RANKER_HG_MODEL_CFG_FNAME)
         assert tkz_cfg == chkpt_tkz_cfg, f'{args.tokenizer_cfg_fpath} != {chkpt_tkz_cfg}'
         assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
         to_yaml_file(train_path / TOKENIZER_CFG_FNAME, tkz_cfg)
-        to_yaml_file(train_path / RANKER_MODEL_CFG_FNAME, model_cfg)
+        to_yaml_file(train_path / RANKER_HG_MODEL_CFG_FNAME, model_cfg)
 
     tokenizer = tokenizer_from_config(tkz_cfg)
     tok_dict = tkz_cfg.custom_tokens
-    ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.emb_chunk_size, fixed_size=True)
+    ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.inp_len, fixed_size=True)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
     ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.inp_len, device)
     print(ds)
@@ -214,7 +218,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
-        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_MODEL_CFG_FNAME
+        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_HG_MODEL_CFG_FNAME
         model_encdec_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_cfg_fpath)
         model_encdec = EncdecHg(model_encdec_cfg).to(device)
         model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)

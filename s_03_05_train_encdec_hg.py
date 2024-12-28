@@ -98,6 +98,12 @@ class ArgsEncdecHgTrain(BaseModel):
         description='Dropout rate for all layers (vocab encoder, encoder, decoder).',
         cli=('--dropout-rate',),
     )
+    dec_n_layers: int = Field(
+        0,
+        required=False,
+        description='Decoder number of layers.',
+        cli=('--dec-n-layers',),
+    )
     docs_batch_size: int = Field(
         3,
         required=False,
@@ -211,6 +217,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
     model_cfg = copy_override_encdec_hg_cfg(
         model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
         enhance_type=args.enhance_type, pos_enc_type=args.pos_enc_type, dropout_rate=args.dropout_rate,
+        dec_n_layers=args.dec_n_layers,
     )
 
     prefix, suffix = gen_prefpostfix_encdec_hg(model_cfg)
