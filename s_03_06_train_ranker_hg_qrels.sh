@@ -22,8 +22,6 @@ enhance_type=mmbeg
 #enhance_type=mmbb
 #pos_enc_type=num
 pos_enc_type=emb
-dec_type=smp
-dec_n_layers=-1
 dec_dropout_rate=-1
 
 device=cpu
@@ -31,14 +29,14 @@ epochs=5
 train_epoch_steps=20
 val_epoch_steps=20
 docs_batch_size=3
-pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8
+pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8
 
 #device=cuda
 #epochs=500
 #train_epoch_steps=500
 #val_epoch_steps=50
 #docs_batch_size=20
-#pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8
+#pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8
 ##train_subdir=last
 
 learning_rate=0.0001
@@ -46,7 +44,7 @@ learning_rate=0.0001
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-#echo "
+echo "
 python s_03_06_train_ranker_hg_qrels.py \
   --ds-dir-paths $msmarco_data_path $fever_data_path \
   --train-root-path $train_ranker_root_path \
@@ -58,8 +56,6 @@ python s_03_06_train_ranker_hg_qrels.py \
   --reduct-type $reduct_type \
   --enhance-type $enhance_type \
   --pos-enc-type $pos_enc_type \
-  --dec-type $dec_type \
-  --dec-n-layers $dec_n_layers \
   --dec-dropout-rate $dec_dropout_rate \
   --docs-batch-size $docs_batch_size \
   --device $device \
@@ -68,5 +64,5 @@ python s_03_06_train_ranker_hg_qrels.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --pretrained-model-path $pretrained_model_path
-#"
+"
 

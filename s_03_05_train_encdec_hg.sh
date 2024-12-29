@@ -45,10 +45,10 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-#docs_batch_size=20
+docs_batch_size=20
 #docs_batch_size=10
-docs_batch_size=15
-#train_subdir=last
+#docs_batch_size=15
+train_subdir=last
 
 learning_rate=0.0001
 #learning_rate=0.001

@@ -364,7 +364,7 @@ class DecoderRankHg(nn.Module):
 
     # embs_batch: (batch_size, inp_len, d_model)
     def forward(self, embs_batch: Tensor) -> Tensor:
-        # (batch_size, inp_len, d_model)
+        # embs_batch: (batch_size, inp_len, d_model)
         embs_batch = self.w(embs_batch)
         # embs_batch = self.layer_norm(embs_batch)
 
@@ -382,30 +382,32 @@ class RankerHg(nn.Module):
         self.enc_pyr = EncoderPyramid(cfg.enc_pyr)
         self.dec_rank = DecoderRankHg(cfg.dec_rank)
 
-    # inp_docs: (batch_size, inp_len_docs, d_model)
-    # inp_qs: (batch_size, inp_len_qs, d_model)
+    # inp_docs: (n_docs, inp_len)
+    # inp_qs: (n_qs, inp_len)
     def forward(self, inp_docs: Tensor, inp_qs) -> Tensor:
-        # out_docs: (batch_size, inp_len_docs, d_model)
+        # out_docs: (n_docs, d_model)
         out_docs = self.enc_pyr(inp_docs)
-        # out_docs: (batch_size, inp_len_docs, d_model)
+        # out_docs: (n_docs, d_model)
         out_docs = self.dec_rank(out_docs)
 
-        # out_qs: (batch_size, inp_len_qs, d_model)
+        # out_qs: (n_qs, d_model)
         out_qs = self.enc_pyr(inp_qs)
-        # out_qs: (batch_size, inp_len_qs, d_model)
+        # out_qs: (n_qs, d_model)
         out_qs = self.dec_rank(out_qs)
 
-        # out_docs_norm: (batch_size, inp_len_docs, 1)
-        out_docs_norm = torch.linalg.vector_norm(out_docs, dim=2, keepdim=True)
+        # out_docs_norm: (n_docs, 1)
+        out_docs_norm = torch.linalg.vector_norm(out_docs, dim=-1, keepdim=True)
+        # out_docs: (n_docs, d_model)
         out_docs = out_docs / out_docs_norm
 
-        # out_qs_norm: (batch_size, inp_len_qs, 1)
-        out_qs_norm = torch.linalg.vector_norm(out_docs, dim=2, keepdim=True)
+        # out_qs_norm: (n_qs, 1)
+        out_qs_norm = torch.linalg.vector_norm(out_qs, dim=-1, keepdim=True)
+        # out_qs: (n_qs, d_model)
         out_qs = out_qs / out_qs_norm
 
-        # out_qs: (batch_size, d_model, inp_len_qs)
-        out_qs = torch.transpose(out_qs, 1, 2)
-        # out_rank: (batch_size, inp_len_docs, inp_len_qs)
+        # out_qs: (d_model, n_qs)
+        out_qs = torch.transpose(out_qs, 0, 1)
+        # out_rank: (n_docs, n_qs)
         # contains matrix of cosine distances between docs' and queries' embeddings
         out_rank = out_docs @ out_qs
 

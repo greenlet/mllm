@@ -15,13 +15,13 @@ from tqdm import trange
 
 from mllm.config.model import TokenizerCfg, MllmEncdecCfg, MllmRankerCfg, gen_prefpostfix_level, \
     copy_override_encdec_hg_cfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType, RankerHgCfg, \
-    gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg, DecRankType
+    gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg
 from mllm.data.dsqrels import QrelsPlainBatch
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME, RANKER_MODEL_CFG_FNAME, \
     ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR, is_arg_true, ENCDEC_HG_MODEL_CFG_FNAME, RANKER_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg
-from mllm.model.losses import RankProbLoss
+from mllm.model.losses import RankProbLoss, ranker_prob_loss_softmax
 from mllm.model.mllm_encdec import MllmEncdecLevel
 from mllm.model.mllm_ranker import MllmRankerLevel
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config
@@ -105,12 +105,6 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     def dec_with_bias_bool(self) -> bool:
         return is_arg_true('--dec-with-bias', self.dec_with_bias)
 
-    dec_n_layers: int = Field(
-        -1,
-        required=False,
-        description=f'Decoder number of layers for DEC_TYPE={DecRankType.Trans}. If not set the value from encoder config will be used.',
-        cli=('--dec-n-layers',),
-    )
     dec_dropout_rate: float = Field(
         -1,
         required=False,
@@ -249,8 +243,8 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         view_val.shuffle()
 
     n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, args.docs_batch_size, 'Queries')
-    loss_fn = RankProbLoss()
-    # loss_fn = ranker_prob_loss_softmax
+    # loss_fn = RankProbLoss()
+    loss_fn = ranker_prob_loss_softmax
     n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(
         n_batches=n_epochs * n_batches_train,
@@ -273,8 +267,8 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
             qs_toks, qs_masks, docs_toks, docs_masks, qrels_masks = batch.gen_tensors()
 
             optimizer.zero_grad()
-            out_rank, target_mask = model.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
-            loss = loss_fn(out_rank, target_mask)
+            out_rank = model(docs_toks, qs_toks)
+            loss = loss_fn(out_rank, qrels_masks)
             if type(loss) == tuple:
                 loss, loss_tgt, loss_nontgt = loss
             loss.backward()
@@ -284,10 +278,6 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
             if loss_tgt is not None:
                 train_loss_tgt += loss_tgt.item()
                 train_loss_nontgt += loss_nontgt.item()
-
-            # if i == 2:
-            #     import sys
-            #     sys.exit()
 
             s = f'Train. loss: {loss.item():.6f}'
             if loss_tgt is not None:
@@ -310,10 +300,10 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             batch: QrelsPlainBatch = next(val_batch_it)
-            docs_chunks, qs_chunks = batch.gen_tensors()
+            qs_toks, qs_masks, docs_toks, docs_masks, qrels_masks = batch.gen_tensors()
 
-            out_rank, target_mask = model.run_qs(docs_chunks, qs_chunks, batch.docs_off_len, batch.qs_off_len)
-            loss = loss_fn(out_rank, target_mask)
+            out_rank = model(docs_toks, qs_toks)
+            loss = loss_fn(out_rank, qrels_masks)
             if type(loss) == tuple:
                 loss, loss_tgt, loss_nontgt = loss
 
