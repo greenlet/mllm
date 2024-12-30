@@ -170,13 +170,13 @@ class QrelsPlainBatch:
 
     def calc_np(self):
         n_docs, n_qs = len(self.df_docs), len(self.df_qs)
-        qrels_masks = np.ones((n_docs, n_qs), np.int32)
+        qrels_masks = np.zeros((n_docs, n_qs), bool)
         dsqid_to_ind = {dsqid: i for i, dsqid in enumerate(self.df_qs['dsqid'])}
         dsdid_to_ind = {dsdid: i for i, dsdid in enumerate(self.df_docs['dsdid'])}
         for _, qr_row in self.df_qrels.iterrows():
             i_doc = dsdid_to_ind[qr_row['dsdid']]
             i_query = dsqid_to_ind[qr_row['dsqid']]
-            qrels_masks[i_doc, i_query] = 1
+            qrels_masks[i_doc, i_query] = True
         self.qrels_masks = qrels_masks
 
     def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:

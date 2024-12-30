@@ -1,16 +1,15 @@
-dec_simple:
+dec_rank:
   d_model: 512
-dec_trans: null
-dec_type: smp
+  with_bias: false
 enc_pyr:
   d_inner: 2048
   d_k: 64
   d_model: 512
   d_v: 64
   dropout_rate: 0.0
-  inp_len: 128
+  inp_len: 256
   n_heads: 8
-  n_layers: 7
+  n_layers: 8
   n_similar_layers: 1
   pad_idx: 50267
   reduct_type: matmul
@@ -19,7 +18,7 @@ enc_pyr:
     d_model: 512
     d_word_vec: 512
     dropout_rate: 0.0
-    inp_len: 128
+    inp_len: 256
     n_vocab: 50271
     pad_idx: 50267
-    pos_enc_type: num
+    pos_enc_type: emb

@@ -385,13 +385,17 @@ class RankerHg(nn.Module):
     # inp_docs: (n_docs, inp_len)
     # inp_qs: (n_qs, inp_len)
     def forward(self, inp_docs: Tensor, inp_qs) -> Tensor:
-        # out_docs: (n_docs, d_model)
+        # out_docs: (n_docs, 1, d_model)
         out_docs = self.enc_pyr(inp_docs)
+        # out_docs: (n_docs, d_model)
+        out_docs = out_docs.squeeze(1)
         # out_docs: (n_docs, d_model)
         out_docs = self.dec_rank(out_docs)
 
-        # out_qs: (n_qs, d_model)
+        # out_qs: (n_qs,  1, d_model)
         out_qs = self.enc_pyr(inp_qs)
+        # out_qs: (n_qs, d_model)
+        out_qs = out_qs.squeeze(1)
         # out_qs: (n_qs, d_model)
         out_qs = self.dec_rank(out_qs)
 

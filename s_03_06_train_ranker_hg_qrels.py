@@ -94,9 +94,15 @@ class ArgsRankerHgQrelsTrain(BaseModel):
         f'trigonometric numerical values generated. {PosEncType.Emb} - learned embeddings.',
         cli=('--pos-enc-type',),
     )
+    dec_dropout_rate: float = Field(
+        -1,
+        required=False,
+        description=f'Decoder dropout rate. If not set the value from encoder config will be used.',
+        cli=('--dec-dropout-rate',),
+    )
     dec_with_bias: str = Field(
         'false',
-        required=True,
+        required=False,
         description='Boolean flag determining whether decoder linear layer should have bias. ' \
             f'DEC_WITH_BIAS can take value from {ARG_TRUE_VALUES_STR} to be True or {ARG_FALSE_VALUES_STR} to be False. (default: true)',
         cli=('--dec-with-bias',),
@@ -104,12 +110,11 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     @property
     def dec_with_bias_bool(self) -> bool:
         return is_arg_true('--dec-with-bias', self.dec_with_bias)
-
-    dec_dropout_rate: float = Field(
-        -1,
+    dec_mlp_sizes: list[int] = Field(
+        [],
         required=False,
-        description=f'Decoder dropout rate. If not set the value from encoder config will be used.',
-        cli=('--dec-dropout-rate',),
+        description='Consecutive MLP sizes transforming initial embedding to a relevance vector',
+        cli=('--dec-mlp-sizes',)
     )
     docs_batch_size: int = Field(
         3,
@@ -153,6 +158,39 @@ class ArgsRankerHgQrelsTrain(BaseModel):
         description='Path to EncdecHg model train directory.',
         cli=('--pretrained-model-path',),
     )
+
+
+# prob_pred: (n_docs, n_qs)
+# mask_gt: (n_docs, n_qs)
+def rankr_cos_loss(cos_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    mask_gt = mask_gt.to(torch.bool)
+    n_docs = len(cos_pred)
+    loss_tgt = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
+    loss_nontgt = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
+    n_tgt, n_nontgt = 0, 0
+    for i in range(n_docs):
+        lt = -torch.masked_select(cos_pred[i], mask_gt[i])
+        lnt = torch.masked_select(cos_pred[i], ~mask_gt[i])
+        if lt.size()[0] > 0:
+            loss_tgt = loss_tgt + (lt.mean() + 1) / 2
+            n_tgt += 1
+        if lnt.size()[0] > 0:
+            loss_nontgt = loss_nontgt + (lnt.mean() + 1) / 2
+            n_nontgt += 1
+    loss = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
+    if n_tgt > 0:
+        loss_tgt = loss_tgt / n_tgt
+        loss = loss + loss_tgt
+    else:
+        loss_tgt = torch.nan
+    if n_nontgt > 0:
+        loss_nontgt = loss_nontgt / n_nontgt
+        loss = loss + loss_nontgt
+    else:
+        loss_nontgt = torch.nan
+    if n_tgt > 0 and n_nontgt > 0:
+        loss = loss / 2
+    return loss, loss_tgt, loss_nontgt
 
 
 def main(args: ArgsRankerHgQrelsTrain) -> int:
@@ -244,7 +282,8 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
 
     n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, args.docs_batch_size, 'Queries')
     # loss_fn = RankProbLoss()
-    loss_fn = ranker_prob_loss_softmax
+    # loss_fn = ranker_prob_loss_softmax
+    loss_fn = rankr_cos_loss
     n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(
         n_batches=n_epochs * n_batches_train,
@@ -259,7 +298,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     model.eval()
     loss_tgt, loss_nontgt = None, None
     for epoch in range(last_epoch + 1, args.epochs):
-        model.dec.train()
+        model.dec_rank.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
