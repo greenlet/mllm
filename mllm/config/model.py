@@ -5,7 +5,7 @@ from typing import TypeVar, Union, Optional
 
 import numpy as np
 from jsonschema.validators import create
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from torchtext.datasets import dataset_module
 
 T = TypeVar('T')
@@ -223,11 +223,16 @@ class EncdecHgCfg(BaseModel):
 class DecRankHgCfg(BaseModel):
     d_model: int
     with_bias: bool
+    mlp_sizes: list[int] = Field([], required=False)
 
 
 class RankerHgCfg(BaseModel):
     enc_pyr: EncPyrCfg
     dec_rank: DecRankHgCfg
+
+
+def bool_to_char(b: bool) -> str:
+    return 't' if b else 'f'
 
 
 def create_encdec_hg_cfg(
@@ -259,7 +264,7 @@ def create_encdec_hg_cfg(
 def create_ranker_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False,
+        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False, dec_mlp_sizes: list[int] = (),
         ) -> RankerHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
@@ -273,7 +278,7 @@ def create_ranker_hg_cfg(
         n_similar_layers=n_similar_layers, reduct_type=reduct_type,
     )
     cfg_dec_rank = DecRankHgCfg(
-        d_model=d_model, with_bias=dec_with_bias,
+        d_model=d_model, with_bias=dec_with_bias, mlp_sizes=dec_mlp_sizes,
     )
     cfg_encdec_hg = RankerHgCfg(enc_pyr=cfg_enc_pyr, dec_rank=cfg_dec_rank)
     return cfg_encdec_hg
@@ -310,7 +315,7 @@ def copy_override_encdec_hg_cfg(
 
 def copy_override_ranker_hg_cfg(
         cfg: RankerHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False,
+        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False, dec_mlp_sizes: list[int] = (),
         ) -> RankerHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
@@ -331,7 +336,7 @@ def copy_override_ranker_hg_cfg(
     return create_ranker_hg_cfg(
         n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
         dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type,
-        pos_enc_type=pos_enc_type, dec_with_bias=dec_with_bias,
+        pos_enc_type=pos_enc_type, dec_with_bias=dec_with_bias, dec_mlp_sizes=dec_mlp_sizes,
     )
 
 
@@ -373,7 +378,11 @@ def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
 def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
     prefix = f'rankerhg'
     enc = model_cfg.enc_pyr
+    dec = model_cfg.dec_rank
+    dec_with_bias_str = bool_to_char(model_cfg.dec_rank.with_bias)
+    dec_mlp_sizes_str = '_'.join(str(sz) for sz in dec.mlp_sizes) or '0'
     postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{enc.n_layers}x{enc.n_similar_layers}-'
-               f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-dbs{model_cfg.dec_rank.with_bias}')
+               f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-dbs_{dec_with_bias_str}-'
+               f'dmlp{dec_mlp_sizes_str}')
     return prefix, postfix
 

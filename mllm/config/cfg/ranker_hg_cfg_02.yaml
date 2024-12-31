@@ -1,6 +1,7 @@
 dec_rank:
   d_model: 512
   with_bias: false
+  mlp_layers: []
 enc_pyr:
   d_inner: 2048
   d_k: 64

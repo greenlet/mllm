@@ -24,16 +24,17 @@ enhance_type=mmbeg
 #pos_enc_type=num
 pos_enc_type=emb
 dec_dropout_rate=-1
-#dec_with_bias=false
+dec_with_bias=false
 #dec_with_bias=true
-dec_mlp_sizes=-1
+dec_mlp_sizes=""
+dec_mlp_sizes="-1"
 
-device=cpu
-epochs=5
-train_epoch_steps=20
-val_epoch_steps=20
-docs_batch_size=3
-pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8
+#device=cpu
+#epochs=5
+#train_epoch_steps=20
+#val_epoch_steps=20
+#docs_batch_size=3
+#pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8
 
 device=cuda
 epochs=500
@@ -41,9 +42,11 @@ train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=30
 pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8
+pretrained_model_path=
 #train_subdir=last
 
 learning_rate=0.0001
+#learning_rate=0.00001
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
@@ -62,13 +65,13 @@ python s_03_06_train_ranker_hg_qrels.py \
   --pos-enc-type $pos_enc_type \
   --dec-dropout-rate $dec_dropout_rate \
   --dec-with-bias $dec_with_bias \
-  --dec-mlp-sizes $dec_mlp_sizes \
+  --dec-mlp-sizes "$dec_mlp_sizes" \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
-  --pretrained-model-path $pretrained_model_path
+  --pretrained-model-path "$pretrained_model_path"
 #"
 

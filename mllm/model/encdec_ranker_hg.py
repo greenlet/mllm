@@ -355,17 +355,38 @@ class EncdecHg(nn.Module):
 
 class DecoderRankHg(nn.Module):
     cfg: DecRankHgCfg
+    # w: nn.Linear
+    layer_norm: nn.LayerNorm
+    # mlp_layers: list[nn.Linear]
+
 
     def __init__(self, cfg: DecRankHgCfg):
         super().__init__()
         self.cfg = cfg
-        self.w = nn.Linear(self.cfg.d_model, self.cfg.d_model, bias=self.cfg.with_bias)
+        if self.cfg.mlp_sizes:
+            d_last = self.cfg.d_model
+            mlp_layers = []
+            for mlp_size in self.cfg.mlp_sizes:
+                if mlp_size == -1:
+                    mlp_size = self.cfg.d_model
+                mlp_layer = nn.Linear(d_last, mlp_size, bias=self.cfg.with_bias)
+                mlp_layers.append(mlp_layer)
+            self.mlp_layers = nn.ModuleList(mlp_layers)
+        else:
+            self.w = nn.Linear(self.cfg.d_model, self.cfg.d_model, bias=self.cfg.with_bias)
         self.layer_norm = nn.LayerNorm(self.cfg.d_model, eps=1e-6)
 
     # embs_batch: (batch_size, inp_len, d_model)
     def forward(self, embs_batch: Tensor) -> Tensor:
-        # embs_batch: (batch_size, inp_len, d_model)
-        embs_batch = self.w(embs_batch)
+        out = embs_batch
+        if self.cfg.mlp_sizes:
+            for mlp_layer in self.mlp_layers:
+                out = mlp_layer(out)
+                # out = nn.functional.relu(out)
+                out = nn.functional.sigmoid(out)
+        else:
+            # embs_batch: (batch_size, inp_len, d_model)
+            out = self.w(out)
         # embs_batch = self.layer_norm(embs_batch)
 
         return embs_batch

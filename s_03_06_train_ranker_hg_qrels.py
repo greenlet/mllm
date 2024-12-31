@@ -1,8 +1,8 @@
+import re
 import shutil
 import time
-from email.policy import strict
 from pathlib import Path
-from typing import Union, Optional
+from typing import Optional
 
 import numpy as np
 import torch
@@ -13,17 +13,13 @@ from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import TokenizerCfg, MllmEncdecCfg, MllmRankerCfg, gen_prefpostfix_level, \
-    copy_override_encdec_hg_cfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType, RankerHgCfg, \
+from mllm.config.model import TokenizerCfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType, RankerHgCfg, \
     gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg
 from mllm.data.dsqrels import QrelsPlainBatch
 from mllm.data.utils import load_qrels_datasets
-from mllm.exp.args import ArgsTokensChunksTrain, TOKENIZER_CFG_FNAME, ENCDEC_MODEL_CFG_FNAME, RANKER_MODEL_CFG_FNAME, \
-    ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR, is_arg_true, ENCDEC_HG_MODEL_CFG_FNAME, RANKER_HG_MODEL_CFG_FNAME
+from mllm.exp.args import TOKENIZER_CFG_FNAME, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR, is_arg_true, \
+    ENCDEC_HG_MODEL_CFG_FNAME, RANKER_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg
-from mllm.model.losses import RankProbLoss, ranker_prob_loss_softmax
-from mllm.model.mllm_encdec import MllmEncdecLevel
-from mllm.model.mllm_ranker import MllmRankerLevel
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config
 from mllm.train.utils import find_create_train_path, calc_print_batches
 
@@ -100,6 +96,7 @@ class ArgsRankerHgQrelsTrain(BaseModel):
         description=f'Decoder dropout rate. If not set the value from encoder config will be used.',
         cli=('--dec-dropout-rate',),
     )
+
     dec_with_bias: str = Field(
         'false',
         required=False,
@@ -110,12 +107,20 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     @property
     def dec_with_bias_bool(self) -> bool:
         return is_arg_true('--dec-with-bias', self.dec_with_bias)
-    dec_mlp_sizes: list[int] = Field(
-        [],
+
+    dec_mlp_sizes: str = Field(
+        '',
         required=False,
-        description='Consecutive MLP sizes transforming initial embedding to a relevance vector',
+        description=f'Consecutive MLP sizes transforming initial embedding to a relevance vector. The size can be -1 which '
+                    f'means the same size as initial embedding. When not set or empty, no MLP layers will be created. Default: empty.',
         cli=('--dec-mlp-sizes',)
     )
+    @property
+    def dec_mlp_sizes_list(self) -> list[int]:
+        dec_mlp_sizes = re.compile(r'^[([\s]*|[)\]\s]*$').sub('', self.dec_mlp_sizes)
+        parts = re.compile(r'[\s+,]+').split(dec_mlp_sizes)
+        return [int(p) for p in parts if p]
+
     docs_batch_size: int = Field(
         3,
         required=False,
@@ -162,39 +167,31 @@ class ArgsRankerHgQrelsTrain(BaseModel):
 
 # prob_pred: (n_docs, n_qs)
 # mask_gt: (n_docs, n_qs)
-def rankr_cos_loss(cos_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def ranker_cos_loss(cos_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     mask_gt = mask_gt.to(torch.bool)
     n_docs = len(cos_pred)
     loss_tgt = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
     loss_nontgt = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
-    n_tgt, n_nontgt = 0, 0
+    prob_cap = torch.tensor(1e-6, dtype=torch.float32, device=cos_pred.device)
     for i in range(n_docs):
-        lt = -torch.masked_select(cos_pred[i], mask_gt[i])
-        lnt = torch.masked_select(cos_pred[i], ~mask_gt[i])
-        if lt.size()[0] > 0:
-            loss_tgt = loss_tgt + (lt.mean() + 1) / 2
-            n_tgt += 1
-        if lnt.size()[0] > 0:
-            loss_nontgt = loss_nontgt + (lnt.mean() + 1) / 2
-            n_nontgt += 1
-    loss = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
-    if n_tgt > 0:
-        loss_tgt = loss_tgt / n_tgt
-        loss = loss + loss_tgt
-    else:
-        loss_tgt = torch.nan
-    if n_nontgt > 0:
-        loss_nontgt = loss_nontgt / n_nontgt
-        loss = loss + loss_nontgt
-    else:
-        loss_nontgt = torch.nan
-    if n_tgt > 0 and n_nontgt > 0:
-        loss = loss / 2
+        probs_tgt = -torch.masked_select(cos_pred[i], mask_gt[i])
+        probs_nontgt = torch.masked_select(cos_pred[i], ~mask_gt[i])
+        probs_tgt = (probs_tgt + 1) / 2
+        probs_nontgt = (probs_nontgt + 1) / 2
+        probs_tgt = torch.maximum(probs_tgt, prob_cap)
+        probs_nontgt = torch.maximum(probs_nontgt, prob_cap)
+        lt, lnt = -torch.mean(torch.log(probs_tgt)), -torch.mean(torch.log(probs_nontgt))
+        loss_tgt = loss_tgt + lt
+        loss_nontgt = loss_nontgt + lnt
+    loss_tgt = loss_tgt / n_docs
+    loss_nontgt = loss_nontgt / n_docs
+    loss = (loss_tgt + loss_nontgt) / 2
     return loss, loss_tgt, loss_nontgt
 
 
 def main(args: ArgsRankerHgQrelsTrain) -> int:
     print(args)
+    print(f'dec_mlp_sizes_list: {args.dec_mlp_sizes_list}')
 
     assert args.ds_dir_paths, '--ds-dir-paths is expected to list at least one Qrels datsaset'
 
@@ -204,7 +201,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     model_cfg = parse_yaml_file_as(RankerHgCfg, args.model_cfg_fpath)
     model_cfg = copy_override_ranker_hg_cfg(
         model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
-        pos_enc_type=args.pos_enc_type, dec_with_bias=args.dec_with_bias_bool,
+        pos_enc_type=args.pos_enc_type, dec_with_bias=args.dec_with_bias_bool, dec_mlp_sizes=args.dec_mlp_sizes_list,
     )
     print(model_cfg)
 
@@ -246,7 +243,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
 
     model = RankerHg(model_cfg).to(device)
 
-    if args.pretrained_model_path is not None and checkpoint is None:
+    if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
@@ -283,7 +280,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, args.docs_batch_size, 'Queries')
     # loss_fn = RankProbLoss()
     # loss_fn = ranker_prob_loss_softmax
-    loss_fn = rankr_cos_loss
+    loss_fn = ranker_cos_loss
     n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(
         n_batches=n_epochs * n_batches_train,
@@ -299,6 +296,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     loss_tgt, loss_nontgt = None, None
     for epoch in range(last_epoch + 1, args.epochs):
         model.dec_rank.train()
+        # model.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
