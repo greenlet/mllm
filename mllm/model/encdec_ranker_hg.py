@@ -371,6 +371,7 @@ class DecoderRankHg(nn.Module):
                     mlp_size = self.cfg.d_model
                 mlp_layer = nn.Linear(d_last, mlp_size, bias=self.cfg.with_bias)
                 mlp_layers.append(mlp_layer)
+                d_last = mlp_size
             self.mlp_layers = nn.ModuleList(mlp_layers)
         else:
             self.w = nn.Linear(self.cfg.d_model, self.cfg.d_model, bias=self.cfg.with_bias)
@@ -380,16 +381,17 @@ class DecoderRankHg(nn.Module):
     def forward(self, embs_batch: Tensor) -> Tensor:
         out = embs_batch
         if self.cfg.mlp_sizes:
-            for mlp_layer in self.mlp_layers:
+            for i, mlp_layer in enumerate(self.mlp_layers):
                 out = mlp_layer(out)
-                # out = nn.functional.relu(out)
-                out = nn.functional.sigmoid(out)
+                out = F.relu(out)
+                if i < len(self.mlp_layers) - 1:
+                    out = F.sigmoid(out)
         else:
             # embs_batch: (batch_size, inp_len, d_model)
             out = self.w(out)
-        # embs_batch = self.layer_norm(embs_batch)
+        # out = self.layer_norm(out)
 
-        return embs_batch
+        return out
 
 
 class RankerHg(nn.Module):
@@ -402,6 +404,7 @@ class RankerHg(nn.Module):
         self.cfg = cfg
         self.enc_pyr = EncoderPyramid(cfg.enc_pyr)
         self.dec_rank = DecoderRankHg(cfg.dec_rank)
+        self.register_buffer('norm_cap', torch.scalar_tensor(1e-8))
 
     # inp_docs: (n_docs, inp_len)
     # inp_qs: (n_qs, inp_len)
@@ -422,11 +425,13 @@ class RankerHg(nn.Module):
 
         # out_docs_norm: (n_docs, 1)
         out_docs_norm = torch.linalg.vector_norm(out_docs, dim=-1, keepdim=True)
+        out_docs_norm = torch.maximum(out_docs_norm, self.norm_cap)
         # out_docs: (n_docs, d_model)
         out_docs = out_docs / out_docs_norm
 
         # out_qs_norm: (n_qs, 1)
         out_qs_norm = torch.linalg.vector_norm(out_qs, dim=-1, keepdim=True)
+        out_qs_norm = torch.maximum(out_qs_norm, self.norm_cap)
         # out_qs: (n_qs, d_model)
         out_qs = out_qs / out_qs_norm
 

@@ -24,10 +24,11 @@ enhance_type=mmbeg
 #pos_enc_type=num
 pos_enc_type=emb
 dec_dropout_rate=-1
-dec_with_bias=false
-#dec_with_bias=true
+#dec_with_bias=false
+dec_with_bias=true
 dec_mlp_sizes=""
-dec_mlp_sizes="-1"
+dec_mlp_sizes="1024,512"
+train_dec_only=true
 
 #device=cpu
 #epochs=5
@@ -42,7 +43,7 @@ train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=30
 pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8
-pretrained_model_path=
+#pretrained_model_path=
 #train_subdir=last
 
 learning_rate=0.0001
@@ -72,6 +73,7 @@ python s_03_06_train_ranker_hg_qrels.py \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
-  --pretrained-model-path "$pretrained_model_path"
+  --pretrained-model-path "$pretrained_model_path" \
+  --train-dec-only $train_dec_only
 #"
 

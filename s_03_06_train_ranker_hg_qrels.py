@@ -21,7 +21,7 @@ from mllm.exp.args import TOKENIZER_CFG_FNAME, ARG_TRUE_VALUES_STR, ARG_FALSE_VA
     ENCDEC_HG_MODEL_CFG_FNAME, RANKER_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config
-from mllm.train.utils import find_create_train_path, calc_print_batches
+from mllm.train.utils import find_create_train_path, calc_print_batches, log_weights_grads_stats
 
 
 class ArgsRankerHgQrelsTrain(BaseModel):
@@ -163,6 +163,16 @@ class ArgsRankerHgQrelsTrain(BaseModel):
         description='Path to EncdecHg model train directory.',
         cli=('--pretrained-model-path',),
     )
+    train_dec_only: str = Field(
+        'true',
+        required=False,
+        description='Boolean flag determining whether decoder\' weights will be trained or the full model. ' \
+            f'TRAIN_DEC_ONLY can take value from {ARG_TRUE_VALUES_STR} to be True or {ARG_FALSE_VALUES_STR} to be False. (default: true)',
+        cli=('--train-dec-only',),
+    )
+    @property
+    def train_dec_only_bool(self) -> bool:
+        return is_arg_true('--train-dec-only', self.train_dec_only)
 
 
 # prob_pred: (n_docs, n_qs)
@@ -174,8 +184,8 @@ def ranker_cos_loss(cos_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torc
     loss_nontgt = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
     prob_cap = torch.tensor(1e-6, dtype=torch.float32, device=cos_pred.device)
     for i in range(n_docs):
-        probs_tgt = -torch.masked_select(cos_pred[i], mask_gt[i])
-        probs_nontgt = torch.masked_select(cos_pred[i], ~mask_gt[i])
+        probs_tgt = torch.masked_select(cos_pred[i], mask_gt[i])
+        probs_nontgt = -torch.masked_select(cos_pred[i], ~mask_gt[i])
         probs_tgt = (probs_tgt + 1) / 2
         probs_nontgt = (probs_nontgt + 1) / 2
         probs_tgt = torch.maximum(probs_tgt, prob_cap)
@@ -186,6 +196,11 @@ def ranker_cos_loss(cos_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torc
     loss_tgt = loss_tgt / n_docs
     loss_nontgt = loss_nontgt / n_docs
     loss = (loss_tgt + loss_nontgt) / 2
+    if torch.isnan(loss).any():
+        print('!!!', torch.isnan(cos_pred).any())
+        print(mask_gt)
+        import sys
+        sys.exit(0)
     return loss, loss_tgt, loss_nontgt
 
 
@@ -207,7 +222,8 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
 
     prefix, suffix = gen_prefpostfix_ranker_hg(model_cfg)
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
-    suffix = f'{ds_names}-{suffix}'
+    deconly_str = 't' if args.train_dec_only_bool else 'f'
+    suffix = f'{ds_names}-{suffix}-tdec_{deconly_str}'
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -239,7 +255,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
 
     print(f'Creating model with vocab size = {len(tokenizer)}')
 
-    torch.autograd.set_detect_anomaly(True)
+    # torch.autograd.set_detect_anomaly(True)
 
     model = RankerHg(model_cfg).to(device)
 
@@ -254,7 +270,10 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         print(f'Load model weights for enc_pyr:', list(model_encdec.enc_pyr.state_dict().keys()))
         model.enc_pyr.load_state_dict(model_encdec.enc_pyr.state_dict())
 
-    params = model.parameters()
+    if args.train_dec_only_bool:
+        params = model.dec_rank.parameters()
+    else:
+        params = model.parameters()
     # params = [p for n, p in model.named_parameters()]
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
@@ -294,9 +313,14 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     )
     model.eval()
     loss_tgt, loss_nontgt = None, None
+    grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     for epoch in range(last_epoch + 1, args.epochs):
-        model.dec_rank.train()
-        # model.train()
+        if args.train_dec_only_bool:
+            for params in model.enc_pyr.parameters():
+                params.requires_grad = False
+            model.dec_rank.train()
+        else:
+            model.train()
         train_loss, train_loss_tgt, train_loss_nontgt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
@@ -308,7 +332,14 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
             loss = loss_fn(out_rank, qrels_masks)
             if type(loss) == tuple:
                 loss, loss_tgt, loss_nontgt = loss
+
             loss.backward()
+            # Gradients must be available after loss.backward()
+            if grad_log_ind % grad_log_interval == 0:
+                log_weights_grads_stats(grad_log_step, model, tbsw)
+                grad_log_step += 1
+            grad_log_ind += 1
+
             optimizer.step()
 
             train_loss += loss.item()
