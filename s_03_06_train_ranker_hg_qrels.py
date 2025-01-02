@@ -10,6 +10,7 @@ import torch.utils.tensorboard as tb
 from pydantic import Field, BaseModel
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
+from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
@@ -202,6 +203,37 @@ def ranker_cos_loss(cos_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torc
         import sys
         sys.exit(0)
     return loss, loss_tgt, loss_nontgt
+
+
+class RankerCosEmbLoss(nn.Module):
+    def __init__(self, margin: float = 0.0):
+        super().__init__()
+        self.register_buffer('margin', torch.scalar_tensor(margin))
+        self.register_buffer('zero', torch.scalar_tensor(0.0))
+
+    # prob_pred: (n_docs, n_qs)
+    # mask_gt: (n_docs, n_qs)
+    def forward(self, cos_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        mask_gt = mask_gt.to(torch.bool)
+        n_docs = len(cos_pred)
+        loss_tgt = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
+        loss_nontgt = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
+        for i in range(n_docs):
+            probs_tgt = 1 - torch.masked_select(cos_pred[i], mask_gt[i])
+            probs_nontgt = torch.masked_select(cos_pred[i], ~mask_gt[i])
+            probs_nontgt = torch.maximum(probs_nontgt - self.margin, self.zero)
+            lt, lnt = torch.mean(torch.log(probs_tgt)), torch.mean(torch.log(probs_nontgt))
+            loss_tgt = loss_tgt + lt
+            loss_nontgt = loss_nontgt + lnt
+        loss_tgt = loss_tgt / n_docs
+        loss_nontgt = loss_nontgt / n_docs
+        loss = (loss_tgt + loss_nontgt) / 2
+        if torch.isnan(loss).any():
+            print('!!!', torch.isnan(cos_pred).any())
+            print(mask_gt)
+            import sys
+            sys.exit(0)
+        return loss, loss_tgt, loss_nontgt
 
 
 def main(args: ArgsRankerHgQrelsTrain) -> int:

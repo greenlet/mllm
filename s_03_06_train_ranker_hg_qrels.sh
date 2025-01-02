@@ -28,7 +28,8 @@ dec_dropout_rate=-1
 dec_with_bias=true
 dec_mlp_sizes=""
 dec_mlp_sizes="1024,512"
-train_dec_only=true
+#train_dec_only=true
+train_dec_only=false
 
 #device=cpu
 #epochs=5
