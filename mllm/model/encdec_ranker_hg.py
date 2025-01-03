@@ -345,6 +345,14 @@ class EncdecHg(nn.Module):
         self.enc_pyr = EncoderPyramid(cfg.enc_pyr)
         self.dec_pyr = DecoderPyramid(cfg.dec_pyr)
 
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
+            pnp = p.detach().cpu().numpy()
+            print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
+
     def forward(self, inp: Tensor, enc_only: bool = False) -> Tensor:
         out = inp
         out = self.enc_pyr(out)
@@ -383,7 +391,7 @@ class DecoderRankHg(nn.Module):
         if self.cfg.mlp_sizes:
             for i, mlp_layer in enumerate(self.mlp_layers):
                 out = mlp_layer(out)
-                out = F.relu(out)
+                # out = F.relu(out)
                 if i < len(self.mlp_layers) - 1:
                     # out = F.sigmoid(out)
                     out = F.relu(out)
@@ -407,6 +415,14 @@ class RankerHg(nn.Module):
         self.enc_pyr = EncoderPyramid(cfg.enc_pyr)
         self.dec_rank = DecoderRankHg(cfg.dec_rank)
         self.register_buffer('norm_cap', torch.scalar_tensor(1e-8))
+
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
+            pnp = p.detach().cpu().numpy()
+            print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
 
     # inp_docs: (n_docs, inp_len)
     # inp_qs: (n_qs, inp_len)

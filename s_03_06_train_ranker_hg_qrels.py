@@ -222,7 +222,7 @@ class RankerCosEmbLoss(nn.Module):
             probs_tgt = 1 - torch.masked_select(cos_pred[i], mask_gt[i])
             probs_nontgt = torch.masked_select(cos_pred[i], ~mask_gt[i])
             probs_nontgt = torch.maximum(probs_nontgt - self.margin, self.zero)
-            lt, lnt = torch.mean(torch.log(probs_tgt)), torch.mean(torch.log(probs_nontgt))
+            lt, lnt = torch.mean(probs_tgt), torch.mean(probs_nontgt)
             loss_tgt = loss_tgt + lt
             loss_nontgt = loss_nontgt + lnt
         loss_tgt = loss_tgt / n_docs
@@ -331,7 +331,8 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, args.docs_batch_size, 'Queries')
     # loss_fn = RankProbLoss()
     # loss_fn = ranker_prob_loss_softmax
-    loss_fn = ranker_cos_loss
+    # loss_fn = ranker_cos_loss
+    loss_fn = RankerCosEmbLoss()
     n_epochs = args.epochs - (last_epoch + 1)
     train_batch_it = view_train.get_batch_iterator(
         n_batches=n_epochs * n_batches_train,
