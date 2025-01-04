@@ -392,10 +392,11 @@ class DecoderRankHg(nn.Module):
             for i, mlp_layer in enumerate(self.mlp_layers):
                 out = mlp_layer(out)
                 # out = F.relu(out)
-                if i < len(self.mlp_layers) - 1:
-                    # out = F.sigmoid(out)
-                    out = F.relu(out)
-                    # out = self.layer_norm(out)
+                out = F.tanh(out)
+                # if i < len(self.mlp_layers) - 1:
+                #     # out = F.sigmoid(out)
+                #     out = F.relu(out)
+                #     # out = self.layer_norm(out)
         else:
             # embs_batch: (batch_size, inp_len, d_model)
             out = self.w(out)
