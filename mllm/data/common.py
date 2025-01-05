@@ -76,10 +76,10 @@ class DsView(Generic[TDs, TBatch]):
     def __len__(self) -> int:
         return len(self.ids)
 
-    def shuffle(self):
+    def shuffle(self, seed: Optional[int] = 123):
         print(f'Shuffle {len(self.ids)} elements')
+        if seed is not None:
+            np.random.seed(seed)
         np.random.shuffle(self.ids)
-
-
 
 

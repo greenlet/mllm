@@ -61,7 +61,7 @@ class MultiHeadAttention(nn.Module):
         self.fc = nn.Linear(n_heads * d_v, d_model, bias=False)
 
         temp = d_k ** 0.5
-        temp = 1
+        # temp = 1
         self.attention = ScaledDotProductAttention(
             temperature=temp, dropout_rate=dropout_rate,
         )
@@ -348,10 +348,10 @@ class EncdecHg(nn.Module):
         for n, p in self.named_parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-            else:
-                nn.init.uniform_(p, -0.1, 0.1)
-            pnp = p.detach().cpu().numpy()
-            print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
+            # else:
+            #     nn.init.uniform_(p, -0.1, 0.1)
+            # pnp = p.detach().cpu().numpy()
+            # print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
 
     def forward(self, inp: Tensor, enc_only: bool = False) -> Tensor:
         out = inp
@@ -420,10 +420,10 @@ class RankerHg(nn.Module):
         for n, p in self.named_parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-            else:
-                nn.init.uniform_(p, -0.1, 0.1)
-            pnp = p.detach().cpu().numpy()
-            print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
+            # else:
+            #     nn.init.uniform_(p, -0.1, 0.1)
+            # pnp = p.detach().cpu().numpy()
+            # print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
 
     # inp_docs: (n_docs, inp_len)
     # inp_qs: (n_qs, inp_len)
