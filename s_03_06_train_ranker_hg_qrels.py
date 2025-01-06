@@ -109,19 +109,15 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     def dec_with_bias_bool(self) -> bool:
         return is_arg_true('--dec-with-bias', self.dec_with_bias)
 
-    dec_mlp_sizes: str = Field(
+    dec_mlp_layers: str = Field(
         '',
         required=False,
-        description=f'Consecutive MLP sizes transforming initial embedding to a relevance vector. The size can be -1 which '
-                    f'means the same size as initial embedding. When not set or empty, no MLP layers will be created. Default: empty.',
-        cli=('--dec-mlp-sizes',)
+        description=f'Consecutive dense layers\' sizes and activation functions delimited with a comma transforming initial embedding to a relevance vector. '
+                    f'Examples: "512,relu,1024" - no activation in the end, "512,tanh,512,tanh" - both layers have activations. Adding suffix "b" to a layer '
+                    f'dimension will add bias to that layer. Absense of suffix means no bias. Example: "1024b",tanh,512b - both layers have biases. '
+                    f'Adding "norm" to the list will add layer normalization.',
+        cli=('--dec-mlp-layers',)
     )
-    @property
-    def dec_mlp_sizes_list(self) -> list[int]:
-        dec_mlp_sizes = re.compile(r'^[([\s]*|[)\]\s]*$').sub('', self.dec_mlp_sizes)
-        parts = re.compile(r'[\s+,]+').split(dec_mlp_sizes)
-        return [int(p) for p in parts if p]
-
     docs_batch_size: int = Field(
         3,
         required=False,
@@ -238,7 +234,6 @@ class RankerCosEmbLoss(nn.Module):
 
 def main(args: ArgsRankerHgQrelsTrain) -> int:
     print(args)
-    print(f'dec_mlp_sizes_list: {args.dec_mlp_sizes_list}')
 
     assert args.ds_dir_paths, '--ds-dir-paths is expected to list at least one Qrels datsaset'
 
@@ -345,8 +340,12 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         shuffle_between_loops=True,
     )
     model.eval()
+    assert args.train_epoch_steps is not None
     loss_tgt, loss_nontgt = None, None
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
+    prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
+    if prev_train_steps > 0:
+        grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
     for epoch in range(last_epoch + 1, args.epochs):
         if args.train_dec_only_bool:
             for params in model.enc_pyr.parameters():
