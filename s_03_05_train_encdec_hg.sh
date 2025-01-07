@@ -16,9 +16,8 @@ tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_hg
 
-#inp_len=128
-#dec_n_layers=0
-inp_len=256
+inp_len=128
+#inp_len=256
 #dec_n_layers=7
 dec_n_layers=0
 
@@ -46,13 +45,13 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-#docs_batch_size=20
-docs_batch_size=7
+docs_batch_size=20
+#docs_batch_size=7
 #docs_batch_size=15
-train_subdir=last
+#train_subdir=last
 
 #learning_rate=0.0001
-learning_rate=0.00002
+learning_rate=0.0005
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 

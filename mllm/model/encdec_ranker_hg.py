@@ -9,7 +9,8 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
-from mllm.config.model import EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg
+from mllm.config.model import EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+    parse_mlp_layers, ParsedMlpLayer
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
 
@@ -362,13 +363,11 @@ class EncdecHg(nn.Module):
         return out
 
 
-MLP_LAYERS_PAT = re.compile(r'(\d+b?|[a-z]\w+)')
-
-
 class DecoderRankHg(nn.Module):
     cfg: DecRankHgCfg
     # w: nn.Linear
     layer_norm: nn.LayerNorm
+    cfg_mlp_layers: list[ParsedMlpLayer]
     # mlp_layers: list[nn.Linear]
 
 
@@ -377,12 +376,13 @@ class DecoderRankHg(nn.Module):
         self.cfg = cfg
         d_last = self.cfg.d_model
         mlp_layers = []
-        for mlp_size in self.cfg.mlp_sizes:
-            if mlp_size == -1:
-                mlp_size = self.cfg.d_model
+        self.cfg_mlp_layers = parse_mlp_layers(self.cfg.mlp_layers)
+        for cfg_mlp_layer in self.cfg_mlp_layers:
+            if cfg_mlp_layer.size > 0:
+                mlp_layer = nn.Linear(d_last, cfg_mlp_layer.size)
+                d_last = cfg_mlp_layer.size
             mlp_layer = nn.Linear(d_last, mlp_size, bias=self.cfg.with_bias)
             mlp_layers.append(mlp_layer)
-            d_last = mlp_size
         self.mlp_layers = nn.ModuleList(mlp_layers)
 
     # embs_batch: (batch_size, inp_len, d_model)

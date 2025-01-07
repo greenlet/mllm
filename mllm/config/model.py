@@ -1,4 +1,6 @@
 import math
+import re
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import TypeVar, Union, Optional
@@ -229,6 +231,30 @@ class DecRankHgCfg(BaseModel):
 class RankerHgCfg(BaseModel):
     enc_pyr: EncPyrCfg
     dec_rank: DecRankHgCfg
+
+
+MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
+
+
+@dataclass(kw_only=True)
+class ParsedMlpLayer:
+    size: int = 0
+    bias: bool = False
+    act: str = ''
+
+def parse_mlp_layers(s: str) -> list[ParsedMlpLayer]:
+    res = []
+    parts = s.split(',')
+    for i, part in enumerate(parts):
+        m = MLP_LAYERS_PAT.match(part)
+        assert m is not None, f'Cannot parse {i}th part of {parts} with {MLP_LAYERS_PAT} pattern. Original string: {s}'
+        size = m.group('size')
+        size = int(size) if size else 0
+        bias = m.group('bias') is not None
+        act = m.group('act') or ''
+        pl = ParsedMlpLayer(size=size, bias=bias, act=act)
+        res.append(pl)
+    return res
 
 
 def bool_to_char(b: bool) -> str:
