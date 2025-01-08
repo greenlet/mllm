@@ -2,6 +2,8 @@ import re
 import sys
 from typing import Optional
 
+from mllm.train.utils import get_activation_module
+
 if '..' not in sys.path: sys.path.append('..')
 
 import numpy as np
@@ -379,29 +381,20 @@ class DecoderRankHg(nn.Module):
         self.cfg_mlp_layers = parse_mlp_layers(self.cfg.mlp_layers)
         for cfg_mlp_layer in self.cfg_mlp_layers:
             if cfg_mlp_layer.size > 0:
-                mlp_layer = nn.Linear(d_last, cfg_mlp_layer.size)
+                mlp_layer = nn.Linear(d_last, cfg_mlp_layer.size, bias=cfg_mlp_layer.bias)
                 d_last = cfg_mlp_layer.size
-            mlp_layer = nn.Linear(d_last, mlp_size, bias=self.cfg.with_bias)
+            else:
+                act_module = get_activation_module(cfg_mlp_layer.act)
+                mlp_layer = act_module()
             mlp_layers.append(mlp_layer)
         self.mlp_layers = nn.ModuleList(mlp_layers)
 
     # embs_batch: (batch_size, inp_len, d_model)
     def forward(self, embs_batch: Tensor) -> Tensor:
         out = embs_batch
-        if self.cfg.mlp_sizes:
-            for i, mlp_layer in enumerate(self.mlp_layers):
-                out = mlp_layer(out)
-                # out = F.relu(out)
-                out = F.tanh(out)
-                # if i < len(self.mlp_layers) - 1:
-                #     # out = F.sigmoid(out)
-                #     out = F.relu(out)
-                #     # out = self.layer_norm(out)
-        else:
-            # embs_batch: (batch_size, inp_len, d_model)
-            out = self.w(out)
+        for mlp_layer in self.mlp_layers:
+            out = mlp_layer(out)
         # out = self.layer_norm(out)
-
         return out
 
 

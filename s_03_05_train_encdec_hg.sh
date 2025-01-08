@@ -48,10 +48,10 @@ val_epoch_steps=50
 docs_batch_size=20
 #docs_batch_size=7
 #docs_batch_size=15
-#train_subdir=last
+train_subdir=last
 
 #learning_rate=0.0001
-learning_rate=0.0005
+learning_rate=0.00005
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 

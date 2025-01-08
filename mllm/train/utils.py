@@ -1,11 +1,13 @@
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 import numpy as np
 import torch
 import torch.utils.tensorboard as tb
+from torch import nn
+from torch.nn.modules import activation
 
 from mllm.data.common import DsView, TDs, TBatch
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
@@ -143,4 +145,20 @@ def log_weights_grads_stats(step: int, model: torch.nn.Module, tbsw: tb.SummaryW
             grad_mean, grad_std = gms
             tbsw.add_scalar(f'{pname}/GradMean', grad_mean, step)
             tbsw.add_scalar(f'{pname}/GradStd', grad_std, step)
+
+
+Activation = Callable[..., nn.Module]
+
+
+def get_activation_module(act: str) -> Activation:
+    # get list from activation submodule as lower-case
+    activations_lc = [str(a).lower() for a in activation.__all__]
+    if (act := str(act).lower()) in activations_lc:
+        # match actual name from lower-case list, return function/factory
+        idx = activations_lc.index(act)
+        act_name = activation.__all__[idx]
+        act_func = getattr(activation, act_name)
+        return act_func
+    else:
+        raise ValueError(f'Cannot find activation function for string <{act}>')
 
