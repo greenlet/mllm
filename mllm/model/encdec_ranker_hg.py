@@ -398,6 +398,22 @@ class DecoderRankHg(nn.Module):
         return out
 
 
+# emb1: (n1, d_model)
+# emb2: (n2, d_model)
+def cos_mat(emb1: Tensor, emb2: Tensor) -> Tensor:
+    # emb1: (n1, d_model)
+    emb1 = F.normalize(emb1, dim=-1)
+
+    # emb2: (n2, d_model)
+    emb2 = F.normalize(emb2, dim=-1)
+
+    # emb2: (d_model, n2)
+    emb2 = torch.transpose(emb2, 0, 1)
+    # out: (n1, n2)
+    out = emb1 @ emb2
+    return out
+
+
 class RankerHg(nn.Module):
     cfg: RankerHgCfg
     enc_pyr: EncoderPyramid
@@ -418,40 +434,28 @@ class RankerHg(nn.Module):
             # pnp = p.detach().cpu().numpy()
             # print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
 
+    # inp: (batch_size, inp_len)
+    def run_encdec(self, inp: Tensor) -> Tensor:
+        out = inp
+        # out_docs: (batch_size, 1, d_model)
+        out = self.enc_pyr(inp)
+        # out_docs: (batch_size, d_model)
+        out = out.squeeze(1)
+        # out: (batch_size, d_model)
+        out = self.dec_rank(out)
+        return out
+
     # inp_docs: (n_docs, inp_len)
     # inp_qs: (n_qs, inp_len)
     def forward(self, inp_docs: Tensor, inp_qs) -> Tensor:
-        # out_docs: (n_docs, 1, d_model)
-        out_docs = self.enc_pyr(inp_docs)
         # out_docs: (n_docs, d_model)
-        out_docs = out_docs.squeeze(1)
-        # out_docs: (n_docs, d_model)
-        out_docs = self.dec_rank(out_docs)
+        out_docs = self.run_encdec(inp_docs)
 
-        # out_qs: (n_qs,  1, d_model)
-        out_qs = self.enc_pyr(inp_qs)
         # out_qs: (n_qs, d_model)
-        out_qs = out_qs.squeeze(1)
-        # out_qs: (n_qs, d_model)
-        out_qs = self.dec_rank(out_qs)
+        out_qs = self.run_encdec(inp_qs)
 
-        # out_docs_norm: (n_docs, 1)
-        out_docs_norm = torch.linalg.vector_norm(out_docs, dim=-1, keepdim=True)
-        out_docs_norm = torch.maximum(out_docs_norm, self.norm_cap)
-        # out_docs: (n_docs, d_model)
-        out_docs = out_docs / out_docs_norm
-
-        # out_qs_norm: (n_qs, 1)
-        out_qs_norm = torch.linalg.vector_norm(out_qs, dim=-1, keepdim=True)
-        out_qs_norm = torch.maximum(out_qs_norm, self.norm_cap)
-        # out_qs: (n_qs, d_model)
-        out_qs = out_qs / out_qs_norm
-
-        # out_qs: (d_model, n_qs)
-        out_qs = torch.transpose(out_qs, 0, 1)
         # out_rank: (n_docs, n_qs)
         # contains matrix of cosine distances between docs' and queries' embeddings
-        out_rank = out_docs @ out_qs
-
+        out_rank = cos_mat(out_docs, out_qs)
         return out_rank
 
