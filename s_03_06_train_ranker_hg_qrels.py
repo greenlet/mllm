@@ -1,7 +1,7 @@
 import shutil
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Generator
 
 import numpy as np
 import torch
@@ -14,14 +14,16 @@ from tqdm import trange
 
 from mllm.config.model import TokenizerCfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType, RankerHgCfg, \
     gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg
-from mllm.data.dsqrels import QrelsPlainBatch
+from mllm.data.common import DsView
+from mllm.data.dsqrels import QrelsPlainBatch, DsQrelsView, DsQrelsPlainView, DsQrels
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import TOKENIZER_CFG_FNAME, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR, is_arg_true, \
     ENCDEC_HG_MODEL_CFG_FNAME, RANKER_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg
 from mllm.model.losses import RankerCosEmbLoss
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config
-from mllm.train.utils import find_create_train_path, calc_print_batches, log_weights_grads_stats
+from mllm.train.utils import find_create_train_path, calc_print_batches, log_weights_grads_stats, \
+    calc_print_batches_multi
 
 
 class ArgsRankerHgQrelsTrain(BaseModel):
@@ -170,9 +172,43 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     def train_dec_only_bool(self) -> bool:
         return is_arg_true('--train-dec-only', self.train_dec_only)
 
+    random_seed: Optional[int] = Field(
+        None,
+        description='Random seed.',
+        cli=('--random-seed',),
+    )
+
+
+def get_batch_iterators(views_train: list[DsView[DsQrels, QrelsPlainBatch]], views_val: list[DsView[DsQrels, QrelsPlainBatch]], n_epochs: int, batch_size: int) -> tuple[Generator[QrelsPlainBatch, None, None], Generator[QrelsPlainBatch, None, None]]:
+    calc_batches_num = lambda n_qs: n_qs // batch_size + min(n_qs % batch_size, 1)
+    zeros = lambda: np.zeros(len(views_train), dtype=int)
+    n_qs_train, n_qs_val = sum(len(v) for v in views_train), sum(len(v) for v in views_val)
+    n_batches_train, n_batches_val = calc_batches_num(n_qs_train), calc_batches_num(n_qs_val)
+    n = len(views_train)
+    nbt, nbv = zeros(), zeros()
+    ibt, ibv = zeros(), zeros()
+    train_batch_its, val_batch_its = [], []
+    for i, (view_train, view_val) in enumerate(zip(views_train, views_val)):
+        nbt[i], nbv[i] = calc_batches_num(view_train), calc_batches_num(view_val)
+        train_batch_it = view_train.get_batch_iterator(
+            n_batches=n_epochs * n_batches_train,
+            drop_last=False,
+            shuffle_between_loops=True,
+        )
+        val_batch_it = view_val.get_batch_iterator(
+            n_batches=n_epochs * n_batches_val,
+            drop_last=False,
+            shuffle_between_loops=True,
+        )
+        train_batch_its.append(train_batch_it)
+        val_batch_its.append(val_batch_it)
+
 
 def main(args: ArgsRankerHgQrelsTrain) -> int:
     print(args)
+
+    if args.random_seed is not None:
+        np.random.seed(args.random_seed)
 
     assert args.ds_dir_paths, '--ds-dir-paths is expected to list at least one Qrels datsaset'
 
@@ -182,7 +218,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     model_cfg = parse_yaml_file_as(RankerHgCfg, args.model_cfg_fpath)
     model_cfg = copy_override_ranker_hg_cfg(
         model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
-        pos_enc_type=args.pos_enc_type, dec_with_bias=args.dec_with_bias_bool, dec_mlp_sizes=args.dec_mlp_sizes_list,
+        pos_enc_type=args.pos_enc_type, dec_with_bias=args.dec_with_bias_bool, dec_mlp_layers=args.dec_mlp_layers,
     )
     print(model_cfg)
 
@@ -216,8 +252,9 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     tok_dict = tkz_cfg.custom_tokens
     ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.inp_len, fixed_size=True)
     pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
-    ds = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.inp_len, device)
-    print(ds)
+    dss = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.inp_len, device, join=False)
+    for ds in dss:
+        print(ds)
 
     print(f'Creating model with vocab size = {len(tokenizer)}')
 
@@ -245,12 +282,17 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
     # optimizer = torch.optim.LBFGS(model.parameters(), lr=args.learning_rate)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=10, threshold=1e-6, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    ds_view = ds.get_view_plain_qids(batch_size=args.docs_batch_size)
-    ds_view.shuffle()
-    view_train, view_val = ds_view.split((-1, 0.05))
+    views_train, views_val = [], []
+    for ds in dss:
+        ds_view = ds.get_view_plain_qids(batch_size=args.docs_batch_size)
+        view_train, view_val = ds_view.split((-1, 0.05))
+        view_train.shuffle()
+        view_val.shuffle()
+        views_train.append(view_train)
+        views_val.append(view_val)
 
     last_epoch, val_loss_min = -1, None
     if checkpoint:
@@ -259,25 +301,15 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
         np.random.seed(int(time.time() * 1000) % 10_000_000)
-        view_train.shuffle()
-        view_val.shuffle()
 
-    n_batches_train, n_batches_val = calc_print_batches(view_train, view_val, args.docs_batch_size, 'Queries')
     # loss_fn = RankProbLoss()
     # loss_fn = ranker_prob_loss_softmax
     # loss_fn = ranker_cos_loss
     loss_fn = RankerCosEmbLoss()
     n_epochs = args.epochs - (last_epoch + 1)
-    train_batch_it = view_train.get_batch_iterator(
-        n_batches=n_epochs * n_batches_train,
-        drop_last=False,
-        shuffle_between_loops=True,
-    )
-    val_batch_it = view_val.get_batch_iterator(
-        n_batches=n_epochs * n_batches_val,
-        drop_last=False,
-        shuffle_between_loops=True,
-    )
+
+    train_batch_it, val_batch_it = get_batch_iterators(views_train, views_val, n_epochs, n_epochs)
+
     model.eval()
     assert args.train_epoch_steps is not None
     loss_tgt, loss_nontgt = None, None

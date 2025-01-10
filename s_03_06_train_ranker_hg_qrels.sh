@@ -49,7 +49,8 @@ pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-po
 #train_subdir=last
 
 learning_rate=0.0001
-#learning_rate=0.00001
+#learning_rate=0.00005
+random_seed=1
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
@@ -76,6 +77,7 @@ python s_03_06_train_ranker_hg_qrels.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --pretrained-model-path "$pretrained_model_path" \
-  --train-dec-only $train_dec_only
+  --train-dec-only $train_dec_only \
+  --random-seed $random_seed
 #"
 

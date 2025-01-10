@@ -1,4 +1,4 @@
-from typing import Generator, Optional, TypeVar, Generic, Callable
+from typing import Generator, Optional, TypeVar, Generic, Callable, Union
 
 import numpy as np
 
@@ -6,7 +6,7 @@ from mllm.utils.utils import SplitsType, split_range
 
 TDs = TypeVar('TDs')
 TBatch = TypeVar('TBatch')
-TGetBatchFunc = Callable[[np.ndarray, ...], TBatch]
+TGetBatchFunc = Union[Callable[[np.ndarray], TBatch], Callable[[np.ndarray, ...], TBatch]]
 
 
 class DsView(Generic[TDs, TBatch]):
@@ -16,14 +16,14 @@ class DsView(Generic[TDs, TBatch]):
     batch_size: Optional[int] = None
     kwargs: dict
 
-    def __init__(self, ds: TDs, ids: np.ndarray, get_batch_fn: TGetBatchFunc, batch_size: Optional[int] = None, **kwargs):
+    def __init__(self, ds: TDs, ids: np.ndarray, get_batch_fn: TGetBatchFunc[TBatch], batch_size: Optional[int] = None, **kwargs):
         self.ds = ds
         self.ids = ids.copy()
         self.get_batch_fn = get_batch_fn
         self.batch_size = batch_size
         self.kwargs = kwargs or {}
 
-    def split(self, splits: SplitsType) -> tuple['DsView', ...]:
+    def split(self, splits: SplitsType) -> tuple['DsView[TDs, TBatch]', ...]:
         intervals = split_range(len(self.ids), splits)
         res = []
         for i in range(1, len(intervals)):

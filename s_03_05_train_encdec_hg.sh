@@ -52,6 +52,7 @@ train_subdir=last
 
 #learning_rate=0.0001
 learning_rate=0.00005
+random_seed=111
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
@@ -76,6 +77,7 @@ python s_03_05_train_encdec_hg.py \
   --epochs $epochs \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
-  --val-epoch-steps $val_epoch_steps
+  --val-epoch-steps $val_epoch_steps \
+  --random-seed $random_seed
 #"
 

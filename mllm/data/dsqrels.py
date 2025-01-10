@@ -282,9 +282,9 @@ class DsQrels:
         ids = self.df_qs.index.values
         return DsQrelsView(self, ids, self.get_batch, batch_size)
 
-    def get_view_plain_qids(self, batch_size: Optional[int] = None) -> DsQrelsView:
+    def get_view_plain_qids(self, batch_size: Optional[int] = None) -> DsQrelsPlainView:
         ids = self.df_qs.index.values
-        return DsQrelsView(self, ids, self.get_batch_plain_qids, batch_size)
+        return DsQrelsPlainView(self, ids, self.get_batch_plain_qids, batch_size)
 
     def get_view_plain_dids(self, batch_size: Optional[int] = None) -> DsQrelsPlainView:
         ids = self.df_off.index.values

@@ -101,6 +101,18 @@ def calc_print_batches(view_train: DsView[TDs, TBatch], view_val: DsView[TDs, TB
     return n_batches_train, n_batches_val
 
 
+def calc_print_batches_multi(views_train: list[DsView[TDs, TBatch]], views_val: list[DsView[TDs, TBatch]], batch_size: int, items_name: str) -> tuple[int, int]:
+    calc_batches = lambda n_items: n_items // batch_size + (n_items % batch_size > 1)
+    n_qs_train, n_qs_val = sum(len(v) for v in views_train), sum(len(v) for v in views_val)
+    n_batches_train = calc_batches(n_qs_train)
+    n_batches_val = calc_batches(n_qs_val)
+    print(f'{items_name} train: {n_qs_train}')
+    print(f'{items_name} val: {n_qs_val}')
+    print(f'Batches train: {n_batches_train}')
+    print(f'Batches val: {n_batches_val}')
+    return n_batches_train, n_batches_val
+
+
 def concat_tokens(*chunks: torch.Tensor, shuffle: bool = True) ->torch.Tensor:
     if shuffle:
         chunks = list(chunks)

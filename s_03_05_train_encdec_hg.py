@@ -25,68 +25,57 @@ from mllm.train.utils import find_create_train_path, log_weights_grads_stats, re
 class ArgsEncdecHgTrain(BaseModel):
     data_path: Path = Field(
         ...,
-        required=True,
         description='Root data path. Must contain subpath `wikipedia/WIKI_DS_NAME` with Wikipedia dataset.',
         cli=('--data-path',),
     )
     wiki_ds_name: str = Field(
         '20200501.en',
-        required=False,
         description='Wikipedia dataset name of the format YYYYMMDD.LANG, for example: 20220301.en',
         cli=('--wiki-ds-name',),
     )
     train_root_path: Path = Field(
         ...,
-        required=True,
         description='Path to train root directory. New train subdirectory will be created within each new run.',
         cli=('--train-root-path',),
     )
     train_subdir: str = Field(
         '',
-        required=False,
         description='Train subdirectory. Can have values: "last", "<subdirectory-name>". When set to "last", '
             'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
         cli=('--train-subdir',)
     )
     tokenizer_cfg_fpath: Path = Field(
         ...,
-        required=True,
         description='Path to tokenizer config Yaml file.',
         cli=('--tokenizer-cfg-fpath',),
     )
     model_cfg_fpath: Path = Field(
         ...,
-        required=True,
         description='Path to EncdecHg model config Yaml file.',
         cli=('--model-cfg-fpath',),
     )
     inp_len: int = Field(
         ...,
-        required=True,
         description='Input tokens number. Must be a power of 2. INP_LEN = 2^k will produce model with k layers.',
         cli=('--inp-len',),
     )
     n_similar_layers: int = Field(
         ...,
-        required=True,
         description='Number of consecutive similar attention layers for each level dedicated of increasing/decreasing input size.',
         cli=('--n-similar-layers',),
     )
     reduct_type: HgReductType = Field(
         HgReductType.Matmul,
-        required=False,
         description=f'Encoder layer reduct type. Can have values: {list(x.value for x in HgReductType)}',
         cli=('--reduct-type',),
     )
     enhance_type: HgEnhanceType = Field(
         HgEnhanceType.Matmul,
-        required=False,
         description=f'Decoder layer enhance type. Can have values: {list(x.value for x in HgEnhanceType)}',
         cli=('--enhance-type',),
     )
     pos_enc_type: PosEncType = Field(
         PosEncType.Num,
-        required=False,
         description=
         f'Positional encoder type. Can have values: {list(x.value for x in PosEncType)}. {PosEncType.Num} - '
         f'trigonometric numerical values generated. {PosEncType.Emb} - learned embeddings.',
@@ -100,45 +89,43 @@ class ArgsEncdecHgTrain(BaseModel):
     )
     dec_n_layers: int = Field(
         0,
-        required=False,
         description='Decoder number of layers.',
         cli=('--dec-n-layers',),
     )
     docs_batch_size: int = Field(
         3,
-        required=False,
         description='Documents batch size. Must be greater or equal than 2.',
         cli=('--docs-batch-size',),
     )
     device: str = Field(
         'cpu',
-        required=False,
         description='Device to run training on. Can have values: "cpu", "cuda"',
         cli=('--device',)
     )
     epochs: int = Field(
         None,
-        required=True,
         description='Number of training epochs.',
         cli=('--epochs',),
     )
     learning_rate: float = Field(
         0.001,
-        required=False,
         description='Initial learning rate of the training process.',
         cli=('--learning-rate',)
     )
     train_epoch_steps: Optional[int] = Field(
         None,
-        required=False,
         description='Number of training steps per epoch.',
         cli=('--train-epoch-steps',),
     )
     val_epoch_steps: Optional[int] = Field(
         None,
-        required=False,
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
+    )
+    random_seed: Optional[int] = Field(
+        None,
+        description='Random seed.',
+        cli=('--random-seed',),
     )
 
 
@@ -209,6 +196,9 @@ def mask_random_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0
 
 def main(args: ArgsEncdecHgTrain) -> int:
     print(args)
+
+    if args.random_seed is not None:
+        np.random.seed(args.random_seed)
 
     device = torch.device(args.device)
 
@@ -323,6 +313,9 @@ def main(args: ArgsEncdecHgTrain) -> int:
     i_train, i_val = 0, 0
     loss_gt, loss_nongt = None, None
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
+    prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
+    if prev_train_steps > 0:
+        grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
     for epoch in range(last_epoch + 1, args.epochs):
         model.train()
         train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
