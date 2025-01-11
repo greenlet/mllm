@@ -179,17 +179,37 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     )
 
 
-def get_batch_iterators(views_train: list[DsView[DsQrels, QrelsPlainBatch]], views_val: list[DsView[DsQrels, QrelsPlainBatch]], n_epochs: int, batch_size: int) -> tuple[Generator[QrelsPlainBatch, None, None], Generator[QrelsPlainBatch, None, None]]:
+BatchView = DsView[DsQrels, QrelsPlainBatch]
+BatchIt = Generator[QrelsPlainBatch, None, None]
+
+def agg_batch_it(iterators: list[BatchIt], n_batches: np.ndarray) -> BatchIt:
+    inds = np.zeros_like(n_batches)
+    i, n = 0, len(iterators)
+    while True:
+        it = iterators[i]
+        if i == 0:
+            yield next(it)
+            inds[i] += 1
+        elif (inds[i] + 1) / n_batches[i] <= inds[0] / n_batches[0]:
+            yield next(it)
+            inds[i] += 1
+        else:
+            i = (i + 1) % n
+
+
+def get_batch_iterators(views_train: list[BatchView], views_val: list[BatchView], n_epochs: int, batch_size: int) \
+        -> tuple[BatchIt, BatchIt]:
     calc_batches_num = lambda n_qs: n_qs // batch_size + min(n_qs % batch_size, 1)
     zeros = lambda: np.zeros(len(views_train), dtype=int)
     n_qs_train, n_qs_val = sum(len(v) for v in views_train), sum(len(v) for v in views_val)
     n_batches_train, n_batches_val = calc_batches_num(n_qs_train), calc_batches_num(n_qs_val)
-    n = len(views_train)
+    # Sort views by size in increasing order
+    pairs = list(zip(views_train, views_val))
+    pairs = sorted(pairs, key=lambda pair: len(pair[0]))
     nbt, nbv = zeros(), zeros()
-    ibt, ibv = zeros(), zeros()
     train_batch_its, val_batch_its = [], []
-    for i, (view_train, view_val) in enumerate(zip(views_train, views_val)):
-        nbt[i], nbv[i] = calc_batches_num(view_train), calc_batches_num(view_val)
+    for i, (view_train, view_val) in enumerate(pairs):
+        nbt[i], nbv[i] = calc_batches_num(len(view_train)), calc_batches_num(len(view_val))
         train_batch_it = view_train.get_batch_iterator(
             n_batches=n_epochs * n_batches_train,
             drop_last=False,
@@ -202,6 +222,9 @@ def get_batch_iterators(views_train: list[DsView[DsQrels, QrelsPlainBatch]], vie
         )
         train_batch_its.append(train_batch_it)
         val_batch_its.append(val_batch_it)
+
+    return agg_batch_it(train_batch_its, nbt), agg_batch_it(val_batch_its, nbt)
+
 
 
 def main(args: ArgsRankerHgQrelsTrain) -> int:
