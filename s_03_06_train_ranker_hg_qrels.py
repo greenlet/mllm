@@ -445,7 +445,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
             print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
             shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
 
-    ds.close()
+    [ds.close() for ds in dss]
     return 0
 
 
