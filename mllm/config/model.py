@@ -200,6 +200,7 @@ class EncPyrCfg(BaseModel):
     dropout_rate: float
     n_similar_layers: int = 1
     reduct_type: HgReductType = HgReductType.Matmul
+    temperature: float = 0
 
 
 class DecPyrCfg(BaseModel):
@@ -215,6 +216,7 @@ class DecPyrCfg(BaseModel):
     n_vocab: int
     n_similar_layers: int = 1
     enhance_type: HgEnhanceType = HgEnhanceType.Matmul
+    temperature: float = 0
 
 
 class EncdecHgCfg(BaseModel):
@@ -265,6 +267,7 @@ def create_encdec_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
         enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num, dec_n_layers: int = 0,
+        temperature: float = 0,
         ) -> EncdecHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
@@ -275,13 +278,13 @@ def create_encdec_hg_cfg(
     )
     cfg_enc_pyr = EncPyrCfg(
         vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
-        n_similar_layers=n_similar_layers, reduct_type=reduct_type,
+        n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
     )
     assert dec_n_layers >= 0, f'dec_n_layers (={dec_n_layers}) must be >= 0'
     dec_n_layers = dec_n_layers or n_layers
     cfg_dec_pyr = DecPyrCfg(
         d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_n_layers, dropout_rate=dropout_rate, n_vocab=n_vocab,
-        n_similar_layers=n_similar_layers, enhance_type=enhance_type,
+        n_similar_layers=n_similar_layers, enhance_type=enhance_type, temperature=temperature,
     )
     cfg_encdec_hg = EncdecHgCfg(enc_pyr=cfg_enc_pyr, dec_pyr=cfg_dec_pyr)
     return cfg_encdec_hg
@@ -290,7 +293,7 @@ def create_encdec_hg_cfg(
 def create_ranker_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False, dec_mlp_layers: str = '',
+        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False, dec_mlp_layers: str = '', temperature: float = 0,
         ) -> RankerHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
@@ -301,7 +304,7 @@ def create_ranker_hg_cfg(
     )
     cfg_enc_pyr = EncPyrCfg(
         vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
-        n_similar_layers=n_similar_layers, reduct_type=reduct_type,
+        n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
     )
     cfg_dec_rank = DecRankHgCfg(
         d_model=d_model, with_bias=dec_with_bias, mlp_layers=dec_mlp_layers,
@@ -313,7 +316,7 @@ def create_ranker_hg_cfg(
 def copy_override_encdec_hg_cfg(
         cfg: EncdecHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
         enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num, dropout_rate: float = 0.0,
-        dec_n_layers: int = 0,
+        dec_n_layers: int = 0, temperature: float = 0,
         ) -> EncdecHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
@@ -335,13 +338,13 @@ def copy_override_encdec_hg_cfg(
     return create_encdec_hg_cfg(
         n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
         dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type, enhance_type=enhance_type,
-        pos_enc_type=pos_enc_type, dec_n_layers=dec_n_layers,
+        pos_enc_type=pos_enc_type, dec_n_layers=dec_n_layers, temperature=temperature,
     )
 
 
 def copy_override_ranker_hg_cfg(
         cfg: RankerHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False, dec_mlp_layers: str = '',
+        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False, dec_mlp_layers: str = '', temperature: float = 0,
         ) -> RankerHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
@@ -362,7 +365,7 @@ def copy_override_ranker_hg_cfg(
     return create_ranker_hg_cfg(
         n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
         dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type,
-        pos_enc_type=pos_enc_type, dec_with_bias=dec_with_bias, dec_mlp_layers=dec_mlp_layers,
+        pos_enc_type=pos_enc_type, dec_with_bias=dec_with_bias, dec_mlp_layers=dec_mlp_layers, temperature=temperature,
     )
 
 
@@ -395,9 +398,11 @@ def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
     n_layers_str = f'{enc.n_layers}'
     if dec.n_layers != enc.n_layers:
         n_layers_str = f'{n_layers_str}_{dec.n_layers}'
+    assert enc.temperature == dec.temperature, f'Encoder\' temperature (={enc.temperature}) != decoder\'s temperature (={dec.temperature})'
+    temp = np.round(enc.temperature, 2)
     postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{n_layers_str}x{enc.n_similar_layers}-'
                f'rdc_{enc.reduct_type.value}-enh_{dec.enhance_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-'
-               f'dp{dp_rate}')
+               f'dp{dp_rate}-t{temp}')
     return prefix, postfix
 
 
@@ -407,8 +412,9 @@ def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
     dec = model_cfg.dec_rank
     dec_with_bias_str = bool_to_char(model_cfg.dec_rank.with_bias)
     dec_mlp_layers = dec.mlp_layers.replace(',', '_')
+    temp = np.round(enc.temperature, 2)
     postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{enc.n_layers}x{enc.n_similar_layers}-'
                f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-dbs_{dec_with_bias_str}-'
-               f'dmlp_{dec_mlp_layers}')
+               f'dmlp_{dec_mlp_layers}-t{temp}')
     return prefix, postfix
 

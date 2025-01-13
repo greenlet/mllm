@@ -50,7 +50,7 @@ class MultiHeadAttention(nn.Module):
     d_v: int
     dropout_rate: float
 
-    def __init__(self, n_heads: int, d_model: int, d_k: int, d_v: int, dropout_rate: float = 0.1):
+    def __init__(self, n_heads: int, d_model: int, d_k: int, d_v: int, dropout_rate: float = 0.1, temperature: float = 0):
         super().__init__()
 
         self.n_heads = n_heads
@@ -64,10 +64,11 @@ class MultiHeadAttention(nn.Module):
         self.w_vs = nn.Linear(d_model, n_heads * d_v, bias=False)
         self.fc = nn.Linear(n_heads * d_v, d_model, bias=False)
 
-        temp = d_k ** 0.5
-        # temp = 1
+        if temperature < 1e-8:
+            temperature = d_k ** 0.5
+
         self.attention = ScaledDotProductAttention(
-            temperature=temp, dropout_rate=dropout_rate,
+            temperature=temperature, dropout_rate=dropout_rate,
         )
 
         self.dropout = nn.Dropout(dropout_rate)
@@ -161,9 +162,9 @@ class PositionwiseFeedForward(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, n_heads, d_model, d_inner, d_k, d_v, dropout_rate: float = 0.1):
+    def __init__(self, n_heads, d_model, d_inner, d_k, d_v, dropout_rate: float = 0.1, temperature: float = 0):
         super(EncoderLayer, self).__init__()
-        self.slf_attn = MultiHeadAttention(n_heads, d_model, d_k, d_v, dropout_rate=dropout_rate)
+        self.slf_attn = MultiHeadAttention(n_heads, d_model, d_k, d_v, dropout_rate=dropout_rate, temperature=temperature)
         self.pos_ffn = PositionwiseFeedForward(d_model, d_inner, dropout_rate=dropout_rate)
 
     def forward(self, enc_input: Optional[Tensor], enc_input_kv: Optional[Tensor] = None, slf_attn_mask: Optional[Tensor] = None):
@@ -230,7 +231,7 @@ class EncoderPyramid(nn.Module):
         self.enc_layers = nn.ModuleList([
             EncoderLayer(
                 n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner, d_k=cfg.d_k, d_v=cfg.d_v,
-                dropout_rate=cfg.dropout_rate,
+                dropout_rate=cfg.dropout_rate, temperature=cfg.temperature,
             ) for _ in range(cfg.n_layers * cfg.n_similar_layers)
         ])
         self.rdc_layers = nn.ModuleList([
@@ -295,7 +296,7 @@ class DecoderPyramid(nn.Module):
         self.enc_layers = nn.ModuleList([
             EncoderLayer(
                 n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner, d_k=cfg.d_k, d_v=cfg.d_v,
-                dropout_rate=cfg.dropout_rate,
+                dropout_rate=cfg.dropout_rate, temperature=cfg.temperature,
             ) for _ in range(cfg.n_layers * cfg.n_similar_layers)
         ])
         self.enh_layers, self.enh_beg_layer = None, None
