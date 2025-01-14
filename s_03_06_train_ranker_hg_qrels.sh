@@ -11,6 +11,7 @@ config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fname=tokenizer_cfg_01.yaml
 model_cfg_fname=ranker_hg_cfg_01.yaml
 model_cfg_fname=ranker_hg_cfg_02.yaml
+#model_cfg_fname=ranker_hg_cfg_03.yaml
 
 tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
@@ -24,13 +25,12 @@ enhance_type=mmbeg
 #pos_enc_type=num
 pos_enc_type=emb
 dec_dropout_rate=-1
-#dec_with_bias=false
-dec_with_bias=true
-dec_mlp_sizes=""
-dec_mlp_sizes="1024,512"
-dec_mlp_sizes="512"
-train_dec_only=true
-#train_dec_only=false
+dec_mlp_layers="512"
+#dec_mlp_layers="768"
+#dec_mlp_layers="768,tanh"
+#dec_mlp_layers="1024b,tanh,768b,tanh"
+#train_dec_only=true
+train_dec_only=false
 
 #device=cpu
 #epochs=5
@@ -44,12 +44,13 @@ epochs=500
 train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=30
-pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8
+pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
+#pretrained_model_path=$train_encdec_root_path/encdechg-20250107_232630-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d768-h12-dp0-t0
 #pretrained_model_path=
 #train_subdir=last
 
 learning_rate=0.0001
-#learning_rate=0.00005
+learning_rate=0.00005
 random_seed=1
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
@@ -68,8 +69,7 @@ python s_03_06_train_ranker_hg_qrels.py \
   --enhance-type $enhance_type \
   --pos-enc-type $pos_enc_type \
   --dec-dropout-rate $dec_dropout_rate \
-  --dec-with-bias $dec_with_bias \
-  --dec-mlp-sizes "$dec_mlp_sizes" \
+  --dec-mlp-layers $dec_mlp_layers \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

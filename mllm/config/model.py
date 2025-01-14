@@ -226,7 +226,6 @@ class EncdecHgCfg(BaseModel):
 
 class DecRankHgCfg(BaseModel):
     d_model: int
-    with_bias: bool
     mlp_layers: str = ''
 
 
@@ -293,7 +292,7 @@ def create_encdec_hg_cfg(
 def create_ranker_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False, dec_mlp_layers: str = '', temperature: float = 0,
+        pos_enc_type: PosEncType = PosEncType.Num, dec_mlp_layers: str = '', temperature: float = 0,
         ) -> RankerHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
@@ -307,7 +306,7 @@ def create_ranker_hg_cfg(
         n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
     )
     cfg_dec_rank = DecRankHgCfg(
-        d_model=d_model, with_bias=dec_with_bias, mlp_layers=dec_mlp_layers,
+        d_model=d_model, mlp_layers=dec_mlp_layers,
     )
     cfg_encdec_hg = RankerHgCfg(enc_pyr=cfg_enc_pyr, dec_rank=cfg_dec_rank)
     return cfg_encdec_hg
@@ -316,7 +315,7 @@ def create_ranker_hg_cfg(
 def copy_override_encdec_hg_cfg(
         cfg: EncdecHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
         enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num, dropout_rate: float = 0.0,
-        dec_n_layers: int = 0, temperature: float = 0,
+        dec_n_layers: int = 0, temperature: float = -1,
         ) -> EncdecHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
@@ -335,6 +334,8 @@ def copy_override_encdec_hg_cfg(
         assert cfg.enc_pyr.n_similar_layers == cfg.dec_pyr.n_similar_layers, \
             f'enc n_similar_layers = {cfg.enc_pyr.n_similar_layers} != dec n_similar_layers = {cfg.dec_pyr.n_similar_layers}'
 
+    temperature = temperature if temperature >= 0 else cfg.enc_pyr.temperature
+
     return create_encdec_hg_cfg(
         n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
         dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type, enhance_type=enhance_type,
@@ -344,7 +345,7 @@ def copy_override_encdec_hg_cfg(
 
 def copy_override_ranker_hg_cfg(
         cfg: RankerHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        pos_enc_type: PosEncType = PosEncType.Num, dec_with_bias: bool = False, dec_mlp_layers: str = '', temperature: float = 0,
+        pos_enc_type: PosEncType = PosEncType.Num, dec_mlp_layers: str = '', temperature: float = -1,
         ) -> RankerHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
@@ -362,10 +363,12 @@ def copy_override_ranker_hg_cfg(
     if n_similar_layers != cfg.enc_pyr.n_similar_layers:
         assert n_similar_layers > 0, f'n_similar_layers = {n_similar_layers}, but must be > 0'
 
+    temperature = temperature if temperature >= 0 else cfg.enc_pyr.temperature
+
     return create_ranker_hg_cfg(
         n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
         dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type,
-        pos_enc_type=pos_enc_type, dec_with_bias=dec_with_bias, dec_mlp_layers=dec_mlp_layers, temperature=temperature,
+        pos_enc_type=pos_enc_type, dec_mlp_layers=dec_mlp_layers, temperature=temperature,
     )
 
 
@@ -410,11 +413,12 @@ def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
     prefix = f'rankerhg'
     enc = model_cfg.enc_pyr
     dec = model_cfg.dec_rank
-    dec_with_bias_str = bool_to_char(model_cfg.dec_rank.with_bias)
     dec_mlp_layers = dec.mlp_layers.replace(',', '_')
     temp = np.round(enc.temperature, 2)
+    temp_round = np.round(temp)
+    if temp - temp_round < 0.01:
+        temp = int(temp_round)
     postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{enc.n_layers}x{enc.n_similar_layers}-'
-               f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-dbs_{dec_with_bias_str}-'
-               f'dmlp_{dec_mlp_layers}-t{temp}')
+               f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-t{temp}-dmlp_{dec_mlp_layers}')
     return prefix, postfix
 

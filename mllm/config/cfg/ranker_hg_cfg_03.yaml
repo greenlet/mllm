@@ -1,14 +1,14 @@
 dec_rank:
-  d_model: 256
-  mlp_layers: '256'
+  d_model: 768
+  mlp_layers: '768'
 enc_pyr:
-  d_inner: 1024
-  d_k: 32
-  d_model: 256
-  d_v: 32
+  d_inner: 3072
+  d_k: 64
+  d_model: 768
+  d_v: 64
   dropout_rate: 0.0
   inp_len: 256
-  n_heads: 8
+  n_heads: 12
   n_layers: 8
   n_similar_layers: 1
   pad_idx: 50267
@@ -16,8 +16,8 @@ enc_pyr:
   step: 2
   temperature: 0.0
   vocab_encoder:
-    d_model: 256
-    d_word_vec: 256
+    d_model: 768
+    d_word_vec: 768
     dropout_rate: 0.0
     inp_len: 256
     n_vocab: 50271

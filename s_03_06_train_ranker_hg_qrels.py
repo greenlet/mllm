@@ -98,18 +98,6 @@ class ArgsRankerHgQrelsTrain(BaseModel):
         description=f'Decoder dropout rate. If not set the value from encoder config will be used.',
         cli=('--dec-dropout-rate',),
     )
-
-    dec_with_bias: str = Field(
-        'false',
-        required=False,
-        description='Boolean flag determining whether decoder linear layer should have bias. ' \
-            f'DEC_WITH_BIAS can take value from {ARG_TRUE_VALUES_STR} to be True or {ARG_FALSE_VALUES_STR} to be False. (default: true)',
-        cli=('--dec-with-bias',),
-    )
-    @property
-    def dec_with_bias_bool(self) -> bool:
-        return is_arg_true('--dec-with-bias', self.dec_with_bias)
-
     dec_mlp_layers: str = Field(
         '',
         required=False,
@@ -190,6 +178,7 @@ def agg_batch_it(iterators: list[BatchIt], n_batches: np.ndarray) -> BatchIt:
         if i == 0:
             yield next(it)
             inds[i] += 1
+            i = (i + 1) % n
         elif (inds[i] + 1) / n_batches[i] <= inds[0] / n_batches[0]:
             yield next(it)
             inds[i] += 1
@@ -241,14 +230,14 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     model_cfg = parse_yaml_file_as(RankerHgCfg, args.model_cfg_fpath)
     model_cfg = copy_override_ranker_hg_cfg(
         model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
-        pos_enc_type=args.pos_enc_type, dec_with_bias=args.dec_with_bias_bool, dec_mlp_layers=args.dec_mlp_layers,
+        pos_enc_type=args.pos_enc_type, dec_mlp_layers=args.dec_mlp_layers,
     )
     print(model_cfg)
 
     prefix, suffix = gen_prefpostfix_ranker_hg(model_cfg)
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     deconly_str = 't' if args.train_dec_only_bool else 'f'
-    suffix = f'{ds_names}-{suffix}-tdec_{deconly_str}'
+    suffix = f'{ds_names}-{suffix}-tdo_{deconly_str}'
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -291,6 +280,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
         pretrained_checkpoint = torch.load(pretrained_model_path)
         model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_HG_MODEL_CFG_FNAME
         model_encdec_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_cfg_fpath)
+        model_cfg.enc_pyr.temperature = model_encdec_cfg.enc_pyr.temperature
         model_encdec = EncdecHg(model_encdec_cfg).to(device)
         model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
         print(f'Load model weights for enc_pyr:', list(model_encdec.enc_pyr.state_dict().keys()))
@@ -305,7 +295,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
     # optimizer = torch.optim.LBFGS(model.parameters(), lr=args.learning_rate)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=7, threshold=1e-6, min_lr=1e-7)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
     views_train, views_val = [], []

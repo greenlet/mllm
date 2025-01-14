@@ -1,7 +1,6 @@
 dec_rank:
   d_model: 512
-  with_bias: false
-  mlp_layers: []
+  mlp_layers: '512'
 enc_pyr:
   d_inner: 2048
   d_k: 64
@@ -15,6 +14,7 @@ enc_pyr:
   pad_idx: 50267
   reduct_type: matmul
   step: 2
+  temperature: 0.0
   vocab_encoder:
     d_model: 512
     d_word_vec: 512
