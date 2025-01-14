@@ -127,6 +127,11 @@ class ArgsEncdecHgTrain(BaseModel):
         description='Random seed.',
         cli=('--random-seed',),
     )
+    pretrained_model_path: Optional[Path] = Field(
+        None,
+        description='Path to EncdecHg model train directory.',
+        cli=('--pretrained-model-path',),
+    )
 
 
 class RankMaskPadLoss(nn.Module):
@@ -252,6 +257,19 @@ def main(args: ArgsEncdecHgTrain) -> int:
     input_zeros_ratio = 0.3
     print(model_cfg)
     model = EncdecHg(model_cfg).to(device)
+
+    if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
+        pretrained_model_path = args.pretrained_model_path / 'best.pth'
+        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
+        pretrained_checkpoint = torch.load(pretrained_model_path)
+        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_HG_MODEL_CFG_FNAME
+        model_encdec_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_cfg_fpath)
+        model_cfg.enc_pyr.temperature = model_encdec_cfg.enc_pyr.temperature
+        model_encdec = EncdecHg(model_encdec_cfg).to(device)
+        model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        print(f'Load model weights for enc_pyr:', list(model_encdec.enc_pyr.state_dict().keys()))
+        model.load_state_dict(model_encdec.state_dict())
+
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
@@ -274,11 +292,11 @@ def main(args: ArgsEncdecHgTrain) -> int:
         for i, doc_ind in enumerate(doc_inds):
             doc = ds[doc_ind]
             title, text = doc['title'], doc['text']
-            # if np.random.rand() < 1 / 2:
-            #     doc_txt = title
-            # else:
-            #     doc_txt = text
-            doc_txt = f'{title} {text}'
+            if np.random.rand() < 1 / 2:
+                doc_txt = title
+            else:
+                doc_txt = text
+            # doc_txt = f'{title} {text}'
             # doc_txt = text
             doc_toks = tkz(doc_txt)['input_ids']
             n_toks = len(doc_toks)
@@ -306,7 +324,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
     # loss_fn = nn.CrossEntropyLoss()
     # loss_fn = encdec_prob_loss_softmax
-    loss_fn = RankMaskPadLoss(pad_tok=pad_tok, pad_weight=0.01)
+    loss_fn = RankMaskPadLoss(pad_tok=pad_tok, pad_weight=0.05)
 
     print(model)
 
@@ -322,8 +340,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             tokens_inp, i_train = get_batch(doc_inds_train, i_train)
-            # tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
-            tokens_inp_aug = tokens_inp
+            tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
+            # tokens_inp_aug = tokens_inp
 
             optimizer.zero_grad()
 

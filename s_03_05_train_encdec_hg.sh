@@ -8,8 +8,8 @@ mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fname=tokenizer_cfg_01.yaml
 #model_cfg_fname=encdec_hg_cfg_01.yaml
-#model_cfg_fname=encdec_hg_cfg_02.yaml
-model_cfg_fname=encdec_hg_cfg_03.yaml
+model_cfg_fname=encdec_hg_cfg_02.yaml
+#model_cfg_fname=encdec_hg_cfg_03.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 tokenizer_cfg_fpath=$config_dir_path/$tokenizer_cfg_fname
@@ -24,8 +24,8 @@ dec_n_layers=0
 n_similar_layers=1
 #n_similar_layers=2
 #reduct_type=matmul
-#reduct_type=decim
-reduct_type=avg
+reduct_type=decim
+#reduct_type=avg
 
 #enhance_type=matmul
 enhance_type=mmbeg
@@ -45,14 +45,15 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=20
+docs_batch_size=30
 #docs_batch_size=7
 #docs_batch_size=15
-train_subdir=last
+#train_subdir=last
+pretrained_model_path=$train_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
 
-#learning_rate=0.0001
-learning_rate=0.00005
-random_seed=111
+learning_rate=0.0001
+#learning_rate=0.00005
+random_seed=123
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
@@ -78,6 +79,7 @@ python s_03_05_train_encdec_hg.py \
   --learning-rate $learning_rate \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
-  --random-seed $random_seed
+  --random-seed $random_seed \
+  --pretrained-model-path $pretrained_model_path
 #"
 

@@ -15,21 +15,19 @@ from tqdm import trange
 from mllm.config.model import TokenizerCfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType, RankerHgCfg, \
     gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg
 from mllm.data.common import DsView
-from mllm.data.dsqrels import QrelsPlainBatch, DsQrelsView, DsQrelsPlainView, DsQrels
+from mllm.data.dsqrels import QrelsPlainBatch, DsQrels
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import TOKENIZER_CFG_FNAME, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR, is_arg_true, \
     ENCDEC_HG_MODEL_CFG_FNAME, RANKER_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg
 from mllm.model.losses import RankerCosEmbLoss
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config
-from mllm.train.utils import find_create_train_path, calc_print_batches, log_weights_grads_stats, \
-    calc_print_batches_multi
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 
 
 class ArgsRankerHgQrelsTrain(BaseModel):
     ds_dir_paths: list[Path] = Field(
         [],
-        required=True,
         description='Qrels datasets directory paths. Supported datasets: Msmarco, Fever.'
                     'Naming convention: directory name must contain the name of dataset: msmarco, fever. Unknown datasets '
                     'will cause an error and exit.',
@@ -37,20 +35,17 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     )
     train_root_path: Path = Field(
         ...,
-        required=True,
         description='Path to train root directory. New train subdirectory will be created within each new run.',
         cli=('--train-root-path',),
     )
     train_subdir: str = Field(
         '',
-        required=False,
         description='Train subdirectory. Can have values: "last", "<subdirectory-name>". When set to "last", '
             'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
         cli=('--train-subdir',)
     )
     tokenizer_cfg_fpath: Path = Field(
         ...,
-        required=True,
         description='Path to tokenizer config Yaml file.',
         cli=('--tokenizer-cfg-fpath',),
     )
@@ -62,31 +57,26 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     )
     inp_len: int = Field(
         ...,
-        required=True,
         description='Input tokens number. Must be a power of 2. INP_LEN = 2^k will produce model with k layers.',
         cli=('--inp-len',),
     )
     n_similar_layers: int = Field(
         ...,
-        required=True,
         description='Number of consecutive similar attention layers for each level dedicated of increasing/decreasing input size.',
         cli=('--n-similar-layers',),
     )
     reduct_type: HgReductType = Field(
         HgReductType.Matmul,
-        required=False,
         description=f'Encoder layer reduct type. Can have values: {list(x.value for x in HgReductType)}',
         cli=('--reduct-type',),
     )
     enhance_type: HgEnhanceType = Field(
         HgEnhanceType.Matmul,
-        required=False,
         description=f'Decoder layer enhance type. Can have values: {list(x.value for x in HgEnhanceType)}',
         cli=('--enhance-type',),
     )
     pos_enc_type: PosEncType = Field(
         PosEncType.Num,
-        required=False,
         description=
         f'Positional encoder type. Can have values: {list(x.value for x in PosEncType)}. {PosEncType.Num} - '
         f'trigonometric numerical values generated. {PosEncType.Emb} - learned embeddings.',
@@ -94,13 +84,11 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     )
     dec_dropout_rate: float = Field(
         -1,
-        required=False,
         description=f'Decoder dropout rate. If not set the value from encoder config will be used.',
         cli=('--dec-dropout-rate',),
     )
     dec_mlp_layers: str = Field(
         '',
-        required=False,
         description=f'Consecutive dense layers\' sizes and activation functions delimited with a comma transforming initial embedding to a relevance vector. '
                     f'Examples: "512,relu,1024" - no activation in the end, "512,tanh,512,tanh" - both layers have activations. Adding suffix "b" to a layer '
                     f'dimension will add bias to that layer. Absense of suffix means no bias. Example: "1024b",tanh,512b - both layers have biases. '
@@ -109,43 +97,36 @@ class ArgsRankerHgQrelsTrain(BaseModel):
     )
     docs_batch_size: int = Field(
         3,
-        required=False,
         description='Documents batch size. Must be greater or equal than 2.',
         cli=('--docs-batch-size',),
     )
     device: str = Field(
         'cpu',
-        required=False,
         description='Device to run training on. Can have values: "cpu", "cuda"',
         cli=('--device',)
     )
     epochs: int = Field(
         None,
-        required=True,
         description='Number of training epochs.',
         cli=('--epochs',),
     )
     learning_rate: float = Field(
         0.001,
-        required=False,
         description='Initial learning rate of the training process.',
         cli=('--learning-rate',)
     )
     train_epoch_steps: Optional[int] = Field(
         None,
-        required=False,
         description='Number of training steps per epoch.',
         cli=('--train-epoch-steps',),
     )
     val_epoch_steps: Optional[int] = Field(
         None,
-        required=False,
         description='Number of validation steps per epoch.',
         cli=('--val-epoch-steps',),
     )
     pretrained_model_path: Optional[Path] = Field(
         None,
-        required=False,
         description='Path to EncdecHg model train directory.',
         cli=('--pretrained-model-path',),
     )
