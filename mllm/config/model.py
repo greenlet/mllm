@@ -201,6 +201,7 @@ class EncPyrCfg(BaseModel):
     n_similar_layers: int = 1
     reduct_type: HgReductType = HgReductType.Matmul
     temperature: float = 0
+    bert_pretrained_model: str = ''
 
 
 class DecPyrCfg(BaseModel):
