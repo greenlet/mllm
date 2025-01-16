@@ -1,5 +1,6 @@
 # python=3.10
 
+accelerate
 #apache_beam
 datasets==1.18.0
 jupyter
