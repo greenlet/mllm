@@ -348,7 +348,7 @@ class EncdecHg(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.enc_pyr = EncoderPyramid(cfg.enc_pyr)
-        self.dec_pyr = DecoderPyramid(cfg.dec_pyr)
+        self.dec_pyr = DecoderPyramid(cfg.dec)
 
         for n, p in self.named_parameters():
             if p.dim() > 1:

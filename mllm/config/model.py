@@ -201,7 +201,12 @@ class EncPyrCfg(BaseModel):
     n_similar_layers: int = 1
     reduct_type: HgReductType = HgReductType.Matmul
     temperature: float = 0
-    bert_pretrained_model: str = ''
+
+
+class EncBertCfg(BaseModel):
+    d_model: int = 0
+    pretrained_model_name: str = ''
+    tokenizer_name: str = ''
 
 
 class DecPyrCfg(BaseModel):
@@ -221,8 +226,8 @@ class DecPyrCfg(BaseModel):
 
 
 class EncdecHgCfg(BaseModel):
-    enc_pyr: EncPyrCfg
-    dec_pyr: DecPyrCfg
+    enc: Union[EncPyrCfg, EncBertCfg]
+    dec: DecPyrCfg
 
 
 class DecRankHgCfg(BaseModel):
@@ -231,7 +236,7 @@ class DecRankHgCfg(BaseModel):
 
 
 class RankerHgCfg(BaseModel):
-    enc_pyr: EncPyrCfg
+    enc: Union[EncPyrCfg, EncBertCfg]
     dec_rank: DecRankHgCfg
 
 
@@ -267,26 +272,32 @@ def create_encdec_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
         enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num, dec_n_layers: int = 0,
-        temperature: float = 0,
+        temperature: float = 0, bert_pretrained_model_name: str = '', bert_tokenizer_name: str = '',
         ) -> EncdecHgCfg:
-    d_word_vec = d_model
-    d_k = d_v = d_model // n_heads
-    n_layers = math.ceil(math.log(inp_len, step))
-    cfg_vocab_enc = VocabEncoderCfg(
-        n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
-        pos_enc_type=pos_enc_type,
-    )
-    cfg_enc_pyr = EncPyrCfg(
-        vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
-        n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
-    )
+    if bert_pretrained_model_name:
+        assert bert_tokenizer_name, f'bert_tokenizer_name must be set when bert_pretrained_model_name has value'
+        cfg_enc = EncBertCfg(d_model=d_model, pretrained_model_name=bert_pretrained_model_name, tokenizer_name=bert_tokenizer_name)
+    else:
+        d_word_vec = d_model
+        d_k = d_v = d_model // n_heads
+        n_layers = math.ceil(math.log(inp_len, step))
+        cfg_vocab_enc = VocabEncoderCfg(
+            n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
+            pos_enc_type=pos_enc_type,
+        )
+        cfg_enc = EncPyrCfg(
+            vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
+            n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
+        )
+
     assert dec_n_layers >= 0, f'dec_n_layers (={dec_n_layers}) must be >= 0'
     dec_n_layers = dec_n_layers or n_layers
-    cfg_dec_pyr = DecPyrCfg(
+    cfg_dec = DecPyrCfg(
         d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_n_layers, dropout_rate=dropout_rate, n_vocab=n_vocab,
         n_similar_layers=n_similar_layers, enhance_type=enhance_type, temperature=temperature,
     )
-    cfg_encdec_hg = EncdecHgCfg(enc_pyr=cfg_enc_pyr, dec_pyr=cfg_dec_pyr)
+
+    cfg_encdec_hg = EncdecHgCfg(enc=cfg_enc, dec=cfg_dec)
     return cfg_encdec_hg
 
 
@@ -294,23 +305,31 @@ def create_ranker_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
         pos_enc_type: PosEncType = PosEncType.Num, dec_mlp_layers: str = '', temperature: float = 0,
+        bert_pretrained_model_name: str = '', bert_tokenizer_name: str = '',
         ) -> RankerHgCfg:
-    d_word_vec = d_model
-    d_k = d_v = d_model // n_heads
-    n_layers = math.ceil(math.log(inp_len, step))
-    cfg_vocab_enc = VocabEncoderCfg(
-        n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
-        pos_enc_type=pos_enc_type,
-    )
-    cfg_enc_pyr = EncPyrCfg(
-        vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
-        n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
-    )
+    if bert_pretrained_model_name:
+        assert bert_tokenizer_name, f'bert_tokenizer_name must be set when bert_pretrained_model_name has value'
+        cfg_enc = EncBertCfg(d_model=d_model, pretrained_model_name=bert_pretrained_model_name,
+                             tokenizer_name=bert_tokenizer_name)
+    else:
+        d_word_vec = d_model
+        d_k = d_v = d_model // n_heads
+        n_layers = math.ceil(math.log(inp_len, step))
+        cfg_vocab_enc = VocabEncoderCfg(
+            n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len, dropout_rate=dropout_rate,
+            pos_enc_type=pos_enc_type,
+        )
+        cfg_enc = EncPyrCfg(
+            vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
+            n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
+        )
+
     cfg_dec_rank = DecRankHgCfg(
         d_model=d_model, mlp_layers=dec_mlp_layers,
     )
-    cfg_encdec_hg = RankerHgCfg(enc_pyr=cfg_enc_pyr, dec_rank=cfg_dec_rank)
-    return cfg_encdec_hg
+
+    cfg_ranker_hg = RankerHgCfg(enc=cfg_enc, dec_rank=cfg_dec_rank)
+    return cfg_ranker_hg
 
 
 def copy_override_encdec_hg_cfg(
@@ -318,30 +337,35 @@ def copy_override_encdec_hg_cfg(
         enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num, dropout_rate: float = 0.0,
         dec_n_layers: int = 0, temperature: float = -1,
         ) -> EncdecHgCfg:
-    n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
-    pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
-    d_model = cfg.enc_pyr.d_model
-    n_heads = cfg.enc_pyr.n_heads
-    d_inner = cfg.enc_pyr.d_inner
-    step = cfg.enc_pyr.step
+    if isinstance(cfg.enc, EncPyrCfg):
+        n_vocab = cfg.enc.vocab_encoder.n_vocab
+        pad_idx = cfg.enc.vocab_encoder.pad_idx
+        d_model = cfg.enc.d_model
+        n_heads = cfg.enc.n_heads
+        d_inner = cfg.enc.d_inner
+        step = cfg.enc.step
+        if 0 < inp_len != cfg.enc.inp_len:
+            assert inp_len & (inp_len - 1) == 0, f'inp_len = {inp_len} is not power of 2'
+        else:
+            inp_len = cfg.enc.inp_len
 
-    if 0 < inp_len != cfg.enc_pyr.inp_len:
-        assert inp_len & (inp_len - 1) == 0, f'inp_len = {inp_len} is not power of 2'
+        if n_similar_layers != cfg.enc.n_similar_layers:
+            assert n_similar_layers > 0, f'n_similar_layers = {n_similar_layers}, but must be > 0'
+            assert cfg.enc.n_similar_layers == cfg.dec.n_similar_layers, \
+                f'enc n_similar_layers = {cfg.enc.n_similar_layers} != dec n_similar_layers = {cfg.dec.n_similar_layers}'
+
+        temperature = temperature if temperature >= 0 else cfg.enc.temperature
+
+        return create_encdec_hg_cfg(
+            n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
+            dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type, enhance_type=enhance_type,
+            pos_enc_type=pos_enc_type, dec_n_layers=dec_n_layers, temperature=temperature,
+        )
     else:
-        inp_len = cfg.enc_pyr.inp_len
+        bert_pretrained_model_name = cfg.enc.pretrained_model_name
+        bert_tokenizer_name = cfg.enc.tokenizer_name
+        return create_encdec_hg_cfg(n_vocab=n_vo)
 
-    if n_similar_layers != cfg.enc_pyr.n_similar_layers:
-        assert n_similar_layers > 0, f'n_similar_layers = {n_similar_layers}, but must be > 0'
-        assert cfg.enc_pyr.n_similar_layers == cfg.dec_pyr.n_similar_layers, \
-            f'enc n_similar_layers = {cfg.enc_pyr.n_similar_layers} != dec n_similar_layers = {cfg.dec_pyr.n_similar_layers}'
-
-    temperature = temperature if temperature >= 0 else cfg.enc_pyr.temperature
-
-    return create_encdec_hg_cfg(
-        n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
-        dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type, enhance_type=enhance_type,
-        pos_enc_type=pos_enc_type, dec_n_layers=dec_n_layers, temperature=temperature,
-    )
 
 
 def copy_override_ranker_hg_cfg(
@@ -395,7 +419,7 @@ def gen_prefpostfix_level(model_cfg: Union[MllmEncdecCfg, MllmRankerCfg], model_
 
 def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
     prefix = f'encdechg'
-    enc, dec = model_cfg.enc_pyr, model_cfg.dec_pyr
+    enc, dec = model_cfg.enc_pyr, model_cfg.dec
     dp_rate = np.round(enc.dropout_rate, 2)
     if dp_rate < 1e-6:
         dp_rate = 0
