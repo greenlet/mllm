@@ -1,7 +1,7 @@
 import csv
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, TypeVar
 
 import pandas as pd
 
@@ -118,4 +118,11 @@ def split_range(n: int, splits: SplitsType) -> list[int]:
 
     raise Exception(f'Unknown splits format: {splits}')
 
+
+T = TypeVar('T')
+
+def coalesce(val: Optional[T], fallback_val: T) -> T:
+    if val is None:
+        return fallback_val
+    return val
 
