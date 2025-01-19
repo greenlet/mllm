@@ -3,6 +3,7 @@ import sys
 from typing import Optional
 
 from mllm.train.utils import get_activation_module
+from transformers import BertModel, PreTrainedModel, BertTokenizerFast
 
 if '..' not in sys.path: sys.path.append('..')
 
@@ -12,7 +13,7 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 from mllm.config.model import EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
-    parse_mlp_layers, ParsedMlpLayer
+    parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
 
@@ -261,6 +262,26 @@ class EncoderPyramid(nn.Module):
         return out
 
 
+class EncoderBert(nn.Module):
+    cfg: EncBertCfg
+    bert_model: BertModel
+
+    def __init__(self, cfg: EncBertCfg):
+        super().__init__()
+        self.cfg = cfg
+        self.bert_model = BertModel.from_pretrained(self.cfg.pretrained_model_name, torch_dtype=torch.float32)
+
+    def forward(self, inp_toks: Tensor, inp_mask: Tensor) -> Tensor:
+        out = self.bert_model(inp_toks, inp_mask)
+        if self.cfg.emb_type == BertEmbType.Cls:
+            out = out['last_hidden_state'][:, 0]
+        elif self.cfg.emb_type == BertEmbType.Pooler:
+            out = out['pooler_output']
+        else:
+            raise Exception(f'Bert embedding type "{self.cfg.emb_type}" is not supportd')
+        return out
+
+
 class EnhanceLayer(nn.Module):
     d_model: int
     step: int
@@ -361,6 +382,32 @@ class EncdecHg(nn.Module):
     def forward(self, inp: Tensor, enc_only: bool = False) -> Tensor:
         out = inp
         out = self.enc_pyr(out)
+        if not enc_only:
+            out = self.dec_pyr(out)
+        return out
+
+
+class EncdecBert(nn.Module):
+    cfg: EncdecBertCfg
+    enc_bert: EncoderBert
+    dec_pyr: DecoderPyramid
+
+    def __init__(self, cfg: EncdecBertCfg):
+        super().__init__()
+        self.cfg = cfg
+        self.enc_bert = EncoderBert(cfg.enc_bert)
+        self.dec_pyr = DecoderPyramid(cfg.dec_pyr)
+
+        for n, p in self.dec_pyr.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            # else:
+            #     nn.init.uniform_(p, -0.1, 0.1)
+            # pnp = p.detach().cpu().numpy()
+            # print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
+
+    def forward(self, inp: Tensor, mask: Tensor, enc_only: bool = False) -> Tensor:
+        out = self.enc_bert(inp, mask)
         if not enc_only:
             out = self.dec_pyr(out)
         return out

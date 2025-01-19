@@ -227,10 +227,16 @@ class EncPyrCfg(BaseModel):
     temperature: float = 0
 
 
+class BertEmbType(str, Enum):
+    Cls = 'cls'
+    Pooler = 'plr'
+
+
 class EncBertCfg(BaseModel):
     d_model: int = 0
     pretrained_model_name: str = ''
     tokenizer_name: str = ''
+    emb_type: BertEmbType = BertEmbType.Cls
 
 
 class DecPyrCfg(BaseModel):
@@ -332,11 +338,11 @@ def create_encdec_hg_cfg(
 
 
 def create_encdec_bert_cfg(
-        bert_pretrained_model_name: str = 'bert-base-uncased', bert_tokenizer_name: str = '',
+        pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
         inp_len = 128, enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
         n_layers: int = 7, n_similar_layers: int = 1, dropout_rate: float = 0.0, temperature: float = 0,
 ):
-    model = BertModel.from_pretrained(bert_pretrained_model_name, torch_dtype=torch.float32)
+    model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
     # BertConfig
     # {
@@ -368,9 +374,10 @@ def create_encdec_bert_cfg(
     n_heads = bert_cfg.num_attention_heads
     n_vocab = bert_cfg.vocab_size
 
-    bert_tokenizer_name = bert_tokenizer_name or bert_pretrained_model_name
+    tokenizer_name = tokenizer_name or pretrained_model_name
     cfg_enc = EncBertCfg(
-        d_model=d_model, pretrained_model_name=bert_pretrained_model_name, tokenizer_name=bert_tokenizer_name
+        d_model=d_model, pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name,
+        emb_type=emb_type,
     )
     step = 2
     if n_layers == 0:
@@ -443,12 +450,13 @@ def copy_override_encdec_hg_cfg(
 
 
 def copy_override_encdec_bert_cfg(
-        cfg: EncdecBertCfg, inp_len: int = 0, enhance_type: Optional[HgEnhanceType] = None,
+        cfg: EncdecBertCfg, emb_type: Optional[BertEmbType] = None, inp_len: int = 0, enhance_type: Optional[HgEnhanceType] = None,
         n_layers: int = 0, n_similar_layers: int = 0, dropout_rate: Optional[float] = None,
         temperature: Optional[float] = None,
         ) -> EncdecBertCfg:
     enc = cfg.enc_bert
     dec = cfg.dec_pyr
+    emb_type = coalesce(emb_type, cfg.enc_bert.emb_type)
     inp_len = inp_len or dec.inp_len
     enhance_type = coalesce(enhance_type, dec.enhance_type)
     n_layers = n_layers or dec.n_layers
@@ -457,7 +465,7 @@ def copy_override_encdec_bert_cfg(
     temperature = coalesce(temperature, dec.temperature)
 
     return create_encdec_bert_cfg(
-        bert_pretrained_model_name=enc.pretrained_model_name, bert_tokenizer_name=enc.tokenizer_name,
+        pretrained_model_name=enc.pretrained_model_name, tokenizer_name=enc.tokenizer_name, emb_type=emb_type,
         inp_len=inp_len, enhance_type=enhance_type, n_layers=n_layers, n_similar_layers=n_similar_layers,
         dropout_rate=dropout_rate, temperature=temperature,
     )
@@ -518,9 +526,9 @@ def gen_prefpostfix_encdec_bert(model_cfg: EncdecBertCfg) -> tuple[str, str]:
     temp = np.round(dec.temperature, 2)
     brt_str = enc.pretrained_model_name.replace('_', '_')
     if enc.tokenizer_name != enc.pretrained_model_name:
-        pmn = enc.pretrained_model_name.replace('-', '_')
-        brt_str = f'{brt_str}-{pmn}'
-    postfix = (f'{brt_str}-d{enc.d_model}-inp{dec.inp_len}-lrs{dec.n_layers}x{dec.n_similar_layers}-enh_{dec.enhance_type.value}-step{dec.step}-h{dec.n_heads}-'
+        tkz_name = enc.tokenizer_name.replace('-', '_')
+        brt_str = f'{brt_str}-{tkz_name}'
+    postfix = (f'{brt_str}-d{enc.d_model}-emb_{enc.emb_type}-inp{dec.inp_len}-lrs{dec.n_layers}x{dec.n_similar_layers}-enh_{dec.enhance_type.value}-step{dec.step}-h{dec.n_heads}-'
                f'dp{dp_rate}-t{temp}')
     return prefix, postfix
 
