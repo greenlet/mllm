@@ -1,3 +1,4 @@
+import re
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -199,6 +200,51 @@ def mask_random_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0
     return res
 
 
+NEWLINE_PAT = re.compile(r'[\n\r]+', re.M)
+STR_DELIM_PAT = re.compile(r'\s+')
+
+
+def mask_random_words(s: str, mask_tok_str: str, rem_ratio: float = 0.33, rem_prob: float = 0.15,
+                      rem_conseq_ratio: float = 0.33, rem_conseq_prob: float = 0.3) -> str:
+    rv = np.random.rand()
+    if rv < 1 - (rem_ratio + rem_conseq_ratio):
+        return s
+    lines = NEWLINE_PAT.split(s)
+    res = []
+    n_total = 0
+    for line in lines:
+        if not line:
+            continue
+        words = STR_DELIM_PAT.split(line)
+        words = filter(None, words)
+        words = list(words)
+        if not words:
+            continue
+        res.append(words)
+        n_total += len(words)
+
+    if n_total < 5:
+        return s
+
+    if rv < 1 - rem_conseq_ratio:
+        mask = np.random.rand(n_total) <= rem_prob
+    else:
+        n_rem = int(n_total * rem_conseq_prob)
+        n_rem = np.random.randint(2, max(n_rem, 2) + 1)
+        i = np.random.randint(n_total - n_rem + 1)
+        mask = np.full(n_total, False, dtype=bool)
+        mask[i:i + n_rem] = True
+
+    im = 0
+    for words in res:
+        for iw in range(len(words)):
+            if mask[im]:
+                words[iw] = mask_tok_str
+            im += 1
+
+    return '\n'.join([' '.join(words) for words in res])
+
+
 def main(args: ArgsEncdecHgTrain) -> int:
     print(args)
 
@@ -292,12 +338,13 @@ def main(args: ArgsEncdecHgTrain) -> int:
         for i, doc_ind in enumerate(doc_inds):
             doc = ds[doc_ind]
             title, text = doc['title'], doc['text']
-            if np.random.rand() < 1 / 2:
+            if np.random.rand() < 1 / 4:
                 doc_txt = title
             else:
                 doc_txt = text
             # doc_txt = f'{title} {text}'
             # doc_txt = text
+            doc_txt = mask_random_words(doc_txt, tok_dict['mask'].repr)
             doc_toks = tkz(doc_txt)['input_ids']
             n_toks = len(doc_toks)
             if n_toks > args.inp_len:
@@ -324,7 +371,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
     # loss_fn = nn.CrossEntropyLoss()
     # loss_fn = encdec_prob_loss_softmax
-    loss_fn = RankMaskPadLoss(pad_tok=pad_tok, pad_weight=0.05)
+    loss_fn = RankMaskPadLoss(pad_tok=pad_tok, pad_weight=0.1)
 
     print(model)
 

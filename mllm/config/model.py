@@ -202,6 +202,7 @@ class HgReductType(str, Enum):
     Matmul = 'matmul'
     Decim = 'decim'
     Avg = 'avg'
+    Sub = 'sub'
 
 
 class HgEnhanceType(str, Enum):
@@ -384,9 +385,9 @@ def create_encdec_bert_cfg(
         n_layers = math.ceil(math.log(inp_len, step))
     d_inner = d_model * 4
     d_k = d_v = d_model // n_heads
-    assert n_layers > 0, f'n_layers (={dec_n_layers}) must be > 0'
+    assert n_layers > 0, f'n_layers (={n_layers}) must be > 0'
     cfg_dec = DecPyrCfg(
-        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_n_layers, dropout_rate=dropout_rate, n_vocab=n_vocab,
+        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate, n_vocab=n_vocab,
         n_similar_layers=n_similar_layers, enhance_type=enhance_type, temperature=temperature,
     )
 

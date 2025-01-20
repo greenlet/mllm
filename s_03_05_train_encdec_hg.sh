@@ -24,12 +24,13 @@ dec_n_layers=0
 n_similar_layers=1
 #n_similar_layers=2
 #reduct_type=matmul
-reduct_type=decim
-#reduct_type=avg
+#reduct_type=decim
+reduct_type=avg
+#reduct_type=sub
 
 #enhance_type=matmul
-enhance_type=mmbeg
-#enhance_type=mmbb
+#enhance_type=mmbeg
+enhance_type=mmbb
 #pos_enc_type=num
 pos_enc_type=emb
 dropout_rate=0
@@ -48,12 +49,12 @@ val_epoch_steps=50
 docs_batch_size=30
 #docs_batch_size=7
 #docs_batch_size=15
-train_subdir=last
+#train_subdir=last
 pretrained_model_path=$train_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
 
 learning_rate=0.0001
-#learning_rate=0.00005
-random_seed=123
+learning_rate=0.00005
+random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 

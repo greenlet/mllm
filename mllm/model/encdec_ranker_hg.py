@@ -192,6 +192,8 @@ class ReduceLayer(nn.Module):
             self.reducer = nn.Linear(in_features=d_model * step, out_features=d_model, bias=False)
         else:
             self.reducer = None
+        if reduct_type == HgReductType.Sub:
+            assert self.step == 2
 
     def forward(self, inp: Tensor) -> Tensor:
         batch_size, seq_len, d_model = inp.shape
@@ -213,6 +215,9 @@ class ReduceLayer(nn.Module):
         elif self.reduct_type == HgReductType.Avg:
             out = inp.reshape((batch_size, seq_len // self.step, self.step, d_model))
             out = torch.mean(out, dim=2, keepdim=False)
+        elif self.reduct_type == HgReductType.Sub:
+            out = inp.reshape((batch_size, seq_len // self.step, self.step, d_model))
+            out = out[:, :, 1, :] - out[:, :, 0, :]
         else:
             raise Exception(f'Reduction type {self.reduct_type} is not supported')
         return out
