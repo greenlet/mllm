@@ -205,10 +205,10 @@ STR_DELIM_PAT = re.compile(r'\s+')
 
 
 def mask_random_words(s: str, mask_tok_str: str, rem_ratio: float = 0.33, rem_prob: float = 0.15,
-                      rem_conseq_ratio: float = 0.33, rem_conseq_prob: float = 0.3) -> str:
+                      rem_conseq_ratio: float = 0.33, rem_conseq_prob: float = 0.3) -> Optional[str]:
     rv = np.random.rand()
     if rv < 1 - (rem_ratio + rem_conseq_ratio):
-        return s
+        return
     lines = NEWLINE_PAT.split(s)
     res = []
     n_total = 0
@@ -224,7 +224,7 @@ def mask_random_words(s: str, mask_tok_str: str, rem_ratio: float = 0.33, rem_pr
         n_total += len(words)
 
     if n_total < 5:
-        return s
+        return
 
     if rv < 1 - rem_conseq_ratio:
         mask = np.random.rand(n_total) <= rem_prob
@@ -289,8 +289,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
     pad_tok, mask_tok = tok_dict['pad'].ind, tok_dict['mask'].ind
     print(f'Loading Wikipedia dataset: {args.wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
-    ds = load_dataset(wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
-    ds = ds['train']
+    dss = load_dataset(wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
+    ds = dss['train']
     n_docs = len(ds)
     print(f'Wikipedia {args.wiki_ds_name} docs: {n_docs}')
 
@@ -314,7 +314,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
         model_encdec = EncdecHg(model_encdec_cfg).to(device)
         model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
         print(f'Load model weights for enc_pyr:', list(model_encdec.enc_pyr.state_dict().keys()))
-        model.load_state_dict(model_encdec.state_dict())
+        model.load_state_dict(model_encdec.state_dict(), strict=False)
 
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
@@ -333,28 +333,41 @@ def main(args: ArgsEncdecHgTrain) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    def get_batch_tokens(doc_inds: list[int]) -> torch.Tensor:
+    def get_batch_tokens(doc_inds: list[int]) -> tuple[torch.Tensor, torch.Tensor]:
         docs_toks = np.full((len(doc_inds), args.inp_len), pad_tok)
+        docs_toks_aug = np.full((len(doc_inds), args.inp_len), pad_tok)
         for i, doc_ind in enumerate(doc_inds):
             doc = ds[doc_ind]
             title, text = doc['title'], doc['text']
             if np.random.rand() < 1 / 4:
-                doc_txt = title
+                doc_txt: str = title
             else:
-                doc_txt = text
+                doc_txt: str = text
             # doc_txt = f'{title} {text}'
             # doc_txt = text
-            doc_txt = mask_random_words(doc_txt, tok_dict['mask'].repr)
             doc_toks = tkz(doc_txt)['input_ids']
             n_toks = len(doc_toks)
             if n_toks > args.inp_len:
                 i_off = np.random.randint(n_toks - args.inp_len + 1)
                 doc_toks = doc_toks[i_off:i_off + args.inp_len]
             docs_toks[i, :len(doc_toks)] = doc_toks
-        docs_toks_t = torch.from_numpy(docs_toks).to(device)
-        return docs_toks_t
 
-    def get_batch(inds: list[int], i_batch: int) -> tuple[torch.Tensor, int]:
+            doc_txt_aug = mask_random_words(doc_txt, tok_dict['mask'].repr)
+            if doc_txt_aug is None:
+                doc_toks_aug = doc_toks
+            else:
+                doc_toks_aug = tkz(doc_txt_aug)['input_ids']
+                n_toks_aug = len(doc_toks_aug)
+                if n_toks_aug > args.inp_len:
+                    i_off = np.random.randint(n_toks_aug - args.inp_len + 1)
+                    doc_toks_aug = doc_toks_aug[i_off:i_off + args.inp_len]
+            docs_toks_aug[i, :len(doc_toks_aug)] = doc_toks_aug
+
+        docs_toks_t = torch.from_numpy(docs_toks).to(device)
+        docs_toks_aug_t = torch.from_numpy(docs_toks_aug).to(device)
+        return docs_toks_t, docs_toks_aug_t
+
+    def get_batch(inds: list[int], i_batch: int) -> tuple[torch.Tensor, torch.Tensor, int]:
         i1 = i_batch * args.docs_batch_size
         i2 = i1 + args.docs_batch_size
         batch_inds = inds[i1:i2]
@@ -364,8 +377,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
         if i2 >= len(batch_inds):
             i_batch = 0
             np.random.shuffle(inds)
-        batch_toks = get_batch_tokens(batch_inds)
-        return batch_toks, i_batch
+        batch_toks, batch_toks_aug = get_batch_tokens(batch_inds)
+        return batch_toks, batch_toks_aug, i_batch
 
     # loss_fn = encdec_prob_loss_sigmoid
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
@@ -386,8 +399,8 @@ def main(args: ArgsEncdecHgTrain) -> int:
         train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp, i_train = get_batch(doc_inds_train, i_train)
-            tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
+            tokens_inp, tokens_inp_aug, i_train = get_batch(doc_inds_train, i_train)
+            # tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
             # tokens_inp_aug = tokens_inp
 
             optimizer.zero_grad()
