@@ -204,10 +204,13 @@ NEWLINE_PAT = re.compile(r'[\n\r]+', re.M)
 STR_DELIM_PAT = re.compile(r'\s+')
 
 
-def mask_random_words(s: str, mask_tok_str: str, rem_ratio: float = 0.33, rem_prob: float = 0.15,
-                      rem_conseq_ratio: float = 0.33, rem_conseq_prob: float = 0.3) -> Optional[str]:
+def mask_random_words(
+        s: str, mask_tok_str: str, rem_freq: float = 0.33, rem_prob: float = 0.15,
+        rem_conseq_freq: float = 0.33, rem_conseq_prob: float = 0.2, rem_conseq_max_len: int = 20,
+        rem_conseq_max_times: int = 5,
+        ) -> Optional[str]:
     rv = np.random.rand()
-    if rv < 1 - (rem_ratio + rem_conseq_ratio):
+    if rv < 1 - (rem_freq + rem_conseq_freq):
         return
     lines = NEWLINE_PAT.split(s)
     res = []
@@ -226,14 +229,23 @@ def mask_random_words(s: str, mask_tok_str: str, rem_ratio: float = 0.33, rem_pr
     if n_total < 5:
         return
 
-    if rv < 1 - rem_conseq_ratio:
+    if rv < 1 - rem_conseq_freq:
         mask = np.random.rand(n_total) <= rem_prob
     else:
-        n_rem = int(n_total * rem_conseq_prob)
-        n_rem = np.random.randint(2, max(n_rem, 2) + 1)
-        i = np.random.randint(n_total - n_rem + 1)
+        rem_conseq_times = np.random.randint(1, rem_conseq_max_times + 1)
+        rem_interval = n_total // rem_conseq_times
+        off = 0
         mask = np.full(n_total, False, dtype=bool)
-        mask[i:i + n_rem] = True
+        while off < n_total:
+            n_rem = int(n_total * rem_conseq_prob)
+            n_rem = np.random.randint(2, max(n_rem, 2) + 1)
+            n_rem = min(n_rem, rem_conseq_max_len)
+            i = np.random.randint(off, off + rem_interval)
+            i1 = max(i - n_rem // 2, 0)
+            i2 = min(i1 + n_rem, n_total - 1)
+            if i1 < i2:
+                mask[i1:i2] = True
+            off = max(off + rem_interval, i2 + int(n_rem * 1.5))
 
     im = 0
     for words in res:
@@ -447,7 +459,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
         val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp, i_val = get_batch(doc_inds_train, i_val)
+            tokens_inp, _, i_val = get_batch(doc_inds_train, i_val)
 
             out_logits = model(tokens_inp)
             loss = loss_fn(out_logits, tokens_inp)
