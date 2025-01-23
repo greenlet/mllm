@@ -1,0 +1,19 @@
+dec_pyr:
+  d_inner: 3072
+  d_k: 64
+  d_model: 768
+  d_v: 64
+  dropout_rate: 0.0
+  enhance_type: matmul
+  inp_len: 128
+  n_heads: 12
+  n_layers: 7
+  n_similar_layers: 1
+  n_vocab: 30522
+  step: 2
+  temperature: 0.0
+enc_bert:
+  d_model: 768
+  emb_type: cls
+  pretrained_model_name: bert-base-uncased
+  tokenizer_name: bert-base-uncased

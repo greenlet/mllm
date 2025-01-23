@@ -340,8 +340,8 @@ def create_encdec_hg_cfg(
 
 def create_encdec_bert_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
-        inp_len = 128, enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
-        n_layers: int = 7, n_similar_layers: int = 1, dropout_rate: float = 0.0, temperature: float = 0,
+        inp_len = 128, dec_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
+        dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
 ):
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -381,14 +381,14 @@ def create_encdec_bert_cfg(
         emb_type=emb_type,
     )
     step = 2
-    if n_layers == 0:
-        n_layers = math.ceil(math.log(inp_len, step))
+    if dec_n_layers == 0:
+        dec_n_layers = math.ceil(math.log(inp_len, step))
     d_inner = d_model * 4
     d_k = d_v = d_model // n_heads
-    assert n_layers > 0, f'n_layers (={n_layers}) must be > 0'
+    assert dec_n_layers > 0, f'n_layers (={dec_n_layers}) must be > 0'
     cfg_dec = DecPyrCfg(
-        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate, n_vocab=n_vocab,
-        n_similar_layers=n_similar_layers, enhance_type=enhance_type, temperature=temperature,
+        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_n_layers, dropout_rate=dec_dropout_rate, n_vocab=n_vocab,
+        n_similar_layers=dec_n_similar_layers, enhance_type=dec_enhance_type, temperature=dec_temperature,
     )
 
     cfg_encdec_bert = EncdecBertCfg(enc_bert=cfg_enc, dec_pyr=cfg_dec)
@@ -451,24 +451,24 @@ def copy_override_encdec_hg_cfg(
 
 
 def copy_override_encdec_bert_cfg(
-        cfg: EncdecBertCfg, emb_type: Optional[BertEmbType] = None, inp_len: int = 0, enhance_type: Optional[HgEnhanceType] = None,
-        n_layers: int = 0, n_similar_layers: int = 0, dropout_rate: Optional[float] = None,
-        temperature: Optional[float] = None,
+        cfg: EncdecBertCfg, emb_type: Optional[BertEmbType] = None, inp_len: int = 0, dec_enhance_type: Optional[HgEnhanceType] = None,
+        dec_n_layers: int = 0, dec_n_similar_layers: int = 0, dec_dropout_rate: Optional[float] = None,
+        dec_temperature: Optional[float] = None,
         ) -> EncdecBertCfg:
     enc = cfg.enc_bert
     dec = cfg.dec_pyr
     emb_type = coalesce(emb_type, cfg.enc_bert.emb_type)
     inp_len = inp_len or dec.inp_len
-    enhance_type = coalesce(enhance_type, dec.enhance_type)
-    n_layers = n_layers or dec.n_layers
-    n_similar_layers = n_similar_layers or dec.n_similar_layers
-    dropout_rate = coalesce(dropout_rate, dec.dropout_rate)
-    temperature = coalesce(temperature, dec.temperature)
+    dec_enhance_type = coalesce(dec_enhance_type, dec.enhance_type)
+    dec_n_layers = dec_n_layers or dec.n_layers
+    dec_n_similar_layers = dec_n_similar_layers or dec.n_similar_layers
+    dec_dropout_rate = coalesce(dec_dropout_rate, dec.dropout_rate)
+    dec_temperature = coalesce(dec_temperature, dec.temperature)
 
     return create_encdec_bert_cfg(
         pretrained_model_name=enc.pretrained_model_name, tokenizer_name=enc.tokenizer_name, emb_type=emb_type,
-        inp_len=inp_len, enhance_type=enhance_type, n_layers=n_layers, n_similar_layers=n_similar_layers,
-        dropout_rate=dropout_rate, temperature=temperature,
+        inp_len=inp_len, dec_enhance_type=dec_enhance_type, dec_n_layers=dec_n_layers, dec_n_similar_layers=dec_n_similar_layers,
+        dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature,
     )
 
 
