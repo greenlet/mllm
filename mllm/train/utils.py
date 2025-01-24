@@ -174,3 +174,77 @@ def get_activation_module(act: str) -> Activation:
     else:
         raise ValueError(f'Cannot find activation function for string <{act}>')
 
+
+def mask_random_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, rem_conseq_ratio: float = 0.3) -> torch.Tensor:
+    res = chunks.clone()
+    rv = np.random.rand()
+    if rv < 1 / 5:
+        p = rem_ratio
+        mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
+        res[mask.bool()] = mask_tok
+    elif rv < 2 / 5:
+        n = chunks.shape[-1]
+        n_rem = int(n * rem_conseq_ratio)
+        n_rem = np.random.randint(1, n_rem)
+        i = np.random.randint(n - n_rem + 1)
+        res[:, i:i + n_rem] = mask_tok
+    return res
+
+
+NEWLINE_PAT = re.compile(r'[\n\r]+', re.M)
+STR_DELIM_PAT = re.compile(r'\s+')
+
+
+def mask_random_words(
+        s: str, mask_tok_str: str, rem_freq: float = 0.33, rem_prob: float = 0.15,
+        rem_conseq_freq: float = 0.33, rem_conseq_prob: float = 0.2, rem_conseq_max_len: int = 20,
+        rem_conseq_max_times: int = 5,
+        ) -> Optional[str]:
+    rv = np.random.rand()
+    if rv < 1 - (rem_freq + rem_conseq_freq):
+        return
+    lines = NEWLINE_PAT.split(s)
+    res = []
+    n_total = 0
+    for line in lines:
+        if not line:
+            continue
+        words = STR_DELIM_PAT.split(line)
+        words = filter(None, words)
+        words = list(words)
+        if not words:
+            continue
+        res.append(words)
+        n_total += len(words)
+
+    if n_total < 5:
+        return
+
+    if rv < 1 - rem_conseq_freq:
+        mask = np.random.rand(n_total) <= rem_prob
+    else:
+        rem_conseq_times = np.random.randint(1, rem_conseq_max_times + 1)
+        rem_interval = n_total // rem_conseq_times
+        off = 0
+        mask = np.full(n_total, False, dtype=bool)
+        while off < n_total:
+            n_rem = int(n_total * rem_conseq_prob)
+            n_rem = np.random.randint(2, max(n_rem, 2) + 1)
+            n_rem = min(n_rem, rem_conseq_max_len)
+            i = np.random.randint(off, off + rem_interval)
+            i1 = max(i - n_rem // 2, 0)
+            i2 = min(i1 + n_rem, n_total - 1)
+            if i1 < i2:
+                mask[i1:i2] = True
+            off = max(off + rem_interval, i2 + int(n_rem * 1.5))
+
+    im = 0
+    for words in res:
+        for iw in range(len(words)):
+            if mask[im]:
+                words[iw] = mask_tok_str
+            im += 1
+
+    return '\n'.join([' '.join(words) for words in res])
+
+

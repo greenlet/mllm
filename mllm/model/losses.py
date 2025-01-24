@@ -163,3 +163,52 @@ class RankerCosEmbLoss(nn.Module):
         return loss, loss_tgt, loss_nontgt
 
 
+class EncdecMaskPadLoss(nn.Module):
+    pad_tok: int
+    pad_weight: float
+    nonpad_weight: float
+    # prob_cap: float
+
+    def __init__(self, pad_tok: int, pad_weight: float = 0.01, prob_cap: float = 1e-6):
+        super().__init__()
+        pad_weight = min(max(pad_weight, 0), 1)
+        assert 0 <= prob_cap <= 1, f'prob_cap (={prob_cap}) must pertain to [0, 1] interval'
+        self.pad_tok = pad_tok
+        self.pad_weight = pad_weight
+        self.nonpad_weight = 1 - pad_weight
+        self.register_buffer('prob_cap', torch.scalar_tensor(prob_cap))
+
+    # logits_pred: (batch_size, inp_len, vocab_size)
+    # tokens_gt: (batch_size, inp_len)
+    def forward(self, logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
+        # tokens_gt: (batch_size, inp_len, 1)
+        tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
+        # mask_pad: (batch_size, inp_len, 1)
+        mask_pad = tokens_gt == self.pad_tok
+        # mask_npad: (batch_size, inp_len, 1)
+        mask_npad = ~mask_pad
+
+        # probs_pred: (batch_size, inp_len, vocab_size)
+        probs_pred = torch.softmax(logits_pred, dim=-1)
+        # probs_gt: (batch_size, inp_len, 1)
+        probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
+        # probs_gt = torch.maximum(probs_gt, self.prob_cap)
+
+        # probs_gt_pad: (n_pad_tokens, )
+        # probs_gt_npad: (n_nonpad_tokens, )
+        # n_pad_tokens + n_nonpad_tokens = batch_size * inp_len
+        probs_gt_pad, probs_gt_npad = probs_gt[mask_pad], probs_gt[mask_npad]
+
+        # loss_pad: (1,)
+        # loss_npad: (1,)
+        loss_pad = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
+        loss_npad = loss_pad
+        if probs_gt_pad.size()[0] > 0:
+            loss_pad = -torch.mean(torch.log(probs_gt_pad))
+        if probs_gt_npad.size()[0] > 0:
+            loss_npad = -torch.mean(torch.log(probs_gt_npad))
+        # loss: (1,)
+        loss = loss_npad * self.nonpad_weight + loss_pad * self.pad_weight
+        return loss
+
+

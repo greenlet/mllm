@@ -1,4 +1,3 @@
-import re
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -10,7 +9,6 @@ from datasets import load_dataset
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
-from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
@@ -18,9 +16,9 @@ from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg
     HgEnhanceType, PosEncType
 from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg
-from mllm.model.losses import encdec_prob_loss_softmax
+from mllm.model.losses import EncdecMaskPadLoss
 from mllm.tokenization.chunk_tokenizer import tokenizer_from_config
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats, remove_tokens
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, mask_random_words
 
 
 class ArgsEncdecHgTrain(BaseModel):
@@ -133,128 +131,6 @@ class ArgsEncdecHgTrain(BaseModel):
         description='Path to EncdecHg model train directory.',
         cli=('--pretrained-model-path',),
     )
-
-
-class RankMaskPadLoss(nn.Module):
-    pad_tok: int
-    pad_weight: float
-    nonpad_weight: float
-    # prob_cap: float
-
-    def __init__(self, pad_tok: int, pad_weight: float = 0.01, prob_cap: float = 1e-6):
-        super().__init__()
-        pad_weight = min(max(pad_weight, 0), 1)
-        assert 0 <= prob_cap <= 1, f'prob_cap (={prob_cap}) must pertain to [0, 1] interval'
-        self.pad_tok = pad_tok
-        self.pad_weight = pad_weight
-        self.nonpad_weight = 1 - pad_weight
-        self.register_buffer('prob_cap', torch.scalar_tensor(prob_cap))
-
-    # logits_pred: (batch_size, inp_len, vocab_size)
-    # tokens_gt: (batch_size, inp_len)
-    def forward(self, logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
-        # tokens_gt: (batch_size, inp_len, 1)
-        tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
-        # mask_pad: (batch_size, inp_len, 1)
-        mask_pad = tokens_gt == self.pad_tok
-        # mask_npad: (batch_size, inp_len, 1)
-        mask_npad = ~mask_pad
-
-        # probs_pred: (batch_size, inp_len, vocab_size)
-        probs_pred = torch.softmax(logits_pred, dim=-1)
-        # probs_gt: (batch_size, inp_len, 1)
-        probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
-        # probs_gt = torch.maximum(probs_gt, self.prob_cap)
-
-        # probs_gt_pad: (n_pad_tokens, )
-        # probs_gt_npad: (n_nonpad_tokens, )
-        # n_pad_tokens + n_nonpad_tokens = batch_size * inp_len
-        probs_gt_pad, probs_gt_npad = probs_gt[mask_pad], probs_gt[mask_npad]
-
-        # loss_pad: (1,)
-        # loss_npad: (1,)
-        loss_pad = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
-        loss_npad = loss_pad
-        if probs_gt_pad.size()[0] > 0:
-            loss_pad = -torch.mean(torch.log(probs_gt_pad))
-        if probs_gt_npad.size()[0] > 0:
-            loss_npad = -torch.mean(torch.log(probs_gt_npad))
-        # loss: (1,)
-        loss = loss_npad * self.nonpad_weight + loss_pad * self.pad_weight
-        return loss
-
-
-def mask_random_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, rem_conseq_ratio: float = 0.3) -> torch.Tensor:
-    res = chunks.clone()
-    rv = np.random.rand()
-    if rv < 1 / 5:
-        p = rem_ratio
-        mask = torch.distributions.Bernoulli(probs=p).sample(chunks.size()).to(chunks.device)
-        res[mask.bool()] = mask_tok
-    elif rv < 2 / 5:
-        n = chunks.shape[-1]
-        n_rem = int(n * rem_conseq_ratio)
-        n_rem = np.random.randint(1, n_rem)
-        i = np.random.randint(n - n_rem + 1)
-        res[:, i:i + n_rem] = mask_tok
-    return res
-
-
-NEWLINE_PAT = re.compile(r'[\n\r]+', re.M)
-STR_DELIM_PAT = re.compile(r'\s+')
-
-
-def mask_random_words(
-        s: str, mask_tok_str: str, rem_freq: float = 0.33, rem_prob: float = 0.15,
-        rem_conseq_freq: float = 0.33, rem_conseq_prob: float = 0.2, rem_conseq_max_len: int = 20,
-        rem_conseq_max_times: int = 5,
-        ) -> Optional[str]:
-    rv = np.random.rand()
-    if rv < 1 - (rem_freq + rem_conseq_freq):
-        return
-    lines = NEWLINE_PAT.split(s)
-    res = []
-    n_total = 0
-    for line in lines:
-        if not line:
-            continue
-        words = STR_DELIM_PAT.split(line)
-        words = filter(None, words)
-        words = list(words)
-        if not words:
-            continue
-        res.append(words)
-        n_total += len(words)
-
-    if n_total < 5:
-        return
-
-    if rv < 1 - rem_conseq_freq:
-        mask = np.random.rand(n_total) <= rem_prob
-    else:
-        rem_conseq_times = np.random.randint(1, rem_conseq_max_times + 1)
-        rem_interval = n_total // rem_conseq_times
-        off = 0
-        mask = np.full(n_total, False, dtype=bool)
-        while off < n_total:
-            n_rem = int(n_total * rem_conseq_prob)
-            n_rem = np.random.randint(2, max(n_rem, 2) + 1)
-            n_rem = min(n_rem, rem_conseq_max_len)
-            i = np.random.randint(off, off + rem_interval)
-            i1 = max(i - n_rem // 2, 0)
-            i2 = min(i1 + n_rem, n_total - 1)
-            if i1 < i2:
-                mask[i1:i2] = True
-            off = max(off + rem_interval, i2 + int(n_rem * 1.5))
-
-    im = 0
-    for words in res:
-        for iw in range(len(words)):
-            if mask[im]:
-                words[iw] = mask_tok_str
-            im += 1
-
-    return '\n'.join([' '.join(words) for words in res])
 
 
 def main(args: ArgsEncdecHgTrain) -> int:
@@ -396,7 +272,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
     # loss_fn = nn.CrossEntropyLoss()
     # loss_fn = encdec_prob_loss_softmax
-    loss_fn = RankMaskPadLoss(pad_tok=pad_tok, pad_weight=0.1)
+    loss_fn = EncdecMaskPadLoss(pad_tok=pad_tok, pad_weight=0.1)
 
     print(model)
 
