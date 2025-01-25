@@ -44,8 +44,9 @@ epochs=500
 train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=30
-pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
+#pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
 #pretrained_model_path=$train_encdec_root_path/encdechg-20250107_232630-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d768-h12-dp0-t0
+pretrained_model_path=$train_encdec_root_path/encdechg-20250122_223338-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbb-step2-d512-h8-dp0-t0.0
 #pretrained_model_path=
 #train_subdir=last
 

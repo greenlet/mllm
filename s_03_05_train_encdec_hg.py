@@ -14,6 +14,7 @@ from tqdm import trange
 
 from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg_cfg, gen_prefpostfix_encdec_hg, HgReductType, \
     HgEnhanceType, PosEncType
+from mllm.data.utils import HfDsIterator
 from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg
 from mllm.model.losses import EncdecMaskPadLoss
@@ -174,7 +175,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
 
     tkz = tokenizer_from_config(tkz_cfg)
     tok_dict = tkz_cfg.custom_tokens
-    pad_tok, mask_tok = tok_dict['pad'].ind, tok_dict['mask'].ind
+    pad_tok, mask_tok = tok_dict['pad'], tok_dict['mask']
     print(f'Loading Wikipedia dataset: {args.wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
     dss = load_dataset(wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
@@ -182,7 +183,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
     n_docs = len(ds)
     print(f'Wikipedia {args.wiki_ds_name} docs: {n_docs}')
 
-    doc_inds = list(range(n_docs))
+    doc_inds = np.arange(n_docs)
     val_ratio = 0.05
     n_docs_val = int(n_docs * val_ratio)
     n_docs_train = n_docs - n_docs_val
@@ -221,62 +222,23 @@ def main(args: ArgsEncdecHgTrain) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    def get_batch_tokens(doc_inds: list[int]) -> tuple[torch.Tensor, torch.Tensor]:
-        docs_toks = np.full((len(doc_inds), args.inp_len), pad_tok)
-        docs_toks_aug = np.full((len(doc_inds), args.inp_len), pad_tok)
-        for i, doc_ind in enumerate(doc_inds):
-            doc = ds[doc_ind]
-            title, text = doc['title'], doc['text']
-            if np.random.rand() < 1 / 4:
-                doc_txt: str = title
-            else:
-                doc_txt: str = text
-            # doc_txt = f'{title} {text}'
-            # doc_txt = text
-            doc_toks = tkz(doc_txt)['input_ids']
-            n_toks = len(doc_toks)
-            if n_toks > args.inp_len:
-                i_off = np.random.randint(n_toks - args.inp_len + 1)
-                doc_toks = doc_toks[i_off:i_off + args.inp_len]
-            docs_toks[i, :len(doc_toks)] = doc_toks
-
-            doc_txt_aug = mask_random_words(doc_txt, tok_dict['mask'].repr)
-            if doc_txt_aug is None:
-                doc_toks_aug = doc_toks
-            else:
-                doc_toks_aug = tkz(doc_txt_aug)['input_ids']
-                n_toks_aug = len(doc_toks_aug)
-                if n_toks_aug > args.inp_len:
-                    i_off = np.random.randint(n_toks_aug - args.inp_len + 1)
-                    doc_toks_aug = doc_toks_aug[i_off:i_off + args.inp_len]
-            docs_toks_aug[i, :len(doc_toks_aug)] = doc_toks_aug
-
-        docs_toks_t = torch.from_numpy(docs_toks).to(device)
-        docs_toks_aug_t = torch.from_numpy(docs_toks_aug).to(device)
-        return docs_toks_t, docs_toks_aug_t
-
-    def get_batch(inds: list[int], i_batch: int) -> tuple[torch.Tensor, torch.Tensor, int]:
-        i1 = i_batch * args.docs_batch_size
-        i2 = i1 + args.docs_batch_size
-        batch_inds = inds[i1:i2]
-        rest_batch_size = args.docs_batch_size - len(batch_inds)
-        if rest_batch_size > 0:
-            batch_inds = batch_inds + inds[:rest_batch_size * args.docs_batch_size]
-        if i2 >= len(batch_inds):
-            i_batch = 0
-            np.random.shuffle(inds)
-        batch_toks, batch_toks_aug = get_batch_tokens(batch_inds)
-        return batch_toks, batch_toks_aug, i_batch
+    train_batch_it = HfDsIterator(
+        ds=ds, inds=doc_inds_train, inp_len=model_cfg.enc_pyr.inp_len, pad_tok_ind=pad_tok.ind,
+        mask_tok_repr=mask_tok.repr, tkz=tkz, docs_batch_size=args.docs_batch_size, device=device,
+    ).get_batch_iterator()
+    val_batch_it = HfDsIterator(
+        ds=ds, inds=doc_inds_val, inp_len=model_cfg.enc_pyr.inp_len, pad_tok_ind=pad_tok.ind,
+        mask_tok_repr=mask_tok.repr, tkz=tkz, docs_batch_size=args.docs_batch_size, device=device,
+    ).get_batch_iterator()
 
     # loss_fn = encdec_prob_loss_sigmoid
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
     # loss_fn = nn.CrossEntropyLoss()
     # loss_fn = encdec_prob_loss_softmax
-    loss_fn = EncdecMaskPadLoss(pad_tok=pad_tok, pad_weight=0.1)
+    loss_fn = EncdecMaskPadLoss(pad_tok_ind=pad_tok.ind, pad_weight=0.1)
 
     print(model)
 
-    i_train, i_val = 0, 0
     loss_gt, loss_nongt = None, None
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
@@ -287,7 +249,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
         train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp, tokens_inp_aug, i_train = get_batch(doc_inds_train, i_train)
+            tokens_inp, tokens_inp_aug = next(train_batch_it)
             # tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
             # tokens_inp_aug = tokens_inp
 
@@ -335,7 +297,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
         val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp, _, i_val = get_batch(doc_inds_train, i_val)
+            tokens_inp, _ = next(val_batch_it)
 
             out_logits = model(tokens_inp)
             loss = loss_fn(out_logits, tokens_inp)

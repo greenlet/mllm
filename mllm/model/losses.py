@@ -164,16 +164,16 @@ class RankerCosEmbLoss(nn.Module):
 
 
 class EncdecMaskPadLoss(nn.Module):
-    pad_tok: int
+    pad_tok_ind: int
     pad_weight: float
     nonpad_weight: float
     # prob_cap: float
 
-    def __init__(self, pad_tok: int, pad_weight: float = 0.01, prob_cap: float = 1e-6):
+    def __init__(self, pad_tok_ind: int, pad_weight: float = 0.01, prob_cap: float = 1e-6):
         super().__init__()
         pad_weight = min(max(pad_weight, 0), 1)
         assert 0 <= prob_cap <= 1, f'prob_cap (={prob_cap}) must pertain to [0, 1] interval'
-        self.pad_tok = pad_tok
+        self.pad_tok_ind = pad_tok_ind
         self.pad_weight = pad_weight
         self.nonpad_weight = 1 - pad_weight
         self.register_buffer('prob_cap', torch.scalar_tensor(prob_cap))
@@ -184,7 +184,7 @@ class EncdecMaskPadLoss(nn.Module):
         # tokens_gt: (batch_size, inp_len, 1)
         tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
         # mask_pad: (batch_size, inp_len, 1)
-        mask_pad = tokens_gt == self.pad_tok
+        mask_pad = tokens_gt == self.pad_tok_ind
         # mask_npad: (batch_size, inp_len, 1)
         mask_npad = ~mask_pad
 

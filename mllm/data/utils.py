@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, BinaryIO, Union
+from typing import Optional, BinaryIO, Union, Generator
 
 import numpy as np
 import torch
@@ -69,6 +69,7 @@ class BinVecsFile:
 
 class HfDsIterator:
     ds: Dataset
+    inds: np.ndarray
     inp_len: int
     pad_tok_ind: int
     mask_tok_repr: str
@@ -76,9 +77,10 @@ class HfDsIterator:
     docs_batch_size: int
     device: torch.device
 
-    def __init__(self, ds: Dataset, inp_len: int, pad_tok_ind: int, mask_tok_repr: str, tkz: PreTrainedTokenizer,
+    def __init__(self, ds: Dataset, inds: np.ndarray, inp_len: int, pad_tok_ind: int, mask_tok_repr: str, tkz: PreTrainedTokenizer,
             docs_batch_size: int, device: torch.device):
         self.ds = ds
+        self.inds = inds.copy()
         self.inp_len = inp_len
         self.pad_tok_ind = pad_tok_ind
         self.mask_tok_repr = mask_tok_repr
@@ -86,7 +88,7 @@ class HfDsIterator:
         self.docs_batch_size = docs_batch_size
         self.device = device
 
-    def get_batch_tokens(self, doc_inds: list[int]) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
         docs_toks = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
         docs_toks_aug = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
         for i, doc_ind in enumerate(doc_inds):
@@ -120,16 +122,23 @@ class HfDsIterator:
         docs_toks_aug_t = torch.from_numpy(docs_toks_aug).to(self.device)
         return docs_toks_t, docs_toks_aug_t
 
-    def get_batch(self, inds: list[int], i_batch: int) -> tuple[torch.Tensor, torch.Tensor, int]:
+    def get_batch(self, i_batch: int) -> tuple[torch.Tensor, torch.Tensor, int]:
         i1 = i_batch * self.docs_batch_size
         i2 = i1 + self.docs_batch_size
-        batch_inds = inds[i1:i2]
+        batch_inds = self.inds[i1:i2]
         rest_batch_size = self.docs_batch_size - len(batch_inds)
         if rest_batch_size > 0:
-            batch_inds = batch_inds + inds[:rest_batch_size * self.docs_batch_size]
+            batch_inds = batch_inds + self.inds[:rest_batch_size * self.docs_batch_size]
         if i2 >= len(batch_inds):
             i_batch = 0
-            np.random.shuffle(inds)
+            np.random.shuffle(self.inds)
         batch_toks, batch_toks_aug = self.get_batch_tokens(batch_inds)
         return batch_toks, batch_toks_aug, i_batch
+
+    def get_batch_iterator(self) -> Generator[tuple[torch.Tensor, torch.Tensor], None, None]:
+        i_batch = 0
+        while True:
+            batch_toks, batch_toks_aug, i_batch = self.get_batch(i_batch)
+            yield batch_toks, batch_toks_aug
+
 
