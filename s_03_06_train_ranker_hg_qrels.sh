@@ -24,7 +24,7 @@ enhance_type=mmbeg
 #enhance_type=mmbb
 #pos_enc_type=num
 pos_enc_type=emb
-dec_dropout_rate=-1
+dropout_rate=0.1
 dec_mlp_layers="512"
 #dec_mlp_layers="768"
 #dec_mlp_layers="768,tanh"
@@ -45,8 +45,8 @@ train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=30
 #pretrained_model_path=$train_encdec_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
-#pretrained_model_path=$train_encdec_root_path/encdechg-20250107_232630-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d768-h12-dp0-t0
-pretrained_model_path=$train_encdec_root_path/encdechg-20250122_223338-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbb-step2-d512-h8-dp0-t0.0
+pretrained_model_path=$train_encdec_root_path/encdechg-20250107_232630-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d768-h12-dp0-t0
+pretrained_model_path=$train_encdec_root_path/encdechg-20250121_232930-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-dp0-t0.0
 #pretrained_model_path=
 #train_subdir=last
 
@@ -69,7 +69,7 @@ python s_03_06_train_ranker_hg_qrels.py \
   --reduct-type $reduct_type \
   --enhance-type $enhance_type \
   --pos-enc-type $pos_enc_type \
-  --dec-dropout-rate $dec_dropout_rate \
+  --dropout-rate $dropout_rate \
   --dec-mlp-layers $dec_mlp_layers \
   --docs-batch-size $docs_batch_size \
   --device $device \

@@ -82,10 +82,10 @@ class ArgsRankerHgQrelsTrain(BaseModel):
         f'trigonometric numerical values generated. {PosEncType.Emb} - learned embeddings.',
         cli=('--pos-enc-type',),
     )
-    dec_dropout_rate: float = Field(
+    dropout_rate: float = Field(
         -1,
-        description=f'Decoder dropout rate. If not set the value from encoder config will be used.',
-        cli=('--dec-dropout-rate',),
+        description=f'Dropout rate. If not set the value from encoder config will be used.',
+        cli=('--dropout-rate',),
     )
     dec_mlp_layers: str = Field(
         '',
@@ -211,7 +211,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     model_cfg = parse_yaml_file_as(RankerHgCfg, args.model_cfg_fpath)
     model_cfg = copy_override_ranker_hg_cfg(
         model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
-        pos_enc_type=args.pos_enc_type, dec_mlp_layers=args.dec_mlp_layers,
+        pos_enc_type=args.pos_enc_type, dec_mlp_layers=args.dec_mlp_layers, dropout_rate=args.dropout_rate,
     )
     print(model_cfg)
 
@@ -255,7 +255,7 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
 
     model = RankerHg(model_cfg).to(device)
 
-    if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
+    if args.pretrained_model_path and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
@@ -276,12 +276,13 @@ def main(args: ArgsRankerHgQrelsTrain) -> int:
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
     # optimizer = torch.optim.LBFGS(model.parameters(), lr=args.learning_rate)
 
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=7, threshold=1e-6, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
     views_train, views_val = [], []
     for ds in dss:
         ds_view = ds.get_view_plain_qids(batch_size=args.docs_batch_size)
+        ds_view.shuffle(seed=777)
         view_train, view_val = ds_view.split((-1, 0.05))
         view_train.shuffle()
         view_val.shuffle()

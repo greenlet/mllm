@@ -12,6 +12,7 @@ config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_bert
 
+bert_emb_type=cls
 inp_len=128
 #inp_len=256
 #dec_n_layers=7
@@ -55,6 +56,7 @@ python s_03_07_train_encdec_bert.py \
   --train-root-path $train_root_path \
   --train-subdir "$train_subdir" \
   --model-cfg-fpath $model_cfg_fpath \
+  --bert-emb-type $bert_emb_type \
   --inp-len $inp_len \
   --dec-enhance-type $enhance_type \
   --dec-n-layers $dec_n_layers \

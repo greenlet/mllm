@@ -184,16 +184,17 @@ def main(args: ArgsEncdecHgTrain) -> int:
     print(f'Wikipedia {args.wiki_ds_name} docs: {n_docs}')
 
     doc_inds = np.arange(n_docs)
+    np.random.seed(777)
+    np.random.shuffle(doc_inds)
     val_ratio = 0.05
     n_docs_val = int(n_docs * val_ratio)
     n_docs_train = n_docs - n_docs_val
     doc_inds_train, doc_inds_val = doc_inds[:n_docs_train], doc_inds[n_docs_train:]
 
-    input_zeros_ratio = 0.3
     print(model_cfg)
     model = EncdecHg(model_cfg).to(device)
 
-    if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
+    if args.pretrained_model_path and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)

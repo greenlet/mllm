@@ -1,4 +1,3 @@
-import re
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -10,17 +9,17 @@ from datasets import load_dataset
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
-from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
+from transformers import AutoTokenizer
 
-from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg_cfg, gen_prefpostfix_encdec_hg, HgReductType, \
-    HgEnhanceType, PosEncType
-from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
-from mllm.model.encdec_ranker_hg import EncdecHg
-from mllm.model.losses import encdec_prob_loss_softmax
-from mllm.tokenization.chunk_tokenizer import tokenizer_from_config
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats, remove_tokens
+from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
+    gen_prefpostfix_encdec_bert
+from mllm.data.utils import HfDsIterator
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME
+from mllm.model.encdec_ranker_hg import EncdecBert
+from mllm.model.losses import EncdecMaskPadLoss
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 
 
 class ArgsEncdecBertTrain(BaseModel):
@@ -49,6 +48,11 @@ class ArgsEncdecBertTrain(BaseModel):
         ...,
         description='Path to EncdecHg model config Yaml file.',
         cli=('--model-cfg-fpath',),
+    )
+    bert_emb_type: BertEmbType = Field(
+        BertEmbType.Cls,
+        description=f'Bert embedding type. Can have values: {list(x.value for x in BertEmbType)}',
+        cli=('--bert-emb-type',),
     )
     inp_len: int = Field(
         ...,
@@ -126,15 +130,13 @@ def main(args: ArgsEncdecBertTrain) -> int:
 
     device = torch.device(args.device)
 
-    tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
-    model_cfg = parse_yaml_file_as(EncdecHgCfg, args.model_cfg_fpath)
-    model_cfg = copy_override_encdec_hg_cfg(
-        model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
-        enhance_type=args.enhance_type, pos_enc_type=args.pos_enc_type, dropout_rate=args.dropout_rate,
-        dec_n_layers=args.dec_n_layers,
+    model_cfg = parse_yaml_file_as(EncdecBertCfg, args.model_cfg_fpath)
+    model_cfg = copy_override_encdec_bert_cfg(
+        model_cfg, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
+        dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
     )
 
-    prefix, suffix = gen_prefpostfix_encdec_hg(model_cfg)
+    prefix, suffix = gen_prefpostfix_encdec_bert(model_cfg)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -149,17 +151,12 @@ def main(args: ArgsEncdecBertTrain) -> int:
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        chkpt_tkz_cfg = parse_yaml_file_as(TokenizerCfg, train_path / TOKENIZER_CFG_FNAME)
-        chkpt_model_cfg = parse_yaml_file_as(EncdecHgCfg, train_path / ENCDEC_HG_MODEL_CFG_FNAME)
-        assert tkz_cfg == chkpt_tkz_cfg, f'{args.tokenizer_cfg_fpath} != {chkpt_tkz_cfg}'
+        chkpt_model_cfg = parse_yaml_file_as(EncdecBertCfg, train_path / ENCDEC_BERT_MODEL_CFG_FNAME)
         assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
-        to_yaml_file(train_path / TOKENIZER_CFG_FNAME, tkz_cfg)
-        to_yaml_file(train_path / ENCDEC_HG_MODEL_CFG_FNAME, model_cfg)
+        to_yaml_file(train_path / ENCDEC_BERT_MODEL_CFG_FNAME, model_cfg)
 
-    tkz = tokenizer_from_config(tkz_cfg)
-    tok_dict = tkz_cfg.custom_tokens
-    pad_tok, mask_tok = tok_dict['pad'].ind, tok_dict['mask'].ind
+    tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
     print(f'Loading Wikipedia dataset: {args.wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
     dss = load_dataset(wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
@@ -167,27 +164,22 @@ def main(args: ArgsEncdecBertTrain) -> int:
     n_docs = len(ds)
     print(f'Wikipedia {args.wiki_ds_name} docs: {n_docs}')
 
-    doc_inds = list(range(n_docs))
+    doc_inds = np.arange(n_docs)
+    np.random.seed(777)
+    np.random.shuffle(doc_inds)
     val_ratio = 0.05
     n_docs_val = int(n_docs * val_ratio)
     n_docs_train = n_docs - n_docs_val
     doc_inds_train, doc_inds_val = doc_inds[:n_docs_train], doc_inds[n_docs_train:]
 
-    input_zeros_ratio = 0.3
     print(model_cfg)
-    model = EncdecHg(model_cfg).to(device)
+    model = EncdecBert(model_cfg).to(device)
 
-    if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
+    if args.pretrained_model_path and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
-        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_HG_MODEL_CFG_FNAME
-        model_encdec_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_cfg_fpath)
-        model_cfg.enc_pyr.temperature = model_encdec_cfg.enc_pyr.temperature
-        model_encdec = EncdecHg(model_encdec_cfg).to(device)
-        model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        print(f'Load model weights for enc_pyr:', list(model_encdec.enc_pyr.state_dict().keys()))
-        model.load_state_dict(model_encdec.state_dict(), strict=False)
+        model.load_state_dict(pretrained_checkpoint['model'], strict=False)
 
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
@@ -206,62 +198,19 @@ def main(args: ArgsEncdecBertTrain) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    def get_batch_tokens(doc_inds: list[int]) -> tuple[torch.Tensor, torch.Tensor]:
-        docs_toks = np.full((len(doc_inds), args.inp_len), pad_tok)
-        docs_toks_aug = np.full((len(doc_inds), args.inp_len), pad_tok)
-        for i, doc_ind in enumerate(doc_inds):
-            doc = ds[doc_ind]
-            title, text = doc['title'], doc['text']
-            if np.random.rand() < 1 / 4:
-                doc_txt: str = title
-            else:
-                doc_txt: str = text
-            # doc_txt = f'{title} {text}'
-            # doc_txt = text
-            doc_toks = tkz(doc_txt)['input_ids']
-            n_toks = len(doc_toks)
-            if n_toks > args.inp_len:
-                i_off = np.random.randint(n_toks - args.inp_len + 1)
-                doc_toks = doc_toks[i_off:i_off + args.inp_len]
-            docs_toks[i, :len(doc_toks)] = doc_toks
+    train_batch_it = HfDsIterator(
+        ds=ds, inds=doc_inds_train, inp_len=model_cfg.dec_pyr.inp_len, pad_tok_ind=tkz.pad_token_id,
+        mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=args.docs_batch_size, device=device,
+    ).get_batch_iterator()
+    val_batch_it = HfDsIterator(
+        ds=ds, inds=doc_inds_val, inp_len=model_cfg.dec_pyr.inp_len, pad_tok_ind=tkz.pad_token_id,
+        mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=args.docs_batch_size, device=device,
+    ).get_batch_iterator()
 
-            doc_txt_aug = mask_random_words(doc_txt, tok_dict['mask'].repr)
-            if doc_txt_aug is None:
-                doc_toks_aug = doc_toks
-            else:
-                doc_toks_aug = tkz(doc_txt_aug)['input_ids']
-                n_toks_aug = len(doc_toks_aug)
-                if n_toks_aug > args.inp_len:
-                    i_off = np.random.randint(n_toks_aug - args.inp_len + 1)
-                    doc_toks_aug = doc_toks_aug[i_off:i_off + args.inp_len]
-            docs_toks_aug[i, :len(doc_toks_aug)] = doc_toks_aug
-
-        docs_toks_t = torch.from_numpy(docs_toks).to(device)
-        docs_toks_aug_t = torch.from_numpy(docs_toks_aug).to(device)
-        return docs_toks_t, docs_toks_aug_t
-
-    def get_batch(inds: list[int], i_batch: int) -> tuple[torch.Tensor, torch.Tensor, int]:
-        i1 = i_batch * args.docs_batch_size
-        i2 = i1 + args.docs_batch_size
-        batch_inds = inds[i1:i2]
-        rest_batch_size = args.docs_batch_size - len(batch_inds)
-        if rest_batch_size > 0:
-            batch_inds = batch_inds + inds[:rest_batch_size * args.docs_batch_size]
-        if i2 >= len(batch_inds):
-            i_batch = 0
-            np.random.shuffle(inds)
-        batch_toks, batch_toks_aug = get_batch_tokens(batch_inds)
-        return batch_toks, batch_toks_aug, i_batch
-
-    # loss_fn = encdec_prob_loss_sigmoid
-    # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
-    # loss_fn = nn.CrossEntropyLoss()
-    # loss_fn = encdec_prob_loss_softmax
-    loss_fn = RankMaskPadLoss(pad_tok=pad_tok, pad_weight=0.1)
+    loss_fn = EncdecMaskPadLoss(pad_tok_ind=tkz.pad_token_id, pad_weight=0.1)
 
     print(model)
 
-    i_train, i_val = 0, 0
     loss_gt, loss_nongt = None, None
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
@@ -272,7 +221,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
         train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp, tokens_inp_aug, i_train = get_batch(doc_inds_train, i_train)
+            tokens_inp, tokens_inp_aug = next(train_batch_it)
             # tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
             # tokens_inp_aug = tokens_inp
 
@@ -320,7 +269,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
         val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp, _, i_val = get_batch(doc_inds_train, i_val)
+            tokens_inp, _ = next(val_batch_it)
 
             out_logits = model(tokens_inp)
             loss = loss_fn(out_logits, tokens_inp)

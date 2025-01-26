@@ -474,7 +474,7 @@ def copy_override_encdec_bert_cfg(
 
 def copy_override_ranker_hg_cfg(
         cfg: RankerHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        pos_enc_type: PosEncType = PosEncType.Num, dec_mlp_layers: str = '', temperature: float = -1,
+        pos_enc_type: PosEncType = PosEncType.Num, dec_mlp_layers: str = '', temperature: float = -1, dropout_rate: float = -1,
         ) -> RankerHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
@@ -482,7 +482,6 @@ def copy_override_ranker_hg_cfg(
     n_heads = cfg.enc_pyr.n_heads
     d_inner = cfg.enc_pyr.d_inner
     step = cfg.enc_pyr.step
-    dropout_rate = cfg.enc_pyr.dropout_rate
 
     if 0 < inp_len != cfg.enc_pyr.inp_len:
         assert inp_len & (inp_len - 1) == 0, f'inp_len = {inp_len} is not power of 2'
@@ -493,6 +492,7 @@ def copy_override_ranker_hg_cfg(
         assert n_similar_layers > 0, f'n_similar_layers = {n_similar_layers}, but must be > 0'
 
     temperature = temperature if temperature >= 0 else cfg.enc_pyr.temperature
+    dropout_rate = dropout_rate if dropout_rate >=0 else cfg.enc_pyr.dropout_rate
 
     return create_ranker_hg_cfg(
         n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
@@ -539,11 +539,17 @@ def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
     enc = model_cfg.enc_pyr
     dec = model_cfg.dec_rank
     dec_mlp_layers = dec.mlp_layers.replace(',', '_')
+
+    dp_rate = np.round(enc.dropout_rate, 2)
+    if dp_rate < 1e-6:
+        dp_rate = 0
+
     temp = np.round(enc.temperature, 2)
     temp_round = np.round(temp)
     if temp - temp_round < 0.01:
         temp = int(temp_round)
+
     postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{enc.n_layers}x{enc.n_similar_layers}-'
-               f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-t{temp}-dmlp_{dec_mlp_layers}')
+               f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-dp{dp_rate}-t{temp}-dmlp_{dec_mlp_layers}')
     return prefix, postfix
 
