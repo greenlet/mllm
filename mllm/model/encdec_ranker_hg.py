@@ -337,10 +337,10 @@ class DecoderPyramid(nn.Module):
             raise Exception(f'Enhance type {cfg.enhance_type} is not supported')
         self.vocab_decoder = VocabDecoder(d_model=self.cfg.d_model, n_vocab=self.cfg.n_vocab)
 
-    # Tensor with embeddings: [batch_size, 1, d_model]
+    # Tensor with embeddings: [batch_size, d_model]
     def forward(self, inp: Tensor) -> Tensor:
-        batch_size, one, d_model = inp.shape
-        assert one == 1
+        batch_size, d_model = inp.shape
+        inp = inp.unsqueeze(1)
         out = inp
         if self.cfg.enhance_type in (HgEnhanceType.MatmulBegin, HgEnhanceType.MatmulBeginBias):
             # [batch_size, 1, d_model] -> [batch_size, 1, d_model * inp_len]

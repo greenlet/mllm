@@ -234,7 +234,8 @@ class BertEmbType(str, Enum):
 
 
 class EncBertCfg(BaseModel):
-    d_model: int = 0
+    inp_len: int
+    d_model: int
     pretrained_model_name: str = ''
     tokenizer_name: str = ''
     emb_type: BertEmbType = BertEmbType.Cls
@@ -314,7 +315,7 @@ def create_encdec_hg_cfg(
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
         enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num, dec_n_layers: int = 0,
         temperature: float = 0,
-        ) -> EncdecHgCfg:
+) -> EncdecHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
     n_layers = math.ceil(math.log(inp_len, step))
@@ -342,7 +343,7 @@ def create_encdec_bert_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
         inp_len = 128, dec_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
         dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
-):
+) -> EncdecBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
     # BertConfig
@@ -377,7 +378,7 @@ def create_encdec_bert_cfg(
 
     tokenizer_name = tokenizer_name or pretrained_model_name
     cfg_enc = EncBertCfg(
-        d_model=d_model, pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name,
+        inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name,
         emb_type=emb_type,
     )
     step = 2
@@ -399,7 +400,7 @@ def create_ranker_hg_cfg(
         n_vocab: int, pad_idx: int, d_model: int = 256, n_heads: int = 8, d_inner: int = 1024, inp_len: int = 256,
         step: int = 2, dropout_rate: float = 0.0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
         pos_enc_type: PosEncType = PosEncType.Num, dec_mlp_layers: str = '', temperature: float = 0,
-        ) -> RankerHgCfg:
+) -> RankerHgCfg:
     d_word_vec = d_model
     d_k = d_v = d_model // n_heads
     n_layers = math.ceil(math.log(inp_len, step))
@@ -420,11 +421,59 @@ def create_ranker_hg_cfg(
     return cfg_ranker_hg
 
 
+def create_ranker_bert_cfg(
+        pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
+        inp_len: int = 128, dec_mlp_layers: str = '',
+) -> RankerBertCfg:
+    model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
+    bert_cfg: BertConfig = model.config
+    # BertConfig
+    # {
+    #     "_name_or_path": "bert-base-uncased",
+    #     "architectures": [
+    #         "BertForMaskedLM"
+    #     ],
+    #     "attention_probs_dropout_prob": 0.1,
+    #     "classifier_dropout": null,
+    #     "gradient_checkpointing": false,
+    #     "hidden_act": "gelu",
+    #     "hidden_dropout_prob": 0.1,
+    #     "hidden_size": 768,
+    #     "initializer_range": 0.02,
+    #     "intermediate_size": 3072,
+    #     "layer_norm_eps": 1e-12,
+    #     "max_position_embeddings": 512,
+    #     "model_type": "bert",
+    #     "num_attention_heads": 12,
+    #     "num_hidden_layers": 12,
+    #     "pad_token_id": 0,
+    #     "position_embedding_type": "absolute",
+    #     "transformers_version": "4.42.4",
+    #     "type_vocab_size": 2,
+    #     "use_cache": true,
+    #     "vocab_size": 30522
+    # }
+    d_model = bert_cfg.hidden_size
+
+    tokenizer_name = tokenizer_name or pretrained_model_name
+    cfg_enc = EncBertCfg(
+        inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name,
+        emb_type=emb_type,
+    )
+
+    cfg_dec = DecRankHgCfg(
+        d_model=d_model, mlp_layers=dec_mlp_layers,
+    )
+
+    cfg_ranker_bert = RankerBertCfg(enc_bert=cfg_enc, dec_rank=cfg_dec)
+    return cfg_ranker_bert
+
+
 def copy_override_encdec_hg_cfg(
         cfg: EncdecHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
         enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num, dropout_rate: float = 0.0,
         dec_n_layers: int = 0, temperature: float = -1,
-        ) -> EncdecHgCfg:
+) -> EncdecHgCfg:
     n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
     pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
     d_model = cfg.enc_pyr.d_model
@@ -454,11 +503,11 @@ def copy_override_encdec_bert_cfg(
         cfg: EncdecBertCfg, emb_type: Optional[BertEmbType] = None, inp_len: int = 0, dec_enhance_type: Optional[HgEnhanceType] = None,
         dec_n_layers: int = 0, dec_n_similar_layers: int = 0, dec_dropout_rate: Optional[float] = None,
         dec_temperature: Optional[float] = None,
-        ) -> EncdecBertCfg:
+) -> EncdecBertCfg:
     enc = cfg.enc_bert
     dec = cfg.dec_pyr
     emb_type = coalesce(emb_type, cfg.enc_bert.emb_type)
-    inp_len = inp_len or dec.inp_len
+    inp_len = inp_len or enc.inp_len
     dec_enhance_type = coalesce(dec_enhance_type, dec.enhance_type)
     dec_n_layers = dec_n_layers or dec.n_layers
     dec_n_similar_layers = dec_n_similar_layers or dec.n_similar_layers
@@ -474,30 +523,47 @@ def copy_override_encdec_bert_cfg(
 
 def copy_override_ranker_hg_cfg(
         cfg: RankerHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
-        pos_enc_type: PosEncType = PosEncType.Num, dec_mlp_layers: str = '', temperature: float = -1, dropout_rate: float = -1,
-        ) -> RankerHgCfg:
-    n_vocab = cfg.enc_pyr.vocab_encoder.n_vocab
-    pad_idx = cfg.enc_pyr.vocab_encoder.pad_idx
-    d_model = cfg.enc_pyr.d_model
-    n_heads = cfg.enc_pyr.n_heads
-    d_inner = cfg.enc_pyr.d_inner
-    step = cfg.enc_pyr.step
+        pos_enc_type: PosEncType = PosEncType.Num, dec_mlp_layers: Optional[str] = None, temperature: float = -1, dropout_rate: float = -1,
+) -> RankerHgCfg:
+    enc, dec = cfg.enc_pyr, cfg.dec_rank
+    n_vocab = enc.vocab_encoder.n_vocab
+    pad_idx = enc.vocab_encoder.pad_idx
+    d_model = enc.d_model
+    n_heads = enc.n_heads
+    d_inner = enc.d_inner
+    step = enc.step
 
-    if 0 < inp_len != cfg.enc_pyr.inp_len:
+    if 0 < inp_len != enc.inp_len:
         assert inp_len & (inp_len - 1) == 0, f'inp_len = {inp_len} is not power of 2'
     else:
-        inp_len = cfg.enc_pyr.inp_len
+        inp_len = enc.inp_len
 
-    if n_similar_layers != cfg.enc_pyr.n_similar_layers:
+    if n_similar_layers != enc.n_similar_layers:
         assert n_similar_layers > 0, f'n_similar_layers = {n_similar_layers}, but must be > 0'
 
-    temperature = temperature if temperature >= 0 else cfg.enc_pyr.temperature
-    dropout_rate = dropout_rate if dropout_rate >=0 else cfg.enc_pyr.dropout_rate
+    temperature = temperature if temperature >= 0 else enc.temperature
+    dropout_rate = dropout_rate if dropout_rate >=0 else enc.dropout_rate
+    dec_mlp_layers = coalesce(dec_mlp_layers, dec.mlp_layers)
 
     return create_ranker_hg_cfg(
         n_vocab=n_vocab, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_inner=d_inner, inp_len=inp_len, step=step,
         dropout_rate=dropout_rate, n_similar_layers=n_similar_layers, reduct_type=reduct_type,
         pos_enc_type=pos_enc_type, dec_mlp_layers=dec_mlp_layers, temperature=temperature,
+    )
+
+
+def copy_override_ranker_bert_cfg(
+        cfg: RankerBertCfg, emb_type: Optional[BertEmbType] = None, inp_len: int = 0, dec_mlp_layers: Optional[str] = None,
+) -> RankerBertCfg:
+    enc = cfg.enc_bert
+    dec = cfg.dec_rank
+    emb_type = coalesce(emb_type, enc.emb_type)
+    inp_len = inp_len or enc.inp_len
+    dec_mlp_layers = coalesce(dec_mlp_layers, dec.mlp_layers)
+
+    return create_ranker_bert_cfg(
+        pretrained_model_name=enc.pretrained_model_name, tokenizer_name=enc.tokenizer_name,
+        emb_type=emb_type, inp_len=inp_len, dec_mlp_layers=dec_mlp_layers,
     )
 
 
@@ -551,5 +617,20 @@ def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
 
     postfix = (f'inp{enc.inp_len}-pos_{enc.vocab_encoder.pos_enc_type.value}-lrs{enc.n_layers}x{enc.n_similar_layers}-'
                f'rdc_{enc.reduct_type.value}-step{enc.step}-d{enc.d_model}-h{enc.n_heads}-dp{dp_rate}-t{temp}-dmlp_{dec_mlp_layers}')
+    return prefix, postfix
+
+
+def gen_prefpostfix_ranker_bert(model_cfg: RankerBertCfg) -> tuple[str, str]:
+    prefix = f'rankerbert'
+    enc = model_cfg.enc_bert
+    dec = model_cfg.dec_rank
+    dec_mlp_layers = dec.mlp_layers.replace(',', '_')
+
+    brt_str = enc.pretrained_model_name.replace('_', '_')
+    if enc.tokenizer_name != enc.pretrained_model_name:
+        tkz_name = enc.tokenizer_name.replace('-', '_')
+        brt_str = f'{brt_str}-{tkz_name}'
+
+    postfix = f'{brt_str}-inp{enc.inp_len}-d{dec.d_model}-emb_{enc.emb_type}-dmlp_{dec_mlp_layers}'
     return prefix, postfix
 

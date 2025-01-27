@@ -1,0 +1,9 @@
+dec_rank:
+  d_model: 768
+  mlp_layers: ''
+enc_bert:
+  d_model: 768
+  emb_type: cls
+  inp_len: 128
+  pretrained_model_name: bert-base-uncased
+  tokenizer_name: bert-base-uncased

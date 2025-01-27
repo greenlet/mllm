@@ -32,18 +32,18 @@ train_epoch_steps=20
 val_epoch_steps=20
 docs_batch_size=10
 
-# device=cuda
-# epochs=700
-# train_epoch_steps=500
-# val_epoch_steps=50
-# docs_batch_size=30
-# #docs_batch_size=7
-# #docs_batch_size=15
-# #train_subdir=last
+device=cuda
+epochs=700
+train_epoch_steps=500
+val_epoch_steps=50
+docs_batch_size=15
+#docs_batch_size=7
+#docs_batch_size=15
+#train_subdir=last
 # pretrained_model_path=$train_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
 
 learning_rate=0.0001
-# learning_rate=0.00005
+learning_rate=0.00005
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
@@ -58,10 +58,10 @@ python s_03_07_train_encdec_bert.py \
   --model-cfg-fpath $model_cfg_fpath \
   --bert-emb-type $bert_emb_type \
   --inp-len $inp_len \
-  --dec-enhance-type $enhance_type \
+  --dec-enhance-type $dec_enhance_type \
   --dec-n-layers $dec_n_layers \
   --dec-n-similar-layers $dec_n_similar_layers \
-  --dec-dropout-rate $dropout_rate \
+  --dec-dropout-rate $dec_dropout_rate \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \
@@ -69,6 +69,6 @@ python s_03_07_train_encdec_bert.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed \
-  --pretrained-model-path $pretrained_model_path
+  --pretrained-model-path "$pretrained_model_path"
 #"
 

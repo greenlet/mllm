@@ -165,7 +165,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
     print(f'Wikipedia {args.wiki_ds_name} docs: {n_docs}')
 
     doc_inds = np.arange(n_docs)
-    np.random.seed(777)
+    # np.random.seed(777)
     np.random.shuffle(doc_inds)
     val_ratio = 0.05
     n_docs_val = int(n_docs * val_ratio)
@@ -175,7 +175,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
     print(model_cfg)
     model = EncdecBert(model_cfg).to(device)
 
-    if args.pretrained_model_path and checkpoint is None:
+    if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
@@ -226,8 +226,8 @@ def main(args: ArgsEncdecBertTrain) -> int:
             # tokens_inp_aug = tokens_inp
 
             optimizer.zero_grad()
-
-            out_logits = model(tokens_inp_aug)
+            mask = tokens_inp_aug != tkz.pad_token_id
+            out_logits = model(tokens_inp_aug, mask)
             loss = loss_fn(out_logits, tokens_inp)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
@@ -265,13 +265,14 @@ def main(args: ArgsEncdecBertTrain) -> int:
         model.eval()
         if device.type == 'cuda':
             torch.cuda.empty_cache()
-        
+
         val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             tokens_inp, _ = next(val_batch_it)
 
-            out_logits = model(tokens_inp)
+            mask = tokens_inp != tkz.pad_token_id
+            out_logits = model(tokens_inp, mask)
             loss = loss_fn(out_logits, tokens_inp)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss

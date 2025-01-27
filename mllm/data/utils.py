@@ -92,7 +92,7 @@ class HfDsIterator:
         docs_toks = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
         docs_toks_aug = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
         for i, doc_ind in enumerate(doc_inds):
-            doc = self.ds[doc_ind]
+            doc = self.ds[int(doc_ind)]
             title, text = doc['title'], doc['text']
             if np.random.rand() < 1 / 4:
                 doc_txt: str = title
