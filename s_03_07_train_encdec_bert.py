@@ -201,10 +201,12 @@ def main(args: ArgsEncdecBertTrain) -> int:
     train_batch_it = HfDsIterator(
         ds=ds, inds=doc_inds_train, inp_len=model_cfg.dec_pyr.inp_len, pad_tok_ind=tkz.pad_token_id,
         mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=args.docs_batch_size, device=device,
+        preserve_first_token=True,
     ).get_batch_iterator()
     val_batch_it = HfDsIterator(
         ds=ds, inds=doc_inds_val, inp_len=model_cfg.dec_pyr.inp_len, pad_tok_ind=tkz.pad_token_id,
         mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=args.docs_batch_size, device=device,
+        preserve_first_token=True,
     ).get_batch_iterator()
 
     loss_fn = EncdecMaskPadLoss(pad_tok_ind=tkz.pad_token_id, pad_weight=0.1)
