@@ -10,7 +10,7 @@ from mllm.data.dsqrels import DsQrels
 from mllm.data.fever.dsfever import load_dsqrels_fever
 from mllm.data.msmarco.dsmsmarco import load_dsqrels_msmarco
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer
-from mllm.train.utils import mask_random_words
+from mllm.train.utils import mask_random_words, mask_random_tokens
 
 
 def load_qrels_datasets(
@@ -76,10 +76,10 @@ class HfDsIterator:
     tkz: PreTrainedTokenizer
     docs_batch_size: int
     device: torch.device
-    preserve_first_token: bool
+    preserve_edge_tokens: bool
 
     def __init__(self, ds: Dataset, inds: np.ndarray, inp_len: int, pad_tok_ind: int, mask_tok_repr: str, tkz: PreTrainedTokenizer,
-            docs_batch_size: int, device: torch.device, preserve_first_token: bool = False):
+                 docs_batch_size: int, device: torch.device, preserve_edge_tokens: bool = False):
         self.ds = ds
         self.inds = inds.copy()
         self.inp_len = inp_len
@@ -88,7 +88,7 @@ class HfDsIterator:
         self.tkz = tkz
         self.docs_batch_size = docs_batch_size
         self.device = device
-        self.preserve_first_token = preserve_first_token
+        self.preserve_edge_tokens = preserve_edge_tokens
 
     def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
         docs_toks = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
@@ -105,27 +105,19 @@ class HfDsIterator:
             doc_toks = self.tkz(doc_txt)['input_ids']
             n_toks = len(doc_toks)
             if n_toks > self.inp_len:
-                if self.preserve_first_token:
+                if self.preserve_edge_tokens:
                     i_off = np.random.randint(1, n_toks - self.inp_len + 1)
-                    doc_toks = np.concatenate([doc_toks[:1], doc_toks[i_off:i_off + self.inp_len - 1]])
+                    doc_toks = np.concatenate([doc_toks[:1], doc_toks[i_off:i_off + self.inp_len - 2], doc_toks[-1:]])
                 else:
                     i_off = np.random.randint(n_toks - self.inp_len + 1)
                     doc_toks = doc_toks[i_off:i_off + self.inp_len]
             docs_toks[i, :len(doc_toks)] = doc_toks
 
-            doc_txt_aug = mask_random_words(doc_txt, mask_tok_str=self.mask_tok_repr)
-            if doc_txt_aug is None:
-                doc_toks_aug = doc_toks
+            if self.preserve_edge_tokens:
+                doc_toks_aug = docs_toks.copy()
+                doc_toks_aug[1:-1] = mask_random_tokens(docs_toks_aug[1:-1], self.tkz)
             else:
-                doc_toks_aug = self.tkz(doc_txt_aug)['input_ids']
-                n_toks_aug = len(doc_toks_aug)
-                if n_toks_aug > self.inp_len:
-                    if self.preserve_first_token:
-                        i_off = np.random.randint(1, n_toks_aug - self.inp_len + 1)
-                        doc_toks_aug = np.concatenate([doc_toks_aug[:1], doc_toks_aug[i_off:i_off + self.inp_len - 1]])
-                    else:
-                        i_off = np.random.randint(n_toks_aug - self.inp_len + 1)
-                        doc_toks_aug = doc_toks_aug[i_off:i_off + self.inp_len]
+                doc_toks_aug = mask_random_tokens(doc_toks, self.tkz)
             docs_toks_aug[i, :len(doc_toks_aug)] = doc_toks_aug
 
         docs_toks_t = torch.from_numpy(docs_toks).to(self.device)

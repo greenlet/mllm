@@ -8,6 +8,7 @@ import torch
 import torch.utils.tensorboard as tb
 from torch import nn
 from torch.nn.modules import activation
+from transformers import PreTrainedTokenizer
 
 from mllm.data.common import DsView, TDs, TBatch
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
@@ -175,7 +176,18 @@ def get_activation_module(act: str) -> Activation:
         raise ValueError(f'Cannot find activation function for string <{act}>')
 
 
-def mask_random_tokens(toks: np.ndarray, mask_token_ind: int, rem_freq: float = 0.33, rem_prob: float = 0.15,
+def extend_mask_to_words(mask: np.ndarray, toks_str: list[str]) -> np.ndarray:
+    n = len(mask)
+    for i in range(1, n):
+        if not mask[i] and mask[i - 1] and toks_str[i].startswith('##'):
+            mask[i] = True
+    for i in range(n - 2, -1, -1):
+        if not mask[i] and mask[i + 1] and toks_str[i + 1].startswith('##'):
+            mask[i] = True
+    return mask
+
+
+def mask_random_tokens(toks: np.ndarray, tkz: PreTrainedTokenizer, rem_freq: float = 0.33, rem_prob: float = 0.15,
         rem_conseq_freq: float = 0.33, rem_conseq_prob: float = 0.2, rem_conseq_max_len: int = 20,
         rem_conseq_max_times: int = 5) -> np.ndarray:
     res = toks.copy()
@@ -183,8 +195,12 @@ def mask_random_tokens(toks: np.ndarray, mask_token_ind: int, rem_freq: float = 
     n_total = len(res)
     if rv < 1 - (rem_freq + rem_conseq_freq):
         return res
+
+    if n_total < 5:
+        return res
+
     if rv < 1 - rem_conseq_freq:
-        mask = np.random.rand(n_total) <= rem_prob
+        mask: np.ndarray = np.random.rand(n_total) <= rem_prob
     else:
         rem_conseq_times = np.random.randint(1, rem_conseq_max_times + 1)
         rem_interval = n_total // rem_conseq_times
@@ -200,7 +216,10 @@ def mask_random_tokens(toks: np.ndarray, mask_token_ind: int, rem_freq: float = 
             if i1 < i2:
                 mask[i1:i2] = True
             off = max(off + rem_interval, i2 + int(n_rem * 1.5))
-    res[mask] = mask_token_ind
+
+    toks_str = [tkz.decode(t) for t in toks]
+    mask = extend_mask_to_words(mask, toks_str)
+    res[mask] = tkz.mask_token_id
     return res
 
 
