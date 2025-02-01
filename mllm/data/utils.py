@@ -103,6 +103,7 @@ class HfDsIterator:
             # doc_txt = f'{title} {text}'
             # doc_txt = text
             doc_toks = self.tkz(doc_txt)['input_ids']
+            doc_toks = np.array(doc_toks)
             n_toks = len(doc_toks)
             if n_toks > self.inp_len:
                 if self.preserve_edge_tokens:
@@ -114,8 +115,8 @@ class HfDsIterator:
             docs_toks[i, :len(doc_toks)] = doc_toks
 
             if self.preserve_edge_tokens:
-                doc_toks_aug = docs_toks.copy()
-                doc_toks_aug[1:-1] = mask_random_tokens(docs_toks_aug[1:-1], self.tkz)
+                doc_toks_aug = doc_toks.copy()
+                doc_toks_aug[1:-1] = mask_random_tokens(doc_toks_aug[1:-1], self.tkz)
             else:
                 doc_toks_aug = mask_random_tokens(doc_toks, self.tkz)
             docs_toks_aug[i, :len(doc_toks_aug)] = doc_toks_aug

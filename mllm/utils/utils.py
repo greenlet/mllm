@@ -126,3 +126,7 @@ def coalesce(val: Optional[T], fallback_val: T) -> T:
         return fallback_val
     return val
 
+
+def reraise(*args, **kwargs):
+    raise
+

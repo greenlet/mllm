@@ -26,19 +26,19 @@ dec_n_similar_layers=1
 dec_enhance_type=mmbb
 dec_dropout_rate=0
 
-device=cpu
-epochs=5
-train_epoch_steps=20
-val_epoch_steps=20
-docs_batch_size=5
+#device=cpu
+#epochs=5
+#train_epoch_steps=20
+#val_epoch_steps=20
+#docs_batch_size=5
 
-#device=cuda
-#epochs=700
-#train_epoch_steps=500
-#val_epoch_steps=50
-#docs_batch_size=15
+device=cuda
+epochs=700
+train_epoch_steps=500
+val_epoch_steps=50
+docs_batch_size=15
 #train_subdir=last
-# pretrained_model_path=$train_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
+#pretrained_model_path=$train_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
 
 learning_rate=0.0001
 learning_rate=0.00005
@@ -47,7 +47,7 @@ random_seed=200
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-echo "
+#echo "
 python s_03_07_train_encdec_bert.py \
   --data-path $data_path \
   --wiki-ds-name $wiki_ds_name \
@@ -68,5 +68,5 @@ python s_03_07_train_encdec_bert.py \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed \
   --pretrained-model-path "$pretrained_model_path"
-"
+#"
 
