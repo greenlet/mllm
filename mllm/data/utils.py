@@ -14,7 +14,7 @@ from mllm.train.utils import mask_random_words, mask_random_tokens
 
 
 def load_qrels_datasets(
-        ds_dir_paths: list[Path], ch_tkz: ChunkTokenizer, emb_chunk_size: int, device: Optional[torch.device] = None,
+        ds_dir_paths: list[Path], ch_tkz: Optional[ChunkTokenizer], emb_chunk_size: int, device: Optional[torch.device] = None,
         join: bool = True) -> Union[DsQrels, list[DsQrels]]:
     dss = []
     for ds_path in ds_dir_paths:

@@ -13,7 +13,7 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 from mllm.config.model import EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
-    parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg
+    parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
 
@@ -477,7 +477,6 @@ class RankerHg(nn.Module):
         self.cfg = cfg
         self.enc_pyr = EncoderPyramid(cfg.enc_pyr)
         self.dec_rank = DecoderRankHg(cfg.dec_rank)
-        self.register_buffer('norm_cap', torch.scalar_tensor(1e-8))
 
         for n, p in self.named_parameters():
             if p.dim() > 1:
@@ -490,9 +489,9 @@ class RankerHg(nn.Module):
     # inp: (batch_size, inp_len)
     def run_encdec(self, inp: Tensor) -> Tensor:
         out = inp
-        # out_docs: (batch_size, 1, d_model)
+        # out: (batch_size, 1, d_model)
         out = self.enc_pyr(inp)
-        # out_docs: (batch_size, d_model)
+        # out: (batch_size, d_model)
         out = out.squeeze(1)
         # out: (batch_size, d_model)
         out = self.dec_rank(out)
@@ -500,7 +499,7 @@ class RankerHg(nn.Module):
 
     # inp_docs: (n_docs, inp_len)
     # inp_qs: (n_qs, inp_len)
-    def forward(self, inp_docs: Tensor, inp_qs) -> Tensor:
+    def forward(self, inp_docs: Tensor, inp_qs: Tensor) -> Tensor:
         # out_docs: (n_docs, d_model)
         out_docs = self.run_encdec(inp_docs)
 
@@ -511,4 +510,46 @@ class RankerHg(nn.Module):
         # contains matrix of cosine distances between docs' and queries' embeddings
         out_rank = cos_mat(out_docs, out_qs)
         return out_rank
+
+
+class RankerBert(nn.Module):
+    cfg: RankerBertCfg
+    enc_bert: EncoderBert
+    dec_rank: DecoderRankHg
+
+    def __init__(self, cfg: RankerBertCfg):
+        super().__init__()
+        self.cfg = cfg
+        self.enc_bert = EncoderBert(cfg.enc_bert)
+        self.dec_rank = DecoderRankHg(cfg.dec_rank)
+
+        for n, p in self.dec_rank.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+    # inp: (batch_size, inp_len)
+    def run_encdec(self, inp: Tensor) -> Tensor:
+        out = inp
+        # out: (batch_size, 1, d_model)
+        out = self.enc_bert(inp)
+        # out: (batch_size, d_model)
+        out = out.squeeze(1)
+        # out: (batch_size, d_model)
+        out = self.dec_rank(out)
+        return out
+
+    # inp_docs: (n_docs, inp_len)
+    # inp_qs: (n_qs, inp_len)
+    def forward(self, inp_docs: Tensor, inp_qs: Tensor) -> Tensor:
+        # out_docs: (n_docs, d_model)
+        out_docs = self.run_encdec(inp_docs)
+
+        # out_qs: (n_qs, d_model)
+        out_qs = self.run_encdec(inp_qs)
+
+        # out_rank: (n_docs, n_qs)
+        # contains matrix of cosine distances between docs' and queries' embeddings
+        out_rank = cos_mat(out_docs, out_qs)
+        return out_rank
+
 

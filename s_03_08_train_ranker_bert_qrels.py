@@ -11,17 +11,19 @@ from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
+from transformers import AutoTokenizer
 
 from mllm.config.model import TokenizerCfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType, RankerHgCfg, \
-    gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg, BertEmbType
+    gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg, BertEmbType, RankerBertCfg, copy_override_ranker_bert_cfg, \
+    gen_prefpostfix_ranker_bert
 from mllm.data.common import DsView
 from mllm.data.dsqrels import QrelsPlainBatch, DsQrels
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import TOKENIZER_CFG_FNAME, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR, is_arg_true, \
-    ENCDEC_HG_MODEL_CFG_FNAME, RANKER_HG_MODEL_CFG_FNAME
-from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg
+    ENCDEC_HG_MODEL_CFG_FNAME, RANKER_HG_MODEL_CFG_FNAME, RANKER_BERT_MODEL_CFG_FNAME
+from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg, RankerBert
 from mllm.model.losses import RankerCosEmbLoss
-from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config
+from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config, gen_all_tokens
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import reraise
 
@@ -179,15 +181,13 @@ def main(args: ArgsRankerBertQrelsTrain) -> int:
 
     device = torch.device(args.device)
 
-    tkz_cfg = parse_yaml_file_as(TokenizerCfg, args.tokenizer_cfg_fpath)
-    model_cfg = parse_yaml_file_as(RankerHgCfg, args.model_cfg_fpath)
-    model_cfg = copy_override_ranker_hg_cfg(
-        model_cfg, inp_len=args.inp_len, n_similar_layers=args.n_similar_layers, reduct_type=args.reduct_type,
-        pos_enc_type=args.pos_enc_type, dec_mlp_layers=args.dec_mlp_layers, dropout_rate=args.dropout_rate,
+    model_cfg = parse_yaml_file_as(RankerBertCfg, args.model_cfg_fpath)
+    model_cfg = copy_override_ranker_bert_cfg(
+        model_cfg, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_mlp_layers=args.dec_mlp_layers,
     )
     print(model_cfg)
 
-    prefix, suffix = gen_prefpostfix_ranker_hg(model_cfg)
+    prefix, suffix = gen_prefpostfix_ranker_bert(model_cfg)
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     deconly_str = 't' if args.train_dec_only_bool else 'f'
     suffix = f'{ds_names}-{suffix}-tdo_{deconly_str}'
@@ -205,27 +205,22 @@ def main(args: ArgsRankerBertQrelsTrain) -> int:
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        chkpt_tkz_cfg = parse_yaml_file_as(TokenizerCfg, train_path / TOKENIZER_CFG_FNAME)
-        chkpt_model_cfg = parse_yaml_file_as(RankerHgCfg, train_path / RANKER_HG_MODEL_CFG_FNAME)
-        assert tkz_cfg == chkpt_tkz_cfg, f'{args.tokenizer_cfg_fpath} != {chkpt_tkz_cfg}'
+        chkpt_model_cfg = parse_yaml_file_as(RankerBertCfg, train_path / RANKER_BERT_MODEL_CFG_FNAME)
         assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
-        to_yaml_file(train_path / TOKENIZER_CFG_FNAME, tkz_cfg)
-        to_yaml_file(train_path / RANKER_HG_MODEL_CFG_FNAME, model_cfg)
+        to_yaml_file(train_path / RANKER_BERT_MODEL_CFG_FNAME, model_cfg)
 
-    tokenizer = tokenizer_from_config(tkz_cfg)
-    tok_dict = tkz_cfg.custom_tokens
-    ch_tkz = ChunkTokenizer(tok_dict, tokenizer, n_emb_tokens=args.inp_len, fixed_size=True)
-    pad_tok, qbeg_tok, qend_tok = tok_dict['pad'].ind, tok_dict['query_begin'].ind, tok_dict['query_end'].ind
+    tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
+    print(tkz)
+    custom_tokens = gen_all_tokens()
+    ch_tkz = ChunkTokenizer(custom_tokens, tkz, n_emb_tokens=args.inp_len, fixed_size=True)
     dss = load_qrels_datasets(args.ds_dir_paths, ch_tkz, args.inp_len, device, join=False)
     for ds in dss:
         print(ds)
 
-    print(f'Creating model with vocab size = {len(tokenizer)}')
-
     # torch.autograd.set_detect_anomaly(True)
 
-    model = RankerHg(model_cfg).to(device)
+    model = RankerBert(model_cfg).to(device)
 
     if args.pretrained_model_path and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
