@@ -355,10 +355,16 @@ class DsQrels:
     def get_batch_plain_qids(self, dsqids: np.ndarray) -> QrelsPlainBatch:
         df_qs = self.df_qs.loc[dsqids].copy()
         n_qs = len(df_qs)
-        qs_toks = np.full((n_qs, self.emb_chunk_size), self.ch_tkz.pad_tok, dtype=np.int32)
+        tkz = self.ch_tkz.tokenizer
+        qs_toks = np.full((n_qs, self.emb_chunk_size), tkz.pad_token_id, dtype=np.int32)
         qs_masks = np.full((n_qs, self.emb_chunk_size), 0, dtype=np.int32)
         for i, query in enumerate(df_qs['query']):
-            query_toks = self.ch_tkz.tokenizer(query)['input_ids'][:self.emb_chunk_size]
+            query_toks = tkz(query)['input_ids']
+            if len(query_toks) > self.emb_chunk_size:
+                ends_with_sep = query_toks[-1] == tkz.sep_token_id
+                query_toks = query_toks[:self.emb_chunk_size]
+                if ends_with_sep:
+                    query_toks[-1] = tkz.sep_token_id
             qs_toks[i, :len(query_toks)] = query_toks
             qs_masks[i, :len(query_toks)] = 1
 
@@ -368,7 +374,7 @@ class DsQrels:
         df_docs['text'] = ''
         df_docs['title'] = ''
         n_docs = len(df_docs)
-        docs_toks = np.full((n_docs, self.emb_chunk_size), self.ch_tkz.pad_tok, dtype=np.int32)
+        docs_toks = np.full((n_docs, self.emb_chunk_size), tkz.pad_token_id, dtype=np.int32)
         docs_masks = np.full((n_docs, self.emb_chunk_size), 0, dtype=np.int32)
         for i, dsdid in enumerate(df_docs.index):
             doc_row = df_docs.loc[dsdid]
@@ -376,7 +382,12 @@ class DsQrels:
             df_docs.loc[dsdid, 'title'] = title
             df_docs.loc[dsdid, 'text'] = text
             txt = f'{title} {text}'
-            doc_toks = self.ch_tkz.tokenizer(txt)['input_ids'][:self.emb_chunk_size]
+            doc_toks = tkz(txt)['input_ids']
+            if len(doc_toks) > self.emb_chunk_size:
+                ends_with_sep = doc_toks[-1] == tkz.sep_token_id
+                doc_toks = doc_toks[:self.emb_chunk_size]
+                if ends_with_sep:
+                    doc_toks[-1] = tkz.sep_token_id
             docs_toks[i, :len(doc_toks)] = doc_toks
             docs_masks[i, :len(doc_toks)] = 1
 

@@ -236,6 +236,7 @@ class BertEmbType(str, Enum):
 class EncBertCfg(BaseModel):
     inp_len: int
     d_model: int
+    pad_token_id: int
     pretrained_model_name: str = ''
     tokenizer_name: str = ''
     emb_type: BertEmbType = BertEmbType.Cls
@@ -375,11 +376,12 @@ def create_encdec_bert_cfg(
     d_model = bert_cfg.hidden_size
     n_heads = bert_cfg.num_attention_heads
     n_vocab = bert_cfg.vocab_size
+    pad_token_id = bert_cfg.pad_token_id
 
     tokenizer_name = tokenizer_name or pretrained_model_name
     cfg_enc = EncBertCfg(
-        inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name,
-        emb_type=emb_type,
+        inp_len=inp_len, d_model=d_model, pad_token_id=pad_token_id, pretrained_model_name=pretrained_model_name,
+        tokenizer_name=tokenizer_name, emb_type=emb_type,
     )
     step = 2
     if dec_n_layers == 0:
@@ -454,11 +456,12 @@ def create_ranker_bert_cfg(
     #     "vocab_size": 30522
     # }
     d_model = bert_cfg.hidden_size
+    pad_token_id = bert_cfg.pad_token_id
 
     tokenizer_name = tokenizer_name or pretrained_model_name
     cfg_enc = EncBertCfg(
-        inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name,
-        emb_type=emb_type,
+        inp_len=inp_len, d_model=d_model, pad_token_id=pad_token_id, pretrained_model_name=pretrained_model_name,
+        tokenizer_name=tokenizer_name, emb_type=emb_type,
     )
 
     cfg_dec = DecRankHgCfg(

@@ -16,8 +16,10 @@ model_cfg_fpath=$config_dir_path/$model_cfg_fname
 inp_len=128
 bert_emb_type=cls
 dec_mlp_layers="768"
-train_dec_only=true
-#train_dec_only=false
+dec_mlp_layers="768b,tanh,768"
+#dec_mlp_layers=""
+#train_dec_only=true
+train_dec_only=false
 
 #device=cpu
 #epochs=5
@@ -30,10 +32,11 @@ device=cuda
 epochs=500
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=30
+#docs_batch_size=30
+docs_batch_size=9
 pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 #pretrained_model_path=
-#train_subdir=last
+train_subdir=last
 
 learning_rate=0.0001
 learning_rate=0.00005
@@ -50,7 +53,7 @@ python s_03_08_train_ranker_bert_qrels.py \
   --model-cfg-fpath $model_cfg_fpath \
   --inp-len $inp_len \
   --bert-emb-type $bert_emb_type \
-  --dec-mlp-layers $dec_mlp_layers \
+  --dec-mlp-layers "$dec_mlp_layers" \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

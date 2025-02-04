@@ -13,8 +13,9 @@ dec_pyr:
   step: 2
   temperature: 0.0
 enc_bert:
-  inp_len: 128
   d_model: 768
   emb_type: cls
+  inp_len: 128
+  pad_token_id: 0
   pretrained_model_name: bert-base-uncased
   tokenizer_name: bert-base-uncased

@@ -13,17 +13,15 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
 
-from mllm.config.model import TokenizerCfg, EncdecHgCfg, HgReductType, HgEnhanceType, PosEncType, RankerHgCfg, \
-    gen_prefpostfix_ranker_hg, copy_override_ranker_hg_cfg, BertEmbType, RankerBertCfg, copy_override_ranker_bert_cfg, \
-    gen_prefpostfix_ranker_bert
+from mllm.config.model import BertEmbType, RankerBertCfg, copy_override_ranker_bert_cfg, \
+    gen_prefpostfix_ranker_bert, EncdecBertCfg
 from mllm.data.common import DsView
 from mllm.data.dsqrels import QrelsPlainBatch, DsQrels
 from mllm.data.utils import load_qrels_datasets
-from mllm.exp.args import TOKENIZER_CFG_FNAME, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR, is_arg_true, \
-    ENCDEC_HG_MODEL_CFG_FNAME, RANKER_HG_MODEL_CFG_FNAME, RANKER_BERT_MODEL_CFG_FNAME
-from mllm.model.encdec_ranker_hg import EncdecHg, RankerHg, RankerBert
+from mllm.exp.args import ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR, is_arg_true, RANKER_BERT_MODEL_CFG_FNAME, ENCDEC_BERT_MODEL_CFG_FNAME
+from mllm.model.encdec_ranker_hg import RankerBert, EncdecBert
 from mllm.model.losses import RankerCosEmbLoss
-from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, tokenizer_from_config, gen_all_tokens
+from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, gen_all_tokens
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import reraise
 
@@ -226,13 +224,12 @@ def main(args: ArgsRankerBertQrelsTrain) -> int:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
-        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_HG_MODEL_CFG_FNAME
-        model_encdec_cfg = parse_yaml_file_as(EncdecHgCfg, model_encdec_cfg_fpath)
-        model_cfg.enc_pyr.temperature = model_encdec_cfg.enc_pyr.temperature
-        model_encdec = EncdecHg(model_encdec_cfg).to(device)
+        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_BERT_MODEL_CFG_FNAME
+        model_encdec_cfg = parse_yaml_file_as(EncdecBertCfg, model_encdec_cfg_fpath)
+        model_encdec = EncdecBert(model_encdec_cfg).to(device)
         model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        print(f'Load model weights for enc_pyr:', list(model_encdec.enc_pyr.state_dict().keys()))
-        model.enc_pyr.load_state_dict(model_encdec.enc_pyr.state_dict())
+        print(f'Load model weights for enc_bert:', list(model_encdec.enc_bert.state_dict().keys()))
+        model.enc_bert.load_state_dict(model_encdec.enc_bert.state_dict())
 
     if args.train_dec_only_bool:
         params = model.dec_rank.parameters()
@@ -281,7 +278,7 @@ def main(args: ArgsRankerBertQrelsTrain) -> int:
         grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
     for epoch in range(last_epoch + 1, args.epochs):
         if args.train_dec_only_bool:
-            for params in model.enc_pyr.parameters():
+            for params in model.enc_bert.parameters():
                 params.requires_grad = False
             model.dec_rank.train()
         else:

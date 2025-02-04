@@ -276,7 +276,9 @@ class EncoderBert(nn.Module):
         self.cfg = cfg
         self.bert_model = BertModel.from_pretrained(self.cfg.pretrained_model_name, torch_dtype=torch.float32)
 
-    def forward(self, inp_toks: Tensor, inp_mask: Tensor) -> Tensor:
+    def forward(self, inp_toks: Tensor, inp_mask: Optional[Tensor] = None) -> Tensor:
+        if inp_mask is None:
+            inp_mask = inp_toks != self.cfg.pad_token_id
         out = self.bert_model(inp_toks, inp_mask)
         if self.cfg.emb_type == BertEmbType.Cls:
             out = out['last_hidden_state'][:, 0]
@@ -339,8 +341,8 @@ class DecoderPyramid(nn.Module):
 
     # Tensor with embeddings: [batch_size, d_model]
     def forward(self, inp: Tensor) -> Tensor:
-        batch_size, d_model = inp.shape
-        inp = inp.unsqueeze(1)
+        batch_size, _, d_model = inp.shape
+        # inp = inp.unsqueeze(1)
         out = inp
         if self.cfg.enhance_type in (HgEnhanceType.MatmulBegin, HgEnhanceType.MatmulBeginBias):
             # [batch_size, 1, d_model] -> [batch_size, 1, d_model * inp_len]
@@ -531,7 +533,7 @@ class RankerBert(nn.Module):
     def run_encdec(self, inp: Tensor) -> Tensor:
         out = inp
         # out: (batch_size, 1, d_model)
-        out = self.enc_bert(inp)
+        out = self.enc_bert(out)
         # out: (batch_size, d_model)
         out = out.squeeze(1)
         # out: (batch_size, d_model)
