@@ -381,7 +381,8 @@ class DsQrels:
             title, text = self._get_doc_title_text(doc_row['dsid'], doc_row['offset'])
             df_docs.loc[dsdid, 'title'] = title
             df_docs.loc[dsdid, 'text'] = text
-            txt = f'{title} {text}'
+            # txt = f'{title} {text}'
+            txt = text
             doc_toks = tkz(txt)['input_ids']
             if len(doc_toks) > self.emb_chunk_size:
                 ends_with_sep = doc_toks[-1] == tkz.sep_token_id

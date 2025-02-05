@@ -15,25 +15,26 @@ model_cfg_fpath=$config_dir_path/$model_cfg_fname
 
 inp_len=128
 bert_emb_type=cls
-dec_mlp_layers="768"
-dec_mlp_layers="768b,tanh,768"
+#dec_mlp_layers="768"
+dec_mlp_layers="2048b,tanh,768b"
 #dec_mlp_layers=""
-#train_dec_only=true
-train_dec_only=false
+train_dec_only=true
+#train_dec_only=false
 
-#device=cpu
-#epochs=5
-#train_epoch_steps=20
-#val_epoch_steps=20
-#docs_batch_size=3
-#pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+device=cpu
+epochs=5
+train_epoch_steps=20
+val_epoch_steps=20
+docs_batch_size=3
+pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 
 device=cuda
 epochs=500
 train_epoch_steps=500
 val_epoch_steps=50
 #docs_batch_size=30
-docs_batch_size=9
+docs_batch_size=15
+#docs_batch_size=7
 pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 #pretrained_model_path=
 train_subdir=last

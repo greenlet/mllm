@@ -536,6 +536,7 @@ class RankerBert(nn.Module):
         out = self.enc_bert(out)
         # out: (batch_size, d_model)
         out = out.squeeze(1)
+        out1 = out
         # out: (batch_size, d_model)
         out = self.dec_rank(out)
         return out

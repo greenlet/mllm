@@ -166,7 +166,7 @@ def get_batch_iterators(views_train: list[BatchView], views_val: list[BatchView]
         train_batch_its.append(train_batch_it)
         val_batch_its.append(val_batch_it)
 
-    return agg_batch_it(train_batch_its, nbt), agg_batch_it(val_batch_its, nbt)
+    return agg_batch_it(train_batch_its, nbt), agg_batch_it(val_batch_its, nbv)
 
 
 def main(args: ArgsRankerBertQrelsTrain) -> int:

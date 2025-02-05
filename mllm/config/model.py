@@ -294,6 +294,8 @@ class ParsedMlpLayer:
 
 def parse_mlp_layers(s: str) -> list[ParsedMlpLayer]:
     res = []
+    if not s:
+        return res
     parts = s.split(',')
     for i, part in enumerate(parts):
         m = MLP_LAYERS_PAT.match(part)
@@ -608,6 +610,7 @@ def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
     enc = model_cfg.enc_pyr
     dec = model_cfg.dec_rank
     dec_mlp_layers = dec.mlp_layers.replace(',', '_')
+    dec_mlp_layers = dec_mlp_layers or 'none'
 
     dp_rate = np.round(enc.dropout_rate, 2)
     if dp_rate < 1e-6:
@@ -628,6 +631,7 @@ def gen_prefpostfix_ranker_bert(model_cfg: RankerBertCfg) -> tuple[str, str]:
     enc = model_cfg.enc_bert
     dec = model_cfg.dec_rank
     dec_mlp_layers = dec.mlp_layers.replace(',', '_')
+    dec_mlp_layers = dec_mlp_layers or 'none'
 
     brt_str = enc.pretrained_model_name.replace('_', '_')
     if enc.tokenizer_name != enc.pretrained_model_name:
