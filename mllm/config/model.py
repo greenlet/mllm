@@ -283,6 +283,12 @@ class RankerBertCfg(BaseModel):
     dec_rank: DecRankHgCfg
 
 
+class EncdecRankBertCfg(BaseModel):
+    enc_bert: EncBertCfg
+    dec_pyr: DecPyrCfg
+    dec_rank: DecRankHgCfg
+
+
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
 
 
@@ -472,6 +478,70 @@ def create_ranker_bert_cfg(
 
     cfg_ranker_bert = RankerBertCfg(enc_bert=cfg_enc, dec_rank=cfg_dec)
     return cfg_ranker_bert
+
+
+def create_encdecrnk_bert_cfg(
+        pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
+        inp_len = 128, dec_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
+        dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
+        dec_mlp_layers: str = '',
+) -> EncdecRankBertCfg:
+    model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
+    bert_cfg: BertConfig = model.config
+    # BertConfig
+    # {
+    #     "_name_or_path": "bert-base-uncased",
+    #     "architectures": [
+    #         "BertForMaskedLM"
+    #     ],
+    #     "attention_probs_dropout_prob": 0.1,
+    #     "classifier_dropout": null,
+    #     "gradient_checkpointing": false,
+    #     "hidden_act": "gelu",
+    #     "hidden_dropout_prob": 0.1,
+    #     "hidden_size": 768,
+    #     "initializer_range": 0.02,
+    #     "intermediate_size": 3072,
+    #     "layer_norm_eps": 1e-12,
+    #     "max_position_embeddings": 512,
+    #     "model_type": "bert",
+    #     "num_attention_heads": 12,
+    #     "num_hidden_layers": 12,
+    #     "pad_token_id": 0,
+    #     "position_embedding_type": "absolute",
+    #     "transformers_version": "4.42.4",
+    #     "type_vocab_size": 2,
+    #     "use_cache": true,
+    #     "vocab_size": 30522
+    # }
+    d_model = bert_cfg.hidden_size
+    n_heads = bert_cfg.num_attention_heads
+    n_vocab = bert_cfg.vocab_size
+    pad_token_id = bert_cfg.pad_token_id
+
+    tokenizer_name = tokenizer_name or pretrained_model_name
+    cfg_enc = EncBertCfg(
+        inp_len=inp_len, d_model=d_model, pad_token_id=pad_token_id, pretrained_model_name=pretrained_model_name,
+        tokenizer_name=tokenizer_name, emb_type=emb_type,
+    )
+
+    step = 2
+    if dec_n_layers == 0:
+        dec_n_layers = math.ceil(math.log(inp_len, step))
+    d_inner = d_model * 4
+    d_k = d_v = d_model // n_heads
+    assert dec_n_layers > 0, f'n_layers (={dec_n_layers}) must be > 0'
+    cfg_dec = DecPyrCfg(
+        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_n_layers, dropout_rate=dec_dropout_rate, n_vocab=n_vocab,
+        n_similar_layers=dec_n_similar_layers, enhance_type=dec_enhance_type, temperature=dec_temperature,
+    )
+
+    cfg_rnk = DecRankHgCfg(
+        d_model=d_model, mlp_layers=dec_mlp_layers,
+    )
+
+    cfg_encdecrnk_bert = EncdecRankBertCfg(enc_bert=cfg_enc, dec_pyr=cfg_dec, dec_rnk=cfg_rnk)
+    return cfg_encdecrnk_bert
 
 
 def copy_override_encdec_hg_cfg(
