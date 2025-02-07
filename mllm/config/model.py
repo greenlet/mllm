@@ -482,9 +482,9 @@ def create_ranker_bert_cfg(
 
 def create_encdecrnk_bert_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
-        inp_len = 128, dec_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
-        dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
-        dec_mlp_layers: str = '',
+        inp_len = 128, dec_pyr_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
+        dec_pyr_n_layers: int = 7, dec_pyr_n_similar_layers: int = 1, dec_pyr_dropout_rate: float = 0.0, dec_pyr_temperature: float = 0,
+        dec_rank_mlp_layers: str = '',
 ) -> EncdecRankBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -526,18 +526,18 @@ def create_encdecrnk_bert_cfg(
     )
 
     step = 2
-    if dec_n_layers == 0:
-        dec_n_layers = math.ceil(math.log(inp_len, step))
+    if dec_pyr_n_layers == 0:
+        dec_pyr_n_layers = math.ceil(math.log(inp_len, step))
     d_inner = d_model * 4
     d_k = d_v = d_model // n_heads
-    assert dec_n_layers > 0, f'n_layers (={dec_n_layers}) must be > 0'
+    assert dec_pyr_n_layers > 0, f'n_layers (={dec_pyr_n_layers}) must be > 0'
     cfg_dec = DecPyrCfg(
-        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_n_layers, dropout_rate=dec_dropout_rate, n_vocab=n_vocab,
-        n_similar_layers=dec_n_similar_layers, enhance_type=dec_enhance_type, temperature=dec_temperature,
+        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_pyr_n_layers, dropout_rate=dec_pyr_dropout_rate, n_vocab=n_vocab,
+        n_similar_layers=dec_pyr_n_similar_layers, enhance_type=dec_pyr_enhance_type, temperature=dec_pyr_temperature,
     )
 
     cfg_rnk = DecRankHgCfg(
-        d_model=d_model, mlp_layers=dec_mlp_layers,
+        d_model=d_model, mlp_layers=dec_rank_mlp_layers,
     )
 
     cfg_encdecrnk_bert = EncdecRankBertCfg(enc_bert=cfg_enc, dec_pyr=cfg_dec, dec_rnk=cfg_rnk)
@@ -642,6 +642,29 @@ def copy_override_ranker_bert_cfg(
     )
 
 
+def copy_override_encdecrnk_bert_cfg(
+        cfg: EncdecBertCfg, emb_type: Optional[BertEmbType] = None, inp_len: int = 0, dec_pyr_enhance_type: Optional[HgEnhanceType] = None,
+        dec_pyr_n_layers: int = 0, dec_pyr_n_similar_layers: int = 0, dec_pyr_dropout_rate: Optional[float] = None,
+        dec_pyr_temperature: Optional[float] = None, dec_rank_mlp_layers: Optional[str] = None,
+) -> EncdecRankBertCfg:
+    enc = cfg.enc_bert
+    dec = cfg.dec_pyr
+    emb_type = coalesce(emb_type, cfg.enc_bert.emb_type)
+    inp_len = inp_len or enc.inp_len
+    dec_pyr_enhance_type = coalesce(dec_pyr_enhance_type, dec.enhance_type)
+    dec_pyr_n_layers = dec_pyr_n_layers or dec.n_layers
+    dec_pyr_n_similar_layers = dec_pyr_n_similar_layers or dec.n_similar_layers
+    dec_pyr_dropout_rate = coalesce(dec_pyr_dropout_rate, dec.dropout_rate)
+    dec_pyr_temperature = coalesce(dec_pyr_temperature, dec.temperature)
+    dec_rank_mlp_layers = coalesce(dec_rank_mlp_layers, dec.mlp_layers)
+
+    return create_encdecrnk_bert_cfg(
+        pretrained_model_name=enc.pretrained_model_name, tokenizer_name=enc.tokenizer_name, emb_type=emb_type,
+        inp_len=inp_len, dec_pyr_enhance_type=dec_pyr_enhance_type, dec_pyr_n_layers=dec_pyr_n_layers, dec_pyr_n_similar_layers=dec_pyr_n_similar_layers,
+        dec_pyr_dropout_rate=dec_pyr_dropout_rate, dec_pyr_temperature=dec_pyr_temperature, dec_rank_mlp_layers=dec_rank_mlp_layers,
+    )
+
+
 def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
     prefix = f'encdechg'
     enc, dec = model_cfg.enc_pyr, model_cfg.dec_pyr
@@ -709,5 +732,31 @@ def gen_prefpostfix_ranker_bert(model_cfg: RankerBertCfg) -> tuple[str, str]:
         brt_str = f'{brt_str}-{tkz_name}'
 
     postfix = f'{brt_str}-inp{enc.inp_len}-d{dec.d_model}-emb_{enc.emb_type}-dmlp_{dec_mlp_layers}'
+    return prefix, postfix
+
+
+def gen_prefpostfix_encdecrnk_bert(model_cfg: EncdecRankBertCfg) -> tuple[str, str]:
+    prefix = f'encdecrnkbert'
+    enc = model_cfg.enc_bert
+    dec_pyr = model_cfg.dec_pyr
+    dec_rank = model_cfg.dec_rankr
+
+    brt_str = enc.pretrained_model_name.replace('_', '_')
+    if enc.tokenizer_name != enc.pretrained_model_name:
+        tkz_name = enc.tokenizer_name.replace('-', '_')
+        brt_str = f'{brt_str}-{tkz_name}'
+
+    dp_rate = np.round(dec_pyr.dropout_rate, 2)
+    if dp_rate < 1e-6:
+        dp_rate = 0
+
+    temp = np.round(dec_pyr.temperature, 2)
+
+    dec_mlp_layers = dec_rank.mlp_layers.replace(',', '_')
+    dec_mlp_layers = dec_mlp_layers or 'none'
+
+    postfix = (f'{brt_str}-d{enc.d_model}-emb_{enc.emb_type}-inp{dec_pyr.inp_len}-lrs{dec_pyr.n_layers}x{dec_pyr.n_similar_layers}-enh_{dec_pyr.enhance_type.value}-'
+               f'step{dec_pyr.step}-h{dec_pyr.n_heads}-dp{dp_rate}-t{temp}-dmlp_{dec_mlp_layers}')
+
     return prefix, postfix
 
