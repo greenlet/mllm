@@ -536,11 +536,11 @@ def create_encdecrnk_bert_cfg(
         n_similar_layers=dec_pyr_n_similar_layers, enhance_type=dec_pyr_enhance_type, temperature=dec_pyr_temperature,
     )
 
-    cfg_rnk = DecRankHgCfg(
+    cfg_rank = DecRankHgCfg(
         d_model=d_model, mlp_layers=dec_rank_mlp_layers,
     )
 
-    cfg_encdecrnk_bert = EncdecRankBertCfg(enc_bert=cfg_enc, dec_pyr=cfg_dec, dec_rnk=cfg_rnk)
+    cfg_encdecrnk_bert = EncdecRankBertCfg(enc_bert=cfg_enc, dec_pyr=cfg_dec, dec_rank=cfg_rank)
     return cfg_encdecrnk_bert
 
 
