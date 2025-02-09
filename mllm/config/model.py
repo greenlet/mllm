@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from torchtext.datasets import dataset_module
 
 from mllm.utils.utils import coalesce
-from transformers import BertModel, BertConfig
+from transformers import BertModel, BertConfig, AutoTokenizer
 
 T = TypeVar('T')
 MS = Union[T, tuple[T, ...]]
@@ -233,6 +233,10 @@ class BertEmbType(str, Enum):
     Pooler = 'plr'
 
 
+class RankCosLossType(str, Enum):
+    Cos = 'cos'
+
+
 class EncBertCfg(BaseModel):
     inp_len: int
     d_model: int
@@ -240,6 +244,7 @@ class EncBertCfg(BaseModel):
     pretrained_model_name: str = ''
     tokenizer_name: str = ''
     emb_type: BertEmbType = BertEmbType.Cls
+    emb2_tok_name: str = ''
 
 
 class DecPyrCfg(BaseModel):
@@ -480,13 +485,27 @@ def create_ranker_bert_cfg(
     return cfg_ranker_bert
 
 
+SPEC_TOK_PAT = re.compile(r'^\[[A-Z]+]$')
+
+
+def load_bert_tokenizer_and_model(pretrained_model_name: str, tokenizer_name: str, emb2_tok_name: str) -> tuple[AutoTokenizer, BertModel]:
+    tkz = AutoTokenizer.from_pretrained(tokenizer_name)
+    model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
+    if emb2_tok_name:
+        assert SPEC_TOK_PAT.match(emb2_tok_name), f'Token name {emb2_tok_name} does not match {SPEC_TOK_PAT} pattern.'
+        tkz.add_special_tokens({
+            'additional_special_tokens': [emb2_tok_name],
+        })
+        model.resize_token_embeddings(len(tkz))
+    return tkz, model
+
+
 def create_encdecrnk_bert_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
-        inp_len = 128, dec_pyr_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
+        emb2_tok_name: str = '', inp_len = 128, dec_pyr_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
         dec_pyr_n_layers: int = 7, dec_pyr_n_similar_layers: int = 1, dec_pyr_dropout_rate: float = 0.0, dec_pyr_temperature: float = 0,
         dec_rank_mlp_layers: str = '',
 ) -> EncdecRankBertCfg:
-    model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
     # BertConfig
     # {
@@ -522,7 +541,7 @@ def create_encdecrnk_bert_cfg(
     tokenizer_name = tokenizer_name or pretrained_model_name
     cfg_enc = EncBertCfg(
         inp_len=inp_len, d_model=d_model, pad_token_id=pad_token_id, pretrained_model_name=pretrained_model_name,
-        tokenizer_name=tokenizer_name, emb_type=emb_type,
+        tokenizer_name=tokenizer_name, emb_type=emb_type, emb2_tok_name=emb2_tok_name,
     )
 
     step = 2
