@@ -39,6 +39,9 @@ pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-ba
 #pretrained_model_path=
 #train_subdir=last
 
+#loss_type=avg
+loss_type=max
+
 learning_rate=0.0001
 learning_rate=0.00005
 random_seed=111
@@ -63,6 +66,7 @@ python s_03_08_train_ranker_bert_qrels.py \
   --val-epoch-steps $val_epoch_steps \
   --pretrained-model-path "$pretrained_model_path" \
   --train-dec-only $train_dec_only \
-  --random-seed $random_seed
+  --random-seed $random_seed \
+  --loss-type $loss_type
 #"
 

@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Union
 
 import torch
@@ -215,5 +216,60 @@ class EncdecMaskPadLoss(nn.Module):
         # loss: (1,)
         loss = loss_npad * self.nonpad_weight + loss_pad * self.pad_weight
         return loss
+
+
+class RankLossType(str, Enum):
+    Avg = 'avg'
+    Max = 'max'
+
+
+class RankerEmbLoss(nn.Module):
+    rank_type: RankLossType
+    margin: float = 0.0
+
+    def __init__(self, rank_type: RankLossType, margin: float = 0.0):
+        super().__init__()
+        self.rank_type = rank_type
+        self.register_buffer('margin', torch.scalar_tensor(margin))
+        self.register_buffer('zero', torch.scalar_tensor(0.0))
+
+    # prob_pred: (n_docs, n_qs)
+    # mask_gt: (n_docs, n_qs)
+    def forward(self, cos_pred: torch.Tensor, mask_gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        mask_gt = mask_gt.to(torch.bool)
+        n_docs = len(cos_pred)
+
+        if self.rank_type == RankLossType.Avg:
+            loss_tgt = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
+            loss_nontgt = torch.tensor(0, dtype=torch.float32, device=cos_pred.device)
+            for i in range(n_docs):
+                probs_tgt = 1 - torch.masked_select(cos_pred[i], mask_gt[i])
+                probs_nontgt = torch.masked_select(cos_pred[i], ~mask_gt[i])
+                probs_nontgt = torch.maximum(probs_nontgt - self.margin, self.zero)
+                lt, lnt = torch.mean(probs_tgt), torch.mean(probs_nontgt)
+                loss_tgt, loss_nontgt = loss_tgt + lt, loss_nontgt + lnt
+            loss_tgt = loss_tgt / n_docs
+            loss_nontgt = loss_nontgt / n_docs
+        elif self.rank_type == RankLossType.Max:
+            losses_tgt = torch.zeros_like(cos_pred[:, 0], device=cos_pred.device)
+            losses_nontgt = torch.zeros_like(cos_pred[:, 0], device=cos_pred.device)
+            for i in range(n_docs):
+                probs_tgt = 1 - torch.masked_select(cos_pred[i], mask_gt[i])
+                probs_nontgt = torch.masked_select(cos_pred[i], ~mask_gt[i])
+                probs_nontgt = torch.maximum(probs_nontgt - self.margin, self.zero)
+                lt, lnt = torch.max(probs_tgt), torch.max(probs_nontgt)
+                losses_tgt[i], losses_nontgt[i] = lt, lnt
+            loss_tgt, loss_nontgt = torch.max(losses_tgt), torch.max(losses_nontgt)
+        else:
+            raise Exception(f'Rank loss type {self.rank_type} is not supported')
+
+        loss = (loss_tgt + loss_nontgt) / 2
+        if torch.isnan(loss).any():
+            print('!!!', torch.isnan(cos_pred).any())
+            print(mask_gt)
+            import sys
+            sys.exit(0)
+        return loss, loss_tgt, loss_nontgt
+
 
 

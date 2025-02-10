@@ -1,5 +1,6 @@
 import shutil
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Optional, Generator
 
@@ -20,10 +21,11 @@ from mllm.data.dsqrels import QrelsPlainBatch, DsQrels
 from mllm.data.utils import load_qrels_datasets
 from mllm.exp.args import ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR, is_arg_true, RANKER_BERT_MODEL_CFG_FNAME, ENCDEC_BERT_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import RankerBert, EncdecBert
-from mllm.model.losses import RankerCosEmbLoss
+from mllm.model.losses import RankerCosEmbLoss, RankLossType, RankerEmbLoss
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer, gen_all_tokens
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import reraise
+
 
 
 class ArgsRankerBertQrelsTrain(BaseModel):
@@ -119,6 +121,11 @@ class ArgsRankerBertQrelsTrain(BaseModel):
         description='Random seed.',
         cli=('--random-seed',),
     )
+    loss_type: RankLossType = Field(
+        RankLossType.Avg,
+        description=f'Rank loss type. One of the values: {list(x.value for x in RankLossType)}',
+        cli=('--loss-type',),
+    )
 
 
 BatchView = DsView[DsQrels, QrelsPlainBatch]
@@ -188,7 +195,7 @@ def main(args: ArgsRankerBertQrelsTrain) -> int:
     prefix, suffix = gen_prefpostfix_ranker_bert(model_cfg)
     ds_names = '-'.join([dpath.name for dpath in args.ds_dir_paths])
     deconly_str = 't' if args.train_dec_only_bool else 'f'
-    suffix = f'{ds_names}-{suffix}-tdo_{deconly_str}'
+    suffix = f'{ds_names}-{suffix}-tdo_{deconly_str}-lss_{args.loss_type.value}'
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -261,10 +268,7 @@ def main(args: ArgsRankerBertQrelsTrain) -> int:
         val_loss_min = checkpoint['val_loss_min']
         np.random.seed(int(time.time() * 1000) % 10_000_000)
 
-    # loss_fn = RankProbLoss()
-    # loss_fn = ranker_prob_loss_softmax
-    # loss_fn = ranker_cos_loss
-    loss_fn = RankerCosEmbLoss()
+    loss_fn = RankerEmbLoss(args.loss_type)
     n_epochs = args.epochs - (last_epoch + 1)
 
     train_batch_it, val_batch_it = get_batch_iterators(views_train, views_val, n_epochs, n_epochs)
