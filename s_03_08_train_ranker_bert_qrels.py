@@ -227,7 +227,7 @@ def main(args: ArgsRankerBertQrelsTrain) -> int:
 
     model = RankerBert(model_cfg).to(device)
 
-    if args.pretrained_model_path and checkpoint is None:
+    if (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
