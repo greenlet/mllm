@@ -15,7 +15,7 @@ model_cfg_fpath=$config_dir_path/$model_cfg_fname
 
 inp_len=128
 bert_emb_type=cls
-dec_mlp_layers="768b"
+#dec_mlp_layers="768b"
 #dec_mlp_layers="2048b,tanh,768b"
 dec_mlp_layers=""
 #train_dec_only=true
@@ -40,8 +40,8 @@ docs_batch_size=7
 #train_subdir=last
 
 #loss_type=avg
-#loss_type=max
-loss_type=lft
+loss_type=max
+#loss_type=lft
 
 learning_rate=0.0001
 learning_rate=0.00005
