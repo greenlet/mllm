@@ -294,6 +294,16 @@ class EncdecRankBertCfg(BaseModel):
     dec_rank: DecRankHgCfg
 
 
+class EmbGenBertCfg(BaseModel):
+    inp_len: int
+    d_model: int
+    pad_token_id: int
+    pretrained_model_name: str = ''
+    tokenizer_name: str = ''
+    emb_type: BertEmbType = BertEmbType.Cls
+
+
+
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
 
 
