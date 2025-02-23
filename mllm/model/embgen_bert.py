@@ -25,13 +25,13 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 
-from ...configuration_utils import PretrainedConfig
-from ...modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
-from ...modeling_utils import PreTrainedModel
-from ...utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
-from ..auto.configuration_auto import AutoConfig
-from ..auto.modeling_auto import AutoModel, AutoModelForCausalLM
-from .configuration_encoder_decoder import EncoderDecoderConfig
+from transformers.configuration_utils import PretrainedConfig
+from transformers.modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
+from transformers.modeling_utils import PreTrainedModel
+from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
+from transformers.models.auto.configuration_auto import AutoConfig
+from transformers.models.auto.modeling_auto import AutoModel, AutoModelForCausalLM
+from transformers.models.encoder_decoder.configuration_encoder_decoder import EncoderDecoderConfig
 
 
 logger = logging.get_logger(__name__)
@@ -166,7 +166,7 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start
 
 
 @add_start_docstrings(ENCODER_DECODER_START_DOCSTRING)
-class EncoderDecoderModel(PreTrainedModel):
+class EncoderEmbDecoderModel(PreTrainedModel):
     r"""
     [`EncoderDecoderModel`] is a generic model class that will be instantiated as a transformer architecture with one
     of the base model classes of the library as encoder and another one as decoder when created with the
@@ -206,12 +206,12 @@ class EncoderDecoderModel(PreTrainedModel):
         super().__init__(config)
 
         if encoder is None:
-            from ..auto.modeling_auto import AutoModel
+            from transformers.models.auto.modeling_auto import AutoModel
 
             encoder = AutoModel.from_config(config.encoder, attn_implementation=config._attn_implementation)
 
         if decoder is None:
-            from ..auto.modeling_auto import AutoModelForCausalLM
+            from transformers.models.auto.modeling_auto import AutoModelForCausalLM
 
             decoder = AutoModelForCausalLM.from_config(config.decoder, attn_implementation=config._attn_implementation)
 
@@ -295,7 +295,7 @@ class EncoderDecoderModel(PreTrainedModel):
         ```python
         >>> from transformers import EncoderDecoderModel
 
-        >>> model = EncoderDecoderModel.from_pretrained("patrickvonplaten/bert2bert-cnn_dailymail-fp16")
+        >>> model = EncoderEmbDecoderModel.from_pretrained("patrickvonplaten/bert2bert-cnn_dailymail-fp16")
         ```"""
 
         from_tf = kwargs.pop("from_tf", False)
@@ -366,7 +366,7 @@ class EncoderDecoderModel(PreTrainedModel):
                 del tf_model
                 gc.collect()
 
-                model = EncoderDecoderModel.from_encoder_decoder_pretrained(
+                model = EncoderEmbDecoderModel.from_encoder_decoder_pretrained(
                     encoder_dir, decoder_dir, encoder_from_tf=True, decoder_from_tf=True
                 )
                 # This is only for copying some specific attributes of this particular model.
@@ -446,11 +446,11 @@ class EncoderDecoderModel(PreTrainedModel):
         >>> from transformers import EncoderDecoderModel
 
         >>> # initialize a bert2bert from two pretrained BERT models. Note that the cross-attention layers will be randomly initialized
-        >>> model = EncoderDecoderModel.from_encoder_decoder_pretrained("google-bert/bert-base-uncased", "google-bert/bert-base-uncased")
+        >>> model = EncoderEmbDecoderModel.from_encoder_decoder_pretrained("google-bert/bert-base-uncased", "google-bert/bert-base-uncased")
         >>> # saving model after fine-tuning
         >>> model.save_pretrained("./bert2bert")
         >>> # load fine-tuned model
-        >>> model = EncoderDecoderModel.from_pretrained("./bert2bert")
+        >>> model = EncoderEmbDecoderModel.from_pretrained("./bert2bert")
         ```"""
 
         kwargs_encoder = {
@@ -563,7 +563,7 @@ class EncoderDecoderModel(PreTrainedModel):
         >>> import torch
 
         >>> tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
-        >>> model = EncoderDecoderModel.from_encoder_decoder_pretrained(
+        >>> model = EncoderEmbDecoderModel.from_encoder_decoder_pretrained(
         ...     "google-bert/bert-base-uncased", "google-bert/bert-base-uncased"
         ... )  # initialize Bert2Bert from pre-trained checkpoints
 
@@ -579,7 +579,7 @@ class EncoderDecoderModel(PreTrainedModel):
 
         >>> # save and load from pretrained
         >>> model.save_pretrained("bert2bert")
-        >>> model = EncoderDecoderModel.from_pretrained("bert2bert")
+        >>> model = EncoderEmbDecoderModel.from_pretrained("bert2bert")
 
         >>> # generation
         >>> generated = model.generate(input_ids)
@@ -606,6 +606,12 @@ class EncoderDecoderModel(PreTrainedModel):
             encoder_outputs = BaseModelOutput(*encoder_outputs)
 
         encoder_hidden_states = encoder_outputs[0]
+
+        # Get embeddings from first CLS tokens;
+        # [batch_size, input_len, d_model] -> [1, batch_size, d_model]
+        # From batch_size embedding sequences we get only first embeddings and get batch_size embeddings as
+        # an embedding input to decoder
+        encoder_hidden_states = encoder_hidden_states[:, 0].unsqueeze(0)
 
         # optionally project encoder_hidden_states
         if (
