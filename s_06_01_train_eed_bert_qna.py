@@ -12,7 +12,7 @@ from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
-from transformers import AutoTokenizer, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer
+from transformers import AutoTokenizer, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, Seq2SeqTrainer
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from mllm.config.model import BertEmbType, RankerBertCfg, copy_override_ranker_bert_cfg, \
@@ -206,6 +206,9 @@ def main(args: ArgsTrainEedBertQna) -> int:
                                          labels=toks2.input_ids)
     print(toks1.input_ids.shape, toks2.input_ids.shape, eed_out.logits.shape)
 
+    eed_model.generate()
+
+    Seq2SeqTrainer
 
     import sys
     sys.exit(0)
