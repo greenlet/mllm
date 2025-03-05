@@ -45,6 +45,9 @@ class QnaBatch:
             assert q_toks[-1] == a_toks[-1] == self.tkz.sep_token_id, f'q_toks[-1] = {q_toks[-1]}. a_toks[-1] = {a_toks[-1]}'
             q_toks, a_toks = q_toks[0:-1], a_toks[1:]
             qa_toks = [*q_toks, self.tkz.sep_token_id, *a_toks]
+            # TODO: More robust rule
+            if len(qa_toks) > 30:
+                continue
             qa_toks_l.append(np.array(qa_toks, dtype=int))
 
             n_q_toks, n_a_toks = len(q_toks), len(a_toks)
