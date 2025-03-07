@@ -46,7 +46,7 @@ class QnaBatch:
             q_toks, a_toks = q_toks[0:-1], a_toks[1:]
             qa_toks = [*q_toks, self.tkz.sep_token_id, *a_toks]
             # TODO: More robust rule
-            if len(qa_toks) > 30:
+            if len(qa_toks) > 40:
                 continue
             qa_toks_l.append(np.array(qa_toks, dtype=int))
 
@@ -71,15 +71,16 @@ class QnaBatch:
             n_pad = self.toks_seq_len - len(ctx_toks) % self.toks_seq_len
             assert self.tkz.pad_token_id is not None
             ctx_toks = np.pad(ctx_toks, (0, n_pad), constant_values=self.tkz.pad_token_id)
-            ctx_toks = ctx_toks.reshape((-1, self.toks_seq_len))
+            # ctx_toks = ctx_toks.reshape((-1, self.toks_seq_len))
+            ctx_toks = ctx_toks[:self.toks_seq_len][None]
             ctxs.append(ctx_toks[:max_ctx_chunks])
         ctxs_all = np.concatenate(ctxs)
         self.ctx_toks = ctxs_all
 
-        ctxs_lens = [len(c) for c in ctxs]
-        print(f'Contexts: {ctxs_lens}. {ctxs_all.shape}')
-        qas_lens = [len(qa) for qa in self.qa_toks]
-        print(f'QAs: {qas_lens}.')
+        # ctxs_lens = [len(c) for c in ctxs]
+        # qas_lens = [len(qa) for qa in self.qa_toks]
+        # print(f'Contexts: {ctxs_lens}. {ctxs_all.shape}')
+        # print(f'QAs: {qas_lens}.')
 
     def _to_tensor_single(self, arr: np.ndarray) -> torch.Tensor:
         res = torch.from_numpy(arr)
@@ -102,15 +103,19 @@ class QnaBatch:
 # df_sq: ['id', 'title', 'context', 'question', 'answers']
 def get_sq_batch(tkz: PreTrainedTokenizer, df_sq: pd.DataFrame, inds: np.ndarray, inp_len: int, device: torch.device) -> QnaBatch:
     df_b = df_sq.iloc[inds]
-    contexts = list(df_b.context.unique())
-    qas = set()
+    ctxs, ctx_num, qas = {}, 0, set()
     for _, row in df_b.iterrows():
+        if not row.context in ctxs:
+            ctx_num += 1
+            ctxs[row.context] = f'Context{ctx_num}'
         answers = row.answers['text']
         if len(answers) == 0:
             answers = ['-']
         for answer in answers:
-            qa = row.question, answer
+            q = f'{ctxs[row.context]}. {row.question}'
+            qa = q, answer
             qas.add(qa)
+    contexts = [f'{val}. {key}' for key, val in ctxs.items()]
     qas = list(qas)
     n_qas, n_batch = len(qas), len(df_b)
     if n_qas > n_batch:
