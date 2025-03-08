@@ -15,7 +15,7 @@ from tqdm import trange
 from transformers import BertGenerationEncoder, BertGenerationDecoder, BertTokenizer
 
 from mllm.model.embgen_bert import EncoderEmbDecoderModel
-from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch
+from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import reraise
 
@@ -101,14 +101,10 @@ def main(args: ArgsTrainEedBertQna) -> int:
     )
     model = EncoderEmbDecoderModel(encoder=enc_model, decoder=dec_model).to(device)
 
-    ds_sq = load_dataset('squad_v2')
-    df_sq = pd.concat([ds_sq['train'].to_pandas(), ds_sq['validation'].to_pandas()], axis=0)
-    n_total = len(df_sq)
-    df_sq = df_sq.sample(n_total)
     val_ratio = 0.05
-    n_val = int(n_total * val_ratio)
-    n_train = n_total - n_val
-    df_sq_t, df_sq_v = df_sq.iloc[:n_train], df_sq.iloc[n_train:]
+    df_sq = get_sq_df(exclude_empty_answers=True)
+    df_sq_t, df_sq_v = split_df(df_sq, val_ratio=val_ratio)
+    print(f'n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
 
     prefix = 'eedbert'
     mname = model_name.replace('-', '_')
@@ -136,7 +132,6 @@ def main(args: ArgsTrainEedBertQna) -> int:
 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
-
 
     last_epoch, val_loss_min = -1, None
     if checkpoint:

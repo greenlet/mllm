@@ -1,12 +1,19 @@
+from enum import Enum
 from typing import Optional, Generator
 
 import numpy as np
 import pandas as pd
 import torch
+from datasets import load_dataset
 from transformers import PreTrainedTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 
 from mllm.model.embgen_bert import EncoderEmbDecoderModel
+
+
+class QuesInp(str, Enum):
+    Enc = 'enc'
+    Dec = 'dec'
 
 
 class QnaBatch:
@@ -15,11 +22,15 @@ class QnaBatch:
     toks_seq_len: int
     tkz: PreTrainedTokenizer
     qa_toks: list[np.ndarray]
+    q_toks: list[np.ndarray]
+    a_toks: list[np.ndarray]
     qa_att_masks: list[np.ndarray]
     qa_tgt_masks: list[np.ndarray]
     ctx_toks: np.ndarray
     device: Optional[torch.device] = None
     qa_toks_t: list[torch.Tensor] = []
+    q_toks_t: list[torch.Tensor] = []
+    a_toks_t: list[torch.Tensor] = []
     qa_att_mask_t: list[torch.Tensor] = []
     qa_tgt_mask_t: list[torch.Tensor] = []
     ctx_toks_t: Optional[torch.Tensor] = None
@@ -36,6 +47,29 @@ class QnaBatch:
         self._process()
 
     def _process(self):
+        # # Question + Answer
+        # q_toks_l, a_toks_l, a_att_masks_l, a_tgt_masks_l = [], [], [], []
+        # for q, a in self.qas:
+        #     q_toks: list[int] = self.tkz(q).input_ids
+        #     a_toks: list[int] = self.tkz(a).input_ids
+        #     assert q_toks[0] == a_toks[0] == self.tkz.cls_token_id, f'q_toks[0] = {q_toks[0]}. a_toks[0] = {a_toks[0]}'
+        #     assert q_toks[-1] == a_toks[-1] == self.tkz.sep_token_id, f'q_toks[-1] = {q_toks[-1]}. a_toks[-1] = {a_toks[-1]}'
+        #     q_toks_l.append(np.array(q_toks, dtype=int))
+        #     a_toks_l.append(np.array(a_toks, dtype=int))
+        #
+        #     n_q_toks, n_a_toks = len(q_toks), len(a_toks)
+        #     q_mask = np.ones((n_a_toks, n_q_toks + 1), dtype=int)
+        #     a_att_mask = np.ones((n_a_toks, n_a_toks), dtype=int)
+        #     a_att_mask = np.tril(a_att_mask, k=-1)
+        #     a_tgt_mask = np.eye(n_a_toks, dtype=int)
+        #     qa_att_mask = np.concatenate([q_mask, a_att_mask], axis=1)
+        #     qa_tgt_mask = np.concatenate([q_mask * 0, a_tgt_mask], axis=1).astype(bool)
+        #     qa_att_masks_l.append(qa_att_mask)
+        #     qa_tgt_masks_l.append(qa_tgt_mask)
+        # self.qa_toks = qa_toks_l
+        # self.qa_att_masks = qa_att_masks_l
+        # self.qa_tgt_masks = qa_tgt_masks_l
+
         # Question + Answer
         qa_toks_l, qa_att_masks_l, qa_tgt_masks_l = [], [], []
         for q, a in self.qas:
@@ -100,6 +134,26 @@ class QnaBatch:
         return self.qa_toks_t, self.qa_att_mask_t, self.qa_tgt_mask_t, self.ctx_toks_t
 
 
+def get_sq_df(exclude_empty_answers: bool = False) -> pd.DataFrame:
+    ds_name = 'squad_v2'
+    ds_sq = load_dataset(ds_name)
+    df_sq = pd.concat([ds_sq['train'].to_pandas(), ds_sq['validation'].to_pandas()], axis=0)
+    n_total = len(df_sq)
+    df_sq = df_sq.sample(n_total)
+    if exclude_empty_answers:
+        mask = df_sq['answers'].apply(lambda ans: len(ans['text']) > 0)
+        df_sq = df_sq[mask]
+        print(f'Remove empty answers from dataset {ds_name}. Size: {n_total} --> {len(df_sq)}')
+    return df_sq
+
+
+def split_df(df: pd.DataFrame, val_ratio: float) -> tuple[pd.DataFrame, pd.DataFrame]:
+    n_total = len(df)
+    n_val = int(n_total * val_ratio)
+    n_train = n_total - n_val
+    return df.iloc[:n_train], df.iloc[n_train:]
+
+
 # df_sq: ['id', 'title', 'context', 'question', 'answers']
 def get_sq_batch(tkz: PreTrainedTokenizer, df_sq: pd.DataFrame, inds: np.ndarray, inp_len: int, device: torch.device) -> QnaBatch:
     df_b = df_sq.iloc[inds]
@@ -130,7 +184,8 @@ def qna_loss(logits: torch.Tensor, tokens: torch.Tensor, tgt_mask: torch.Tensor)
     tgt_probs = torch.softmax(tgt_logits, dim=-1)
     tgt_toks = tokens.masked_select(tgt_mask).unsqueeze(-1)
     tok_probs = torch.gather(tgt_probs, dim=-1, index=tgt_toks)
-    loss = -torch.mean(torch.log(tok_probs))
+    tok_logs = torch.log(tok_probs).reshape(len(tgt_mask))
+    loss = -(0.95 * torch.mean(tok_logs[:-1]) + 0.05 * tok_logs[-1])
     return loss
 
 
