@@ -71,7 +71,8 @@ class QnaBatch:
         # self.qa_tgt_masks = qa_tgt_masks_l
 
         # Question + Answer
-        qa_toks_l, qa_att_masks_l, qa_tgt_masks_l = [], [], []
+        q_toks_l, a_toks_l, qa_toks_l, qa_att_masks_l, qa_tgt_masks_l = [], [], [], [], []
+        qas_sq_cum, as_cum = 0, 0
         for q, a in self.qas:
             q_toks: list[int] = self.tkz(q).input_ids
             a_toks: list[int] = self.tkz(a).input_ids
@@ -79,10 +80,15 @@ class QnaBatch:
             assert q_toks[-1] == a_toks[-1] == self.tkz.sep_token_id, f'q_toks[-1] = {q_toks[-1]}. a_toks[-1] = {a_toks[-1]}'
             q_toks, a_toks = q_toks[0:-1], a_toks[1:]
             qa_toks = [*q_toks, self.tkz.sep_token_id, *a_toks]
-            # TODO: More robust rule
-            if len(qa_toks) > 40:
+            qa_len_sq = len(qa_toks)**2
+            a_len = len(a_toks)
+            if qas_sq_cum + qa_len_sq >= 3000 or as_cum + a_len > 25:
                 continue
+            qas_sq_cum += qa_len_sq
+            as_cum += a_len
             qa_toks_l.append(np.array(qa_toks, dtype=int))
+            q_toks_l.append(np.array(q_toks, dtype=int))
+            a_toks_l.append(np.array(a_toks, dtype=int))
 
             n_q_toks, n_a_toks = len(q_toks), len(a_toks)
             q_mask = np.ones((n_a_toks, n_q_toks + 1), dtype=int)
@@ -94,6 +100,8 @@ class QnaBatch:
             qa_att_masks_l.append(qa_att_mask)
             qa_tgt_masks_l.append(qa_tgt_mask)
         self.qa_toks = qa_toks_l
+        self.q_toks = q_toks_l
+        self.a_toks = a_toks_l
         self.qa_att_masks = qa_att_masks_l
         self.qa_tgt_masks = qa_tgt_masks_l
 
@@ -111,10 +119,14 @@ class QnaBatch:
         ctxs_all = np.concatenate(ctxs)
         self.ctx_toks = ctxs_all
 
-        # ctxs_lens = [len(c) for c in ctxs]
-        # qas_lens = [len(qa) for qa in self.qa_toks]
-        # print(f'Contexts: {ctxs_lens}. {ctxs_all.shape}')
-        # print(f'QAs: {qas_lens}.')
+        ctxs_lens = np.array([len(c) for c in ctxs])
+        qas_lens = np.array([len(qa) for qa in self.qa_toks])
+        qs_lens = np.array([len(q) for q in self.q_toks])
+        as_lens = np.array([len(a) for a in self.a_toks])
+        print(f'Contexts: {ctxs_lens}. {ctxs_all.shape}')
+        print(f'QAs: {qas_lens}. {qas_lens.sum()}. {np.square(qas_lens).sum()}')
+        print(f'Qs: {qs_lens}. {qs_lens.sum()}. {np.square(qs_lens).sum()}')
+        print(f'As: {as_lens}. {as_lens.sum()}. {np.square(as_lens).sum()}')
 
     def _to_tensor_single(self, arr: np.ndarray) -> torch.Tensor:
         res = torch.from_numpy(arr)
@@ -172,9 +184,11 @@ def get_sq_batch(tkz: PreTrainedTokenizer, df_sq: pd.DataFrame, inds: np.ndarray
     contexts = [f'{val}. {key}' for key, val in ctxs.items()]
     qas = list(qas)
     n_qas, n_batch = len(qas), len(df_b)
-    if n_qas > n_batch:
+    # max_sz = 2
+    max_sz = len(contexts)
+    if n_qas > max_sz:
         np.random.shuffle(qas)
-        qas = qas[:n_batch]
+        qas = qas[:max_sz]
     return QnaBatch(qas=qas, contexts=contexts, toks_seq_len=inp_len, tkz=tkz, device=device)
 
 

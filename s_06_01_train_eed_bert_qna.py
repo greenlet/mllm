@@ -10,11 +10,15 @@ import torch.utils.tensorboard as tb
 from datasets import load_dataset
 from pydantic import Field, BaseModel
 from pydantic_cli import run_and_exit
+from pydantic_yaml import parse_yaml_file_as
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import BertGenerationEncoder, BertGenerationDecoder, BertTokenizer
 
+from mllm.config.model import EncdecBertCfg
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME
 from mllm.model.embgen_bert import EncoderEmbDecoderModel
+from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import reraise
@@ -32,6 +36,11 @@ class ArgsTrainEedBertQna(BaseModel):
         ...,
         description='Path to train root directory. New train subdirectory will be created within each new run.',
         cli=('--train-root-path',),
+    )
+    pretrained_model_path: Optional[Path] = Field(
+        None,
+        description='Path to EncdecBert model train directory.',
+        cli=('--pretrained-model-path',),
     )
     train_subdir: str = Field(
         '',
@@ -123,6 +132,21 @@ def main(args: ArgsTrainEedBertQna) -> int:
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
+
+    if (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
+        pretrained_model_path = args.pretrained_model_path / 'best.pth'
+        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
+        pretrained_checkpoint = torch.load(pretrained_model_path)
+        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_BERT_MODEL_CFG_FNAME
+        model_encdec_cfg = parse_yaml_file_as(EncdecBertCfg, model_encdec_cfg_fpath)
+        model_encdec = EncdecBert(model_encdec_cfg).to(device)
+        model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        state_dict = {k.replace('bert_model.', ''): v for k, v in model_encdec.enc_bert.state_dict().items()}
+        print(f'Load model weights for encoder:', list(state_dict.keys()))
+        # print(f'Current keys:', list(model.encoder.state_dict().keys()))
+        # strict = True
+        strict = False
+        model.encoder.load_state_dict(state_dict, strict=strict)
 
     params = model.parameters()
     # params = [p for n, p in model.named_parameters()]
