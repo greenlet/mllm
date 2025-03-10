@@ -21,8 +21,9 @@ val_epoch_steps=50
 #batch_size=10
 batch_size=5
 pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
-#train_subdir=last
-
+train_subdir=last
+#ques_inp=dec
+ques_inp=enc
 
 #learning_rate=0.0001
 learning_rate=0.00002
@@ -38,6 +39,7 @@ python s_06_01_train_eed_bert_qna.py \
   --train-subdir "$train_subdir" \
   --inp-len $inp_len \
   --batch-size $batch_size \
+  --ques-inp $ques_inp \
   --device $device \
   --epochs $epochs \
   --learning-rate $learning_rate \

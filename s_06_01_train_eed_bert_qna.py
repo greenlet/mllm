@@ -19,7 +19,7 @@ from mllm.config.model import EncdecBertCfg
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME
 from mllm.model.embgen_bert import EncoderEmbDecoderModel
 from mllm.model.encdec_ranker_hg import EncdecBert
-from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df
+from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, QuesInp
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import reraise
 
@@ -57,6 +57,10 @@ class ArgsTrainEedBertQna(BaseModel):
         3,
         description='Question-answer batch size.',
         cli=('--batch-size',),
+    )
+    ques_inp: QuesInp = Field(
+        ...,
+        description=f'Question input type: {list(qi for qi in QuesInp)}.'
     )
     device: str = Field(
         'cpu',
@@ -165,8 +169,8 @@ def main(args: ArgsTrainEedBertQna) -> int:
         val_loss_min = checkpoint['val_loss_min']
         np.random.seed(int(time.time() * 1000) % 10_000_000)
 
-    train_batch_it = get_sq_batch_iterator(df_sq=df_sq_t, tkz=tkz, batch_size=args.batch_size, inp_len=args.inp_len, device=device)
-    val_batch_it = get_sq_batch_iterator(df_sq=df_sq_v, tkz=tkz, batch_size=args.batch_size, inp_len=args.inp_len, device=device)
+    train_batch_it = get_sq_batch_iterator(df_sq=df_sq_t, tkz=tkz, batch_size=args.batch_size, inp_len=args.inp_len, device=device, ques_inp=args.ques_inp)
+    val_batch_it = get_sq_batch_iterator(df_sq=df_sq_v, tkz=tkz, batch_size=args.batch_size, inp_len=args.inp_len, device=device, ques_inp=args.ques_inp)
 
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     prev_train_steps = args.train_epoch_steps * (last_epoch + 1)

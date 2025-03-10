@@ -21,14 +21,13 @@ class QnaBatch:
     contexts: list[str]
     toks_seq_len: int
     tkz: PreTrainedTokenizer
-    qa_toks: list[np.ndarray]
+    ques_inp: QuesInp
     q_toks: list[np.ndarray]
     a_toks: list[np.ndarray]
     qa_att_masks: list[np.ndarray]
     qa_tgt_masks: list[np.ndarray]
     ctx_toks: np.ndarray
     device: Optional[torch.device] = None
-    qa_toks_t: list[torch.Tensor] = []
     q_toks_t: list[torch.Tensor] = []
     a_toks_t: list[torch.Tensor] = []
     qa_att_mask_t: list[torch.Tensor] = []
@@ -37,56 +36,36 @@ class QnaBatch:
 
     def __init__(
             self, qas: list[tuple[str, str]], contexts: list[str], toks_seq_len: int, tkz: PreTrainedTokenizer,
-            device: Optional[torch.device] = None,
+            ques_inp: QuesInp, device: Optional[torch.device] = None,
     ):
         self.qas = qas
         self.contexts = contexts
         self.toks_seq_len = toks_seq_len
         self.tkz = tkz
+        self.ques_inp = ques_inp
         self.device = device
         self._process()
 
     def _process(self):
-        # # Question + Answer
-        # q_toks_l, a_toks_l, a_att_masks_l, a_tgt_masks_l = [], [], [], []
-        # for q, a in self.qas:
-        #     q_toks: list[int] = self.tkz(q).input_ids
-        #     a_toks: list[int] = self.tkz(a).input_ids
-        #     assert q_toks[0] == a_toks[0] == self.tkz.cls_token_id, f'q_toks[0] = {q_toks[0]}. a_toks[0] = {a_toks[0]}'
-        #     assert q_toks[-1] == a_toks[-1] == self.tkz.sep_token_id, f'q_toks[-1] = {q_toks[-1]}. a_toks[-1] = {a_toks[-1]}'
-        #     q_toks_l.append(np.array(q_toks, dtype=int))
-        #     a_toks_l.append(np.array(a_toks, dtype=int))
-        #
-        #     n_q_toks, n_a_toks = len(q_toks), len(a_toks)
-        #     q_mask = np.ones((n_a_toks, n_q_toks + 1), dtype=int)
-        #     a_att_mask = np.ones((n_a_toks, n_a_toks), dtype=int)
-        #     a_att_mask = np.tril(a_att_mask, k=-1)
-        #     a_tgt_mask = np.eye(n_a_toks, dtype=int)
-        #     qa_att_mask = np.concatenate([q_mask, a_att_mask], axis=1)
-        #     qa_tgt_mask = np.concatenate([q_mask * 0, a_tgt_mask], axis=1).astype(bool)
-        #     qa_att_masks_l.append(qa_att_mask)
-        #     qa_tgt_masks_l.append(qa_tgt_mask)
-        # self.qa_toks = qa_toks_l
-        # self.qa_att_masks = qa_att_masks_l
-        # self.qa_tgt_masks = qa_tgt_masks_l
-
         # Question + Answer
-        q_toks_l, a_toks_l, qa_toks_l, qa_att_masks_l, qa_tgt_masks_l = [], [], [], [], []
+        q_toks_l, a_toks_l, qa_att_masks_l, qa_tgt_masks_l = [], [], [], []
         qas_sq_cum, as_cum = 0, 0
         for q, a in self.qas:
             q_toks: list[int] = self.tkz(q).input_ids
             a_toks: list[int] = self.tkz(a).input_ids
             assert q_toks[0] == a_toks[0] == self.tkz.cls_token_id, f'q_toks[0] = {q_toks[0]}. a_toks[0] = {a_toks[0]}'
             assert q_toks[-1] == a_toks[-1] == self.tkz.sep_token_id, f'q_toks[-1] = {q_toks[-1]}. a_toks[-1] = {a_toks[-1]}'
+            if self.ques_inp == QuesInp.Dec and len(a_toks) > 18:
+                a_toks = [*a_toks[:17], a_toks[-1]]
             q_toks, a_toks = q_toks[0:-1], a_toks[1:]
             qa_toks = [*q_toks, self.tkz.sep_token_id, *a_toks]
             qa_len_sq = len(qa_toks)**2
             a_len = len(a_toks)
-            if qas_sq_cum + qa_len_sq >= 3000 or as_cum + a_len > 25:
+            if self.ques_inp == QuesInp.Dec and \
+                    (qas_sq_cum + qa_len_sq >= 2900 or as_cum + a_len > 20 or len(qa_toks) > 350):
                 continue
             qas_sq_cum += qa_len_sq
             as_cum += a_len
-            qa_toks_l.append(np.array(qa_toks, dtype=int))
             q_toks_l.append(np.array(q_toks, dtype=int))
             a_toks_l.append(np.array(a_toks, dtype=int))
 
@@ -99,7 +78,6 @@ class QnaBatch:
             qa_tgt_mask = np.concatenate([q_mask * 0, a_tgt_mask], axis=1).astype(bool)
             qa_att_masks_l.append(qa_att_mask)
             qa_tgt_masks_l.append(qa_tgt_mask)
-        self.qa_toks = qa_toks_l
         self.q_toks = q_toks_l
         self.a_toks = a_toks_l
         self.qa_att_masks = qa_att_masks_l
@@ -167,7 +145,7 @@ def split_df(df: pd.DataFrame, val_ratio: float) -> tuple[pd.DataFrame, pd.DataF
 
 
 # df_sq: ['id', 'title', 'context', 'question', 'answers']
-def get_sq_batch(tkz: PreTrainedTokenizer, df_sq: pd.DataFrame, inds: np.ndarray, inp_len: int, device: torch.device) -> QnaBatch:
+def get_sq_batch(tkz: PreTrainedTokenizer, df_sq: pd.DataFrame, inds: np.ndarray, inp_len: int, device: torch.device, ques_inp: QuesInp) -> QnaBatch:
     df_b = df_sq.iloc[inds]
     ctxs, ctx_num, qas = {}, 0, set()
     for _, row in df_b.iterrows():
@@ -189,7 +167,7 @@ def get_sq_batch(tkz: PreTrainedTokenizer, df_sq: pd.DataFrame, inds: np.ndarray
     if n_qas > max_sz:
         np.random.shuffle(qas)
         qas = qas[:max_sz]
-    return QnaBatch(qas=qas, contexts=contexts, toks_seq_len=inp_len, tkz=tkz, device=device)
+    return QnaBatch(qas=qas, contexts=contexts, toks_seq_len=inp_len, tkz=tkz, device=device, ques_inp=ques_inp)
 
 
 def qna_loss(logits: torch.Tensor, tokens: torch.Tensor, tgt_mask: torch.Tensor) -> torch.Tensor:
@@ -205,7 +183,9 @@ def qna_loss(logits: torch.Tensor, tokens: torch.Tensor, tgt_mask: torch.Tensor)
 
 BatchIt = Generator[QnaBatch, None, None]
 
-def get_sq_batch_iterator(df_sq: pd.DataFrame, tkz: PreTrainedTokenizer, batch_size: int, inp_len: int, device: torch.device) -> BatchIt:
+def get_sq_batch_iterator(
+        df_sq: pd.DataFrame, tkz: PreTrainedTokenizer, batch_size: int, inp_len: int, device: torch.device, ques_inp: QuesInp,
+) -> BatchIt:
     inds = np.arange(len(df_sq))
     batch_off = 0
     while True:
@@ -214,7 +194,7 @@ def get_sq_batch_iterator(df_sq: pd.DataFrame, tkz: PreTrainedTokenizer, batch_s
         n_rest = batch_size - n_cur
         if n_rest > 0:
             batch_inds = np.concatenate([batch_inds, inds[:n_rest]])
-        sq_batch = get_sq_batch(tkz=tkz, df_sq=df_sq, inds=batch_inds, inp_len=inp_len, device=device)
+        sq_batch = get_sq_batch(tkz=tkz, df_sq=df_sq, inds=batch_inds, inp_len=inp_len, device=device, ques_inp=ques_inp)
         yield sq_batch
         batch_off += batch_size
         if batch_off >= len(inds):
