@@ -24,14 +24,16 @@ class QnaBatch:
     ques_inp: QuesInp
     q_toks: list[np.ndarray]
     a_toks: list[np.ndarray]
+    qa_toks: list[np.ndarray]
     qa_att_masks: list[np.ndarray]
     qa_tgt_masks: list[np.ndarray]
     ctx_toks: np.ndarray
+    qa_toks_t: list[torch.Tensor]
+    q_toks_t: list[torch.Tensor]
+    a_toks_t: list[torch.Tensor]
+    qa_att_mask_t: list[torch.Tensor]
+    qa_tgt_mask_t: list[torch.Tensor]
     device: Optional[torch.device] = None
-    q_toks_t: list[torch.Tensor] = []
-    a_toks_t: list[torch.Tensor] = []
-    qa_att_mask_t: list[torch.Tensor] = []
-    qa_tgt_mask_t: list[torch.Tensor] = []
     ctx_toks_t: Optional[torch.Tensor] = None
 
     def __init__(
@@ -48,7 +50,7 @@ class QnaBatch:
 
     def _process(self):
         # Question + Answer
-        q_toks_l, a_toks_l, qa_att_masks_l, qa_tgt_masks_l = [], [], [], []
+        q_toks_l, a_toks_l, qa_toks_l, qa_att_masks_l, qa_tgt_masks_l = [], [], [], [], []
         qas_sq_cum, as_cum = 0, 0
         for q, a in self.qas:
             q_toks: list[int] = self.tkz(q).input_ids
@@ -68,6 +70,7 @@ class QnaBatch:
             as_cum += a_len
             q_toks_l.append(np.array(q_toks, dtype=int))
             a_toks_l.append(np.array(a_toks, dtype=int))
+            qa_toks_l.append(np.array(qa_toks, dtype=int))
 
             n_q_toks, n_a_toks = len(q_toks), len(a_toks)
             q_mask = np.ones((n_a_toks, n_q_toks + 1), dtype=int)
@@ -80,6 +83,7 @@ class QnaBatch:
             qa_tgt_masks_l.append(qa_tgt_mask)
         self.q_toks = q_toks_l
         self.a_toks = a_toks_l
+        self.qa_toks = qa_toks_l
         self.qa_att_masks = qa_att_masks_l
         self.qa_tgt_masks = qa_tgt_masks_l
 
@@ -116,12 +120,20 @@ class QnaBatch:
         return [self._to_tensor_single(x) for x in arr]
 
     def gen_tensors(self) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], torch.Tensor]:
-        if self.ctx_toks_t is None:
-            self.qa_toks_t = self._to_tensor_multi(self.qa_toks)
-            self.qa_att_mask_t = self._to_tensor_multi(self.qa_att_masks)
-            self.qa_tgt_mask_t = self._to_tensor_multi(self.qa_tgt_masks)
-            self.ctx_toks_t = self._to_tensor_single(self.ctx_toks)
-        return self.qa_toks_t, self.qa_att_mask_t, self.qa_tgt_mask_t, self.ctx_toks_t
+        if self.ques_inp == QuesInp.Enc:
+            if self.ctx_toks_t is None:
+                pass
+            return
+
+        if self.ques_inp == QuesInp.Dec:
+            if self.ctx_toks_t is None:
+                self.qa_toks_t = self._to_tensor_multi(self.qa_toks)
+                self.qa_att_mask_t = self._to_tensor_multi(self.qa_att_masks)
+                self.qa_tgt_mask_t = self._to_tensor_multi(self.qa_tgt_masks)
+                self.ctx_toks_t = self._to_tensor_single(self.ctx_toks)
+            return self.qa_toks_t, self.qa_att_mask_t, self.qa_tgt_mask_t, self.ctx_toks_t
+
+        raise Exception(f'Question input type {self.ques_inp} is not supported')
 
 
 def get_sq_df(exclude_empty_answers: bool = False) -> pd.DataFrame:
