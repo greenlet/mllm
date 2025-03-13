@@ -193,7 +193,7 @@ def get_sq_batch(tkz: PreTrainedTokenizer, df_sq: pd.DataFrame, inds: np.ndarray
         if len(answers) == 0:
             answers = ['-']
         for answer in answers:
-            q = f'{ctxs[row.context]}. {row.question}'
+            q = f'{ctxs[row.context]}. Question: {row.question}'
             qa = q, answer
             qas.add(qa)
     contexts = [f'{val}. {key}' for key, val in ctxs.items()]
@@ -240,23 +240,48 @@ def get_sq_batch_iterator(
 
 
 def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> torch.Tensor:
-    qas_toks, qa_att_masks, qa_tgt_masks, ctxs_toks = batch.gen_tensors()
+    ctxs_toks, other_toks = batch.gen_tensors()
     ctxs_mask = (ctxs_toks > 0).to(batch.device)
-    enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=ctxs_toks, attention_mask=ctxs_mask)
-    enc_emb = enc_out.last_hidden_state[:, 0].unsqueeze(0)
-    loss = torch.tensor(0, dtype=torch.float32, device=batch.device)
-    n_qas = len(qas_toks)
-    for ind in range(n_qas):
-        qa_toks, qa_att_mask, qa_tgt_mask = qas_toks[ind].unsqueeze(0), qa_att_masks[ind], qa_tgt_masks[ind]
-        qa_toks = qa_toks.repeat(len(qa_att_mask), 1)
-        qa_toks_inp = qa_toks * qa_att_mask
-        dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
-            input_ids=qa_toks_inp, attention_mask=qa_att_mask, encoder_hidden_states=enc_emb
-        )
-        l = qna_loss(dec_out.logits, qa_toks, qa_tgt_mask)
-        loss = loss + l
-    loss = loss / n_qas
-    return loss
+    ctx_enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=ctxs_toks, attention_mask=ctxs_mask)
+    ctx_emb = ctx_enc_out.last_hidden_state[:, 0].unsqueeze(0)
 
+    if batch.ques_inp == QuesInp.Enc:
+        q_toks_l, a_toks_l, a_att_masks_l, a_tgt_masks_l = other_toks
+        loss = torch.tensor(0, dtype=torch.float32, device=batch.device)
+        n_ans = len(a_toks_l)
+        for q_toks, a_toks, a_att_mask, a_tgt_mask in zip(q_toks_l, a_toks_l, a_att_masks_l, a_tgt_masks_l):
+            q_toks = q_toks.unsqueeze(0)
+            q_mask = (q_toks > 0).to(batch.device)
+            q_enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=q_toks, attention_mask=q_mask)
+            q_emb = q_enc_out.last_hidden_state[:, 0].unsqueeze(0)
+            ctxq_emb = torch.concatenate([ctx_emb, q_emb], dim=1)
+            a_toks = a_toks.repeat(len(a_att_mask), 1)
+            # a_toks_inp = a_toks * a_att_mask
+            a_toks_inp = a_toks
+            a_dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
+                input_ids=a_toks_inp, attention_mask=a_att_mask, encoder_hidden_states=ctxq_emb,
+            )
+            l = qna_loss(a_dec_out.logits, a_toks, a_tgt_mask)
+            loss = loss + l
+        loss = loss / n_ans
+        return loss
+
+    if batch.ques_inp == QuesInp.Dec:
+        qa_toks, qa_att_masks, qa_tgt_masks = other_toks
+        loss = torch.tensor(0, dtype=torch.float32, device=batch.device)
+        n_qas = len(qa_toks)
+        for ind in range(n_qas):
+            qa_toks, qa_att_mask, qa_tgt_mask = qa_toks[ind].unsqueeze(0), qa_att_masks[ind], qa_tgt_masks[ind]
+            qa_toks = qa_toks.repeat(len(qa_att_mask), 1)
+            qa_toks_inp = qa_toks * qa_att_mask
+            dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
+                input_ids=qa_toks_inp, attention_mask=qa_att_mask, encoder_hidden_states=ctx_emb
+            )
+            l = qna_loss(dec_out.logits, qa_toks, qa_tgt_mask)
+            loss = loss + l
+        loss = loss / n_qas
+        return loss
+
+    raise Exception(f'Question input type {batch.ques_inp} is not supported.')
 
 
