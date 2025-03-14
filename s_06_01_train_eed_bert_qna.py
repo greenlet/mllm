@@ -16,7 +16,7 @@ from tqdm import trange
 from transformers import BertGenerationEncoder, BertGenerationDecoder, BertTokenizer
 
 from mllm.config.model import EncdecBertCfg
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, is_arg_true, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR
 from mllm.model.embgen_bert import EncoderEmbDecoderModel
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, QuesInp
@@ -58,9 +58,21 @@ class ArgsTrainEedBertQna(BaseModel):
         description='Question-answer batch size.',
         cli=('--batch-size',),
     )
+    in_empty_ans: str = Field(
+        'true',
+        required=False,
+        description='Boolean flag determining whether include empty answers in dataset or no. ' \
+            f'EMPTY_ANS can take value from {ARG_TRUE_VALUES_STR} to be True or {ARG_FALSE_VALUES_STR} to be False.',
+        cli=('--in-empty-ans',),
+    )
+    @property
+    def in_empty_ans_bool(self) -> bool:
+        return is_arg_true('--in-empty-ans', self.in_empty_ans)
+
     ques_inp: QuesInp = Field(
         ...,
-        description=f'Question input type: {list(qi for qi in QuesInp)}.'
+        description=f'Question input type: {list(qi for qi in QuesInp)}.',
+        cli = ('--ques-inp',)
     )
     device: str = Field(
         'cpu',
@@ -115,13 +127,14 @@ def main(args: ArgsTrainEedBertQna) -> int:
     model = EncoderEmbDecoderModel(encoder=enc_model, decoder=dec_model).to(device)
 
     val_ratio = 0.05
-    df_sq = get_sq_df(exclude_empty_answers=True)
+    df_sq = get_sq_df(exclude_empty_answers=not args.in_empty_ans_bool)
     df_sq_t, df_sq_v = split_df(df_sq, val_ratio=val_ratio)
     print(f'n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
 
     prefix = 'eedbert'
     mname = model_name.replace('-', '_')
-    suffix = f'{mname}-d{enc_model.config.hidden_size}'
+    emp_ans = str(args.in_empty_ans_bool)[0].lower()
+    suffix = f'{mname}-d{enc_model.config.hidden_size}-emp_{emp_ans}-qi_{args.ques_inp}'
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -140,7 +153,7 @@ def main(args: ArgsTrainEedBertQna) -> int:
     if (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
-        pretrained_checkpoint = torch.load(pretrained_model_path)
+        pretrained_checkpoint = torch.load(pretrained_model_path, map_location=device)
         model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_BERT_MODEL_CFG_FNAME
         model_encdec_cfg = parse_yaml_file_as(EncdecBertCfg, model_encdec_cfg_fpath)
         model_encdec = EncdecBert(model_encdec_cfg).to(device)

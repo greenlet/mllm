@@ -62,7 +62,9 @@ class QnaBatch:
             assert q_toks[0] == a_toks[0] == self.tkz.cls_token_id, f'q_toks[0] = {q_toks[0]}. a_toks[0] = {a_toks[0]}'
             assert q_toks[-1] == a_toks[-1] == self.tkz.sep_token_id, f'q_toks[-1] = {q_toks[-1]}. a_toks[-1] = {a_toks[-1]}'
             if self.ques_inp == QuesInp.Dec and len(a_toks) > 18:
-                a_toks = [*a_toks[:17], a_toks[-1]]
+                a_toks = a_toks[-18:]
+            elif self.ques_inp == QuesInp.Enc and len(a_toks) > 20:
+                a_toks = a_toks[-20:]
             q_toks, a_toks = q_toks[0:-1], a_toks[1:]
             qa_toks = [*q_toks, self.tkz.sep_token_id, *a_toks]
             qa_len_sq = len(qa_toks)**2
@@ -74,8 +76,7 @@ class QnaBatch:
             as_cum += a_len
 
             if self.ques_inp == QuesInp.Enc:
-                assert q_toks[-1] == self.tkz.sep_token_id
-                q_toks = q_toks[:-1]
+                assert q_toks[-1] != self.tkz.sep_token_id
                 n_toks = len(q_toks)
                 if n_toks > self.toks_seq_len:
                     q_toks = q_toks[:self.toks_seq_len]
@@ -95,7 +96,7 @@ class QnaBatch:
             qa_att_mask = np.concatenate([q_mask, a_att_mask], axis=1)
             qa_tgt_mask = np.concatenate([q_mask * 0, a_tgt_mask], axis=1).astype(bool)
             a_att_masks_l.append(a_att_mask)
-            a_tgt_masks_l.append(a_tgt_mask)
+            a_tgt_masks_l.append(a_tgt_mask.astype(bool))
             qa_att_masks_l.append(qa_att_mask)
             qa_tgt_masks_l.append(qa_tgt_mask)
         self.q_toks = q_toks_l

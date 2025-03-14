@@ -8,11 +8,11 @@ mllm_src_path=$code_path/mllm
 
 inp_len=128
 
-#device=cpu
-#epochs=5
-#train_epoch_steps=20
-#val_epoch_steps=20
-#batch_size=3
+device=cpu
+epochs=5
+train_epoch_steps=20
+val_epoch_steps=20
+batch_size=3
 
 device=cuda
 epochs=500
@@ -21,9 +21,12 @@ val_epoch_steps=50
 #batch_size=10
 batch_size=5
 pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
-train_subdir=last
+#train_subdir=last
+#in_empty_ans=true
+in_empty_ans=false
 #ques_inp=dec
 ques_inp=enc
+
 
 #learning_rate=0.0001
 learning_rate=0.00002
@@ -39,6 +42,7 @@ python s_06_01_train_eed_bert_qna.py \
   --train-subdir "$train_subdir" \
   --inp-len $inp_len \
   --batch-size $batch_size \
+  --in-empty-ans $in_empty_ans \
   --ques-inp $ques_inp \
   --device $device \
   --epochs $epochs \
