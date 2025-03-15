@@ -72,6 +72,8 @@ class QnaBatch:
             if self.ques_inp == QuesInp.Dec and \
                     (qas_sq_cum + qa_len_sq >= 2900 or as_cum + a_len > 20 or len(qa_toks) > 350):
                 continue
+            if self.ques_inp == QuesInp.Enc and as_cum + a_len > 30:
+                continue
             qas_sq_cum += qa_len_sq
             as_cum += a_len
 
@@ -209,10 +211,9 @@ def get_sq_batch(tkz: PreTrainedTokenizer, df_sq: pd.DataFrame, inds: np.ndarray
 
 
 def qna_loss(logits: torch.Tensor, tokens: torch.Tensor, tgt_mask: torch.Tensor) -> torch.Tensor:
-    tgt_logits = logits.masked_select(tgt_mask.unsqueeze(-1))
-    tgt_logits = tgt_logits.reshape(logits.shape[0], logits.shape[2])
+    tgt_logits = logits[tgt_mask]
     tgt_probs = torch.softmax(tgt_logits, dim=-1)
-    tgt_toks = tokens.masked_select(tgt_mask).unsqueeze(-1)
+    tgt_toks = tokens[tgt_mask][..., None]
     tok_probs = torch.gather(tgt_probs, dim=-1, index=tgt_toks)
     tok_logs = torch.log(tok_probs).reshape(len(tgt_mask))
     loss = -(0.95 * torch.mean(tok_logs[:-1]) + 0.05 * tok_logs[-1])
