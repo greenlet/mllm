@@ -516,6 +516,7 @@ def create_encdecrnk_bert_cfg(
         dec_pyr_n_layers: int = 7, dec_pyr_n_similar_layers: int = 1, dec_pyr_dropout_rate: float = 0.0, dec_pyr_temperature: float = 0,
         dec_rank_mlp_layers: str = '',
 ) -> EncdecRankBertCfg:
+    model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
     # BertConfig
     # {

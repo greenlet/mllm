@@ -216,7 +216,7 @@ def qna_loss(logits: torch.Tensor, tokens: torch.Tensor, tgt_mask: torch.Tensor)
     tgt_toks = tokens[tgt_mask][..., None]
     tok_probs = torch.gather(tgt_probs, dim=-1, index=tgt_toks)
     tok_logs = torch.log(tok_probs).reshape(len(tgt_mask))
-    loss = -(0.95 * torch.mean(tok_logs[:-1]) + 0.05 * tok_logs[-1])
+    loss = -(0.99 * torch.mean(tok_logs[:-1]) + 0.01 * tok_logs[-1])
     return loss
 
 
@@ -261,7 +261,7 @@ def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> to
             # a_toks_inp = a_toks * a_att_mask
             a_toks_inp = a_toks
             a_dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
-                input_ids=a_toks_inp, attention_mask=a_att_mask, encoder_hidden_states=ctxq_emb,
+                input_ids=a_toks_inp, attention_mask=a_att_mask, encoder_hidden_states=ctxq_emb, use_cache=False,
             )
             l = qna_loss(a_dec_out.logits, a_toks, a_tgt_mask)
             loss = loss + l
@@ -269,15 +269,16 @@ def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> to
         return loss
 
     if batch.ques_inp == QuesInp.Dec:
-        qa_toks, qa_att_masks, qa_tgt_masks = other_toks
+        qa_toks_l, qa_att_masks_l, qa_tgt_masks_l = other_toks
         loss = torch.tensor(0, dtype=torch.float32, device=batch.device)
-        n_qas = len(qa_toks)
+        n_qas = len(qa_toks_l)
         for ind in range(n_qas):
-            qa_toks, qa_att_mask, qa_tgt_mask = qa_toks[ind].unsqueeze(0), qa_att_masks[ind], qa_tgt_masks[ind]
+            qa_toks, qa_att_mask, qa_tgt_mask = qa_toks_l[ind].unsqueeze(0), qa_att_masks_l[ind], qa_tgt_masks_l[ind]
             qa_toks = qa_toks.repeat(len(qa_att_mask), 1)
-            qa_toks_inp = qa_toks * qa_att_mask
+            # qa_toks_inp = qa_toks * qa_att_mask
+            qa_toks_inp = qa_toks
             dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
-                input_ids=qa_toks_inp, attention_mask=qa_att_mask, encoder_hidden_states=ctx_emb
+                input_ids=qa_toks_inp, attention_mask=qa_att_mask, encoder_hidden_states=ctx_emb, use_cache=False,
             )
             l = qna_loss(dec_out.logits, qa_toks, qa_tgt_mask)
             loss = loss + l

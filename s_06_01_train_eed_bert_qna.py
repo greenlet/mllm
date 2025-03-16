@@ -13,7 +13,7 @@ from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
-from transformers import BertGenerationEncoder, BertGenerationDecoder, BertTokenizer
+from transformers import BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, BertConfig, BertGenerationConfig
 
 from mllm.config.model import EncdecBertCfg
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, is_arg_true, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR
@@ -106,6 +106,35 @@ class ArgsTrainEedBertQna(BaseModel):
     )
 
 
+def gen_prefpostfix_embgen_bert(args: ArgsTrainEedBertQna, bert_cfg: BertGenerationConfig) -> tuple[str, str]:
+    prefix = 'eedbert'
+
+    # Model name
+    model_name = bert_cfg.name_or_path.replace('-', '_')
+    postfix_parts = [model_name]
+
+    # Model hidden size
+    postfix_parts.append(f'd{bert_cfg.hidden_size}')
+
+    # Train with or wihout empty answers
+    emp_ans = str(args.in_empty_ans_bool)[0].lower()
+    postfix_parts.append(f'emp_{emp_ans}')
+
+    # Where question goes as an input: encoder, decoder
+    postfix_parts.append(f'qi_{args.ques_inp}')
+
+    # If initializing weights from checkpoint, add its name and datetime
+    if args.pretrained_model_path is not None and (args.pretrained_model_path / 'best.pth').exists():
+        ch_parts = args.pretrained_model_path.name.split('-')[:2]
+        ch_name = '_'.join(ch_parts)
+        postfix_parts.append(f'chkpt_{ch_name}')
+
+    # Each part consists of [0-9a-z] and '_' symbols. Parts are divided by '-'
+    postfix = '-'.join(postfix_parts)
+
+    return prefix, postfix
+
+
 def main(args: ArgsTrainEedBertQna) -> int:
     print(args)
 
@@ -131,11 +160,8 @@ def main(args: ArgsTrainEedBertQna) -> int:
     df_sq_t, df_sq_v = split_df(df_sq, val_ratio=val_ratio)
     print(f'n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
 
-    prefix = 'eedbert'
-    mname = model_name.replace('-', '_')
-    emp_ans = str(args.in_empty_ans_bool)[0].lower()
-    suffix = f'{mname}-d{enc_model.config.hidden_size}-emp_{emp_ans}-qi_{args.ques_inp}'
-    train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
+    prefix, postfix = gen_prefpostfix_embgen_bert(args, enc_model.config)
+    train_path = find_create_train_path(args.train_root_path, prefix, postfix, args.train_subdir)
     print(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
