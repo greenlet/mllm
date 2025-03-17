@@ -20,12 +20,12 @@ train_epoch_steps=500
 val_epoch_steps=50
 #batch_size=10
 batch_size=5
-#pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 #train_subdir=last
 #in_empty_ans=true
 in_empty_ans=false
-ques_inp=dec
-#ques_inp=enc
+#ques_inp=dec
+ques_inp=enc
 
 
 #learning_rate=0.0001

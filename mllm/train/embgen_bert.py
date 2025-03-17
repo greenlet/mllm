@@ -61,19 +61,25 @@ class QnaBatch:
             a_toks: list[int] = self.tkz(a).input_ids
             assert q_toks[0] == a_toks[0] == self.tkz.cls_token_id, f'q_toks[0] = {q_toks[0]}. a_toks[0] = {a_toks[0]}'
             assert q_toks[-1] == a_toks[-1] == self.tkz.sep_token_id, f'q_toks[-1] = {q_toks[-1]}. a_toks[-1] = {a_toks[-1]}'
+            q_toks, a_toks = q_toks[0:-1], a_toks[1:]
+
+            # TODO: parametrize
             if self.ques_inp == QuesInp.Dec and len(a_toks) > 18:
                 a_toks = a_toks[-18:]
             elif self.ques_inp == QuesInp.Enc and len(a_toks) > 20:
                 a_toks = a_toks[-20:]
-            q_toks, a_toks = q_toks[0:-1], a_toks[1:]
+
             qa_toks = [*q_toks, self.tkz.sep_token_id, *a_toks]
             qa_len_sq = len(qa_toks)**2
             a_len = len(a_toks)
+
+            # TODO: parametrize
             if self.ques_inp == QuesInp.Dec and \
                     (qas_sq_cum + qa_len_sq >= 2900 or as_cum + a_len > 20 or len(qa_toks) > 350):
                 continue
             if self.ques_inp == QuesInp.Enc and as_cum + a_len > 30:
                 continue
+
             qas_sq_cum += qa_len_sq
             as_cum += a_len
 
@@ -93,7 +99,7 @@ class QnaBatch:
             n_q_toks, n_a_toks = len(q_toks), len(a_toks)
             q_mask = np.ones((n_a_toks, n_q_toks + 1), dtype=int)
             a_att_mask = np.ones((n_a_toks, n_a_toks), dtype=int)
-            a_att_mask = np.tril(a_att_mask, k=-1)
+            a_att_mask = np.tril(a_att_mask, k=0)
             a_tgt_mask = np.eye(n_a_toks, dtype=int)
             qa_att_mask = np.concatenate([q_mask, a_att_mask], axis=1)
             qa_tgt_mask = np.concatenate([q_mask * 0, a_tgt_mask], axis=1).astype(bool)
@@ -258,8 +264,8 @@ def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> to
             q_emb = q_enc_out.last_hidden_state[:, 0].unsqueeze(0)
             ctxq_emb = torch.concatenate([ctx_emb, q_emb], dim=1)
             a_toks = a_toks.repeat(len(a_att_mask), 1)
-            # a_toks_inp = a_toks * a_att_mask
-            a_toks_inp = a_toks
+            a_toks_inp = torch.tril(a_toks)
+            a_toks_inp[a_tgt_mask] = batch.tkz.mask_token_id
             a_dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
                 input_ids=a_toks_inp, attention_mask=a_att_mask, encoder_hidden_states=ctxq_emb, use_cache=False,
             )
@@ -275,8 +281,8 @@ def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> to
         for ind in range(n_qas):
             qa_toks, qa_att_mask, qa_tgt_mask = qa_toks_l[ind].unsqueeze(0), qa_att_masks_l[ind], qa_tgt_masks_l[ind]
             qa_toks = qa_toks.repeat(len(qa_att_mask), 1)
-            # qa_toks_inp = qa_toks * qa_att_mask
-            qa_toks_inp = qa_toks
+            qa_toks_inp = qa_toks * qa_att_mask
+            qa_toks_inp[qa_tgt_mask] = batch.tkz.mask_token_id
             dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
                 input_ids=qa_toks_inp, attention_mask=qa_att_mask, encoder_hidden_states=ctx_emb, use_cache=False,
             )
