@@ -64,8 +64,8 @@ class QnaBatch:
             q_toks, a_toks = q_toks[0:-1], a_toks[1:]
 
             # TODO: parametrize
-            if self.ques_inp == QuesInp.Dec and len(a_toks) > 18:
-                a_toks = a_toks[-18:]
+            if self.ques_inp == QuesInp.Dec and len(a_toks) > 20:
+                a_toks = a_toks[-20:]
             elif self.ques_inp == QuesInp.Enc and len(a_toks) > 20:
                 a_toks = a_toks[-20:]
 
@@ -75,7 +75,7 @@ class QnaBatch:
 
             # TODO: parametrize
             if self.ques_inp == QuesInp.Dec and \
-                    (qas_sq_cum + qa_len_sq >= 2900 or as_cum + a_len > 20 or len(qa_toks) > 350):
+                    (qas_sq_cum + qa_len_sq >= 2900 or as_cum + a_len > 30 or len(qa_toks) > 350):
                 continue
             if self.ques_inp == QuesInp.Enc and as_cum + a_len > 30:
                 continue

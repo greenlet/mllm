@@ -24,8 +24,8 @@ pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-ba
 #train_subdir=last
 #in_empty_ans=true
 in_empty_ans=false
-#ques_inp=dec
-ques_inp=enc
+#ques_inp=enc
+ques_inp=dec
 
 
 #learning_rate=0.0001
