@@ -55,7 +55,7 @@ class QnaBatch:
     def _process(self):
         # Question + Answer
         q_toks_l, a_toks_l, qa_toks_l, a_att_masks_l, a_tgt_masks_l, qa_att_masks_l, qa_tgt_masks_l = [], [], [], [], [], [], []
-        qas_sq_cum, as_cum = 0, 0
+        qas_cum, qas_sq_cum, as_cum = 0, 0, 0
         for q, a in self.qas:
             q_toks: list[int] = self.tkz(q).input_ids
             a_toks: list[int] = self.tkz(a).input_ids
@@ -64,22 +64,28 @@ class QnaBatch:
             q_toks, a_toks = q_toks[0:-1], a_toks[1:]
 
             # TODO: parametrize
-            if self.ques_inp == QuesInp.Dec and len(a_toks) > 20:
-                a_toks = a_toks[-20:]
+            if self.ques_inp == QuesInp.Dec:
+                if len(a_toks) > 18:
+                    a_toks = a_toks[:18]
+                if len(a_toks) > 10 and len(q_toks) + len(a_toks) > 30:
+                    q_toks = [q_toks[0]] + q_toks[-19:]
+                    a_toks = a_toks[:10]
             elif self.ques_inp == QuesInp.Enc and len(a_toks) > 20:
-                a_toks = a_toks[-20:]
+                a_toks = a_toks[:-20]
 
             qa_toks = [*q_toks, self.tkz.sep_token_id, *a_toks]
-            qa_len_sq = len(qa_toks)**2
+            qa_len = len(qa_toks)
+            qa_len_sq = qa_len**2
             a_len = len(a_toks)
 
             # TODO: parametrize
             if self.ques_inp == QuesInp.Dec and \
-                    (qas_sq_cum + qa_len_sq >= 2900 or as_cum + a_len > 30 or len(qa_toks) > 350):
+                    (qas_sq_cum + qa_len_sq >= 2800 or as_cum + a_len > 25 or qas_cum + qa_len > 10000):
                 continue
             if self.ques_inp == QuesInp.Enc and as_cum + a_len > 30:
                 continue
 
+            qas_cum += qa_len
             qas_sq_cum += qa_len_sq
             as_cum += a_len
 
