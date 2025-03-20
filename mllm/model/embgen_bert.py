@@ -19,6 +19,7 @@ import inspect
 import os
 import tempfile
 import warnings
+from enum import Enum
 from typing import Optional, Tuple, Union
 
 import torch
@@ -165,6 +166,50 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start
     return shifted_input_ids
 
 
+class EncEmbExpansionType(str, Enum):
+    Emb = 'emb'
+    Mat = 'mat'
+
+
+class EncoderEmbDecoderConfig(PretrainedConfig):
+    enc_emb_exp_type: EncEmbExpansionType
+    enc_inp_len: int = 0
+    model_type = "encoder-decoder"
+    is_composition = True
+
+    def __init__(self, enc_emb_exp_type: EncEmbExpansionType, **kwargs):
+        super().__init__(**kwargs)
+        assert (
+            "encoder" in kwargs and "decoder" in kwargs
+        ), "Config has to be initialized with encoder and decoder config"
+        encoder_config = kwargs.pop("encoder")
+        encoder_model_type = encoder_config.pop("model_type")
+        decoder_config = kwargs.pop("decoder")
+        decoder_model_type = decoder_config.pop("model_type")
+
+        self.encoder = AutoConfig.for_model(encoder_model_type, **encoder_config)
+        self.decoder = AutoConfig.for_model(decoder_model_type, **decoder_config)
+        self.is_encoder_decoder = True
+        self.enc_emb_exp_type = enc_emb_exp_type
+        self.enc_inp_len = kwargs.get('enc_inp_len', 128)
+
+    @classmethod
+    def from_encoder_decoder_configs(
+        cls, encoder_config: PretrainedConfig, decoder_config: PretrainedConfig, enc_emb_exp_type: EncEmbExpansionType, **kwargs
+    ) -> PretrainedConfig:
+        r"""
+        Instantiate a [`EncoderDecoderConfig`] (or a derived class) from a pre-trained encoder model configuration and
+        decoder model configuration.
+
+        Returns:
+            [`EncoderDecoderConfig`]: An instance of a configuration object
+        """
+        decoder_config.is_decoder = True
+        decoder_config.add_cross_attention = True
+
+        return cls(enc_emb_exp_type=enc_emb_exp_type, encoder=encoder_config.to_dict(), decoder=decoder_config.to_dict(), **kwargs)
+
+
 @add_start_docstrings(ENCODER_DECODER_START_DOCSTRING)
 class EncoderEmbDecoderModel(PreTrainedModel):
     r"""
@@ -174,7 +219,8 @@ class EncoderEmbDecoderModel(PreTrainedModel):
     :meth*~transformers.AutoModelForCausalLM.from_pretrained* class method for the decoder.
     """
 
-    config_class = EncoderDecoderConfig
+    config_class = EncoderEmbDecoderConfig
+    config: EncoderEmbDecoderConfig
     base_model_prefix = "encoder_decoder"
     main_input_name = "input_ids"
     supports_gradient_checkpointing = True
@@ -184,11 +230,13 @@ class EncoderEmbDecoderModel(PreTrainedModel):
         config: Optional[PretrainedConfig] = None,
         encoder: Optional[PreTrainedModel] = None,
         decoder: Optional[PreTrainedModel] = None,
+        enc_emb_exp_type: Optional[EncEmbExpansionType] = None,
     ):
         if config is None and (encoder is None or decoder is None):
             raise ValueError("Either a configuration or an encoder and a decoder has to be provided.")
         if config is None:
-            config = EncoderDecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config)
+            assert enc_emb_exp_type is not None
+            config = EncoderEmbDecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config, enc_emb_exp_type=enc_emb_exp_type)
         else:
             if not isinstance(config, self.config_class):
                 raise ValueError(f"Config: {config} has to be of type {self.config_class}")
@@ -252,6 +300,11 @@ class EncoderEmbDecoderModel(PreTrainedModel):
                 "The selected decoder is not prepared for the encoder hidden states to be passed. Please see the "
                 "following discussion on GitHub: https://github.com/huggingface/transformers/issues/23350"
             )
+
+        self.emb_mat_width = None
+        self.emb_mat_height = None
+        if self.config.enc_emb_exp_type == EncEmbExpansionType.Mat:
+            pass
 
         # tie encoder, decoder weights if config set accordingly
         self.tie_weights()
@@ -391,8 +444,9 @@ class EncoderEmbDecoderModel(PreTrainedModel):
     @classmethod
     def from_encoder_decoder_pretrained(
         cls,
-        encoder_pretrained_model_name_or_path: str = None,
-        decoder_pretrained_model_name_or_path: str = None,
+        encoder_pretrained_model_name_or_path: Optional[str] = None,
+        decoder_pretrained_model_name_or_path: Optional[str] = None,
+        enc_emb_exp_type: Optional[EncEmbExpansionType] = None,
         *model_args,
         **kwargs,
     ) -> PreTrainedModel:
@@ -531,7 +585,7 @@ class EncoderEmbDecoderModel(PreTrainedModel):
             decoder = AutoModelForCausalLM.from_pretrained(decoder_pretrained_model_name_or_path, **kwargs_decoder)
 
         # instantiate config with corresponding kwargs
-        config = EncoderDecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config, **kwargs)
+        config = EncoderEmbDecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config, enc_emb_exp_type=enc_emb_exp_type, **kwargs)
         return cls(encoder=encoder, decoder=decoder, config=config)
 
     @add_start_docstrings_to_model_forward(ENCODER_DECODER_INPUTS_DOCSTRING)
@@ -607,11 +661,16 @@ class EncoderEmbDecoderModel(PreTrainedModel):
 
         encoder_hidden_states = encoder_outputs[0]
 
-        # Get embeddings from first CLS tokens;
-        # [batch_size, input_len, d_model] -> [1, batch_size, d_model]
-        # From batch_size embedding sequences we get only first embeddings and get batch_size embeddings as
-        # an embedding input to decoder
-        encoder_hidden_states = encoder_hidden_states[:, 0].unsqueeze(0)
+        if self.config.enc_emb_exp_type == EncEmbExpansionType.Emb:
+            # Get embeddings from first CLS tokens;
+            # [batch_size, input_len, d_model] -> [1, batch_size, d_model]
+            # From batch_size embedding sequences we get only first embeddings and get batch_size embeddings as
+            # an embedding input to decoder
+            encoder_hidden_states = encoder_hidden_states[:, 0].unsqueeze(0)
+        elif self.config.enc_emb_exp_type == EncEmbExpansionType.Mat:
+            pass
+        else:
+            raise Exception(f'Encoder embedding expansion type {self.config.enc_emb_exp_type} is not supported')
 
         # optionally project encoder_hidden_states
         if (
