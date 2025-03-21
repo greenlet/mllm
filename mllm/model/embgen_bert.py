@@ -25,6 +25,8 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+from torch.onnx.symbolic_opset9 import unsqueeze
+from transformers import BertGenerationConfig
 
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
@@ -173,7 +175,9 @@ class EncEmbExpansionType(str, Enum):
 
 class EncoderEmbDecoderConfig(PretrainedConfig):
     enc_emb_exp_type: EncEmbExpansionType
+    enc_emb_exp_bias: bool = False
     enc_inp_len: int = 0
+    enc_inp_batch_size: int = 0
     model_type = "encoder-decoder"
     is_composition = True
 
@@ -191,7 +195,9 @@ class EncoderEmbDecoderConfig(PretrainedConfig):
         self.decoder = AutoConfig.for_model(decoder_model_type, **decoder_config)
         self.is_encoder_decoder = True
         self.enc_emb_exp_type = enc_emb_exp_type
-        self.enc_inp_len = kwargs.get('enc_inp_len', 128)
+        self.enc_emb_exp_bias = kwargs.get('enc_emb_exp_bias', False)
+        self.enc_inp_len = kwargs.get('enc_inp_len', 0)
+        self.enc_inp_batch_size = kwargs.get('enc_inp_batch_size', 0)
 
     @classmethod
     def from_encoder_decoder_configs(
@@ -304,7 +310,12 @@ class EncoderEmbDecoderModel(PreTrainedModel):
         self.emb_mat_width = None
         self.emb_mat_height = None
         if self.config.enc_emb_exp_type == EncEmbExpansionType.Mat:
-            pass
+            cfg_gen: BertGenerationConfig = self.config.encoder
+            d_model, inp_len, inp_batch_size = cfg_gen.hidden_size, self.config.enc_inp_len, self.config.enc_inp_batch_size
+            assert inp_len > 0, f'inp_len (={inp_len}) must be positive integer'
+            assert inp_batch_size > 0, f'inp_batch_size (={inp_batch_size}) must be positive integer'
+            self.emb_mat_width = nn.Linear(in_features=d_model, out_features=inp_len * d_model, bias=self.config.enc_emb_exp_bias)
+            self.emb_mat_height = nn.Linear(in_features=inp_batch_size * d_model, out_features=d_model, bias=self.config.enc_emb_exp_bias)
 
         # tie encoder, decoder weights if config set accordingly
         self.tie_weights()
@@ -668,7 +679,20 @@ class EncoderEmbDecoderModel(PreTrainedModel):
             # an embedding input to decoder
             encoder_hidden_states = encoder_hidden_states[:, 0].unsqueeze(0)
         elif self.config.enc_emb_exp_type == EncEmbExpansionType.Mat:
-            pass
+            d_model, inp_len, inp_batch_size = cfg_gen.hidden_size, self.config.enc_inp_len, self.config.enc_inp_batch_size
+            # Get embeddings from first CLS tokens;
+            # [batch_size, input_len, d_model] -> [batch_size, d_model]
+            emb = encoder_hidden_states[:, 0]
+            # [batch_size, d_model] -> [batch_size, inp_len * d_model]
+            emb: torch.Tensor = self.emb_mat_width(emb)
+            # [batch_size, inp_len * d_model] -> [inp_len * d_model, batch_size]
+            emb = emb.transpose(0, 1)
+            # [inp_len * d_model, batch_size] -> [inp_len, d_model * batch_size]
+            emb = emb.reshape((inp_len, d_model * inp_batch_size))
+            # [inp_len, d_model * batch_size] -> [inp_len, d_model]
+            emb = self.emb_mat_height(emb)
+            # [inp_len, d_model] -> [1, inp_len, d_model]
+            emb = emb.unsqueeze(0)
         else:
             raise Exception(f'Encoder embedding expansion type {self.config.enc_emb_exp_type} is not supported')
 
