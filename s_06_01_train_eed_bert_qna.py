@@ -17,7 +17,7 @@ from transformers import BertGenerationEncoder, BertGenerationDecoder, BertToken
 
 from mllm.config.model import EncdecBertCfg
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, is_arg_true, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR
-from mllm.model.embgen_bert import EncoderEmbDecoderModel
+from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType, EncoderEmbDecoderConfig
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, QuesInp
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
@@ -74,6 +74,20 @@ class ArgsTrainEedBertQna(BaseModel):
         description=f'Question input type: {list(qi for qi in QuesInp)}.',
         cli = ('--ques-inp',)
     )
+    enc_emb_exp_type: EncEmbExpansionType = Field(
+        ...,
+        description=f'Encoder embedding expansion type: {list(et for et in EncEmbExpansionType)}.',
+        cli = ('--enc-emb-exp-type',)
+    )
+    enc_emb_exp_bias: str = Field(
+        'false',
+        description=f'Encoder embedding bias presence for Matrix expansion. True values: {ARG_TRUE_VALUES_STR}. False values: {ARG_FALSE_VALUES_STR}',
+        cli = ('--enc-emb-exp-bias',)
+    )
+    @property
+    def enc_emb_exp_bias_bool(self) -> bool:
+        return is_arg_true('--enc-emb-exp-bias', self.enc_emb_exp_bias)
+
     device: str = Field(
         'cpu',
         description='Device to run training on. Can have values: "cpu", "cuda"',
@@ -106,15 +120,15 @@ class ArgsTrainEedBertQna(BaseModel):
     )
 
 
-def gen_prefpostfix_embgen_bert(args: ArgsTrainEedBertQna, bert_cfg: BertGenerationConfig) -> tuple[str, str]:
+def gen_prefpostfix_embgen_bert(args: ArgsTrainEedBertQna, bert_cfg: EncoderEmbDecoderConfig) -> tuple[str, str]:
     prefix = 'eedbert'
 
     # Model name
-    model_name = bert_cfg.name_or_path.replace('-', '_')
+    model_name = bert_cfg.encoder.name_or_path.replace('-', '_')
     postfix_parts = [model_name]
 
     # Model hidden size
-    postfix_parts.append(f'd{bert_cfg.hidden_size}')
+    postfix_parts.append(f'd{bert_cfg.encoder.hidden_size}')
 
     # Train with or wihout empty answers
     emp_ans = str(args.in_empty_ans_bool)[0].lower()
@@ -123,11 +137,20 @@ def gen_prefpostfix_embgen_bert(args: ArgsTrainEedBertQna, bert_cfg: BertGenerat
     # Where question goes as an input: encoder, decoder
     postfix_parts.append(f'qi_{args.ques_inp}')
 
+    exp_str = f'exp_{bert_cfg.enc_emb_exp_type}'
+    if bert_cfg.enc_emb_exp_bias:
+        exp_str = f'{exp_str}_b'
+    postfix_parts.append(exp_str)
+
+    postfix_parts.append(f'bt_{bert_cfg.enc_inp_batch_size}')
+
     # If initializing weights from checkpoint, add its name and datetime
     if args.pretrained_model_path is not None and (args.pretrained_model_path / 'best.pth').exists():
         ch_parts = args.pretrained_model_path.name.split('-')[:2]
         ch_name = '_'.join(ch_parts)
-        postfix_parts.append(f'chkpt_{ch_name}')
+    else:
+        ch_name = 'none'
+    postfix_parts.append(f'chkpt_{ch_name}')
 
     # Each part consists of [0-9a-z] and '_' symbols. Parts are divided by '-'
     postfix = '-'.join(postfix_parts)
@@ -153,14 +176,20 @@ def main(args: ArgsTrainEedBertQna) -> int:
     dec_model: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
         model_name, add_cross_attention=True, is_decoder=True, bos_token_id=101, eos_token_id=102
     )
-    model = EncoderEmbDecoderModel(encoder=enc_model, decoder=dec_model).to(device)
+    enc_inp_batch_size = args.batch_size
+    if args.ques_inp == QuesInp.Enc:
+        enc_inp_batch_size += 1
+    model = EncoderEmbDecoderModel(
+        encoder=enc_model, decoder=dec_model, enc_emb_exp_type=args.enc_emb_exp_type, enc_emb_exp_bias=args.enc_emb_exp_bias_bool,
+        enc_inp_len=args.inp_len, enc_inp_batch_size=enc_inp_batch_size,
+    ).to(device)
 
     val_ratio = 0.05
     df_sq = get_sq_df(exclude_empty_answers=not args.in_empty_ans_bool)
     df_sq_t, df_sq_v = split_df(df_sq, val_ratio=val_ratio)
     print(f'n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
 
-    prefix, postfix = gen_prefpostfix_embgen_bert(args, enc_model.config)
+    prefix, postfix = gen_prefpostfix_embgen_bert(args, model.config)
     train_path = find_create_train_path(args.train_root_path, prefix, postfix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -176,7 +205,7 @@ def main(args: ArgsTrainEedBertQna) -> int:
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
 
-    if (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
+    if args.pretrained_model_path is not None and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path, map_location=device)
@@ -233,6 +262,11 @@ def main(args: ArgsTrainEedBertQna) -> int:
                 log_weights_grads_stats(grad_log_step, model, tbsw)
                 grad_log_step += 1
             grad_log_ind += 1
+
+            if torch.isnan(loss):
+                print(f'Loss is nan!!!')
+                import sys
+                sys.exit(0)
 
             train_loss += loss.item()
             s = f'Train. loss: {loss.item():.6f}'

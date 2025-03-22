@@ -237,12 +237,13 @@ class EncoderEmbDecoderModel(PreTrainedModel):
         encoder: Optional[PreTrainedModel] = None,
         decoder: Optional[PreTrainedModel] = None,
         enc_emb_exp_type: Optional[EncEmbExpansionType] = None,
+        **kwargs,
     ):
         if config is None and (encoder is None or decoder is None):
             raise ValueError("Either a configuration or an encoder and a decoder has to be provided.")
         if config is None:
             assert enc_emb_exp_type is not None
-            config = EncoderEmbDecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config, enc_emb_exp_type=enc_emb_exp_type)
+            config = EncoderEmbDecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config, enc_emb_exp_type=enc_emb_exp_type, **kwargs)
         else:
             if not isinstance(config, self.config_class):
                 raise ValueError(f"Config: {config} has to be of type {self.config_class}")
@@ -599,6 +600,37 @@ class EncoderEmbDecoderModel(PreTrainedModel):
         config = EncoderEmbDecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config, enc_emb_exp_type=enc_emb_exp_type, **kwargs)
         return cls(encoder=encoder, decoder=decoder, config=config)
 
+    def run_expansion(self, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
+        if self.config.enc_emb_exp_type == EncEmbExpansionType.Emb:
+            # Get embeddings from first CLS tokens
+            # [batch_size, input_len, d_model] -> [1, batch_size, d_model]
+            # From batch_size embedding sequences we get only first embeddings and get batch_size embeddings as
+            # an embedding input to decoder
+            emb = encoder_hidden_states[:, 0].unsqueeze(0)
+        elif self.config.enc_emb_exp_type == EncEmbExpansionType.Mat:
+            d_model, inp_len, inp_batch_size = self.config.encoder.hidden_size, self.config.enc_inp_len, self.config.enc_inp_batch_size
+            # Get embeddings from first CLS tokens
+            # [batch_size, input_len, d_model] -> [batch_size, d_model]
+            emb = encoder_hidden_states[:, 0]
+            # [batch_size, d_model] -> [batch_size, inp_len * d_model]
+            emb: torch.Tensor = self.emb_mat_width(emb)
+            # [batch_size, inp_len * d_model] -> [inp_len * d_model, batch_size]
+            emb = emb.transpose(0, 1)
+            # [inp_len * d_model, batch_size] -> [inp_len, d_model, batch_size]
+            emb = emb.reshape((inp_len, d_model, inp_batch_size))
+            # [inp_len, d_model, batch_size] -> [inp_len, batch_size, d_model]
+            emb = emb.transpose(1, 2)
+            # [inp_len, batch_size, d_model] -> [inp_len, batch_size * d_model]
+            emb = emb.reshape((inp_len, inp_batch_size * d_model))
+            # [inp_len, batch_size * d_model] -> [inp_len, d_model]
+            emb = self.emb_mat_height(emb)
+            # [inp_len, d_model] -> [1, inp_len, d_model]
+            emb = emb.unsqueeze(0)
+        else:
+            raise Exception(f'Encoder embedding expansion type {self.config.enc_emb_exp_type} is not supported')
+
+        return emb
+
     @add_start_docstrings_to_model_forward(ENCODER_DECODER_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=Seq2SeqLMOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
@@ -671,30 +703,7 @@ class EncoderEmbDecoderModel(PreTrainedModel):
             encoder_outputs = BaseModelOutput(*encoder_outputs)
 
         encoder_hidden_states = encoder_outputs[0]
-
-        if self.config.enc_emb_exp_type == EncEmbExpansionType.Emb:
-            # Get embeddings from first CLS tokens;
-            # [batch_size, input_len, d_model] -> [1, batch_size, d_model]
-            # From batch_size embedding sequences we get only first embeddings and get batch_size embeddings as
-            # an embedding input to decoder
-            encoder_hidden_states = encoder_hidden_states[:, 0].unsqueeze(0)
-        elif self.config.enc_emb_exp_type == EncEmbExpansionType.Mat:
-            d_model, inp_len, inp_batch_size = cfg_gen.hidden_size, self.config.enc_inp_len, self.config.enc_inp_batch_size
-            # Get embeddings from first CLS tokens;
-            # [batch_size, input_len, d_model] -> [batch_size, d_model]
-            emb = encoder_hidden_states[:, 0]
-            # [batch_size, d_model] -> [batch_size, inp_len * d_model]
-            emb: torch.Tensor = self.emb_mat_width(emb)
-            # [batch_size, inp_len * d_model] -> [inp_len * d_model, batch_size]
-            emb = emb.transpose(0, 1)
-            # [inp_len * d_model, batch_size] -> [inp_len, d_model * batch_size]
-            emb = emb.reshape((inp_len, d_model * inp_batch_size))
-            # [inp_len, d_model * batch_size] -> [inp_len, d_model]
-            emb = self.emb_mat_height(emb)
-            # [inp_len, d_model] -> [1, inp_len, d_model]
-            emb = emb.unsqueeze(0)
-        else:
-            raise Exception(f'Encoder embedding expansion type {self.config.enc_emb_exp_type} is not supported')
+        encoder_hidden_states = self.run_expansion(encoder_hidden_states)
 
         # optionally project encoder_hidden_states
         if (

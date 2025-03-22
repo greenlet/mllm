@@ -66,10 +66,10 @@ class QnaBatch:
             # TODO: parametrize
             if self.ques_inp == QuesInp.Dec:
                 if len(a_toks) > 18:
-                    a_toks = a_toks[:18]
+                    a_toks = a_toks[:17] + a_toks[-1:]
                 if len(a_toks) > 10 and len(q_toks) + len(a_toks) > 30:
                     q_toks = [q_toks[0]] + q_toks[-19:]
-                    a_toks = a_toks[:10]
+                    a_toks = a_toks[:9] + a_toks[-1:]
             elif self.ques_inp == QuesInp.Enc and len(a_toks) > 20:
                 a_toks = a_toks[:-20]
 
@@ -257,7 +257,7 @@ def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> to
     ctxs_toks, other_toks = batch.gen_tensors()
     ctxs_mask = (ctxs_toks > 0).to(batch.device)
     ctx_enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=ctxs_toks, attention_mask=ctxs_mask)
-    ctx_emb = ctx_enc_out.last_hidden_state[:, 0].unsqueeze(0)
+    ctx_lhs = ctx_enc_out.last_hidden_state
 
     if batch.ques_inp == QuesInp.Enc:
         q_toks_l, a_toks_l, a_att_masks_l, a_tgt_masks_l = other_toks
@@ -267,8 +267,8 @@ def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> to
             q_toks = q_toks.unsqueeze(0)
             q_mask = (q_toks > 0).to(batch.device)
             q_enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=q_toks, attention_mask=q_mask)
-            q_emb = q_enc_out.last_hidden_state[:, 0].unsqueeze(0)
-            ctxq_emb = torch.concatenate([ctx_emb, q_emb], dim=1)
+            ctxq_lhs = torch.concatenate([ctx_lhs, q_enc_out.last_hidden_state], dim=0)
+            ctxq_emb = model.run_expansion(ctxq_lhs)
             a_toks = a_toks.repeat(len(a_att_mask), 1)
             a_toks_inp = torch.tril(a_toks)
             a_toks_inp[a_tgt_mask] = batch.tkz.mask_token_id
@@ -281,6 +281,7 @@ def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> to
         return loss
 
     if batch.ques_inp == QuesInp.Dec:
+        ctx_emb = model.run_expansion(ctx_enc_out.last_hidden_state)
         qa_toks_l, qa_att_masks_l, qa_tgt_masks_l = other_toks
         loss = torch.tensor(0, dtype=torch.float32, device=batch.device)
         n_qas = len(qa_toks_l)
