@@ -68,10 +68,17 @@ class QnaBatch:
                 if len(a_toks) > 18:
                     a_toks = a_toks[:17] + a_toks[-1:]
                 if len(a_toks) > 10 and len(q_toks) + len(a_toks) > 30:
-                    q_toks = [q_toks[0]] + q_toks[-19:]
+                    if len(q_toks) > 20:
+                        q_toks = q_toks[:1] + q_toks[-19:]
                     a_toks = a_toks[:9] + a_toks[-1:]
             elif self.ques_inp == QuesInp.Enc and len(a_toks) > 20:
-                a_toks = a_toks[:-20]
+                a_toks = a_toks[:-19] + a_toks[-1:]
+
+            assert len(a_toks) > 1 and a_toks[0] != self.tkz.cls_token_id and a_toks[-1] == self.tkz.sep_token_id, \
+                f'a_toks must contain at least one content token and SEP token at the end. a_toks = {a_toks}'
+            assert len(q_toks) > 1 and q_toks[0] == self.tkz.cls_token_id and q_toks[-1] != self.tkz.sep_token_id, \
+                f'q_toks must contain at least one content token and CLS token at the start. q_toks = {q_toks}'
+
 
             qa_toks = [*q_toks, self.tkz.sep_token_id, *a_toks]
             qa_len = len(qa_toks)

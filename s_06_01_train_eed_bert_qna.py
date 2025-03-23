@@ -209,16 +209,20 @@ def main(args: ArgsTrainEedBertQna) -> int:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path, map_location=device)
-        model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_BERT_MODEL_CFG_FNAME
-        model_encdec_cfg = parse_yaml_file_as(EncdecBertCfg, model_encdec_cfg_fpath)
-        model_encdec = EncdecBert(model_encdec_cfg).to(device)
-        model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        state_dict = {k.replace('bert_model.', ''): v for k, v in model_encdec.enc_bert.state_dict().items()}
+        # model_encdec_cfg_fpath = args.pretrained_model_path / ENCDEC_BERT_MODEL_CFG_FNAME
+        # model_encdec_cfg = parse_yaml_file_as(EncdecBertCfg, model_encdec_cfg_fpath)
+        # model_encdec = EncdecBert(model_encdec_cfg).to(device)
+        # model_encdec.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        # state_dict = {k.replace('bert_model.', ''): v for k, v in model_encdec.enc_bert.state_dict().items()}
+
+        state_dict = {k.replace('bert_model.', ''): v for k, v in pretrained_checkpoint['model'].items()}
         print(f'Load model weights for encoder:', list(state_dict.keys()))
         # print(f'Current keys:', list(model.encoder.state_dict().keys()))
         # strict = True
         strict = False
         model.encoder.load_state_dict(state_dict, strict=strict)
+        del state_dict
+        del pretrained_checkpoint
 
     params = model.parameters()
     # params = [p for n, p in model.named_parameters()]

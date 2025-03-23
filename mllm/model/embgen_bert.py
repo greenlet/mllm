@@ -612,17 +612,21 @@ class EncoderEmbDecoderModel(PreTrainedModel):
             # Get embeddings from first CLS tokens
             # [batch_size, input_len, d_model] -> [batch_size, d_model]
             emb = encoder_hidden_states[:, 0]
-            # [batch_size, d_model] -> [batch_size, inp_len * d_model]
+            batch_size = len(emb)
+            assert batch_size <= inp_batch_size, f'batch_size (={batch_size}) must be <= inp_batch_size (={inp_batch_size})'
+            # [batch_size, d_model] -> [inp_batch_size, d_model] by appending zeros to the end of the batch
+            emb = nn.functional.pad(emb, (0, 0, 0, inp_batch_size - len(emb)))
+            # [inp_batch_size, d_model] -> [inp_batch_size, inp_len * d_model]
             emb: torch.Tensor = self.emb_mat_width(emb)
-            # [batch_size, inp_len * d_model] -> [inp_len * d_model, batch_size]
+            # [inp_batch_size, inp_len * d_model] -> [inp_len * d_model, inp_batch_size]
             emb = emb.transpose(0, 1)
-            # [inp_len * d_model, batch_size] -> [inp_len, d_model, batch_size]
+            # [inp_len * d_model, inp_batch_size] -> [inp_len, d_model, inp_batch_size]
             emb = emb.reshape((inp_len, d_model, inp_batch_size))
-            # [inp_len, d_model, batch_size] -> [inp_len, batch_size, d_model]
+            # [inp_len, d_model, inp_batch_size] -> [inp_len, inp_batch_size, d_model]
             emb = emb.transpose(1, 2)
-            # [inp_len, batch_size, d_model] -> [inp_len, batch_size * d_model]
+            # [inp_len, inp_batch_size, d_model] -> [inp_len, inp_batch_size * d_model]
             emb = emb.reshape((inp_len, inp_batch_size * d_model))
-            # [inp_len, batch_size * d_model] -> [inp_len, d_model]
+            # [inp_len, inp_batch_size * d_model] -> [inp_len, d_model]
             emb = self.emb_mat_height(emb)
             # [inp_len, d_model] -> [1, inp_len, d_model]
             emb = emb.unsqueeze(0)
