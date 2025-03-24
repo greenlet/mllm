@@ -221,6 +221,8 @@ def main(args: ArgsTrainEedBertQna) -> int:
         # strict = True
         strict = False
         model.encoder.load_state_dict(state_dict, strict=strict)
+        for t in state_dict.values():
+            t.to('cpu')
         del state_dict
         del pretrained_checkpoint
 
