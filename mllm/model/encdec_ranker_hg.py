@@ -341,7 +341,7 @@ class DecoderPyramid(nn.Module):
 
     # Tensor with embeddings: [batch_size, d_model]
     def forward(self, inp: Tensor) -> Tensor:
-        batch_size, _, d_model = inp.shape
+        batch_size, d_model = inp.shape
         # inp = inp.unsqueeze(1)
         out = inp
         if self.cfg.enhance_type in (HgEnhanceType.MatmulBegin, HgEnhanceType.MatmulBeginBias):
