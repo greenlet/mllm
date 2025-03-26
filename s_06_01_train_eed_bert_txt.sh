@@ -1,6 +1,7 @@
 
 code_path=$HOME/prog
 data_path=$HOME/data
+wiki_ds_name=20200501.en
 train_root_path=$data_path/train_mllm_eed_bert_qna
 train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
@@ -39,7 +40,9 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_06_01_train_eed_bert_qna.py \
+python s_06_01_train_eed_bert_txt.py \
+  --data-path $data_path \
+  --wiki-ds-name $wiki_ds_name \
   --train-root-path $train_root_path \
   --pretrained-model-path "$pretrained_model_path" \
   --train-subdir "$train_subdir" \

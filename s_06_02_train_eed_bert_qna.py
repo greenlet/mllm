@@ -19,19 +19,12 @@ from mllm.config.model import EncdecBertCfg
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, is_arg_true, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR
 from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType, EncoderEmbDecoderConfig
 from mllm.model.encdec_ranker_hg import EncdecBert
-from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, QuesInp
+from mllm.train.embgen_bert_qna import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, QuesInp
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import reraise
 
 
 class ArgsTrainEedBertQna(BaseModel):
-    ds_dir_paths: list[Path] = Field(
-        [],
-        description='Qrels datasets directory paths. Supported datasets: Msmarco, Fever.'
-                    'Naming convention: directory name must contain the name of dataset: msmarco, fever. Unknown datasets '
-                    'will cause an error and exit.',
-        cli=('--ds-dir-paths',),
-    )
     train_root_path: Path = Field(
         ...,
         description='Path to train root directory. New train subdirectory will be created within each new run.',
