@@ -20,7 +20,8 @@ from mllm.data.utils import HfDsIterator
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, is_arg_true, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR
 from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType, EncoderEmbDecoderConfig
 from mllm.model.encdec_ranker_hg import EncdecBert
-from mllm.train.embgen_bert_qna import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, QuesInp
+from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, \
+    QuesInp, get_eed_bert_model, get_wiki_ds_batch_iterators
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import reraise
 
@@ -170,38 +171,10 @@ def main(args: ArgsTrainEedBertQna) -> int:
 
     device = torch.device(args.device)
 
-    # model_name = 'google-bert/bert-base-uncased'
-    model_name = 'bert-base-uncased'
-
-    tkz = BertTokenizer.from_pretrained(model_name)
-    print(tkz)
-    enc_model: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(model_name, bos_token_id=101, eos_token_id=102)
-    # add cross attention layers and use BERT's cls token as BOS token and sep token as EOS token
-    dec_model: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
-        model_name, add_cross_attention=True, is_decoder=True, bos_token_id=101, eos_token_id=102
+    tkz, model = get_eed_bert_model(
+        inp_len=args.inp_len, ques_inp=args.ques_inp, enc_emb_exp_type=args.enc_emb_exp_type, enc_emb_exp_bias=args.enc_emb_exp_bias_bool,
+        batch_size=args.batch_size, device=device,
     )
-    enc_inp_batch_size = args.batch_size
-    if args.ques_inp == QuesInp.Enc:
-        enc_inp_batch_size += 1
-    model = EncoderEmbDecoderModel(
-        encoder=enc_model, decoder=dec_model, enc_emb_exp_type=args.enc_emb_exp_type, enc_emb_exp_bias=args.enc_emb_exp_bias_bool,
-        enc_inp_len=args.inp_len, enc_inp_batch_size=enc_inp_batch_size,
-    ).to(device)
-
-    wiki_ds_subdir = 'wikipedia'
-    dss = load_dataset(wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
-    ds = dss['train']
-    n_docs = len(ds)
-    print(f'Wikipedia {args.wiki_ds_name} docs: {n_docs}')
-
-    doc_inds = np.arange(n_docs)
-    # np.random.seed(777)
-    np.random.shuffle(doc_inds)
-    val_ratio = 0.05
-    n_docs_val = int(n_docs * val_ratio)
-    n_docs_train = n_docs - n_docs_val
-    doc_inds_train, doc_inds_val = doc_inds[:n_docs_train], doc_inds[n_docs_train:]
-
 
     prefix, postfix = gen_prefpostfix_embgen_bert(args, model.config)
     train_path = find_create_train_path(args.train_root_path, prefix, postfix, args.train_subdir)
@@ -214,10 +187,12 @@ def main(args: ArgsTrainEedBertQna) -> int:
             (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
              f'but file {last_checkpoint_path} does not exits.')
 
+    shuffle = False
     if last_checkpoint_path.exists():
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
+        shuffle = True
 
     if args.pretrained_model_path is not None and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
@@ -257,16 +232,10 @@ def main(args: ArgsTrainEedBertQna) -> int:
         val_loss_min = checkpoint['val_loss_min']
         np.random.seed(int(time.time() * 1000) % 10_000_000)
 
-    train_batch_it = HfDsIterator(
-        ds=ds, inds=doc_inds_train, inp_len=args.inp_len, pad_tok_ind=tkz.pad_token_id,
-        mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=args.batch_size, device=device,
-        preserve_edge_tokens=True,
-    ).get_batch_iterator()
-    val_batch_it = HfDsIterator(
-        ds=ds, inds=doc_inds_val, inp_len=args.inp_len, pad_tok_ind=tkz.pad_token_id,
-        mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=args.batch_size, device=device,
-        preserve_edge_tokens=True,
-    ).get_batch_iterator()
+    train_batch_it, val_batch_it = get_wiki_ds_batch_iterators(
+        wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
+        tkz=tkz, device=device, shuffle=shuffle,
+    )
 
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     prev_train_steps = args.train_epoch_steps * (last_epoch + 1)

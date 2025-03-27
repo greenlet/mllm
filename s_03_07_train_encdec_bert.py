@@ -19,6 +19,7 @@ from mllm.data.utils import HfDsIterator
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.model.losses import EncdecMaskPadLoss
+from mllm.train.embgen_bert import get_wiki_ds_batch_iterators
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 
 
@@ -157,20 +158,6 @@ def main(args: ArgsEncdecBertTrain) -> int:
         to_yaml_file(train_path / ENCDEC_BERT_MODEL_CFG_FNAME, model_cfg)
 
     tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
-    print(f'Loading Wikipedia dataset: {args.wiki_ds_name}')
-    wiki_ds_subdir = 'wikipedia'
-    dss = load_dataset(wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
-    ds = dss['train']
-    n_docs = len(ds)
-    print(f'Wikipedia {args.wiki_ds_name} docs: {n_docs}')
-
-    doc_inds = np.arange(n_docs)
-    # np.random.seed(777)
-    np.random.shuffle(doc_inds)
-    val_ratio = 0.05
-    n_docs_val = int(n_docs * val_ratio)
-    n_docs_train = n_docs - n_docs_val
-    doc_inds_train, doc_inds_val = doc_inds[:n_docs_train], doc_inds[n_docs_train:]
 
     print(model_cfg)
     model = EncdecBert(model_cfg).to(device)
@@ -184,30 +171,23 @@ def main(args: ArgsEncdecBertTrain) -> int:
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
-    last_epoch, val_loss_min = -1, None
+    last_epoch, val_loss_min, shuffle = -1, None, False
     if checkpoint is not None:
         model.load_state_dict(checkpoint['model'], strict=False)
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
-        np.random.shuffle(doc_inds_train)
-        np.random.shuffle(doc_inds_val)
+        shuffle = True
+
+    train_batch_it, val_batch_it = get_wiki_ds_batch_iterators(
+        wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
+        tkz=tkz, device=device, shuffle=shuffle,
+    )
 
     sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-7)
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
-
-    train_batch_it = HfDsIterator(
-        ds=ds, inds=doc_inds_train, inp_len=model_cfg.dec_pyr.inp_len, pad_tok_ind=tkz.pad_token_id,
-        mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=args.docs_batch_size, device=device,
-        preserve_edge_tokens=True,
-    ).get_batch_iterator()
-    val_batch_it = HfDsIterator(
-        ds=ds, inds=doc_inds_val, inp_len=model_cfg.dec_pyr.inp_len, pad_tok_ind=tkz.pad_token_id,
-        mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=args.docs_batch_size, device=device,
-        preserve_edge_tokens=True,
-    ).get_batch_iterator()
 
     loss_fn = EncdecMaskPadLoss(pad_tok_ind=tkz.pad_token_id, pad_weight=0.1)
 

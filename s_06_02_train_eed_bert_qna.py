@@ -19,7 +19,8 @@ from mllm.config.model import EncdecBertCfg
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, is_arg_true, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR
 from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType, EncoderEmbDecoderConfig
 from mllm.model.encdec_ranker_hg import EncdecBert
-from mllm.train.embgen_bert_qna import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, QuesInp
+from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, \
+    QuesInp, get_eed_bert_model
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import reraise
 
@@ -159,23 +160,10 @@ def main(args: ArgsTrainEedBertQna) -> int:
 
     device = torch.device(args.device)
 
-    # model_name = 'google-bert/bert-base-uncased'
-    model_name = 'bert-base-uncased'
-
-    tkz = BertTokenizer.from_pretrained(model_name)
-    print(tkz)
-    enc_model: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(model_name, bos_token_id=101, eos_token_id=102)
-    # add cross attention layers and use BERT's cls token as BOS token and sep token as EOS token
-    dec_model: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
-        model_name, add_cross_attention=True, is_decoder=True, bos_token_id=101, eos_token_id=102
+    tkz, model = get_eed_bert_model(
+        inp_len=args.inp_len, ques_inp=args.ques_inp, enc_emb_exp_type=args.enc_emb_exp_type, enc_emb_exp_bias=args.enc_emb_exp_bias_bool,
+        batch_size=args.batch_size, device=device,
     )
-    enc_inp_batch_size = args.batch_size
-    if args.ques_inp == QuesInp.Enc:
-        enc_inp_batch_size += 1
-    model = EncoderEmbDecoderModel(
-        encoder=enc_model, decoder=dec_model, enc_emb_exp_type=args.enc_emb_exp_type, enc_emb_exp_bias=args.enc_emb_exp_bias_bool,
-        enc_inp_len=args.inp_len, enc_inp_batch_size=enc_inp_batch_size,
-    ).to(device)
 
     val_ratio = 0.05
     df_sq = get_sq_df(exclude_empty_answers=not args.in_empty_ans_bool)

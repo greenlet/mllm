@@ -67,6 +67,9 @@ class BinVecsFile:
             self.opened = False
 
 
+AugTxtGen = Generator[tuple[torch.Tensor, torch.Tensor], None, None]
+
+
 class HfDsIterator:
     ds: Dataset
     inds: np.ndarray
@@ -138,7 +141,7 @@ class HfDsIterator:
         batch_toks, batch_toks_aug = self.get_batch_tokens(batch_inds)
         return batch_toks, batch_toks_aug, i_batch
 
-    def get_batch_iterator(self) -> Generator[tuple[torch.Tensor, torch.Tensor], None, None]:
+    def get_batch_iterator(self) -> AugTxtGen:
         i_batch = 0
         while True:
             batch_toks, batch_toks_aug, i_batch = self.get_batch(i_batch)

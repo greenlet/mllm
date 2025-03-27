@@ -1,14 +1,16 @@
 from enum import Enum
+from pathlib import Path
 from typing import Optional, Generator, Union
 
 import numpy as np
 import pandas as pd
 import torch
 from datasets import load_dataset
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizer, BertTokenizer, BertGenerationEncoder, BertGenerationDecoder
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 
-from mllm.model.embgen_bert import EncoderEmbDecoderModel
+from mllm.data.utils import HfDsIterator, AugTxtGen
+from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType
 
 
 class QuesInp(str, Enum):
@@ -306,5 +308,60 @@ def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> to
         return loss
 
     raise Exception(f'Question input type {batch.ques_inp} is not supported.')
+
+
+def get_eed_bert_model(inp_len: int, ques_inp: QuesInp, enc_emb_exp_type: EncEmbExpansionType, enc_emb_exp_bias: bool,
+                       batch_size: int, device: torch.device) -> tuple[PreTrainedTokenizer, EncoderEmbDecoderModel]:
+    # model_name = 'google-bert/bert-base-uncased'
+    model_name = 'bert-base-uncased'
+    tkz = BertTokenizer.from_pretrained(model_name)
+    print(tkz)
+    enc_model: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(model_name, bos_token_id=101, eos_token_id=102)
+    # add cross attention layers and use BERT's cls token as BOS token and sep token as EOS token
+    dec_model: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
+        model_name, add_cross_attention=True, is_decoder=True, bos_token_id=101, eos_token_id=102
+    )
+    enc_inp_batch_size = batch_size
+    if ques_inp == QuesInp.Enc:
+        enc_inp_batch_size += 1
+    model = EncoderEmbDecoderModel(
+        encoder=enc_model, decoder=dec_model, enc_emb_exp_type=enc_emb_exp_type, enc_emb_exp_bias=enc_emb_exp_bias,
+        enc_inp_len=inp_len, enc_inp_batch_size=enc_inp_batch_size,
+    ).to(device)
+    return tkz, model
+
+
+def get_wiki_ds_batch_iterators(
+        wiki_ds_name: str, data_path: Path, inp_len: int, docs_batch_size: int, tkz: PreTrainedTokenizer,
+        device: torch.device, shuffle: bool = False, val_ratio: float = 0.05) -> tuple[AugTxtGen, AugTxtGen]:
+    print(f'Loading Wikipedia dataset: {wiki_ds_name}')
+    wiki_ds_subdir = 'wikipedia'
+    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
+    ds = dss['train']
+    n_docs = len(ds)
+    print(f'Wikipedia {wiki_ds_name} docs: {n_docs}')
+
+    doc_inds = np.arange(n_docs)
+    # np.random.seed(777)
+    np.random.shuffle(doc_inds)
+    n_docs_val = int(n_docs * val_ratio)
+    n_docs_train = n_docs - n_docs_val
+    doc_inds_train, doc_inds_val = doc_inds[:n_docs_train].copy(), doc_inds[n_docs_train:].copy()
+
+    if shuffle:
+        np.random.shuffle(doc_inds_train)
+        np.random.shuffle(doc_inds_val)
+
+    train_batch_it = HfDsIterator(
+        ds=ds, inds=doc_inds_train, inp_len=inp_len, pad_tok_ind=tkz.pad_token_id,
+        mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
+        preserve_edge_tokens=True,
+    ).get_batch_iterator()
+    val_batch_it = HfDsIterator(
+        ds=ds, inds=doc_inds_val, inp_len=inp_len, pad_tok_ind=tkz.pad_token_id,
+        mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
+        preserve_edge_tokens=True,
+    ).get_batch_iterator()
+    return train_batch_it, val_batch_it
 
 
