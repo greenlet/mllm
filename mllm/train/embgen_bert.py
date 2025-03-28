@@ -5,12 +5,13 @@ from typing import Optional, Generator, Union
 import numpy as np
 import pandas as pd
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 from transformers import PreTrainedTokenizer, BertTokenizer, BertGenerationEncoder, BertGenerationDecoder
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 
 from mllm.data.utils import HfDsIterator, AugTxtGen
 from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType
+from mllm.train.utils import mask_random_tokens
 
 
 class QuesInp(str, Enum):
@@ -329,6 +330,89 @@ def get_eed_bert_model(inp_len: int, ques_inp: QuesInp, enc_emb_exp_type: EncEmb
         enc_inp_len=inp_len, enc_inp_batch_size=enc_inp_batch_size,
     ).to(device)
     return tkz, model
+
+
+class EedWikiIterator:
+    ds: Dataset
+    inds: np.ndarray
+    inp_len: int
+    pad_tok_ind: int
+    mask_tok_repr: str
+    tkz: PreTrainedTokenizer
+    docs_batch_size: int
+    device: torch.device
+    preserve_edge_tokens: bool
+    rem_freq: float = 0.5
+    rem_conseq_freq: float = 1
+
+    def __init__(self, ds: Dataset, inds: np.ndarray, inp_len: int, pad_tok_ind: int, mask_tok_repr: str, tkz: PreTrainedTokenizer,
+                 docs_batch_size: int, device: torch.device, preserve_edge_tokens: bool = False):
+        self.ds = ds
+        self.inds = inds.copy()
+        self.inp_len = inp_len
+        self.pad_tok_ind = pad_tok_ind
+        self.mask_tok_repr = mask_tok_repr
+        self.tkz = tkz
+        self.docs_batch_size = docs_batch_size
+        self.device = device
+        self.preserve_edge_tokens = preserve_edge_tokens
+
+    def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
+        docs_toks = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
+        docs_toks_aug = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
+        i_rnd = np.random.randint(len(doc_inds))
+        for i, doc_ind in enumerate(doc_inds):
+            doc = self.ds[int(doc_ind)]
+            title, text = doc['title'], doc['text']
+            # if np.random.rand() < 1 / 4:
+            #     doc_txt: str = title
+            # else:
+            #     doc_txt: str = text
+            # doc_txt = f'{title} {text}'
+            doc_txt = text
+            doc_toks = self.tkz(doc_txt)['input_ids']
+            doc_toks = np.array(doc_toks)
+            n_toks = len(doc_toks)
+            if n_toks > self.inp_len:
+                if self.preserve_edge_tokens:
+                    i_off = np.random.randint(1, n_toks - self.inp_len + 1)
+                    doc_toks = np.concatenate([doc_toks[:1], doc_toks[i_off:i_off + self.inp_len - 2], doc_toks[-1:]])
+                else:
+                    i_off = np.random.randint(n_toks - self.inp_len + 1)
+                    doc_toks = doc_toks[i_off:i_off + self.inp_len]
+            docs_toks[i, :len(doc_toks)] = doc_toks
+
+            if i == i_rnd:
+                if self.preserve_edge_tokens:
+                    doc_toks_aug[1:-1] = mask_random_tokens(doc_toks_aug[1:-1], self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq)
+                else:
+                    doc_toks_aug = mask_random_tokens(doc_toks, self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq)
+                docs_toks_aug[i, :len(doc_toks_aug)] = doc_toks_aug
+            else:
+                docs_toks_aug[i, :len(doc_toks)] = doc_toks
+
+        docs_toks_t = torch.from_numpy(docs_toks).to(self.device)
+        docs_toks_aug_t = torch.from_numpy(docs_toks_aug).to(self.device)
+        return docs_toks_t, docs_toks_aug_t
+
+    def get_batch(self, i_batch: int) -> tuple[torch.Tensor, torch.Tensor, int]:
+        i1 = i_batch * self.docs_batch_size
+        i2 = i1 + self.docs_batch_size
+        batch_inds = self.inds[i1:i2].copy()
+        rest_batch_size = self.docs_batch_size - len(batch_inds)
+        if rest_batch_size > 0:
+            batch_inds = np.concatenate([batch_inds, self.inds[:rest_batch_size].copy()])
+        if i2 >= len(batch_inds):
+            i_batch = 0
+            np.random.shuffle(self.inds)
+        batch_toks, batch_toks_aug = self.get_batch_tokens(batch_inds)
+        return batch_toks, batch_toks_aug, i_batch
+
+    def get_batch_iterator(self) -> AugTxtGen:
+        i_batch = 0
+        while True:
+            batch_toks, batch_toks_aug, i_batch = self.get_batch(i_batch)
+            yield batch_toks, batch_toks_aug
 
 
 def get_wiki_ds_batch_iterators(

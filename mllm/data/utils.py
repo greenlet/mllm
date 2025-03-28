@@ -131,10 +131,10 @@ class HfDsIterator:
     def get_batch(self, i_batch: int) -> tuple[torch.Tensor, torch.Tensor, int]:
         i1 = i_batch * self.docs_batch_size
         i2 = i1 + self.docs_batch_size
-        batch_inds = self.inds[i1:i2]
+        batch_inds = self.inds[i1:i2].copy()
         rest_batch_size = self.docs_batch_size - len(batch_inds)
         if rest_batch_size > 0:
-            batch_inds = batch_inds + self.inds[:rest_batch_size * self.docs_batch_size]
+            batch_inds = np.concatenate([batch_inds, self.inds[:rest_batch_size].copy()])
         if i2 >= len(batch_inds):
             i_batch = 0
             np.random.shuffle(self.inds)

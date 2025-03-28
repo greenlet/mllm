@@ -193,15 +193,15 @@ def mask_random_tokens(toks: np.ndarray, tkz: PreTrainedTokenizer, rem_freq: flo
     res = toks.copy()
     rv = np.random.rand()
     n_total = len(res)
-    if rv < 1 - (rem_freq + rem_conseq_freq):
+    if rv > rem_freq + rem_conseq_freq:
         return res
 
     if n_total < 5:
         return res
 
-    if rv < 1 - rem_conseq_freq:
+    if rv <= rem_freq:
         mask: np.ndarray = np.random.rand(n_total) <= rem_prob
-    else:
+    elif rv <= rem_freq + rem_conseq_freq:
         rem_conseq_times = np.random.randint(1, rem_conseq_max_times + 1)
         rem_interval = n_total // rem_conseq_times
         off = 0
