@@ -342,7 +342,7 @@ class EedWikiIterator:
     docs_batch_size: int
     device: torch.device
     preserve_edge_tokens: bool
-    rem_freq: float = 0.5
+    rem_freq: float = 0
     rem_conseq_freq: float = 1
 
     def __init__(self, ds: Dataset, inds: np.ndarray, inp_len: int, pad_tok_ind: int, mask_tok_repr: str, tkz: PreTrainedTokenizer,
@@ -358,8 +358,8 @@ class EedWikiIterator:
         self.preserve_edge_tokens = preserve_edge_tokens
 
     def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
-        docs_toks = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
         docs_toks_aug = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
+        docs_toks_tgt = np.full((self.inp_len,), self.pad_tok_ind)
         i_rnd = np.random.randint(len(doc_inds))
         for i, doc_ind in enumerate(doc_inds):
             doc = self.ds[int(doc_ind)]
@@ -379,21 +379,22 @@ class EedWikiIterator:
                     doc_toks = np.concatenate([doc_toks[:1], doc_toks[i_off:i_off + self.inp_len - 2], doc_toks[-1:]])
                 else:
                     i_off = np.random.randint(n_toks - self.inp_len + 1)
-                    doc_toks = doc_toks[i_off:i_off + self.inp_len]
-            docs_toks[i, :len(doc_toks)] = doc_toks
+                    doc_toks = doc_toks[i_off:i_off + self.inp_len].copy()
 
             if i == i_rnd:
+                toks_tgt = doc_toks.copy()
                 if self.preserve_edge_tokens:
-                    doc_toks_aug[1:-1] = mask_random_tokens(doc_toks_aug[1:-1], self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq)
+                    doc_toks[1:-1] = mask_random_tokens(doc_toks[1:-1], self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq)
                 else:
-                    doc_toks_aug = mask_random_tokens(doc_toks, self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq)
-                docs_toks_aug[i, :len(doc_toks_aug)] = doc_toks_aug
-            else:
-                docs_toks_aug[i, :len(doc_toks)] = doc_toks
+                    doc_toks = mask_random_tokens(doc_toks, self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq)
+                toks_tgt = toks_tgt[doc_toks == self.tkz.mask_token_id]
+                docs_toks_tgt[:len(toks_tgt)] = toks_tgt
 
-        docs_toks_t = torch.from_numpy(docs_toks).to(self.device)
+            docs_toks_aug[i, :len(doc_toks)] = doc_toks
+
         docs_toks_aug_t = torch.from_numpy(docs_toks_aug).to(self.device)
-        return docs_toks_t, docs_toks_aug_t
+        docs_toks_tgt_t = torch.from_numpy(docs_toks_tgt).to(self.device)
+        return docs_toks_aug_t, docs_toks_tgt_t
 
     def get_batch(self, i_batch: int) -> tuple[torch.Tensor, torch.Tensor, int]:
         i1 = i_batch * self.docs_batch_size
@@ -436,16 +437,45 @@ def get_wiki_ds_batch_iterators(
         np.random.shuffle(doc_inds_train)
         np.random.shuffle(doc_inds_val)
 
-    train_batch_it = HfDsIterator(
+    train_batch_it = EedWikiIterator(
         ds=ds, inds=doc_inds_train, inp_len=inp_len, pad_tok_ind=tkz.pad_token_id,
         mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
         preserve_edge_tokens=True,
     ).get_batch_iterator()
-    val_batch_it = HfDsIterator(
+    val_batch_it = EedWikiIterator(
         ds=ds, inds=doc_inds_val, inp_len=inp_len, pad_tok_ind=tkz.pad_token_id,
         mask_tok_repr=tkz.mask_token, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
         preserve_edge_tokens=True,
     ).get_batch_iterator()
     return train_batch_it, val_batch_it
 
+
+# docs_toks_aug: [n_batch, seq_len]
+# docs_toks_tgt: [n_tgt]
+def run_eed_model_on_masked_input(model: EncoderEmbDecoderModel, tkz: PreTrainedTokenizer, docs_toks_aug: torch.Tensor, docs_toks_tgt: torch.Tensor) -> torch.Tensor:
+    assert tkz.pad_token_id == 0, f'pad_token_id = {tkz.pad_token_id}'
+    device = docs_toks_aug.device
+    enc_toks_inp = docs_toks_tgt
+    enc_toks_inp_mask = (enc_toks_inp > 0).to(device)
+    # [n_batch, seq_len] -> [n_batch, seq_len, d_model]
+    enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=enc_toks_inp, attention_mask=enc_toks_inp_mask)
+    enc_lhs = enc_out.last_hidden_state
+    model.config.enc_emb_exp_type = EncEmbExpansionType.Emb
+    # model.config.enc_emb_exp_type = EncEmbExpansionType.Emb: [n_batch, seq_len, d_model] -> [n_batch, d_model]
+    # model.config.enc_emb_exp_type = EncEmbExpansionType.Mat: [n_batch, seq_len, d_model] -> [seq_len, d_model]
+    # [n_batch, seq_len, d_model] -> [dec_seq_len, d_model]
+    enc_emb = model.run_expansion(enc_lhs)
+
+    n_tgt = len(docs_toks_tgt)
+    # [n_tgt] -> [n_tgt, n_tgt]
+    dec_toks = docs_toks_tgt.repeat(n_tgt, 1)
+    dec_toks_inp = torch.tril(dec_toks)
+    dec_tgt_mask = torch.eye(n_tgt, dtype=torch.bool, device=device)
+    dec_toks_inp[dec_tgt_mask] = tkz.mask_token_id
+    dec_toks_inp_mask = (dec_toks_inp > 0).to(device)
+    dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
+        input_ids=dec_toks_inp, attention_mask=dec_toks_inp_mask, encoder_hidden_states=enc_emb, use_cache=False,
+    )
+    loss = qna_loss(dec_out.logits, dec_toks, dec_tgt_mask)
+    return loss
 

@@ -246,8 +246,7 @@ def main(args: ArgsTrainEedBertQna) -> int:
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch: QnaBatch = next(train_batch_it)
-            batch.gen_tensors()
+            docs_toks, docs_toks_aug = next(train_batch_it)
 
             optimizer.zero_grad()
             loss = run_eed_model_on_batch(model, batch)
