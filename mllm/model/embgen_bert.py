@@ -308,8 +308,6 @@ class EncoderEmbDecoderModel(PreTrainedModel):
                 "following discussion on GitHub: https://github.com/huggingface/transformers/issues/23350"
             )
 
-        self.emb_mat_width = None
-        self.emb_mat_height = None
         if self.config.enc_emb_exp_type == EncEmbExpansionType.Mat:
             cfg_gen: BertGenerationConfig = self.config.encoder
             d_model, inp_len, inp_batch_size = cfg_gen.hidden_size, self.config.enc_inp_len, self.config.enc_inp_batch_size
@@ -317,9 +315,16 @@ class EncoderEmbDecoderModel(PreTrainedModel):
             assert inp_batch_size > 0, f'inp_batch_size (={inp_batch_size}) must be positive integer'
             self.emb_mat_width = nn.Linear(in_features=d_model, out_features=inp_len * d_model, bias=self.config.enc_emb_exp_bias)
             self.emb_mat_height = nn.Linear(in_features=inp_batch_size * d_model, out_features=d_model, bias=self.config.enc_emb_exp_bias)
+        else:
+            self.emb_mat_width = None
+            self.emb_mat_height = None
 
         # tie encoder, decoder weights if config set accordingly
         self.tie_weights()
+
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
 
     def tie_weights(self):
         # tie encoder & decoder if needed

@@ -2,8 +2,7 @@
 code_path=$HOME/prog
 data_path=$HOME/data
 wiki_ds_name=20200501.en
-train_root_path=$data_path/train_mllm_eed_bert_qna
-train_encdec_root_path=$data_path/train_mllm_encdec_bert
+train_root_path=$data_path/train_mllm_eed_bert_txt
 
 mllm_src_path=$code_path/mllm
 
@@ -19,10 +18,10 @@ device=cuda
 epochs=500
 train_epoch_steps=500
 val_epoch_steps=50
-#batch_size=10
-batch_size=5
+batch_size=10
+#batch_size=5
 
-pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+#pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 #train_subdir=last
 #in_empty_ans=true
 in_empty_ans=false

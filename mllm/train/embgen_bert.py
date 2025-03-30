@@ -238,7 +238,10 @@ def qna_loss(logits: torch.Tensor, tokens: torch.Tensor, tgt_mask: torch.Tensor)
     tgt_toks = tokens[tgt_mask][..., None]
     tok_probs = torch.gather(tgt_probs, dim=-1, index=tgt_toks)
     tok_logs = torch.log(tok_probs).reshape(len(tgt_mask))
-    loss = -(0.99 * torch.mean(tok_logs[:-1]) + 0.01 * tok_logs[-1])
+    if len(tok_logs) > 1:
+        loss = -(0.95 * torch.mean(tok_logs[:-1]) + 0.05 * tok_logs[-1])
+    else:
+        loss = -tok_logs[0]
     return loss
 
 
@@ -344,6 +347,8 @@ class EedWikiIterator:
     preserve_edge_tokens: bool
     rem_freq: float = 0
     rem_conseq_freq: float = 1
+    rem_conseq_max_len: int = 30
+    rem_conseq_max_times: int = 1
 
     def __init__(self, ds: Dataset, inds: np.ndarray, inp_len: int, pad_tok_ind: int, mask_tok_repr: str, tkz: PreTrainedTokenizer,
                  docs_batch_size: int, device: torch.device, preserve_edge_tokens: bool = False):
@@ -359,7 +364,7 @@ class EedWikiIterator:
 
     def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
         docs_toks_aug = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
-        docs_toks_tgt = np.full((self.inp_len,), self.pad_tok_ind)
+        docs_toks_tgt = None
         i_rnd = np.random.randint(len(doc_inds))
         for i, doc_ind in enumerate(doc_inds):
             doc = self.ds[int(doc_ind)]
@@ -384,11 +389,16 @@ class EedWikiIterator:
             if i == i_rnd:
                 toks_tgt = doc_toks.copy()
                 if self.preserve_edge_tokens:
-                    doc_toks[1:-1] = mask_random_tokens(doc_toks[1:-1], self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq)
+                    doc_toks[1:-1] = mask_random_tokens(
+                        doc_toks[1:-1], self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq,
+                        rem_conseq_max_len=self.rem_conseq_max_len, rem_conseq_max_times=self.rem_conseq_max_times,
+                    )
                 else:
-                    doc_toks = mask_random_tokens(doc_toks, self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq)
-                toks_tgt = toks_tgt[doc_toks == self.tkz.mask_token_id]
-                docs_toks_tgt[:len(toks_tgt)] = toks_tgt
+                    doc_toks = mask_random_tokens(
+                        doc_toks, self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq,
+                        rem_conseq_max_len=self.rem_conseq_max_len, rem_conseq_max_times=self.rem_conseq_max_times,
+                    )
+                docs_toks_tgt = np.concatenate([toks_tgt[doc_toks == self.tkz.mask_token_id], [self.tkz.sep_token_id]])
 
             docs_toks_aug[i, :len(doc_toks)] = doc_toks
 
@@ -455,12 +465,11 @@ def get_wiki_ds_batch_iterators(
 def run_eed_model_on_masked_input(model: EncoderEmbDecoderModel, tkz: PreTrainedTokenizer, docs_toks_aug: torch.Tensor, docs_toks_tgt: torch.Tensor) -> torch.Tensor:
     assert tkz.pad_token_id == 0, f'pad_token_id = {tkz.pad_token_id}'
     device = docs_toks_aug.device
-    enc_toks_inp = docs_toks_tgt
+    enc_toks_inp = docs_toks_aug
     enc_toks_inp_mask = (enc_toks_inp > 0).to(device)
     # [n_batch, seq_len] -> [n_batch, seq_len, d_model]
     enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=enc_toks_inp, attention_mask=enc_toks_inp_mask)
     enc_lhs = enc_out.last_hidden_state
-    model.config.enc_emb_exp_type = EncEmbExpansionType.Emb
     # model.config.enc_emb_exp_type = EncEmbExpansionType.Emb: [n_batch, seq_len, d_model] -> [n_batch, d_model]
     # model.config.enc_emb_exp_type = EncEmbExpansionType.Mat: [n_batch, seq_len, d_model] -> [seq_len, d_model]
     # [n_batch, seq_len, d_model] -> [dec_seq_len, d_model]

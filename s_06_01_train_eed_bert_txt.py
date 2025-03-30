@@ -21,7 +21,7 @@ from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, is_arg_true, ARG_TRUE_VAL
 from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType, EncoderEmbDecoderConfig
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, \
-    QuesInp, get_eed_bert_model, get_wiki_ds_batch_iterators
+    QuesInp, get_eed_bert_model, get_wiki_ds_batch_iterators, run_eed_model_on_masked_input
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import reraise
 
@@ -125,8 +125,8 @@ class ArgsTrainEedBertQna(BaseModel):
     )
 
 
-def gen_prefpostfix_embgen_bert(args: ArgsTrainEedBertQna, bert_cfg: EncoderEmbDecoderConfig) -> tuple[str, str]:
-    prefix = 'eedbert'
+def gen_prefpostfix_embgen_bert_txt(args: ArgsTrainEedBertQna, bert_cfg: EncoderEmbDecoderConfig) -> tuple[str, str]:
+    prefix = 'eedbert_txt'
 
     # Model name
     model_name = bert_cfg.encoder.name_or_path.replace('-', '_')
@@ -138,9 +138,6 @@ def gen_prefpostfix_embgen_bert(args: ArgsTrainEedBertQna, bert_cfg: EncoderEmbD
     # Train with or wihout empty answers
     emp_ans = str(args.in_empty_ans_bool)[0].lower()
     postfix_parts.append(f'emp_{emp_ans}')
-
-    # Where question goes as an input: encoder, decoder
-    postfix_parts.append(f'qi_{args.ques_inp}')
 
     exp_str = f'exp_{bert_cfg.enc_emb_exp_type}'
     if bert_cfg.enc_emb_exp_bias:
@@ -176,7 +173,7 @@ def main(args: ArgsTrainEedBertQna) -> int:
         batch_size=args.batch_size, device=device,
     )
 
-    prefix, postfix = gen_prefpostfix_embgen_bert(args, model.config)
+    prefix, postfix = gen_prefpostfix_embgen_bert_txt(args, model.config)
     train_path = find_create_train_path(args.train_root_path, prefix, postfix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -233,7 +230,7 @@ def main(args: ArgsTrainEedBertQna) -> int:
         np.random.seed(int(time.time() * 1000) % 10_000_000)
 
     train_batch_it, val_batch_it = get_wiki_ds_batch_iterators(
-        wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
+        wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.batch_size,
         tkz=tkz, device=device, shuffle=shuffle,
     )
 
@@ -246,10 +243,10 @@ def main(args: ArgsTrainEedBertQna) -> int:
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            docs_toks, docs_toks_aug = next(train_batch_it)
+            docs_toks_aug, docs_toks_tgt = next(train_batch_it)
 
             optimizer.zero_grad()
-            loss = run_eed_model_on_batch(model, batch)
+            loss = run_eed_model_on_masked_input(model, tkz, docs_toks_aug, docs_toks_tgt)
             loss.backward()
             optimizer.step()
 
@@ -278,8 +275,9 @@ def main(args: ArgsTrainEedBertQna) -> int:
         val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            batch: QnaBatch = next(val_batch_it)
-            loss = run_eed_model_on_batch(model, batch)
+            docs_toks_aug, docs_toks_tgt = next(val_batch_it)
+            with torch.no_grad():
+                loss = run_eed_model_on_masked_input(model, tkz, docs_toks_aug, docs_toks_tgt)
             if torch.isnan(loss):
                 print(f'Loss is nan!!!')
                 import sys
