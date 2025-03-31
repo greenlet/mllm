@@ -303,6 +303,13 @@ class EmbGenBertCfg(BaseModel):
     emb_type: BertEmbType = BertEmbType.Cls
 
 
+class EncmixBertCfg(BaseModel):
+    inp_len: int
+    d_model: int
+    pad_token_id: int
+    pretrained_model_name: str = ''
+    tokenizer_name: str = ''
+
 
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
 
@@ -574,6 +581,51 @@ def create_encdecrnk_bert_cfg(
     return cfg_encdecrnk_bert
 
 
+def create_encmix_bert_cfg(
+        pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', inp_len = 128,
+) -> EncmixBertCfg:
+    model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
+    bert_cfg: BertConfig = model.config
+    # BertConfig
+    # {
+    #     "_name_or_path": "bert-base-uncased",
+    #     "architectures": [
+    #         "BertForMaskedLM"
+    #     ],
+    #     "attention_probs_dropout_prob": 0.1,
+    #     "classifier_dropout": null,
+    #     "gradient_checkpointing": false,
+    #     "hidden_act": "gelu",
+    #     "hidden_dropout_prob": 0.1,
+    #     "hidden_size": 768,
+    #     "initializer_range": 0.02,
+    #     "intermediate_size": 3072,
+    #     "layer_norm_eps": 1e-12,
+    #     "max_position_embeddings": 512,
+    #     "model_type": "bert",
+    #     "num_attention_heads": 12,
+    #     "num_hidden_layers": 12,
+    #     "pad_token_id": 0,
+    #     "position_embedding_type": "absolute",
+    #     "transformers_version": "4.42.4",
+    #     "type_vocab_size": 2,
+    #     "use_cache": true,
+    #     "vocab_size": 30522
+    # }
+    d_model = bert_cfg.hidden_size
+    n_heads = bert_cfg.num_attention_heads
+    n_vocab = bert_cfg.vocab_size
+    pad_token_id = bert_cfg.pad_token_id
+
+    tokenizer_name = tokenizer_name or pretrained_model_name
+
+    cfg_enc_mix_bert = EncmixBertCfg(
+        inp_len=inp_len, d_model=d_model, pad_token_id=pad_token_id, pretrained_model_name=pretrained_model_name,
+        tokenizer_name=tokenizer_name,
+    )
+    return cfg_enc_mix_bert
+
+
 def copy_override_encdec_hg_cfg(
         cfg: EncdecHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
         enhance_type: HgEnhanceType = HgEnhanceType.Matmul, pos_enc_type: PosEncType = PosEncType.Num, dropout_rate: float = 0.0,
@@ -695,6 +747,16 @@ def copy_override_encdecrnk_bert_cfg(
     )
 
 
+def copy_override_encmix_bert_cfg(
+        cfg: EncmixBertCfg, inp_len: int = 0,
+) -> EncmixBertCfg:
+    inp_len = inp_len or cfg.inp_len
+
+    return create_encmix_bert_cfg(
+        pretrained_model_name=cfg.pretrained_model_name, tokenizer_name=cfg.tokenizer_name, inp_len=inp_len,
+    )
+
+
 def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
     prefix = f'encdechg'
     enc, dec = model_cfg.enc_pyr, model_cfg.dec_pyr
@@ -789,4 +851,22 @@ def gen_prefpostfix_encdecrnk_bert(model_cfg: EncdecRankBertCfg) -> tuple[str, s
                f'step{dec_pyr.step}-h{dec_pyr.n_heads}-dp{dp_rate}-t{temp}-dmlp_{dec_mlp_layers}')
 
     return prefix, postfix
+
+
+def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg) -> tuple[str, str]:
+    prefix, postfix_parts = f'encmixbert', []
+
+    bert_str = model_cfg.pretrained_model_name.replace('_', '_')
+    if model_cfg.tokenizer_name != model_cfg.pretrained_model_name:
+        tkz_name = model_cfg.tokenizer_name.replace('-', '_')
+        bert_str = f'{bert_str}-{tkz_name}'
+    postfix_parts.append(bert_str)
+
+    postfix_parts.append(f'd{model_cfg.d_model}')
+
+    postfix_parts.append(f'inp{model_cfg.inp_len}')
+
+    postfix = '-'.join(postfix_parts)
+    return prefix, postfix
+
 

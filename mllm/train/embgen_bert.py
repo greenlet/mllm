@@ -323,7 +323,8 @@ def get_eed_bert_model(inp_len: int, ques_inp: QuesInp, enc_emb_exp_type: EncEmb
     enc_model: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(model_name, bos_token_id=101, eos_token_id=102)
     # add cross attention layers and use BERT's cls token as BOS token and sep token as EOS token
     dec_model: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
-        model_name, add_cross_attention=True, is_decoder=True, bos_token_id=101, eos_token_id=102
+        model_name, add_cross_attention=True, is_decoder=True, bos_token_id=101, eos_token_id=102,
+        tie_word_embeddings=False,
     )
     enc_inp_batch_size = batch_size
     if ques_inp == QuesInp.Enc:
