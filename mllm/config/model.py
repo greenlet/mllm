@@ -306,7 +306,6 @@ class EmbGenBertCfg(BaseModel):
 class EncmixBertCfg(BaseModel):
     inp_len: int
     d_model: int
-    pad_token_id: int
     pretrained_model_name: str = ''
     tokenizer_name: str = ''
 
@@ -620,7 +619,7 @@ def create_encmix_bert_cfg(
     tokenizer_name = tokenizer_name or pretrained_model_name
 
     cfg_enc_mix_bert = EncmixBertCfg(
-        inp_len=inp_len, d_model=d_model, pad_token_id=pad_token_id, pretrained_model_name=pretrained_model_name,
+        inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name,
         tokenizer_name=tokenizer_name,
     )
     return cfg_enc_mix_bert

@@ -1,0 +1,4 @@
+d_model: 768
+inp_len: 128
+pretrained_model_name: bert-base-uncased
+tokenizer_name: bert-base-uncased

@@ -10,6 +10,7 @@ ENCDEC_HG_MODEL_CFG_FNAME = 'encdec_hg_model_cfg.yaml'
 RANKER_HG_MODEL_CFG_FNAME = 'ranker_hg_model_cfg.yaml'
 ENCDEC_BERT_MODEL_CFG_FNAME = 'encdec_bert_model_cfg.yaml'
 RANKER_BERT_MODEL_CFG_FNAME = 'ranker_bert_model_cfg.yaml'
+ENCMIX_BERT_MODEL_CFG_FNAME = 'encmix_bert_model_cfg.yaml'
 
 
 ARG_TRUE_VALUES = ('true', 't', 'yes', 'y', '1')
