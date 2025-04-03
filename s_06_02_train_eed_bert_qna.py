@@ -1,3 +1,4 @@
+import itertools
 import shutil
 import time
 from pathlib import Path
@@ -202,7 +203,7 @@ def main(args: ArgsTrainEedBertQna) -> int:
         # strict = True
         strict = False
         model.encoder.load_state_dict(state_dict, strict=strict)
-        for t in state_dict.values():
+        for t in itertools.chain(state_dict.values(), pretrained_checkpoint['optimizer']):
             t.to('cpu')
         del state_dict
         del pretrained_checkpoint

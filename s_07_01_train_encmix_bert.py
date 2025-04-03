@@ -1,3 +1,4 @@
+import itertools
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -18,8 +19,9 @@ from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec
 from mllm.data.utils import HfDsIterator
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecBert
+from mllm.model.encmix import EncmixBert
 from mllm.model.losses import EncdecMaskPadLoss
-from mllm.train.embgen_bert import get_wiki_ds_batch_iterators
+from mllm.train.embgen_bert import get_wiki_ds_batch_iterators, qna_loss
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 
 
@@ -130,10 +132,10 @@ def main(args: ArgsEncmixBertTrain) -> int:
     else:
         to_yaml_file(train_path / ENCMIX_BERT_MODEL_CFG_FNAME, model_cfg)
 
-    tkz = AutoTokenizer.from_pretrained(model_cfg.pretrained_model_name)
-#
+    tkz = AutoTokenizer.from_pretrained(model_cfg.tokenizer_name)
+
     print(model_cfg)
-    model = EncdecBert(model_cfg).to(device)
+    model = EncmixBert(model_cfg, device=device)
 
     if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
@@ -151,6 +153,9 @@ def main(args: ArgsEncmixBertTrain) -> int:
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
         shuffle = True
+        for t in itertools.chain(checkpoint['model'].values(), checkpoint['optimizer'].values()):
+            t.to('cpu')
+        del checkpoint
 
     train_batch_it, val_batch_it = get_wiki_ds_batch_iterators(
         wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
@@ -162,7 +167,7 @@ def main(args: ArgsEncmixBertTrain) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    loss_fn = EncdecMaskPadLoss(pad_tok_ind=tkz.pad_token_id, pad_weight=0.1)
+    loss_fn = qna_loss
 
     print(model)
 
@@ -173,12 +178,10 @@ def main(args: ArgsEncmixBertTrain) -> int:
         grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
     for epoch in range(last_epoch + 1, args.epochs):
         model.train()
-        train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
+        train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp, tokens_inp_aug = next(train_batch_it)
-            # tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
-            # tokens_inp_aug = tokens_inp
+            docs_toks_aug, docs_toks_tgt = next(train_batch_it)
 
             optimizer.zero_grad()
             mask = tokens_inp_aug != tkz.pad_token_id

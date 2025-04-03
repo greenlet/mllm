@@ -179,7 +179,7 @@ class BertEmbeddings(nn.Module):
 
     def forward(
         self,
-        # input_embs: [n_batch, n_embs, hidden_size]. If not zero added to the beginning before adding
+        # inputs_first_embs: [n_batch, n_embs, hidden_size]. If not zero added to the beginning before adding
         # position and position type embeddings
         inputs_first_embeds: Optional[torch.FloatTensor] = None,
         input_ids: Optional[torch.LongTensor] = None,
@@ -1013,6 +1013,7 @@ class MixBertModel(BertPreTrainedModel):
     def forward(
         self,
         input_ids: Optional[torch.Tensor] = None,
+        inputs_starting_embeds: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         token_type_ids: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
@@ -1066,6 +1067,8 @@ class MixBertModel(BertPreTrainedModel):
             input_shape = inputs_embeds.size()[:-1]
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
+        if inputs_starting_embeds is not None:
+            input_shape = input_shape[0], input_shape[1] + inputs_starting_embeds[1]
 
         batch_size, seq_length = input_shape
         device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -1083,6 +1086,7 @@ class MixBertModel(BertPreTrainedModel):
 
         embedding_output = self.embeddings(
             input_ids=input_ids,
+            inputs_starting_embeds=inputs_starting_embeds,
             position_ids=position_ids,
             token_type_ids=token_type_ids,
             inputs_embeds=inputs_embeds,
