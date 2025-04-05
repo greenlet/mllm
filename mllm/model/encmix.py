@@ -37,7 +37,7 @@ class EncmixBert(nn.Module):
     # chunk_toks: [n_chunks, seq_len]
     # plain_toks: [n_plain_toks]
     # target_toks: [n_target_toks]
-    def run_chunks_plain_seq(self, chunk_toks: torch.Tensor, plain_toks: Optional[torch.Tensor], target_toks: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def run_chunks_plain_seq(self, chunk_toks: torch.Tensor, plain_toks: Optional[torch.Tensor] = None, target_toks: Optional[torch.Tensor] = None) -> torch.Tensor:
         n_chunks = chunk_toks.shape[0]
         chunk_toks_mask = chunk_toks != self.tkz.pad_token_id
         # [n_chunks, seq_len] -> [n_chunks, seq_len, d_model]

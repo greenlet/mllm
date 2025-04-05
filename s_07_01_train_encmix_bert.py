@@ -21,7 +21,7 @@ from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNA
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.model.encmix import EncmixBert
 from mllm.model.losses import EncdecMaskPadLoss
-from mllm.train.embgen_bert import get_wiki_ds_batch_iterators, qna_loss
+from mllm.train.embgen_bert import get_wiki_ds_batch_iterators, qna_loss, gen_loss
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 
 
@@ -167,7 +167,7 @@ def main(args: ArgsEncmixBertTrain) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    loss_fn = qna_loss
+    loss_fn = gen_loss
 
     print(model)
 
@@ -184,8 +184,9 @@ def main(args: ArgsEncmixBertTrain) -> int:
             docs_toks_aug, docs_toks_tgt = next(train_batch_it)
 
             optimizer.zero_grad()
-            mask = tokens_inp_aug != tkz.pad_token_id
-            out_logits = model(tokens_inp_aug, mask)
+            out_logits = model.run_chunks_plain_seq(
+                chunk_toks=docs_toks_aug, target_toks=docs_toks_tgt,
+            )
             loss = loss_fn(out_logits, tokens_inp)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss

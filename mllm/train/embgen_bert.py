@@ -245,6 +245,19 @@ def qna_loss(logits: torch.Tensor, tokens: torch.Tensor, tgt_mask: torch.Tensor)
     return loss
 
 
+# logits: [n_batch, n_seq, d_model]
+# tokens: [n_batch, n_seq]
+def gen_loss(logits: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+    probs = torch.softmax(logits, dim=-1)
+    probs = torch.gather(probs, dim=-1, index=tokens)
+    logs = torch.log(probs)
+    if len(logs) > 1:
+        loss = -(0.95 * torch.mean(logs[:-1]) + 0.05 * logs[-1])
+    else:
+        loss = -logs[0]
+    return loss
+
+
 BatchIt = Generator[QnaBatch, None, None]
 
 def get_sq_batch_iterator(
