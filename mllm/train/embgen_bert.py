@@ -245,9 +245,11 @@ def qna_loss(logits: torch.Tensor, tokens: torch.Tensor, tgt_mask: torch.Tensor)
     return loss
 
 
-# logits: [n_batch, n_seq, d_model]
-# tokens: [n_batch, n_seq]
-def gen_loss(logits: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
+# logits: [n_batch, n_seq, d_model] or [n_seq, d_model]
+# tokens: [n_batch, n_seq] or [n_seq]
+# tokens[..., -1] = sep_tok_id
+def gen_loss(logits: torch.Tensor, tokens: torch.Tensor, sep_token_id: int = 102) -> torch.Tensor:
+    assert torch.all(tokens[..., -1] == sep_token_id)
     probs = torch.softmax(logits, dim=-1)
     probs = torch.gather(probs, dim=-1, index=tokens)
     logs = torch.log(probs)

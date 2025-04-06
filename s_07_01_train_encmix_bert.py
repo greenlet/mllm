@@ -6,23 +6,18 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.utils.tensorboard as tb
-from datasets import load_dataset
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
-from transformers import AutoTokenizer
 
-from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
-    gen_prefpostfix_encdec_bert, EncmixBertCfg, copy_override_encmix_bert_cfg, gen_prefpostfix_encmix_bert
-from mllm.data.utils import HfDsIterator
+from mllm.config.model import EncdecBertCfg, EncmixBertCfg, copy_override_encmix_bert_cfg, gen_prefpostfix_encmix_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNAME
-from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.model.encmix import EncmixBert
-from mllm.model.losses import EncdecMaskPadLoss
-from mllm.train.embgen_bert import get_wiki_ds_batch_iterators, qna_loss, gen_loss
+from mllm.train.embgen_bert import get_wiki_ds_batch_iterators, gen_loss
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
+from transformers import AutoTokenizer
 
 
 class ArgsEncmixBertTrain(BaseModel):
@@ -171,7 +166,6 @@ def main(args: ArgsEncmixBertTrain) -> int:
 
     print(model)
 
-    loss_gt, loss_nongt = None, None
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
     if prev_train_steps > 0:
@@ -187,9 +181,7 @@ def main(args: ArgsEncmixBertTrain) -> int:
             out_logits = model.run_chunks_plain_seq(
                 chunk_toks=docs_toks_aug, target_toks=docs_toks_tgt,
             )
-            loss = loss_fn(out_logits, tokens_inp)
-            if type(loss) == tuple:
-                loss_gt, loss_nongt, loss = loss
+            loss = loss_fn(out_logits, docs_toks_tgt)
 
             loss.backward()
             # Gradients must be available after loss.backward()
@@ -200,59 +192,37 @@ def main(args: ArgsEncmixBertTrain) -> int:
 
             optimizer.step()
             train_loss += loss.item()
-            if loss_gt is not None:
-                train_loss_gt += loss_gt.item()
-                train_loss_nongt += loss_nongt.item()
 
             # if i_train == 2:
             #     import sys
             #     sys.exit()
 
             s = f'Train. loss: {loss.item():.6f}'
-            if loss_gt is not None:
-                s += f'. loss_gt: {loss_gt.item():.6f}. loss_nongt: {loss_nongt.item():.6f}'
             pbar.set_postfix_str(s)
         pbar.close()
         train_loss /= args.train_epoch_steps
         tbsw.add_scalar('Loss/Train', train_loss, epoch)
-        if loss_gt is not None:
-            train_loss_gt /= args.train_epoch_steps
-            train_loss_nongt /= args.train_epoch_steps
-            tbsw.add_scalar('LossGt/Train', train_loss_gt, epoch)
-            tbsw.add_scalar('LossNongt/Train', train_loss_nongt, epoch)
 
         model.eval()
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-        val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
+        val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp, _ = next(val_batch_it)
+            docs_toks_aug, docs_toks_tgt = next(val_batch_it)
 
-            mask = tokens_inp != tkz.pad_token_id
-            out_logits = model(tokens_inp, mask)
-            loss = loss_fn(out_logits, tokens_inp)
-            if type(loss) == tuple:
-                loss_gt, loss_nongt, loss = loss
-
+            out_logits = model.run_chunks_plain_seq(
+                chunk_toks=docs_toks_aug, target_toks=docs_toks_tgt,
+            )
+            loss = loss_fn(out_logits, docs_toks_tgt)
             val_loss += loss.item()
-            if loss_gt is not None:
-                val_loss_gt += loss_gt.item()
-                val_loss_nongt += loss_nongt.item()
 
             s = f'Val. loss: {loss.item():.6f}'
-            if loss_gt is not None:
-                s += f'. loss_gt: {loss_gt.item():.6f}. loss_nongt: {loss_nongt.item():.6f}'
             pbar.set_postfix_str(s)
         pbar.close()
         val_loss /= args.val_epoch_steps
         tbsw.add_scalar('Loss/Val', val_loss, epoch)
-        if loss_gt is not None:
-            val_loss_gt /= args.val_epoch_steps
-            val_loss_nongt /= args.val_epoch_steps
-            tbsw.add_scalar('LossGt/Val', val_loss_gt, epoch)
-            tbsw.add_scalar('LossNongt/Val', val_loss_nongt, epoch)
 
         if epoch >= sched_wait_steps:
             scheduler.step(val_loss)
@@ -286,5 +256,5 @@ def main(args: ArgsEncmixBertTrain) -> int:
 if __name__ == '__main__':
     def rethrow(e):
         raise e
-    run_and_exit(ArgsEncmixBertTrain, main, 'Train Encoder-Decoder Hourglass model.', exception_handler=rethrow)
+    run_and_exit(ArgsEncmixBertTrain, main, 'Train EncmixBert model to predict masked input.', exception_handler=rethrow)
 
