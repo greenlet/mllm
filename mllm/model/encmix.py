@@ -73,7 +73,8 @@ class EncmixBert(nn.Module):
 
         toks_inp_mask = toks_inp != self.tkz.pad_token_id
         chunks_mask = torch.ones((n_target_toks, n_chunks), dtype=torch.bool, device=self.device)
-        inp_mask = np.concatenate([chunks_mask, toks_inp_mask])
+        # [n_target_toks, n_chunks], [n_target_toks, n_plain_toks + n_target_toks] -> [n_target_toks, n_chunks + n_plain_toks + n_target_toks]
+        inp_mask = torch.concatenate([chunks_mask, toks_inp_mask], dim=1)
         mix_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
             inputs_starting_embeds=chunks_emb, input_ids=toks_inp, attention_mask=inp_mask,
         )

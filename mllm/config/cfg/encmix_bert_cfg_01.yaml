@@ -1,4 +1,5 @@
 d_model: 768
 inp_len: 128
+out_embs_type: inp
 pretrained_model_name: bert-base-uncased
 tokenizer_name: bert-base-uncased

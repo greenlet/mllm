@@ -303,11 +303,18 @@ class EmbGenBertCfg(BaseModel):
     emb_type: BertEmbType = BertEmbType.Cls
 
 
+class EncmixOutEmbsType(str, Enum):
+    Non = 'non'
+    Inp = 'inp'
+    New = 'new'
+
+
 class EncmixBertCfg(BaseModel):
     inp_len: int
     d_model: int
     pretrained_model_name: str = ''
     tokenizer_name: str = ''
+    out_embs_type: EncmixOutEmbsType = EncmixOutEmbsType.Non
 
 
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
@@ -582,6 +589,7 @@ def create_encdecrnk_bert_cfg(
 
 def create_encmix_bert_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', inp_len = 128,
+        out_embs_type: EncmixOutEmbsType = EncmixOutEmbsType.Non,
 ) -> EncmixBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -620,7 +628,7 @@ def create_encmix_bert_cfg(
 
     cfg_enc_mix_bert = EncmixBertCfg(
         inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name,
-        tokenizer_name=tokenizer_name,
+        tokenizer_name=tokenizer_name, out_embs_type=out_embs_type,
     )
     return cfg_enc_mix_bert
 
@@ -747,12 +755,14 @@ def copy_override_encdecrnk_bert_cfg(
 
 
 def copy_override_encmix_bert_cfg(
-        cfg: EncmixBertCfg, inp_len: int = 0,
+        cfg: EncmixBertCfg, inp_len: int = 0, out_embs_type: Optional[EncmixOutEmbsType] = None,
 ) -> EncmixBertCfg:
     inp_len = inp_len or cfg.inp_len
+    out_embs_type = out_embs_type or cfg.out_embs_type
 
     return create_encmix_bert_cfg(
         pretrained_model_name=cfg.pretrained_model_name, tokenizer_name=cfg.tokenizer_name, inp_len=inp_len,
+        out_embs_type=out_embs_type,
     )
 
 
@@ -864,6 +874,9 @@ def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg) -> tuple[str, str]:
     postfix_parts.append(f'd{model_cfg.d_model}')
 
     postfix_parts.append(f'inp{model_cfg.inp_len}')
+
+    out_embs_type_str = f'oemb_{model_cfg.out_embs_type.value}'
+    postfix_parts.append(out_embs_type_str)
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix

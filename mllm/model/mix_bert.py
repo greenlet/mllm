@@ -1068,7 +1068,7 @@ class MixBertModel(BertPreTrainedModel):
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
         if inputs_starting_embeds is not None:
-            input_shape = input_shape[0], input_shape[1] + inputs_starting_embeds[1]
+            input_shape = input_shape[0], inputs_starting_embeds.shape[1] + input_shape[1]
 
         batch_size, seq_length = input_shape
         device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -1086,7 +1086,7 @@ class MixBertModel(BertPreTrainedModel):
 
         embedding_output = self.embeddings(
             input_ids=input_ids,
-            inputs_starting_embeds=inputs_starting_embeds,
+            inputs_first_embeds=inputs_starting_embeds,
             position_ids=position_ids,
             token_type_ids=token_type_ids,
             inputs_embeds=inputs_embeds,

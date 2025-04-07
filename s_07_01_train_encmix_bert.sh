@@ -35,7 +35,7 @@ random_seed=200
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-#echo "
+echo "
 python s_07_01_train_encmix_bert.py \
   --data-path $data_path \
   --wiki-ds-name $wiki_ds_name \
@@ -50,5 +50,5 @@ python s_07_01_train_encmix_bert.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed
-#"
+"
 

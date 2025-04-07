@@ -250,6 +250,8 @@ def qna_loss(logits: torch.Tensor, tokens: torch.Tensor, tgt_mask: torch.Tensor)
 # tokens[..., -1] = sep_tok_id
 def gen_loss(logits: torch.Tensor, tokens: torch.Tensor, sep_token_id: int = 102) -> torch.Tensor:
     assert torch.all(tokens[..., -1] == sep_token_id)
+    if tokens.ndim == 1:
+        tokens = tokens.unsqueeze(-1)
     probs = torch.softmax(logits, dim=-1)
     probs = torch.gather(probs, dim=-1, index=tokens)
     logs = torch.log(probs)

@@ -130,7 +130,7 @@ def main(args: ArgsEncmixBertTrain) -> int:
     tkz = AutoTokenizer.from_pretrained(model_cfg.tokenizer_name)
 
     print(model_cfg)
-    model = EncmixBert(model_cfg, device=device)
+    model = EncmixBert(model_cfg, tkz=tkz, device=device)
 
     if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
@@ -159,7 +159,9 @@ def main(args: ArgsEncmixBertTrain) -> int:
 
     sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-7)
-    print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
+    # lr = scheduler.get_last_lr()[0]
+    lr = optimizer.param_groups[0]['lr']
+    print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
     loss_fn = gen_loss
@@ -226,7 +228,8 @@ def main(args: ArgsEncmixBertTrain) -> int:
 
         if epoch >= sched_wait_steps:
             scheduler.step(val_loss)
-        last_lr = scheduler.get_last_lr()[0]
+        # last_lr = scheduler.get_last_lr()[0]
+        last_lr = optimizer.param_groups[0]['lr']
         tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
         print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
