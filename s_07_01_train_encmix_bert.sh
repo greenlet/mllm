@@ -14,6 +14,7 @@ train_root_path=$data_path/train_mllm_encmix_bert
 
 inp_len=128
 #inp_len=256
+out_embs_type=inp
 
 device=cpu
 epochs=5
@@ -21,12 +22,12 @@ train_epoch_steps=20
 val_epoch_steps=20
 docs_batch_size=5
 
-#device=cuda
-#epochs=700
-#train_epoch_steps=500
-#val_epoch_steps=50
-#docs_batch_size=15
-##train_subdir=last
+device=cuda
+epochs=700
+train_epoch_steps=500
+val_epoch_steps=50
+docs_batch_size=15
+#train_subdir=last
 
 learning_rate=0.0001
 learning_rate=0.00005
@@ -35,7 +36,7 @@ random_seed=200
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-echo "
+#echo "
 python s_07_01_train_encmix_bert.py \
   --data-path $data_path \
   --wiki-ds-name $wiki_ds_name \
@@ -43,6 +44,7 @@ python s_07_01_train_encmix_bert.py \
   --train-subdir "$train_subdir" \
   --model-cfg-fpath $model_cfg_fpath \
   --inp-len $inp_len \
+  --out-embs-type $out_embs_type \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \
@@ -50,5 +52,5 @@ python s_07_01_train_encmix_bert.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed
-"
+#"
 

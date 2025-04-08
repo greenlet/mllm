@@ -5,7 +5,7 @@ from typing import Optional
 from transformers import BertModel, PreTrainedTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 
-from mllm.config.model import EncmixBertCfg
+from mllm.config.model import EncmixBertCfg, EncmixOutEmbsType
 from mllm.model.mix_bert import MixBertModel
 
 if '..' not in sys.path: sys.path.append('..')
@@ -34,7 +34,12 @@ class EncmixBert(nn.Module):
         print(self.bert_model)
         assert self.tkz.pad_token_id == 0, f'pad_token_id = {self.tkz.pad_token_id}'
 
-    # chunk_toks: [n_chunks, seq_len]
+        if self.cfg.out_embs_type == EncmixOutEmbsType.New:
+            self.out_word_embeddings = nn.Linear(self.cfg.d_model, self.tkz.vocab_size, bias=False)
+        else:
+            self.out_word_embeddings = None
+
+            # chunk_toks: [n_chunks, seq_len]
     # plain_toks: [n_plain_toks]
     # target_toks: [n_target_toks]
     # out_logits: [n_target_toks]
@@ -74,12 +79,28 @@ class EncmixBert(nn.Module):
         toks_inp_mask = toks_inp != self.tkz.pad_token_id
         chunks_mask = torch.ones((n_target_toks, n_chunks), dtype=torch.bool, device=self.device)
         # [n_target_toks, n_chunks], [n_target_toks, n_plain_toks + n_target_toks] -> [n_target_toks, n_chunks + n_plain_toks + n_target_toks]
+        # seq_len_out = n_chunks + n_plain_toks + n_target_toks
+        # [n_target_toks, seq_len_out]
         inp_mask = torch.concatenate([chunks_mask, toks_inp_mask], dim=1)
         mix_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
             inputs_starting_embeds=chunks_emb, input_ids=toks_inp, attention_mask=inp_mask,
         )
 
-        out_logits = mix_out.last_hidden_state[:, n_chunks + n_plain_toks:][target_mask]
+        # [n_target_toks, seq_len_out, d_model]
+        lhs = mix_out.last_hidden_state
+        # [n_target_toks, d_model]
+        out_logits = lhs[:, n_chunks + n_plain_toks:][target_mask]
+        if self.cfg.out_embs_type == EncmixOutEmbsType.Non:
+            pass
+        elif self.cfg.out_embs_type == EncmixOutEmbsType.Inp:
+            # [d_model, vocab_size]
+            wemb_weights = self.bert_model.embeddings.word_embeddings.weight
+            # [n_target_toks, vocab_size]
+            out_logits = out_logits @ wemb_weights.T
+        else:
+            # [n_target_toks, vocab_size]
+            out_logits = self.out_word_embeddings(out_logits)
+
         return out_logits
 
 

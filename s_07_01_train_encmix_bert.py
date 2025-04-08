@@ -12,7 +12,8 @@ from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import EncdecBertCfg, EncmixBertCfg, copy_override_encmix_bert_cfg, gen_prefpostfix_encmix_bert
+from mllm.config.model import EncdecBertCfg, EncmixBertCfg, copy_override_encmix_bert_cfg, gen_prefpostfix_encmix_bert, \
+    EncmixOutEmbsType
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.encmix import EncmixBert
 from mllm.train.embgen_bert import get_wiki_ds_batch_iterators, gen_loss
@@ -51,6 +52,11 @@ class ArgsEncmixBertTrain(BaseModel):
         ...,
         description='Input tokens number. Must be a power of 2. INP_LEN = 2^k will produce model with k layers.',
         cli=('--inp-len',),
+    )
+    out_embs_type: EncmixOutEmbsType = Field(
+        EncmixOutEmbsType.Non,
+        description=f'Out embeddings type. Possible values: {[t.value for t in EncmixOutEmbsType]}.',
+        cli=('--out-embs-type',),
     )
     docs_batch_size: int = Field(
         3,
@@ -104,7 +110,7 @@ def main(args: ArgsEncmixBertTrain) -> int:
 
     model_cfg = parse_yaml_file_as(EncmixBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_encmix_bert_cfg(
-        model_cfg, inp_len=args.inp_len,
+        model_cfg, inp_len=args.inp_len, out_embs_type=args.out_embs_type,
     )
 
     prefix, suffix = gen_prefpostfix_encmix_bert(model_cfg)
