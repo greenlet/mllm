@@ -6,7 +6,8 @@ wiki_ds_name=20200501.en
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
-model_cfg_fname=encmix_bert_cfg_01.yaml
+model_cfg_fname=encmix_bert_cfg_01_base.yaml
+model_cfg_fname=encmix_bert_cfg_02_large.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
@@ -15,12 +16,13 @@ train_root_path=$data_path/train_mllm_encmix_bert
 inp_len=128
 #inp_len=256
 out_embs_type=inp
+#out_embs_type=new
 
-device=cpu
-epochs=5
-train_epoch_steps=20
-val_epoch_steps=20
-docs_batch_size=5
+#device=cpu
+#epochs=5
+#train_epoch_steps=20
+#val_epoch_steps=20
+#docs_batch_size=5
 
 device=cuda
 epochs=700

@@ -19,8 +19,7 @@ from mllm.data.utils import HfDsIterator
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.model.losses import EncdecMaskPadLoss
-from mllm.train.embgen_bert import get_wiki_ds_batch_iterators
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators
 
 
 class ArgsEncdecBertTrain(BaseModel):

@@ -20,9 +20,9 @@ from mllm.config.model import EncdecBertCfg
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, is_arg_true, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR
 from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType, EncoderEmbDecoderConfig
 from mllm.model.encdec_ranker_hg import EncdecBert
-from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, \
-    QuesInp, get_eed_bert_model
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats
+from mllm.train.embgen_bert import run_eed_model_on_batch, get_eed_bert_model
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, QnaQuesInp, QnaBatch, get_squadv2_df, \
+    split_df, get_squadv2_batch_iterator
 from mllm.utils.utils import reraise
 
 
@@ -64,9 +64,9 @@ class ArgsTrainEedBertQna(BaseModel):
     def in_empty_ans_bool(self) -> bool:
         return is_arg_true('--in-empty-ans', self.in_empty_ans)
 
-    ques_inp: QuesInp = Field(
+    ques_inp: QnaQuesInp = Field(
         ...,
-        description=f'Question input type: {list(qi for qi in QuesInp)}.',
+        description=f'Question input type: {list(qi for qi in QnaQuesInp)}.',
         cli = ('--ques-inp',)
     )
     enc_emb_exp_type: EncEmbExpansionType = Field(
@@ -167,7 +167,7 @@ def main(args: ArgsTrainEedBertQna) -> int:
     )
 
     val_ratio = 0.05
-    df_sq = get_sq_df(exclude_empty_answers=not args.in_empty_ans_bool)
+    df_sq = get_squadv2_df(exclude_empty_answers=not args.in_empty_ans_bool)
     df_sq_t, df_sq_v = split_df(df_sq, val_ratio=val_ratio)
     print(f'n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
 
@@ -225,8 +225,8 @@ def main(args: ArgsTrainEedBertQna) -> int:
         val_loss_min = checkpoint['val_loss_min']
         np.random.seed(int(time.time() * 1000) % 10_000_000)
 
-    train_batch_it = get_sq_batch_iterator(df_sq=df_sq_t, tkz=tkz, batch_size=args.batch_size, inp_len=args.inp_len, device=device, ques_inp=args.ques_inp)
-    val_batch_it = get_sq_batch_iterator(df_sq=df_sq_v, tkz=tkz, batch_size=args.batch_size, inp_len=args.inp_len, device=device, ques_inp=args.ques_inp)
+    train_batch_it = get_squadv2_batch_iterator(df_sq=df_sq_t, tkz=tkz, batch_size=args.batch_size, inp_len=args.inp_len, device=device, ques_inp=args.ques_inp)
+    val_batch_it = get_squadv2_batch_iterator(df_sq=df_sq_v, tkz=tkz, batch_size=args.batch_size, inp_len=args.inp_len, device=device, ques_inp=args.ques_inp)
 
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     prev_train_steps = args.train_epoch_steps * (last_epoch + 1)

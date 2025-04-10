@@ -20,9 +20,9 @@ from mllm.data.utils import HfDsIterator
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, is_arg_true, ARG_TRUE_VALUES_STR, ARG_FALSE_VALUES_STR
 from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType, EncoderEmbDecoderConfig
 from mllm.model.encdec_ranker_hg import EncdecBert
-from mllm.train.embgen_bert import QnaBatch, get_sq_batch_iterator, run_eed_model_on_batch, get_sq_df, split_df, \
-    QuesInp, get_eed_bert_model, get_wiki_ds_batch_iterators, run_eed_model_on_masked_input
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats
+from mllm.train.embgen_bert import run_eed_model_on_batch, get_eed_bert_model, run_eed_model_on_masked_input
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, QnaQuesInp, \
+    QnaBatch, get_squadv2_df, split_df, get_squadv2_batch_iterator
 from mllm.utils.utils import reraise
 
 
@@ -74,9 +74,9 @@ class ArgsTrainEedBertQna(BaseModel):
     def in_empty_ans_bool(self) -> bool:
         return is_arg_true('--in-empty-ans', self.in_empty_ans)
 
-    ques_inp: QuesInp = Field(
+    ques_inp: QnaQuesInp = Field(
         ...,
-        description=f'Question input type: {list(qi for qi in QuesInp)}.',
+        description=f'Question input type: {list(qi for qi in QnaQuesInp)}.',
         cli = ('--ques-inp',)
     )
     enc_emb_exp_type: EncEmbExpansionType = Field(
@@ -268,10 +268,10 @@ def main(args: ArgsTrainEedBertQna) -> int:
         train_loss /= args.train_epoch_steps
         tbsw.add_scalar('Loss/Train', train_loss, epoch)
 
+        model.eval()
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-        model.eval()
         val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:

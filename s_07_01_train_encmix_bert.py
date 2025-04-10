@@ -13,11 +13,11 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import EncdecBertCfg, EncmixBertCfg, copy_override_encmix_bert_cfg, gen_prefpostfix_encmix_bert, \
-    EncmixOutEmbsType
+    EncmixOutEmbsType, EncmixTrainDsType
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.encmix import EncmixBert
-from mllm.train.embgen_bert import get_wiki_ds_batch_iterators, gen_loss
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, QnaQuesInp, \
+    get_squadv2_df, split_df, gen_loss, get_squadv2_batch_iterator, get_squadv2_tensor_iterators
 from transformers import AutoTokenizer
 
 
@@ -31,6 +31,11 @@ class ArgsEncmixBertTrain(BaseModel):
         '20200501.en',
         description='Wikipedia dataset name of the format YYYYMMDD.LANG, for example: 20220301.en',
         cli=('--wiki-ds-name',),
+    )
+    train_ds_type: EncmixTrainDsType = Field(
+        EncmixTrainDsType.Msk,
+        description=f'Train dataset type, one of: {[tds.value for tds in EncmixTrainDsType]}',
+        cli=('--train-ds-type',),
     )
     train_root_path: Path = Field(
         ...,
@@ -113,7 +118,7 @@ def main(args: ArgsEncmixBertTrain) -> int:
         model_cfg, inp_len=args.inp_len, out_embs_type=args.out_embs_type,
     )
 
-    prefix, suffix = gen_prefpostfix_encmix_bert(model_cfg)
+    prefix, suffix = gen_prefpostfix_encmix_bert(model_cfg, train_ds_type=args.train_ds_type)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -158,10 +163,17 @@ def main(args: ArgsEncmixBertTrain) -> int:
             t.to('cpu')
         del checkpoint
 
-    train_batch_it, val_batch_it = get_wiki_ds_batch_iterators(
-        wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
-        tkz=tkz, device=device, shuffle=shuffle,
-    )
+    val_ratio = 0.05
+    if args.train_ds_type == EncmixTrainDsType.Msk:
+        train_batch_it, val_batch_it = get_wiki_ds_batch_iterators(
+            wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
+            tkz=tkz, device=device, shuffle=shuffle, val_ratio=val_ratio,
+        )
+    else:
+        train_batch_it, val_batch_it = get_squadv2_tensor_iterators(
+            inp_len=args.inp_len, batch_size=args.docs_batch_size, ques_inp=QnaQuesInp.Dec, exclude_empty_answers=True,
+            tkz=tkz, device=device, val_ratio=val_ratio,
+        )
 
     sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-7)
@@ -183,11 +195,11 @@ def main(args: ArgsEncmixBertTrain) -> int:
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            docs_toks_aug, docs_toks_tgt = next(train_batch_it)
+            docs_toks_aug, plain_toks, docs_toks_tgt, _ = next(train_batch_it)
 
             optimizer.zero_grad()
             out_logits = model.run_chunks_plain_seq(
-                chunk_toks=docs_toks_aug, target_toks=docs_toks_tgt,
+                chunk_toks=docs_toks_aug, plain_toks=plain_toks, target_toks=docs_toks_tgt,
             )
             loss = loss_fn(out_logits, docs_toks_tgt)
 
@@ -218,12 +230,13 @@ def main(args: ArgsEncmixBertTrain) -> int:
         val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            docs_toks_aug, docs_toks_tgt = next(val_batch_it)
+            docs_toks_aug, plain_toks, docs_toks_tgt, _ = next(val_batch_it)
 
-            out_logits = model.run_chunks_plain_seq(
-                chunk_toks=docs_toks_aug, target_toks=docs_toks_tgt,
-            )
-            loss = loss_fn(out_logits, docs_toks_tgt)
+            with torch.no_grad():
+                out_logits = model.run_chunks_plain_seq(
+                    chunk_toks=docs_toks_aug, plain_toks=plain_toks, target_toks=docs_toks_tgt,
+                )
+                loss = loss_fn(out_logits, docs_toks_tgt)
             val_loss += loss.item()
 
             s = f'Val. loss: {loss.item():.6f}'

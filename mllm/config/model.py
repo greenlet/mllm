@@ -317,6 +317,11 @@ class EncmixBertCfg(BaseModel):
     out_embs_type: EncmixOutEmbsType = EncmixOutEmbsType.Non
 
 
+class EncmixTrainDsType(str, Enum):
+    Msk = 'msk'
+    Qna = 'qna'
+
+
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
 
 
@@ -862,7 +867,7 @@ def gen_prefpostfix_encdecrnk_bert(model_cfg: EncdecRankBertCfg) -> tuple[str, s
     return prefix, postfix
 
 
-def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg) -> tuple[str, str]:
+def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg, train_ds_type: Optional[EncmixTrainDsType] = None) -> tuple[str, str]:
     prefix, postfix_parts = f'encmixbert', []
 
     bert_str = model_cfg.pretrained_model_name.replace('_', '_')
@@ -877,6 +882,9 @@ def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg) -> tuple[str, str]:
 
     out_embs_type_str = f'oemb_{model_cfg.out_embs_type.value}'
     postfix_parts.append(out_embs_type_str)
+
+    if train_ds_type:
+        postfix_parts.append(f'ds_{train_ds_type.value}')
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix

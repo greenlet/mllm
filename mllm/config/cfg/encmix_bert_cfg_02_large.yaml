@@ -1,0 +1,5 @@
+d_model: 1024
+inp_len: 128
+out_embs_type: inp
+pretrained_model_name: bert-large-uncased
+tokenizer_name: bert-large-uncased

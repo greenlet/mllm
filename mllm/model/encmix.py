@@ -31,15 +31,25 @@ class EncmixBert(nn.Module):
         self.bert_model = MixBertModel.from_pretrained(
             self.cfg.pretrained_model_name, torch_dtype=torch.float32, device_map=self.device,
         )
-        print(self.bert_model)
+        # print(self.bert_model)
         assert self.tkz.pad_token_id == 0, f'pad_token_id = {self.tkz.pad_token_id}'
 
         if self.cfg.out_embs_type == EncmixOutEmbsType.New:
-            self.out_word_embeddings = nn.Linear(self.cfg.d_model, self.tkz.vocab_size, bias=False)
+            self.out_word_embeddings = nn.Linear(self.cfg.d_model, self.tkz.vocab_size, bias=False, device=self.device)
         else:
             self.out_word_embeddings = None
 
-            # chunk_toks: [n_chunks, seq_len]
+        self._init_params()
+
+    def _init_params(self):
+        if self.out_word_embeddings is not None:
+            # for n, p in self.out_word_embeddings.named_parameters():
+            #     if p.dim() > 1:
+            #         nn.init.xavier_uniform_(p)
+            # print(self.out_word_embeddings.weight.shape, self.bert_model.embeddings.word_embeddings.weight.shape)
+            self.out_word_embeddings.weight = nn.Parameter(self.bert_model.embeddings.word_embeddings.weight.clone(), requires_grad=True)
+
+    # chunk_toks: [n_chunks, seq_len]
     # plain_toks: [n_plain_toks]
     # target_toks: [n_target_toks]
     # out_logits: [n_target_toks]
@@ -90,6 +100,7 @@ class EncmixBert(nn.Module):
         lhs = mix_out.last_hidden_state
         # [n_target_toks, d_model]
         out_logits = lhs[:, n_chunks + n_plain_toks:][target_mask]
+        # out_logits = lhs[:, 1:n_target_toks + 1][target_mask]
         if self.cfg.out_embs_type == EncmixOutEmbsType.Non:
             pass
         elif self.cfg.out_embs_type == EncmixOutEmbsType.Inp:
