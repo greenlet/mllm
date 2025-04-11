@@ -7,7 +7,7 @@ wiki_ds_name=20200501.en
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fname=encmix_bert_cfg_01_base.yaml
-model_cfg_fname=encmix_bert_cfg_02_large.yaml
+#model_cfg_fname=encmix_bert_cfg_02_large.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
@@ -15,20 +15,21 @@ train_root_path=$data_path/train_mllm_encmix_bert
 
 inp_len=128
 #inp_len=256
-out_embs_type=inp
-#out_embs_type=new
+#out_embs_type=inp
+out_embs_type=new
+train_ds_type=qna
 
 #device=cpu
 #epochs=5
 #train_epoch_steps=20
 #val_epoch_steps=20
-#docs_batch_size=5
+#batch_size=5
 
 device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=15
+batch_size=15
 #train_subdir=last
 
 learning_rate=0.0001
@@ -42,12 +43,13 @@ cd "$mllm_src_path" || exit 1
 python s_07_01_train_encmix_bert.py \
   --data-path $data_path \
   --wiki-ds-name $wiki_ds_name \
+  --train-ds-type $train_ds_type \
   --train-root-path $train_root_path \
   --train-subdir "$train_subdir" \
   --model-cfg-fpath $model_cfg_fpath \
   --inp-len $inp_len \
   --out-embs-type $out_embs_type \
-  --docs-batch-size $docs_batch_size \
+  --batch-size $batch_size \
   --device $device \
   --epochs $epochs \
   --learning-rate $learning_rate \

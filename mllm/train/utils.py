@@ -463,16 +463,16 @@ class QnaBatch:
             assert q_toks[-1] == a_toks[-1] == self.tkz.sep_token_id, f'q_toks[-1] = {q_toks[-1]}. a_toks[-1] = {a_toks[-1]}'
             q_toks, a_toks = q_toks[0:-1], a_toks[1:]
 
-            # TODO: parametrize
-            if self.ques_inp == QnaQuesInp.Dec:
-                if len(a_toks) > 18:
-                    a_toks = a_toks[:17] + a_toks[-1:]
-                if len(a_toks) > 10 and len(q_toks) + len(a_toks) > 30:
-                    if len(q_toks) > 20:
-                        q_toks = q_toks[:1] + q_toks[-19:]
-                    a_toks = a_toks[:9] + a_toks[-1:]
-            elif self.ques_inp == QnaQuesInp.Enc and len(a_toks) > 20:
-                a_toks = a_toks[:-19] + a_toks[-1:]
+            # # TODO: parametrize
+            # if self.ques_inp == QnaQuesInp.Dec:
+            #     if len(a_toks) > 18:
+            #         a_toks = a_toks[:17] + a_toks[-1:]
+            #     if len(a_toks) > 10 and len(q_toks) + len(a_toks) > 30:
+            #         if len(q_toks) > 20:
+            #             q_toks = q_toks[:1] + q_toks[-19:]
+            #         a_toks = a_toks[:9] + a_toks[-1:]
+            # elif self.ques_inp == QnaQuesInp.Enc and len(a_toks) > 20:
+            #     a_toks = a_toks[:-19] + a_toks[-1:]
 
             assert len(a_toks) > 1 and a_toks[0] != self.tkz.cls_token_id and a_toks[-1] == self.tkz.sep_token_id, \
                 f'a_toks must contain at least one content token and SEP token at the end. a_toks = {a_toks}'
@@ -481,20 +481,19 @@ class QnaBatch:
 
 
             qa_toks = [*q_toks, self.tkz.sep_token_id, *a_toks]
-            qa_len = len(qa_toks)
-            qa_len_sq = qa_len**2
-            a_len = len(a_toks)
 
-            # TODO: parametrize
-            if self.ques_inp == QnaQuesInp.Dec and \
-                    (qas_sq_cum + qa_len_sq >= 2800 or as_cum + a_len > 25 or qas_cum + qa_len > 10000):
-                continue
-            if self.ques_inp == QnaQuesInp.Enc and as_cum + a_len > 30:
-                continue
-
-            qas_cum += qa_len
-            qas_sq_cum += qa_len_sq
-            as_cum += a_len
+            # # TODO: parametrize
+            # qa_len = len(qa_toks)
+            # qa_len_sq = qa_len**2
+            # a_len = len(a_toks)
+            # if self.ques_inp == QnaQuesInp.Dec and \
+            #         (qas_sq_cum + qa_len_sq >= 2800 or as_cum + a_len > 25 or qas_cum + qa_len > 10000):
+            #     continue
+            # if self.ques_inp == QnaQuesInp.Enc and as_cum + a_len > 30:
+            #     continue
+            # qas_cum += qa_len
+            # qas_sq_cum += qa_len_sq
+            # as_cum += a_len
 
             if self.ques_inp == QnaQuesInp.Enc:
                 assert q_toks[-1] != self.tkz.sep_token_id
@@ -544,14 +543,14 @@ class QnaBatch:
         ctxs_all = np.concatenate(ctxs)
         self.ctx_toks = ctxs_all
 
-        ctxs_lens = np.array([len(c) for c in ctxs])
-        qas_lens = np.array([len(qa) for qa in self.qa_toks])
-        qs_lens = np.array([len(q) for q in self.q_toks])
-        as_lens = np.array([len(a) for a in self.a_toks])
-        print(f'Contexts: {ctxs_lens}. {ctxs_all.shape}')
-        print(f'QAs: {qas_lens}. {qas_lens.sum()}. {np.square(qas_lens).sum()}')
-        print(f'Qs: {qs_lens}. {qs_lens.sum()}. {np.square(qs_lens).sum()}')
-        print(f'As: {as_lens}. {as_lens.sum()}. {np.square(as_lens).sum()}')
+        # ctxs_lens = np.array([len(c) for c in ctxs])
+        # qas_lens = np.array([len(qa) for qa in self.qa_toks])
+        # qs_lens = np.array([len(q) for q in self.q_toks])
+        # as_lens = np.array([len(a) for a in self.a_toks])
+        # print(f'Contexts: {ctxs_lens}. {ctxs_all.shape}')
+        # print(f'QAs: {qas_lens}. {qas_lens.sum()}. {np.square(qas_lens).sum()}')
+        # print(f'Qs: {qs_lens}. {qs_lens.sum()}. {np.square(qs_lens).sum()}')
+        # print(f'As: {as_lens}. {as_lens.sum()}. {np.square(as_lens).sum()}')
 
     def _to_tensor_single(self, arr: np.ndarray) -> torch.Tensor:
         res = torch.from_numpy(arr)
@@ -655,6 +654,7 @@ def squadv2_batch_to_tensor_iterator(batch_it: BatchIt) -> ChunkTargetToksGen:
     for batch in batch_it:
         ctx_toks_t, (q_toks_t, a_toks_t, a_att_masks_t, a_tgt_masks_t) = batch.gen_tensors()
         for q_toks, a_toks in zip(q_toks_t, a_toks_t):
+            q_toks = q_toks[q_toks != batch.tkz.pad_token_id]
             yield ctx_toks_t, q_toks, a_toks, batch
 
 
@@ -667,10 +667,10 @@ def get_squadv2_tensor_iterators(
     print(f'Squad v2 n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
 
     train_batch_it = get_squadv2_batch_iterator(
-        df_sq=df_sq_t, tkz=tkz, batch_size=batch_size, inp_len=inp_len, device=device, ques_inp=ques_inp
+        df_sq=df_sq_t, tkz=tkz, batch_size=batch_size, inp_len=inp_len, device=device, ques_inp=ques_inp,
     )
     val_batch_it = get_squadv2_batch_iterator(
-        df_sq=df_sq_v, tkz=tkz, batch_size=batch_size, inp_len=inp_len, device=device, ques_inp=ques_inp
+        df_sq=df_sq_v, tkz=tkz, batch_size=batch_size, inp_len=inp_len, device=device, ques_inp=ques_inp,
     )
     return squadv2_batch_to_tensor_iterator(train_batch_it), squadv2_batch_to_tensor_iterator(val_batch_it)
 

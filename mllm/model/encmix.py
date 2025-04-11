@@ -82,7 +82,7 @@ class EncmixBert(nn.Module):
         else:
             n_plain_toks = len(plain_toks)
             # [n_plain_toks] -> [n_target_toks, n_plain_toks]
-            plain_toks_inp = plain_toks.repeat(n_target_toks, 1, 1)
+            plain_toks_inp = plain_toks.repeat(n_target_toks, 1)
             # [n_target_toks, n_plain_toks], [n_target_toks, n_target_toks] -> [n_target_toks, n_plain_toks + n_target_toks]
             toks_inp = torch.concatenate([plain_toks_inp, target_toks_inp], dim=1)
 

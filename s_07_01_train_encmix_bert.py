@@ -63,10 +63,10 @@ class ArgsEncmixBertTrain(BaseModel):
         description=f'Out embeddings type. Possible values: {[t.value for t in EncmixOutEmbsType]}.',
         cli=('--out-embs-type',),
     )
-    docs_batch_size: int = Field(
+    batch_size: int = Field(
         3,
         description='Documents batch size. Must be greater or equal than 2.',
-        cli=('--docs-batch-size',),
+        cli=('--batch-size',),
     )
     device: str = Field(
         'cpu',
@@ -166,12 +166,12 @@ def main(args: ArgsEncmixBertTrain) -> int:
     val_ratio = 0.05
     if args.train_ds_type == EncmixTrainDsType.Msk:
         train_batch_it, val_batch_it = get_wiki_ds_batch_iterators(
-            wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
+            wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.batch_size,
             tkz=tkz, device=device, shuffle=shuffle, val_ratio=val_ratio,
         )
     else:
         train_batch_it, val_batch_it = get_squadv2_tensor_iterators(
-            inp_len=args.inp_len, batch_size=args.docs_batch_size, ques_inp=QnaQuesInp.Dec, exclude_empty_answers=True,
+            inp_len=args.inp_len, batch_size=args.batch_size, ques_inp=QnaQuesInp.Enc, exclude_empty_answers=True,
             tkz=tkz, device=device, val_ratio=val_ratio,
         )
 
