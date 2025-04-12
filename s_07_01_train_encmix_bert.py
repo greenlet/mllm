@@ -133,7 +133,7 @@ def main(args: ArgsEncmixBertTrain) -> int:
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        chkpt_model_cfg = parse_yaml_file_as(EncdecBertCfg, train_path / ENCDEC_BERT_MODEL_CFG_FNAME)
+        chkpt_model_cfg = parse_yaml_file_as(EncmixBertCfg, train_path / ENCMIX_BERT_MODEL_CFG_FNAME)
         assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
         to_yaml_file(train_path / ENCMIX_BERT_MODEL_CFG_FNAME, model_cfg)
@@ -159,8 +159,8 @@ def main(args: ArgsEncmixBertTrain) -> int:
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
         shuffle = True
-        for t in itertools.chain(checkpoint['model'].values(), checkpoint['optimizer'].values()):
-            t.to('cpu')
+        # for t in itertools.chain(checkpoint['model'].values(), checkpoint['optimizer'].values()):
+        #     t.to('cpu')
         del checkpoint
 
     val_ratio = 0.05
@@ -176,7 +176,7 @@ def main(args: ArgsEncmixBertTrain) -> int:
         )
 
     sched_wait_steps = 0
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-7)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
     # lr = scheduler.get_last_lr()[0]
     lr = optimizer.param_groups[0]['lr']
     print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')

@@ -457,6 +457,7 @@ class QnaBatch:
         q_toks_l, a_toks_l, qa_toks_l, a_att_masks_l, a_tgt_masks_l, qa_att_masks_l, qa_tgt_masks_l = [], [], [], [], [], [], []
         qas_cum, qas_sq_cum, as_cum = 0, 0, 0
         for q, a in self.qas:
+            q = f'Question: {q}. Answer: '
             q_toks: list[int] = self.tkz(q).input_ids
             a_toks: list[int] = self.tkz(a).input_ids
             assert q_toks[0] == a_toks[0] == self.tkz.cls_token_id, f'q_toks[0] = {q_toks[0]}. a_toks[0] = {a_toks[0]}'
@@ -614,7 +615,9 @@ def get_squadv2_batch(tkz: PreTrainedTokenizer, df_sq: pd.DataFrame, inds: np.nd
         if len(answers) == 0:
             answers = ['-']
         for answer in answers:
-            q = f'{ctxs[row.context]}. Question: {row.question}'
+            # q = f'{ctxs[row.context]}. Question: {row.question}'
+            # q = f'Question: {row.question}. Answer: '
+            q = row.question
             qa = q, answer
             qas.add(qa)
     contexts = [f'{val}. {key}' for key, val in ctxs.items()]
@@ -655,6 +658,9 @@ def squadv2_batch_to_tensor_iterator(batch_it: BatchIt) -> ChunkTargetToksGen:
         ctx_toks_t, (q_toks_t, a_toks_t, a_att_masks_t, a_tgt_masks_t) = batch.gen_tensors()
         for q_toks, a_toks in zip(q_toks_t, a_toks_t):
             q_toks = q_toks[q_toks != batch.tkz.pad_token_id]
+            # print(f'q_toks: {len(q_toks)}. a_toks: {len(a_toks)}')
+            if len(q_toks) + len(a_toks) > 50:
+                continue
             yield ctx_toks_t, q_toks, a_toks, batch
 
 
