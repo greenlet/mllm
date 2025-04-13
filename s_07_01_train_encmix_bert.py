@@ -176,7 +176,7 @@ def main(args: ArgsEncmixBertTrain) -> int:
         )
 
     sched_wait_steps = 0
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=13, threshold=1e-6, min_lr=1e-8)
     # lr = scheduler.get_last_lr()[0]
     lr = optimizer.param_groups[0]['lr']
     print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')

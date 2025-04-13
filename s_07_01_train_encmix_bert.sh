@@ -6,7 +6,7 @@ wiki_ds_name=20200501.en
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
-model_cfg_fname=encmix_bert_cfg_01_base.yaml
+#model_cfg_fname=encmix_bert_cfg_01_base.yaml
 model_cfg_fname=encmix_bert_cfg_02_large.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
@@ -33,8 +33,8 @@ val_epoch_steps=50
 batch_size=1
 #train_subdir=last
 
-learning_rate=0.0001
-learning_rate=0.00005
+#learning_rate=0.0001
+#learning_rate=0.00005
 learning_rate=0.00001
 random_seed=200
 

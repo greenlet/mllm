@@ -22,6 +22,7 @@ class EncmixBert(nn.Module):
     tkz: PreTrainedTokenizer
     device: torch.device
     bert_model: MixBertModel
+    gan_pooler: nn.Linear
 
     def __init__(self, cfg: EncmixBertCfg, tkz: PreTrainedTokenizer, device: Optional[torch.device] = None):
         super().__init__()
@@ -38,6 +39,8 @@ class EncmixBert(nn.Module):
             self.out_word_embeddings = nn.Linear(self.cfg.d_model, self.tkz.vocab_size, bias=False, device=self.device)
         else:
             self.out_word_embeddings = None
+
+        self.gan_pooler = nn.Linear(self.cfg.d_model, 1, bias=True, device=self.device)
 
         self._init_params()
 
@@ -62,6 +65,11 @@ class EncmixBert(nn.Module):
         )
         # [n_chunks, seq_len, d_model] -> [n_chunks, d_model]
         chunks_emb = chunks_out.last_hidden_state[: ,0]
+        # [1, 1, d_model]
+        cls_wemb = self.bert_model.embeddings.word_embeddings(torch.tensor([[self.tkz.cls_token_id]], device=self.device))
+        # [n_chunks + 1, d_model]
+        chunks_emb = torch.concatenate([cls_wemb[0], chunks_emb], dim=0)
+        n_chunks += 1
 
         n_target_toks = len(target_toks)
 
@@ -78,6 +86,9 @@ class EncmixBert(nn.Module):
             n_plain_toks = 0
             toks_inp = target_toks_inp
         else:
+            # Remove first CLS token
+            if plain_toks[0] == self.tkz.cls_token_id:
+                plain_toks = plain_toks[1:]
             n_plain_toks = len(plain_toks)
             # [n_plain_toks] -> [n_target_toks, n_plain_toks]
             plain_toks_inp = plain_toks.repeat(n_target_toks, 1)
@@ -111,6 +122,98 @@ class EncmixBert(nn.Module):
             out_logits = self.out_word_embeddings(out_logits)
 
         return out_logits
+
+    def _tkz_inp(self, s: str, max_len: Optional[int] = None, strip: bool = True) -> torch.Tensor:
+        toks = self.tkz(s)['input_ids']
+        assert toks[0] == self.tkz.cls_token_id and toks[-1] == self.tkz.sep_token_id, f'toks = {toks}. cls_token_id = {self.tkz.cls_token_id}. sep_token_id = {self.tkz.sep_token_id}'
+        if max_len is not None and len(toks) > max_len:
+            toks = toks[:max_len - 1] + [toks[-1]]
+        if strip:
+            toks = toks[1:-1]
+        toks_t = torch.tensor(toks, device=self.device)
+        toks_t = toks_t.unsqueeze(0)
+        return toks_t
+
+    def run_qna_gan(self, context: str, question: str, answer: str) -> torch.Tensor:
+        # [1, n_ctx] = [CLS, TOK*, SEP]
+        c_toks_t = self._tkz_inp(context, max_len=self.cfg.inp_len, strip=False)
+        assert c_toks_t[0] == self.tkz.cls_token_id and c_toks_t[-1] == self.tkz.sep_token_id, f'{c_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
+        c_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
+            input_ids=c_toks_t, attention_mask = c_toks_t != self.tkz.pad_token_id,
+        )
+        # [1, d_model]
+        c_emb = c_out.last_hidden_state[:, 0]
+
+        q_str = f'Question: {question}'
+        acap_str, acap1_str, acap2_str = ' Answer: ', ' Answer 1: ', ' Answer 2: '
+        qacap_str = f'{q_str} {acap_str}'
+        # [1, n_qa] = [TOK*]
+        qacap_toks_t = self._tkz_inp(qacap_str)
+        assert qacap_toks_t[0] != self.tkz.cls_token_id and qacap_toks_t[-1] != self.tkz.sep_token_id, f'{qacap_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
+
+        # [1, n_ans] = [TOK*]
+        a_toks_t = self._tkz_inp(answer)
+        assert a_toks_t[0] != self.tkz.cls_token_id and a_toks_t[-1] != self.tkz.sep_token_id, f'{a_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
+        n_ans = a_toks_t.shape[1]
+
+        # [1, n_ans]
+        amask_toks_t = torch.ones_like(a_toks_t) * self.tkz.mask_token_id
+
+        cls_toks_t = torch.tensor([[self.tkz.cls_token_id]], device=self.device)
+        # [1, 1, d_model]
+        cls_wemb = self.bert_model.embeddings.word_embeddings(cls_toks_t)
+        # [1, d_model]
+        cls_wemb = cls_wemb[0]
+
+        sep_toks_t = torch.tensor([[self.tkz.sep_token_id]], device=self.device)
+        # [1, 1, d_model]
+        sep_wemb = self.bert_model.embeddings.word_embeddings(sep_toks_t)
+        # [1, d_model]
+        sep_wemb = sep_wemb[0]
+
+        # [1, n_qa + n_ans + 1]
+        qam_toks_t = torch.concatenate([qacap_toks_t, amask_toks_t, sep_toks_t], dim=-1)
+        qam_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
+            inputs_starting_embeds=c_emb, input_ids=qam_toks_t, attention_mask=amask_toks_t != self.tkz.pad_token_id,
+        )
+        # [1, n_ctx + n_qa + n_ans]
+        qam_lhs = qam_out.last_hidden_state
+        # [1, n_ans]
+        a_emb_pred = qam_lhs[:, -n_ans - 1:-1]
+
+        # [1, n_ctx, d_model]
+        c_wemb = self.bert_model.embeddings.word_embeddings(c_toks_t)
+
+        # [1, n_ans, d_model]
+        a_wemb = self.bert_model.embeddings.word_embeddings(a_toks_t)
+
+        # [1, n_que]
+        q_toks_t = self._tkz_inp(q_str)
+        # [1, n_ans1]
+        acap1_toks_t = self._tkz_inp(acap1_str)
+        # [1, n_ans2]
+        acap2_toks_t = self._tkz_inp(acap2_str)
+        # [1, n_que, d_model]
+        q_wemb = self.bert_model.embeddings.word_embeddings(q_toks_t)
+        # [1, n_ans1, d_model]
+        acap1_wemb = self.bert_model.embeddings.word_embeddings(acap1_toks_t)
+        # [1, n_ans2, d_model]
+        acap2_wemb = self.bert_model.embeddings.word_embeddings(acap2_toks_t)
+
+        if np.random.rand() > 0.5:
+            tgt, a1_emb, a2_emb = 1, a_wemb, a_emb_pred
+        else:
+            tgt, a1_emb, a2_emb = 0, a_emb_pred, a_wemb
+
+        inp_emb = torch.concatenate([cls_wemb, c_wemb, q_wemb, acap1_wemb, a1_emb, acap2_wemb, a2_emb, sep_wemb])
+        gan_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
+            inputs_starting_embeds=inp_emb,
+        )
+        # [1, d_model]
+        gan_pooler_out = gan_out.pooler_output
+        # [1]
+        gan_logit = self.gan_pooler(gan_pooler_out)
+        return gan_logit
 
 
     # chunk_toks: [n_chunks, seq_len]
