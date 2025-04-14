@@ -665,7 +665,7 @@ def squadv2_batch_to_tensor_iterator(batch_it: BatchIt) -> ChunkTargetToksGen:
 
 
 def get_squadv2_tensor_iterators(
-        inp_len: int, batch_size: int, ques_inp: QnaQuesInp, exclude_empty_answers, tkz: PreTrainedTokenizer,
+        inp_len: int, batch_size: int, ques_inp: QnaQuesInp, exclude_empty_answers: bool, tkz: PreTrainedTokenizer,
         device: torch.device, val_ratio: float = 0.05,
 ) -> tuple[ChunkTargetToksGen, ChunkTargetToksGen]:
     df_sq = get_squadv2_df(exclude_empty_answers=exclude_empty_answers)
