@@ -15,7 +15,7 @@ from tqdm import trange
 from mllm.config.model import EncdecBertCfg, EncmixBertCfg, copy_override_encmix_bert_cfg, gen_prefpostfix_encmix_bert, \
     EncmixOutEmbsType, EncmixTrainDsType
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNAME
-from mllm.model.encmix import EncmixBert, qna_gan_loss
+from mllm.model.encmix import EncmixBert, qna_gan_loss, EncmixBertGan
 from mllm.train.encmix_bert import get_squadv2_txt_iterators
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, QnaQuesInp, \
     get_squadv2_df, split_df, gen_loss, get_squadv2_batch_iterator, get_squadv2_tensor_iterators
@@ -142,26 +142,27 @@ def main(args: ArgsEncmixBertGanTrain) -> int:
     tkz = AutoTokenizer.from_pretrained(model_cfg.tokenizer_name)
 
     print(model_cfg)
-    model = EncmixBert(model_cfg, tkz=tkz, device=device)
+    model = EncmixBertGan(model_cfg, tkz=tkz, device=device)
 
+    print(args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists(), checkpoint)
     if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path)
-        model.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        model.gen_model.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        model.dis_model.load_state_dict(pretrained_checkpoint['model'], strict=False)
 
-    params = model.parameters()
-    optimizer = torch.optim.Adam(params, lr=args.learning_rate)
+    betas = (0.5, 0.999)
+    opt_gen = torch.optim.Adam(model.get_gen_parameters(), lr=args.learning_rate, betas=betas)
+    opt_dis = torch.optim.Adam(model.get_dis_parameters(), lr=args.learning_rate, betas=betas)
 
     last_epoch, val_loss_min, shuffle = -1, None, False
     if checkpoint is not None:
         model.load_state_dict(checkpoint['model'], strict=False)
-        optimizer.load_state_dict(checkpoint['optimizer'])
+        opt_gen.load_state_dict(checkpoint['optimizer_generator'])
+        opt_dis.load_state_dict(checkpoint['optimizer_discriminator'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
-        shuffle = True
-        # for t in itertools.chain(checkpoint['model'].values(), checkpoint['optimizer'].values()):
-        #     t.to('cpu')
         del checkpoint
 
     val_ratio = 0.05
@@ -171,15 +172,16 @@ def main(args: ArgsEncmixBertGanTrain) -> int:
         raise Exception(f'Train dataset type {args.train_ds_type} is not supported.')
 
     sched_wait_steps = 0
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=13, threshold=1e-6, min_lr=1e-8)
-    # lr = scheduler.get_last_lr()[0]
-    lr = optimizer.param_groups[0]['lr']
-    print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
+    sched_params = dict(mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
+    sched_gen = ReduceLROnPlateau(opt_gen, **sched_params)
+    sched_dis = ReduceLROnPlateau(opt_gen, **sched_params)
+    lr_gen = opt_gen.param_groups[0]['lr']
+    lr_dis = opt_dis.param_groups[0]['lr']
+    print(f'Generator scheduler {sched_gen.__class__.__name__} lr: {lr_gen:0.10f}.')
+    print(f'Discriminator scheduler {sched_dis.__class__.__name__} lr: {lr_dis:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    loss_fn = qna_gan_loss
-
-    print(model)
+    # print(model)
 
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
@@ -187,63 +189,89 @@ def main(args: ArgsEncmixBertGanTrain) -> int:
         grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
     for epoch in range(last_epoch + 1, args.epochs):
         model.train()
-        train_loss = 0
+        train_loss, train_loss_gen, train_loss_dis = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             item = next(train_it)
 
-            optimizer.zero_grad()
-            out_logits, out_target = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer)
-            loss = loss_fn(out_logits, out_target)
+            # opt_gen.zero_grad()
+            # opt_dis.zero_grad()
+            # loss, loss_gen, loss_dis = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer)
+            # loss_gen.backward(retain_graph=True)
+            # opt_gen.step()
+            # loss_dis.backward()
+            # opt_dis.step()
 
-            loss.backward()
+            opt_gen.zero_grad()
+            opt_dis.zero_grad()
+            loss1, loss_gen1, loss_dis1 = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer)
+            loss_gen1.backward()
+
             # Gradients must be available after loss.backward()
             if grad_log_ind % grad_log_interval == 0:
                 log_weights_grads_stats(grad_log_step, model, tbsw)
                 grad_log_step += 1
             grad_log_ind += 1
 
-            optimizer.step()
-            train_loss += loss.item()
+            opt_gen.step()
+
+            opt_gen.zero_grad()
+            opt_dis.zero_grad()
+            loss2, loss_gen2, loss_dis2 = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer)
+            loss_dis2.backward()
+            opt_dis.step()
+
+            train_loss += loss1.item()
+            train_loss_gen += loss_gen1.item()
+            train_loss_dis += loss_dis1.item()
 
             # if i_train == 2:
             #     import sys
             #     sys.exit()
 
-            s = f'Train. loss: {loss.item():.6f}'
+            s = f'Train. loss: {loss1.item():.6f}. loss_gen: {loss_gen1.item():.6f}. loss_dis: {loss_dis1.item():.6f}'
             pbar.set_postfix_str(s)
         pbar.close()
         train_loss /= args.train_epoch_steps
+        train_loss_gen /= args.train_epoch_steps
+        train_loss_dis /= args.train_epoch_steps
         tbsw.add_scalar('Loss/Train', train_loss, epoch)
+        tbsw.add_scalar('LossGen/Train', train_loss_gen, epoch)
+        tbsw.add_scalar('LossDis/Train', train_loss_dis, epoch)
 
         model.eval()
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-        val_loss = 0
+        val_loss, val_loss_gen, val_loss_dis = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             item = next(val_it)
 
             with torch.no_grad():
-                out_logits, out_target = model.run_qna_gan(context=item.context, question=item.question,
-                                                           answer=item.answer)
-                loss = loss_fn(out_logits, out_target)
+                loss, loss_gen, loss_dis = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer)
             val_loss += loss.item()
+            val_loss_gen += loss_gen.item()
+            val_loss_dis += loss_dis.item()
 
-            s = f'Val. loss: {loss.item():.6f}'
+            s = f'Val. loss: {loss.item():.6f}. loss_gen: {loss_gen.item():.6f}. loss_dis: {loss_dis.item():.6f}'
             pbar.set_postfix_str(s)
         pbar.close()
         val_loss /= args.val_epoch_steps
+        val_loss_gen /= args.val_epoch_steps
+        val_loss_dis /= args.val_epoch_steps
         tbsw.add_scalar('Loss/Val', val_loss, epoch)
+        tbsw.add_scalar('LossGen/Val', val_loss_gen, epoch)
+        tbsw.add_scalar('LossDis/Val', val_loss_dis, epoch)
 
         if epoch >= sched_wait_steps:
-            scheduler.step(val_loss)
-        # last_lr = scheduler.get_last_lr()[0]
-        last_lr = optimizer.param_groups[0]['lr']
-        tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
+            sched_gen.step(val_loss)
+            sched_dis.step(val_loss)
+        last_lr_gen = opt_gen.param_groups[0]['lr']
+        last_lr_dis = opt_dis.param_groups[0]['lr']
+        tbsw.add_scalar(f'Generator {sched_gen.__class__.__name__} lr', last_lr_gen, epoch)
+        tbsw.add_scalar(f'Discriminator {sched_gen.__class__.__name__} lr', last_lr_dis, epoch)
 
-        print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
         best = False
         if val_loss_min is None or val_loss < val_loss_min:
             val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'
@@ -253,7 +281,8 @@ def main(args: ArgsEncmixBertGanTrain) -> int:
 
         checkpoint = {
             'model': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
+            'optimizer_generator': opt_gen.state_dict(),
+            'optimizer_discriminator': opt_dis.state_dict(),
             'last_epoch': epoch,
             'val_loss_min': val_loss_min,
         }

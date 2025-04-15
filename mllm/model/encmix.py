@@ -134,87 +134,6 @@ class EncmixBert(nn.Module):
         toks_t = toks_t.unsqueeze(0)
         return toks_t
 
-    def run_qna_gan_v1(self, context: str, question: str, answer: str) -> tuple[torch.Tensor, torch.Tensor]:
-        # [1, n_ctx] = [CLS, TOK*, SEP]
-        c_toks_t = self._tkz_inp(context, max_len=self.cfg.inp_len, strip=False)
-        assert c_toks_t[0, 0] == self.tkz.cls_token_id and c_toks_t[0, -1] == self.tkz.sep_token_id, f'{c_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
-        c_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
-            input_ids=c_toks_t, attention_mask = c_toks_t != self.tkz.pad_token_id,
-        )
-        # [1, d_model]
-        c_emb = c_out.last_hidden_state[:, 0]
-        # [1, 1, d_model]
-        c_emb = c_emb.unsqueeze(0)
-
-        q_str = f'Question: {question}'
-        acap_str, acap1_str, acap2_str = ' Answer: ', ' Answer 1: ', ' Answer 2: '
-        qacap_str = f'{q_str} {acap_str}'
-        # [1, n_qa] = [TOK*]
-        qacap_toks_t = self._tkz_inp(qacap_str)
-        assert qacap_toks_t[0, 0] != self.tkz.cls_token_id and qacap_toks_t[0, -1] != self.tkz.sep_token_id, f'{qacap_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
-
-        # [1, n_ans] = [TOK*]
-        a_toks_t = self._tkz_inp(answer)
-        assert a_toks_t[0, 0] != self.tkz.cls_token_id and a_toks_t[0, -1] != self.tkz.sep_token_id, f'{a_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
-        n_ans = a_toks_t.shape[1]
-
-        # [1, n_ans]
-        amask_toks_t = torch.ones_like(a_toks_t) * self.tkz.mask_token_id
-
-        cls_toks_t = torch.tensor([[self.tkz.cls_token_id]], device=self.device)
-        # [1, 1, d_model]
-        cls_wemb = self.bert_model.embeddings.word_embeddings(cls_toks_t)
-
-        sep_toks_t = torch.tensor([[self.tkz.sep_token_id]], device=self.device)
-        # [1, 1, d_model]
-        sep_wemb = self.bert_model.embeddings.word_embeddings(sep_toks_t)
-
-        # [1, n_qa + n_ans + 1]
-        qam_toks_t = torch.concatenate([qacap_toks_t, amask_toks_t, sep_toks_t], dim=-1)
-        qam_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
-            inputs_starting_embeds=c_emb, input_ids=qam_toks_t, attention_mask=amask_toks_t != self.tkz.pad_token_id,
-        )
-        # [1, n_ctx + n_qa + n_ans]
-        qam_lhs = qam_out.last_hidden_state
-        # [1, n_ans]
-        a_emb_pred = qam_lhs[:, -n_ans - 1:-1]
-
-        # [1, n_ctx, d_model]
-        c_wemb = self.bert_model.embeddings.word_embeddings(c_toks_t)
-
-        # [1, n_ans, d_model]
-        a_wemb = self.bert_model.embeddings.word_embeddings(a_toks_t)
-
-        # [1, n_que]
-        q_toks_t = self._tkz_inp(q_str)
-        # [1, n_ans1]
-        acap1_toks_t = self._tkz_inp(acap1_str)
-        # [1, n_ans2]
-        acap2_toks_t = self._tkz_inp(acap2_str)
-        # [1, n_que, d_model]
-        q_wemb = self.bert_model.embeddings.word_embeddings(q_toks_t)
-        # [1, n_ans1, d_model]
-        acap1_wemb = self.bert_model.embeddings.word_embeddings(acap1_toks_t)
-        # [1, n_ans2, d_model]
-        acap2_wemb = self.bert_model.embeddings.word_embeddings(acap2_toks_t)
-
-        if np.random.rand() > 0.5:
-            tgt, a1_emb, a2_emb = 1, a_wemb, a_emb_pred
-        else:
-            tgt, a1_emb, a2_emb = 0, a_emb_pred, a_wemb
-
-        inp_emb = torch.concatenate([cls_wemb, c_wemb, q_wemb, acap1_wemb, a1_emb, acap2_wemb, a2_emb], dim=1)
-        gan_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
-            inputs_starting_embeds=inp_emb, input_ids=sep_toks_t, attention_mask=sep_toks_t != self.tkz.pad_token_id,
-        )
-        # [1, d_model]
-        gan_pooler_out = gan_out.pooler_output
-        # [1]
-        gan_logit = self.gan_pooler(gan_pooler_out)
-        gan_target = torch.tensor([tgt], device=self.device)
-        return gan_logit, gan_target
-
-
     def run_qna_gan(self, context: str, question: str, answer: str) -> tuple[torch.Tensor, torch.Tensor]:
         # [1, n_ctx] = [CLS, TOK*, SEP]
         c_toks_t = self._tkz_inp(context, max_len=self.cfg.inp_len, strip=False)
@@ -359,12 +278,232 @@ class EncmixBert(nn.Module):
         return target_toks
 
 
-def qna_gan_loss(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+
+class EncmixBertGan(nn.Module):
+    cfg: EncmixBertCfg
+    tkz: PreTrainedTokenizer
+    device: torch.device
+    gen_model: MixBertModel
+    dis_model: MixBertModel
+    dis_pooler: nn.Linear
+
+    def __init__(self, cfg: EncmixBertCfg, tkz: PreTrainedTokenizer, device: Optional[torch.device] = None):
+        super().__init__()
+        self.cfg = cfg
+        self.tkz = tkz
+        assert self.tkz.pad_token_id == 0, f'pad_token_id = {self.tkz.pad_token_id}'
+        self.device = device if device is not None else torch.device('cpu')
+        self.gen_model = MixBertModel.from_pretrained(
+            self.cfg.pretrained_model_name, torch_dtype=torch.float32, device_map=self.device,
+        )
+        self.dis_model = MixBertModel.from_pretrained(
+            self.cfg.pretrained_model_name, torch_dtype=torch.float32, device_map=self.device,
+        )
+
+        assert self.cfg.out_embs_type == EncmixOutEmbsType.Inp
+        self.out_word_embeddings = None
+
+        # Tie weights
+        self.dis_model.embeddings = self.gen_model.embeddings
+
+        self.dis_pooler = nn.Linear(self.cfg.d_model, 1, bias=True, device=self.device)
+
+        self._init_params()
+
+    def _init_params(self):
+        if self.out_word_embeddings is not None:
+            # for n, p in self.out_word_embeddings.named_parameters():
+            #     if p.dim() > 1:
+            #         nn.init.xavier_uniform_(p)
+            # print(self.out_word_embeddings.weight.shape, self.bert_model.embeddings.word_embeddings.weight.shape)
+            self.out_word_embeddings.weight = nn.Parameter(self.bert_model.embeddings.word_embeddings.weight.clone(), requires_grad=True)
+
+    def _tkz_inp(self, s: str, max_len: Optional[int] = None, strip: bool = True) -> torch.Tensor:
+        toks = self.tkz(s)['input_ids']
+        assert toks[0] == self.tkz.cls_token_id and toks[-1] == self.tkz.sep_token_id, f'toks = {toks}. cls_token_id = {self.tkz.cls_token_id}. sep_token_id = {self.tkz.sep_token_id}'
+        if max_len is not None and len(toks) > max_len:
+            toks = toks[:max_len - 1] + [toks[-1]]
+        if strip:
+            toks = toks[1:-1]
+        toks_t = torch.tensor(toks, device=self.device)
+        toks_t = toks_t.unsqueeze(0)
+        return toks_t
+
+    def get_gen_parameters(self) -> list[nn.parameter.Parameter]:
+        res = []
+        for name, param in self.gen_model.named_parameters():
+            res.append(param)
+        return res
+
+    def get_dis_parameters(self) -> list[nn.parameter.Parameter]:
+        res = []
+        for name, param in self.dis_model.named_parameters():
+            res.append(param)
+        for name, param in self.dis_pooler.named_parameters():
+            res.append(param)
+        return res
+
+    def run_qna_gan(self, context: str, question: str, answer: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # [1, n_ctx] = [CLS, TOK*, SEP]
+        c_toks_t = self._tkz_inp(context, max_len=self.cfg.inp_len, strip=False)
+        assert c_toks_t[0, 0] == self.tkz.cls_token_id and c_toks_t[0, -1] == self.tkz.sep_token_id, f'{c_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
+        c_out: BaseModelOutputWithPoolingAndCrossAttentions = self.gen_model(
+            input_ids=c_toks_t, attention_mask = c_toks_t != self.tkz.pad_token_id,
+        )
+        # [1, d_model]
+        c_emb = c_out.last_hidden_state[:, 0]
+        # [1, 1, d_model]
+        c_emb = c_emb.unsqueeze(0)
+
+        q_str = f'Question: {question}'
+        acap_str = ' Answer: '
+        qacap_str = f'{q_str} {acap_str}'
+        # [1, n_qa] = [TOK*]
+        qacap_toks_t = self._tkz_inp(qacap_str)
+        assert qacap_toks_t[0, 0] != self.tkz.cls_token_id and qacap_toks_t[0, -1] != self.tkz.sep_token_id, f'{qacap_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
+        # [1, n_qa, d_model]
+        qacap_wemb = self.gen_model.embeddings.word_embeddings(qacap_toks_t)
+
+        # max_out_toks = 20
+        # [1, n_ans] = [TOK*]
+        a_toks_t = self._tkz_inp(answer)
+        # if a_toks_t.shape[1] > max_out_toks:
+        #     a_toks_t = a_toks_t[:, :max_out_toks]
+        # assert a_toks_t[0, 0] != self.tkz.cls_token_id and a_toks_t[0, -1] != self.tkz.sep_token_id, f'{a_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
+        n_ans = a_toks_t.shape[1]
+        max_out_toks = n_ans
+
+        # [1, max_out_toks]
+        amask_toks_t = torch.ones((1, max_out_toks), dtype=torch.int64, device=self.device) * self.tkz.mask_token_id
+
+        cls_toks_t = torch.tensor([[self.tkz.cls_token_id]], device=self.device)
+        # [1, 1, d_model]
+        cls_wemb = self.gen_model.embeddings.word_embeddings(cls_toks_t)
+
+        sep_toks_t = torch.tensor([[self.tkz.sep_token_id]], device=self.device)
+        # [1, 1, d_model]
+        sep_wemb = self.gen_model.embeddings.word_embeddings(sep_toks_t)
+
+        # [1, 2, d_model]
+        cc_emb = torch.concatenate([cls_wemb, c_emb], dim=1)
+
+        # [1, n_qa + max_out_toks + 1]
+        qam_toks_t = torch.concatenate([qacap_toks_t, amask_toks_t, sep_toks_t], dim=-1)
+        qam_out: BaseModelOutputWithPoolingAndCrossAttentions = self.gen_model(
+            inputs_starting_embeds=cc_emb, input_ids=qam_toks_t, attention_mask=qam_toks_t != self.tkz.pad_token_id,
+        )
+        # [1, n_ctx + n_qa + max_out_toks]
+        qam_lhs = qam_out.last_hidden_state
+        # [1, max_out_toks]
+        a_emb_pred = qam_lhs[:, -max_out_toks - 1:-1]
+
+        # [1, n_ctx, d_model]
+        c_wemb = self.gen_model.embeddings.word_embeddings(c_toks_t)
+
+        # [1, n_ans, d_model]
+        a_wemb = self.gen_model.embeddings.word_embeddings(a_toks_t)
+
+        tgt1, a1_emb = 1, a_wemb
+        tgt2, a2_emb = 0, a_emb_pred
+        # [1, 1 + 1 + n_qacap + n_ans]
+        inp1_emb = torch.concatenate([cls_wemb, c_wemb[:, 1:-1], qacap_wemb, a1_emb], dim=1)
+        # [1, 1 + 1 + n_qacap + n_ans]
+        inp2_emb = torch.concatenate([cls_wemb, c_wemb[:, 1:-1], qacap_wemb, a2_emb], dim=1)
+        gan_out1: BaseModelOutputWithPoolingAndCrossAttentions = self.dis_model(
+            inputs_starting_embeds=inp1_emb, input_ids=sep_toks_t, attention_mask=sep_toks_t != self.tkz.pad_token_id,
+        )
+        gan_out2: BaseModelOutputWithPoolingAndCrossAttentions = self.dis_model(
+            inputs_starting_embeds=inp2_emb, input_ids=sep_toks_t, attention_mask=sep_toks_t != self.tkz.pad_token_id,
+        )
+        # [2, d_model]
+        dis_pooler_out1 = gan_out1.last_hidden_state[:, 0]
+        # [2]
+        dis_logits1 = self.dis_pooler(dis_pooler_out1)
+        # [2, d_model]
+        dis_pooler_out2 = gan_out2.last_hidden_state[:, 0]
+        # [2]
+        dis_logits2 = self.dis_pooler(dis_pooler_out2)
+        dis_logits = torch.concatenate([dis_logits1, dis_logits2])
+        # [2]
+        targets = torch.tensor([tgt1, tgt2], device=self.device)
+        # [2, 1]
+        targets = targets.unsqueeze(-1)
+
+        probs = torch.sigmoid(dis_logits)
+        loss_gen = -(1 - targets) * torch.log(probs)
+        loss_dis = -targets * torch.log(probs) - (1 - targets) * torch.log(1 - probs)
+        loss = (loss_gen + loss_dis) / 2
+        loss_gen, loss_dis, loss = torch.mean(loss_gen), torch.mean(loss_dis), torch.mean(loss)
+        return loss, loss_gen, loss_dis
+
+    def predict(self, context: str, question: str, max_out_toks: int = 20) -> tuple[torch.Tensor, str]:
+        # [1, n_ctx] = [CLS, TOK*, SEP]
+        c_toks_t = self._tkz_inp(context, max_len=self.cfg.inp_len, strip=False)
+        assert c_toks_t[0, 0] == self.tkz.cls_token_id and c_toks_t[0, -1] == self.tkz.sep_token_id, f'{c_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
+        c_out: BaseModelOutputWithPoolingAndCrossAttentions = self.gen_model(
+            input_ids=c_toks_t, attention_mask = c_toks_t != self.tkz.pad_token_id,
+        )
+        # [1, 1, d_model]
+        c_emb = c_out.last_hidden_state[:, :1]
+
+        c_logits = c_emb @ self.gen_model.embeddings.word_embeddings.weight.T
+        c_probs = torch.softmax(c_logits, dim=-1)
+        c_toks = torch.argmax(c_probs.squeeze(), dim=-1)
+        c_str = self.tkz.decode(c_toks)
+        print('Ctx emb:', c_str)
+
+        q_str = f'Question: {question}'
+        acap_str = ' Answer: '
+        qacap_str = f'{q_str} {acap_str}'
+        # [1, n_qa] = [TOK*]
+        qacap_toks_t = self._tkz_inp(qacap_str)
+        assert qacap_toks_t[0, 0] != self.tkz.cls_token_id and qacap_toks_t[0, -1] != self.tkz.sep_token_id, f'{qacap_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
+
+        # [1, max_out_toks]
+        amask_toks_t = torch.ones((1, max_out_toks), dtype=torch.int64, device=self.device) * self.tkz.mask_token_id
+
+        cls_toks_t = torch.tensor([[self.tkz.cls_token_id]], device=self.device)
+        # [1, 1, d_model]
+        cls_wemb = self.gen_model.embeddings.word_embeddings(cls_toks_t)
+
+        sep_toks_t = torch.tensor([[self.tkz.sep_token_id]], device=self.device)
+        # [1, 1, d_model]
+        sep_wemb = self.gen_model.embeddings.word_embeddings(sep_toks_t)
+
+        # [1, 2, d_model]
+        cc_emb = torch.concatenate([cls_wemb, c_emb], dim=1)
+
+        # [1, n_qa + max_out_toks + 1]
+        qam_toks_t = torch.concatenate([qacap_toks_t, amask_toks_t, sep_toks_t], dim=-1)
+        print(cc_emb.shape)
+        print(self.tkz.decode(qam_toks_t[0]))
+        qam_out: BaseModelOutputWithPoolingAndCrossAttentions = self.gen_model(
+            inputs_starting_embeds=cc_emb, input_ids=qam_toks_t, attention_mask=qam_toks_t != self.tkz.pad_token_id,
+        )
+        # [1, 1 + 1 + n_qa + max_out_toks + 1]
+        qam_lhs = qam_out.last_hidden_state
+        # [1, max_out_toks]
+        ans_embs = qam_lhs[:, -max_out_toks - 1:-1]
+
+        # [1, max_out_toks, vocab_size]
+        ans_logits = ans_embs @ self.gen_model.embeddings.word_embeddings.weight.T
+        # [1, max_out_toks, vocab_size]
+        ans_probs = torch.softmax(ans_logits, dim=-1)
+        # [1, max_out_toks]
+        ans_toks = torch.argmax(ans_probs.squeeze(), dim=-1)
+        ans_str = self.tkz.decode(ans_toks)
+        return ans_toks, ans_str
+
+
+def qna_gan_loss(logits: torch.Tensor, target: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if target.ndim == 1:
         target = target.unsqueeze(-1)
     assert logits.ndim == target.ndim
     probs = torch.sigmoid(logits)
-    loss = -target * torch.log(probs) - (1 - target) * torch.log(1 - probs)
-    return torch.mean(loss)
+    loss_gen = -(1 - target) * torch.log(probs)
+    loss_dis = -target * torch.log(probs) - (1 - target) * torch.log(1 - probs)
+    loss = (loss_gen + loss_dis) / 2
+    loss_gen, loss_dis, loss = torch.mean(loss_gen), torch.mean(loss_dis), torch.mean(loss)
+    return loss, loss_gen, loss_dis
 
 

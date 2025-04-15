@@ -12,12 +12,14 @@ model_cfg_fname=encmix_bert_cfg_01_base.yaml
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encmix_bert_gan
+train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
 #inp_len=128
 inp_len=256
 out_embs_type=inp
 #out_embs_type=new
 train_ds_type=qna
+pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 
 #device=cpu
 #epochs=5
@@ -47,6 +49,7 @@ python s_07_02_train_encmix_bert_gan.py \
   --wiki-ds-name $wiki_ds_name \
   --train-ds-type $train_ds_type \
   --train-root-path $train_root_path \
+  --pretrained-model-path "$pretrained_model_path" \
   --train-subdir "$train_subdir" \
   --model-cfg-fpath $model_cfg_fpath \
   --inp-len $inp_len \

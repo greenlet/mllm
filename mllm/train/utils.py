@@ -141,25 +141,29 @@ def remove_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, 
     return res
 
 
-def calc_params_grads_stats(params: torch.nn.Parameter) -> tuple[tuple[float, float], Optional[tuple[float, float]]]:
-    gres = None
-    pres = params.mean().detach().cpu().item(), params.std().detach().cpu().item()
+def calc_params_grads_stats(params: torch.nn.Parameter) -> tuple[float, Optional[float], Optional[float], Optional[float]]:
+    param_mean = params.mean().detach().cpu().item()
+    param_std = None
+    if params.numel() > 1:
+        param_std = params.std().detach().cpu().item()
+    grad_mean, grad_std = None, None
     if params.grad is not None:
-        gres = params.grad.mean().detach().cpu().item(), params.grad.std().detach().cpu().item()
-    return pres, gres
+        grad_mean = params.grad.mean().detach().cpu().item()
+        if params.grad.numel() > 1:
+            grad_std = params.grad.std().detach().cpu().item()
+    return param_mean, param_std, grad_mean, grad_std
 
 
 def log_weights_grads_stats(step: int, model: torch.nn.Module, tbsw: tb.SummaryWriter):
     for i, (pname, params) in enumerate(model.named_parameters()):
         pname = f'{i:02d}-{pname}'
-        pms, gms = calc_params_grads_stats(params)
-        # print(pname, pms, gms)
-        weight_mean, weight_std = pms
+        weight_mean, weight_std, grad_mean, grad_std = calc_params_grads_stats(params)
         tbsw.add_scalar(f'{pname}/WeightMean', weight_mean, step)
-        tbsw.add_scalar(f'{pname}/WeightStd', weight_std, step)
-        if gms is not None:
-            grad_mean, grad_std = gms
+        if weight_std is not None:
+            tbsw.add_scalar(f'{pname}/WeightStd', weight_std, step)
+        if grad_mean is not None:
             tbsw.add_scalar(f'{pname}/GradMean', grad_mean, step)
+        if grad_std is not None:
             tbsw.add_scalar(f'{pname}/GradStd', grad_std, step)
 
 
