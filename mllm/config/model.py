@@ -315,6 +315,7 @@ class EncmixBertCfg(BaseModel):
     pretrained_model_name: str = ''
     tokenizer_name: str = ''
     out_embs_type: EncmixOutEmbsType = EncmixOutEmbsType.Non
+    token_types_for_embs: bool = False
 
 
 class EncmixTrainDsType(str, Enum):
@@ -594,7 +595,7 @@ def create_encdecrnk_bert_cfg(
 
 def create_encmix_bert_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', inp_len = 128,
-        out_embs_type: EncmixOutEmbsType = EncmixOutEmbsType.Non,
+        out_embs_type: EncmixOutEmbsType = EncmixOutEmbsType.Non, token_types_for_embs: bool = False,
 ) -> EncmixBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -633,7 +634,7 @@ def create_encmix_bert_cfg(
 
     cfg_enc_mix_bert = EncmixBertCfg(
         inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name,
-        tokenizer_name=tokenizer_name, out_embs_type=out_embs_type,
+        tokenizer_name=tokenizer_name, out_embs_type=out_embs_type, token_types_for_embs=True,
     )
     return cfg_enc_mix_bert
 
@@ -760,14 +761,15 @@ def copy_override_encdecrnk_bert_cfg(
 
 
 def copy_override_encmix_bert_cfg(
-        cfg: EncmixBertCfg, inp_len: int = 0, out_embs_type: Optional[EncmixOutEmbsType] = None,
+        cfg: EncmixBertCfg, inp_len: int = 0, out_embs_type: Optional[EncmixOutEmbsType] = None, token_types_for_embs: Optional[bool] = None,
 ) -> EncmixBertCfg:
     inp_len = inp_len or cfg.inp_len
     out_embs_type = out_embs_type or cfg.out_embs_type
+    token_types_for_embs = coalesce(token_types_for_embs, cfg.token_types_for_embs)
 
     return create_encmix_bert_cfg(
         pretrained_model_name=cfg.pretrained_model_name, tokenizer_name=cfg.tokenizer_name, inp_len=inp_len,
-        out_embs_type=out_embs_type,
+        out_embs_type=out_embs_type, token_types_for_embs=token_types_for_embs,
     )
 
 
@@ -882,6 +884,9 @@ def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg, train_ds_type: Optiona
 
     out_embs_type_str = f'oemb_{model_cfg.out_embs_type.value}'
     postfix_parts.append(out_embs_type_str)
+
+    tte = 't' if model_cfg.token_types_for_embs else 'f'
+    postfix_parts.append(f'tte_{tte}')
 
     if train_ds_type:
         postfix_parts.append(f'ds_{train_ds_type.value}')

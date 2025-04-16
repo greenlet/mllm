@@ -19,7 +19,7 @@ inp_len=256
 out_embs_type=inp
 #out_embs_type=new
 train_ds_type=qna
-pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+#pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 
 #device=cpu
 #epochs=5

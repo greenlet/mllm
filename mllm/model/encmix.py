@@ -332,18 +332,22 @@ class EncmixBertGan(nn.Module):
     def get_gen_parameters(self) -> list[nn.parameter.Parameter]:
         res = []
         for name, param in self.gen_model.named_parameters():
+            # print(name)
             res.append(param)
         return res
 
     def get_dis_parameters(self) -> list[nn.parameter.Parameter]:
         res = []
         for name, param in self.dis_model.named_parameters():
+            # print(name)
+            if name.startswith('embeddings.'):
+                continue
             res.append(param)
         for name, param in self.dis_pooler.named_parameters():
             res.append(param)
         return res
 
-    def run_qna_gan(self, context: str, question: str, answer: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def run_qna_gan(self, context: str, question: str, answer: str, is_gen: bool) -> torch.Tensor:
         # [1, n_ctx] = [CLS, TOK*, SEP]
         c_toks_t = self._tkz_inp(context, max_len=self.cfg.inp_len, strip=False)
         assert c_toks_t[0, 0] == self.tkz.cls_token_id and c_toks_t[0, -1] == self.tkz.sep_token_id, f'{c_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
@@ -403,38 +407,49 @@ class EncmixBertGan(nn.Module):
         # [1, n_ans, d_model]
         a_wemb = self.gen_model.embeddings.word_embeddings(a_toks_t)
 
-        tgt1, a1_emb = 1, a_wemb
-        tgt2, a2_emb = 0, a_emb_pred
+        tgt1, a1_emb = 0, a_emb_pred
         # [1, 1 + 1 + n_qacap + n_ans]
         inp1_emb = torch.concatenate([cls_wemb, c_wemb[:, 1:-1], qacap_wemb, a1_emb], dim=1)
-        # [1, 1 + 1 + n_qacap + n_ans]
-        inp2_emb = torch.concatenate([cls_wemb, c_wemb[:, 1:-1], qacap_wemb, a2_emb], dim=1)
         gan_out1: BaseModelOutputWithPoolingAndCrossAttentions = self.dis_model(
             inputs_starting_embeds=inp1_emb, input_ids=sep_toks_t, attention_mask=sep_toks_t != self.tkz.pad_token_id,
         )
-        gan_out2: BaseModelOutputWithPoolingAndCrossAttentions = self.dis_model(
-            inputs_starting_embeds=inp2_emb, input_ids=sep_toks_t, attention_mask=sep_toks_t != self.tkz.pad_token_id,
-        )
-        # [2, d_model]
+        # [1, d_model]
         dis_pooler_out1 = gan_out1.last_hidden_state[:, 0]
-        # [2]
+        # [1, 1]
         dis_logits1 = self.dis_pooler(dis_pooler_out1)
-        # [2, d_model]
-        dis_pooler_out2 = gan_out2.last_hidden_state[:, 0]
+        dis_logits = [dis_logits1]
+        targets = [tgt1]
+
+        if not is_gen:
+            tgt2, a2_emb = 1, a_wemb
+            # [1, 1 + 1 + n_qacap + n_ans]
+            inp2_emb = torch.concatenate([cls_wemb, c_wemb[:, 1:-1], qacap_wemb, a2_emb], dim=1)
+            gan_out2: BaseModelOutputWithPoolingAndCrossAttentions = self.dis_model(
+                inputs_starting_embeds=inp2_emb, input_ids=sep_toks_t, attention_mask=sep_toks_t != self.tkz.pad_token_id,
+            )
+            # [1, d_model]
+            dis_pooler_out2 = gan_out2.last_hidden_state[:, 0]
+            # [1, 1]
+            dis_logits2 = self.dis_pooler(dis_pooler_out2)
+            dis_logits.append(dis_logits2)
+            targets.append(tgt2)
+
+        # [2, 1]
+        dis_logits = torch.concatenate(dis_logits)
         # [2]
-        dis_logits2 = self.dis_pooler(dis_pooler_out2)
-        dis_logits = torch.concatenate([dis_logits1, dis_logits2])
-        # [2]
-        targets = torch.tensor([tgt1, tgt2], device=self.device)
+        targets = torch.tensor(targets, device=self.device)
         # [2, 1]
         targets = targets.unsqueeze(-1)
 
+        if is_gen:
+            prob = torch.sigmoid(dis_logits.squeeze())
+            loss_gen = -torch.log(prob)
+            return loss_gen
+
         probs = torch.sigmoid(dis_logits)
-        loss_gen = -(1 - targets) * torch.log(probs)
         loss_dis = -targets * torch.log(probs) - (1 - targets) * torch.log(1 - probs)
-        loss = (loss_gen + loss_dis) / 2
-        loss_gen, loss_dis, loss = torch.mean(loss_gen), torch.mean(loss_dis), torch.mean(loss)
-        return loss, loss_gen, loss_dis
+        loss_dis = torch.mean(loss_dis)
+        return loss_dis
 
     def predict(self, context: str, question: str, max_out_toks: int = 20) -> tuple[torch.Tensor, str]:
         # [1, n_ctx] = [CLS, TOK*, SEP]

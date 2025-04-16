@@ -204,8 +204,8 @@ def main(args: ArgsEncmixBertGanTrain) -> int:
 
             opt_gen.zero_grad()
             opt_dis.zero_grad()
-            loss1, loss_gen1, loss_dis1 = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer)
-            loss_gen1.backward()
+            loss_gen = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer, is_gen=True)
+            loss_gen.backward()
 
             # Gradients must be available after loss.backward()
             if grad_log_ind % grad_log_interval == 0:
@@ -217,19 +217,20 @@ def main(args: ArgsEncmixBertGanTrain) -> int:
 
             opt_gen.zero_grad()
             opt_dis.zero_grad()
-            loss2, loss_gen2, loss_dis2 = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer)
-            loss_dis2.backward()
+            loss_dis = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer, is_gen=False)
+            loss_dis.backward()
             opt_dis.step()
 
-            train_loss += loss1.item()
-            train_loss_gen += loss_gen1.item()
-            train_loss_dis += loss_dis1.item()
+            loss = (loss_gen + loss_dis) / 2
+            train_loss += (loss_gen.item() + loss_dis.item()) / 2
+            train_loss_gen += loss_gen.item()
+            train_loss_dis += loss_dis.item()
 
             # if i_train == 2:
             #     import sys
             #     sys.exit()
 
-            s = f'Train. loss: {loss1.item():.6f}. loss_gen: {loss_gen1.item():.6f}. loss_dis: {loss_dis1.item():.6f}'
+            s = f'Train. loss: {loss.item():.6f}. loss_gen: {loss_gen.item():.6f}. loss_dis: {loss_dis.item():.6f}'
             pbar.set_postfix_str(s)
         pbar.close()
         train_loss /= args.train_epoch_steps
@@ -249,7 +250,9 @@ def main(args: ArgsEncmixBertGanTrain) -> int:
             item = next(val_it)
 
             with torch.no_grad():
-                loss, loss_gen, loss_dis = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer)
+                loss_gen = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer, is_gen=True)
+                loss_dis = model.run_qna_gan(context=item.context, question=item.question, answer=item.answer, is_gen=False)
+                loss = (loss_gen + loss_dis) / 2
             val_loss += loss.item()
             val_loss_gen += loss_gen.item()
             val_loss_dis += loss_dis.item()
@@ -272,6 +275,7 @@ def main(args: ArgsEncmixBertGanTrain) -> int:
         tbsw.add_scalar(f'Generator {sched_gen.__class__.__name__} lr', last_lr_gen, epoch)
         tbsw.add_scalar(f'Discriminator {sched_gen.__class__.__name__} lr', last_lr_dis, epoch)
 
+        print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
         best = False
         if val_loss_min is None or val_loss < val_loss_min:
             val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'

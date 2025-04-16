@@ -2,4 +2,5 @@ d_model: 1024
 inp_len: 128
 out_embs_type: inp
 pretrained_model_name: bert-large-uncased
+token_types_for_embs: true
 tokenizer_name: bert-large-uncased
