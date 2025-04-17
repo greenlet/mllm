@@ -29,9 +29,15 @@ class EncmixBert(nn.Module):
         self.cfg = cfg
         self.tkz = tkz
         self.device = device if device is not None else torch.device('cpu')
+        # if self.cfg.token_types_for_embs:
+        #     type_vocab_size = 3
+        # else:
+        #     type_vocab_size = 2
+        type_vocab_size = 2
         self.bert_model = MixBertModel.from_pretrained(
-            self.cfg.pretrained_model_name, torch_dtype=torch.float32, device_map=self.device,
+            self.cfg.pretrained_model_name, torch_dtype=torch.float32, device_map=self.device, type_vocab_size=type_vocab_size,
         )
+        print(self.bert_model.config)
         # print(self.bert_model)
         assert self.tkz.pad_token_id == 0, f'pad_token_id = {self.tkz.pad_token_id}'
 
@@ -101,8 +107,12 @@ class EncmixBert(nn.Module):
         # seq_len_out = n_chunks + n_plain_toks + n_target_toks
         # [n_target_toks, seq_len_out]
         inp_mask = torch.concatenate([chunks_mask, toks_inp_mask], dim=1)
+        token_type_ids = None
+        if self.cfg.token_types_for_embs:
+            token_type_ids = torch.zeros(inp_mask.shape, dtype=torch.int64, device=self.device)
+            token_type_ids[:, 1:n_chunks] = 1
         mix_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
-            inputs_starting_embeds=chunks_emb, input_ids=toks_inp, attention_mask=inp_mask,
+            inputs_starting_embeds=chunks_emb, input_ids=toks_inp, attention_mask=inp_mask, token_type_ids=token_type_ids,
         )
 
         # [n_target_toks, seq_len_out, d_model]
@@ -222,6 +232,11 @@ class EncmixBert(nn.Module):
         )
         # [n_chunks, seq_len, d_model] -> [n_chunks, d_model]
         chunks_emb = chunks_out.last_hidden_state[: ,0]
+        # [1, 1, d_model]
+        cls_wemb = self.bert_model.embeddings.word_embeddings(torch.tensor([[self.tkz.cls_token_id]], device=self.device))
+        # [n_chunks + 1, d_model]
+        chunks_emb = torch.concatenate([cls_wemb[0], chunks_emb], dim=0)
+        n_chunks += 1
 
         # [n_chunks, d_model] -> [1, n_chunks, d_model]
         chunks_emb = chunks_emb.unsqueeze(0)
@@ -244,8 +259,12 @@ class EncmixBert(nn.Module):
             # seq_len_out = n_chunks + n_plain_toks + n_target_toks
             # [1, seq_len_out]
             inp_mask = torch.concatenate([chunks_mask, toks_inp_mask], dim=1)
+            token_type_ids = None
+            if self.cfg.token_types_for_embs:
+                token_type_ids = torch.zeros(inp_mask.shape, dtype=torch.int64, device=self.device)
+                token_type_ids[:, 1:n_chunks] = 1
             mix_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
-                inputs_starting_embeds=chunks_emb, input_ids=toks_inp, attention_mask=inp_mask,
+                inputs_starting_embeds=chunks_emb, input_ids=toks_inp, attention_mask=inp_mask, token_type_ids=token_type_ids,
             )
 
             # [1, seq_len_out, d_model]

@@ -7,7 +7,8 @@ wiki_ds_name=20200501.en
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 #model_cfg_fname=encmix_bert_cfg_01_base.yaml
-model_cfg_fname=encmix_bert_cfg_02_large.yaml
+#model_cfg_fname=encmix_bert_cfg_02_large.yaml
+model_cfg_fname=encmix_bert_cfg_03_base_tte.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
@@ -15,9 +16,10 @@ train_root_path=$data_path/train_mllm_encmix_bert
 
 #inp_len=128
 inp_len=256
-#out_embs_type=inp
-out_embs_type=new
-train_ds_type=qna
+out_embs_type=inp
+#out_embs_type=new
+train_ds_type=msk
+#train_ds_type=qna
 
 #device=cpu
 #epochs=5
@@ -34,8 +36,8 @@ batch_size=1
 #train_subdir=last
 
 #learning_rate=0.0001
-#learning_rate=0.00005
-learning_rate=0.00001
+learning_rate=0.00005
+#learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
