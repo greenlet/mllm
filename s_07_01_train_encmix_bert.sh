@@ -18,8 +18,8 @@ train_root_path=$data_path/train_mllm_encmix_bert
 inp_len=256
 out_embs_type=inp
 #out_embs_type=new
-train_ds_type=msk
-#train_ds_type=qna
+#train_ds_type=msk
+train_ds_type=qna
 
 #device=cpu
 #epochs=5
@@ -33,7 +33,7 @@ train_epoch_steps=500
 val_epoch_steps=50
 #batch_size=15
 batch_size=1
-#train_subdir=last
+train_subdir=last
 
 #learning_rate=0.0001
 learning_rate=0.00005
