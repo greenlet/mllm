@@ -1,6 +1,6 @@
 import re
 import sys
-from typing import Optional
+from typing import Optional, Callable
 
 from transformers import BertModel, PreTrainedTokenizer, BeamSearchScorer
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
@@ -15,6 +15,98 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
+
+class Beam:
+    max_len: int
+    next_token_id: int
+    last_token_id: int
+    tokens_cur: list[int]
+    log_prob: float
+    tokens_inp: list[int]
+    finished: bool
+
+    def __init__(self, max_len: int, next_token_id: int, last_token_id: int, tokens: Optional[list[int]] = None,
+                 log_prob: float = 0):
+        self.max_len = max_len
+        self.next_token_id = next_token_id
+        self.last_token_id = last_token_id
+        self.tokens_cur = [] if tokens is None else [*tokens]
+        self.log_prob = log_prob
+        self.tokens_inp = [*self.tokens_cur, self.next_token_id]
+        self.finished = self.tokens_cur and (self.tokens_cur[-1] == self.last_token_id or len(self.tokens_cur) == self.max_len)
+
+    # token_ids: [num_beams]
+    # probs: [num_beams]
+    def next(self, token_ids: torch.Tensor, probs: torch.Tensor) -> list['Beam']:
+        token_ids, probs = token_ids.squeeze().tolist(), probs.squeeze().tolist()
+        res = []
+        for token_id, prob in zip(token_ids, probs):
+            beam = Beam(
+                max_len=self.max_len,
+                next_token_id=self.next_token_id,
+                last_token_id=self.last_token_id,
+                tokens=[*self.tokens_inp, token_id],
+                log_prob=self.log_prob + torch.log(prob).item(),
+            )
+            res.append(beam)
+        return res
+
+
+class BeamSearch:
+    num_beams: int
+    max_len: int
+    temperature: float
+    next_token_id: int
+    last_token_id: int
+    device: torch.device
+    active_beams: list[Beam]
+    finished_beams: list[Beam]
+
+    def __init__(self, num_beams: int, max_len: int, temperature: float, next_token_id: int, last_token_id: int,
+                 device: torch.device):
+        self.num_beams = num_beams
+        self.max_len = max_len
+        self.temperature = temperature
+        self.next_token_id = next_token_id
+        self.last_token_id = last_token_id
+        self.device = device
+        self.active_beams = [Beam(next_token_id=self.next_token_id, last_token_id=self.last_token_id)]
+        self.finished_beams = []
+
+    def run(self, run_inference: Callable[[torch.Tensor], torch.Tensor]) -> list[Beam]:
+        while self.active_beams:
+            inp_tokens = [[beam.tokens_inp] for beam in self.active_beams]
+            # [n_active_beams, seq_len]
+            inp_tokens_t = torch.tensor(inp_tokens, dtype=torch.long, device=self.device)
+            # [n_active_beams, seq_len, vocab_size]
+            logits = run_inference(inp_tokens_t)
+            # [n_active_beams, vocab_size]
+            logits = logits[:, -1]
+            # [n_active_beams, vocab_size]
+            scaled_logits = logits / self.temperature
+            # [n_active_beams, vocab_size]
+            probs = torch.softmax(scaled_logits, dim=-1)
+            # [n_active_beams, num_beams]
+            top_probs, top_ids = probs.topk(self.num_beams, dim=-1)
+
+            new_beams = []
+            for ib, beam in enumerate(self.active_beams):
+                next_token_ids, next_token_probs = top_ids[ib], top_probs[ib]
+                new_beams += beam.next(next_token_ids, next_token_probs)
+
+            new_beams.sort(key=lambda beam: -beam.log_prob)
+            n_active_beams = len(self.active_beams)
+            active_beams = []
+            for i in range(n_active_beams):
+                beam = new_beams[i]
+                if beam.finished:
+                    self.finished_beams.append(beam)
+                else:
+                    active_beams.append(beam)
+            self.active_beams = active_beams
+
+        self.finished_beams.sort(key = lambda beam: -beam.log_prob)
+        return self.finished_beams
 
 
 class EncmixBert(nn.Module):
@@ -216,6 +308,11 @@ class EncmixBert(nn.Module):
     # out_toks: [<=max_out_toks]
     def predict_beam(self, chunk_toks: torch.Tensor, plain_toks: Optional[torch.Tensor] = None, max_out_toks: int = 20,
                      num_beams: int = 5, temperature: float = 1,) -> torch.Tensor:
+        beam_search = BeamSearch(
+            num_beams=num_beams, max_len=max_out_toks, temperature=temperature, next_token_id=self.tkz.mask_token_id,
+            last_token_id=self.tkz.sep_token_id, device=self.device,
+        )
+
         n_chunks = chunk_toks.shape[0]
         num_beams = 5
         chunk_toks_mask = chunk_toks != self.tkz.pad_token_id
@@ -231,55 +328,10 @@ class EncmixBert(nn.Module):
         chunks_emb = torch.concatenate([cls_wemb[0], chunks_emb], dim=0)
         n_chunks += 1
 
-        class Beam:
-            next_token_id: int
-            last_token_id: int
-            device: torch.device
-            tokens_cur: list[int]
-            log_prob: float
-            tokens_inp: list[int]
-            tokens_inp_t: torch.Tensor
-            finished: bool
+        def run_inference(inp_ids: torch.Tensor) -> torch.Tensor:
+            pass
 
-            def __init__(self, next_token_id: int, last_token_id: int, device: torch.device, tokens: Optional[list[int]] = None, log_prob: float = 0):
-                self.next_token_id = next_token_id
-                self.last_token_id = last_token_id
-                self.device = device
-                self.tokens_cur = [] if tokens is None else [*tokens]
-                self.log_prob = log_prob
-                self.tokens_inp = [*self.tokens_cur, self.next_token_id]
-                self.tokens_inp_t = torch.tensor(self.tokens_inp, dtype=torch.long, device=self.device).unsqueeze(0)
-                self.finished = self.tokens_cur and self.tokens_cur[-1] == self.last_token_id
-
-            def add_token(self, token_id: int, prob: torch.Tensor) -> 'Beam':
-                return Beam(
-                    next_token_id=self.next_token_id,
-                    last_token_id=self.last_token_id,
-                    device=self.device,
-                    tokens=[*self.tokens_inp, token_id],
-                    log_prob=self.log_prob + torch.log(prob).item(),
-                )
-
-        class BeamSearch:
-            num_beams: int
-            max_len: int
-            temperature: float
-            next_token_id: int
-            last_token_id: int
-            device: torch.device
-            beams: list[Beam]
-
-            def __init__(self, num_beams: int, max_len: int, temperature: float, next_token_id: int, last_token_id: int, device: torch.device):
-                self.num_beams = num_beams
-                self.max_len = max_len
-                self.temperature = temperature
-                self.next_token_id = next_token_id
-                self.last_token_id = last_token_id
-                self.device = device
-                self.beams = [Beam(next_token_id=self.next_token_id, last_token_id=self.last_token_id, device=self.device)]
-
-            def add_logits(self, logits: torch.Tensor):
-                pass
+        beams = beam_search.run(run_inference)
 
         # [n_chunks, d_model] -> [1, n_chunks, d_model]
         chunks_emb = chunks_emb.unsqueeze(0)
