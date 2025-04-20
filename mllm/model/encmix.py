@@ -45,8 +45,8 @@ class Beam:
                 max_len=self.max_len,
                 next_token_id=self.next_token_id,
                 last_token_id=self.last_token_id,
-                tokens=[*self.tokens_inp, token_id],
-                log_prob=self.log_prob + torch.log(prob).item(),
+                tokens=[*self.tokens_cur, token_id],
+                log_prob=self.log_prob + np.log(prob),
             )
             res.append(beam)
         return res
@@ -70,18 +70,16 @@ class BeamSearch:
         self.next_token_id = next_token_id
         self.last_token_id = last_token_id
         self.device = device
-        self.active_beams = [Beam(next_token_id=self.next_token_id, last_token_id=self.last_token_id)]
+        self.active_beams = [Beam(max_len=self.max_len, next_token_id=self.next_token_id, last_token_id=self.last_token_id)]
         self.finished_beams = []
 
     def run(self, run_inference: Callable[[torch.Tensor], torch.Tensor]) -> list[Beam]:
         while self.active_beams:
-            inp_tokens = [[beam.tokens_inp] for beam in self.active_beams]
+            inp_tokens = [beam.tokens_inp for beam in self.active_beams]
             # [n_active_beams, seq_len]
             inp_tokens_t = torch.tensor(inp_tokens, dtype=torch.long, device=self.device)
-            # [n_active_beams, seq_len, vocab_size]
-            logits = run_inference(inp_tokens_t)
             # [n_active_beams, vocab_size]
-            logits = logits[:, -1]
+            logits = run_inference(inp_tokens_t)
             # [n_active_beams, vocab_size]
             scaled_logits = logits / self.temperature
             # [n_active_beams, vocab_size]
@@ -92,10 +90,12 @@ class BeamSearch:
             new_beams = []
             for ib, beam in enumerate(self.active_beams):
                 next_token_ids, next_token_probs = top_ids[ib], top_probs[ib]
+                # print(next_token_ids)
+                # print(next_token_probs)
                 new_beams += beam.next(next_token_ids, next_token_probs)
 
             new_beams.sort(key=lambda beam: -beam.log_prob)
-            n_active_beams = len(self.active_beams)
+            n_active_beams = self.num_beams - len(self.finished_beams)
             active_beams = []
             for i in range(n_active_beams):
                 beam = new_beams[i]
@@ -307,7 +307,7 @@ class EncmixBert(nn.Module):
     # target_toks: [n_target_toks]
     # out_toks: [<=max_out_toks]
     def predict_beam(self, chunk_toks: torch.Tensor, plain_toks: Optional[torch.Tensor] = None, max_out_toks: int = 20,
-                     num_beams: int = 5, temperature: float = 1,) -> torch.Tensor:
+                     num_beams: int = 5, temperature: float = 1,) -> list[int]:
         beam_search = BeamSearch(
             num_beams=num_beams, max_len=max_out_toks, temperature=temperature, next_token_id=self.tkz.mask_token_id,
             last_token_id=self.tkz.sep_token_id, device=self.device,
@@ -328,68 +328,58 @@ class EncmixBert(nn.Module):
         chunks_emb = torch.concatenate([cls_wemb[0], chunks_emb], dim=0)
         n_chunks += 1
 
-        def run_inference(inp_ids: torch.Tensor) -> torch.Tensor:
-            pass
+        # toks_inp: [n_active_beams, beam_seq_len] -> [n_active_beams, vocab_size]
+        def run_inference(beam_seq_batch: torch.Tensor) -> torch.Tensor:
+            n_active_beams = beam_seq_batch.shape[0]
+            # [n_active_beams, beam_seq_len]
+            toks_inp = beam_seq_batch
+            if plain_toks is not None:
+                plain_toks_inp = plain_toks.repeat((n_active_beams, 1))
+                # [n_active_beams, n_plain_toks + beam_seq_len]
+                # print(plain_toks_inp.shape, beam_seq_batch.shape)
+                toks_inp = torch.concatenate([plain_toks_inp, beam_seq_batch], dim=-1)
 
-        beams = beam_search.run(run_inference)
+            # [n_active_beams, n_chunks, d_model]
+            chunks_emb_inp = chunks_emb.repeat((n_active_beams, 1, 1))
+            # chunks_emb_inp = chunks_emb_inp[:, :1]
 
-        # [n_chunks, d_model] -> [1, n_chunks, d_model]
-        chunks_emb = chunks_emb.unsqueeze(0)
-        mask_toks_single = torch.tensor([self.tkz.mask_token_id], dtype=chunk_toks.dtype, device=self.device)
-        target_toks = mask_toks_single
-        while True:
-            if plain_toks is None:
-                n_plain_toks = 0
-                toks_inp = target_toks
-            else:
-                n_plain_toks = len(plain_toks)
-                # [n_plain_toks], [n_target_toks] -> [n_plain_toks + n_target_toks]
-                toks_inp = torch.concatenate([plain_toks, target_toks])
-            # [n_plain_toks + n_target_toks] -> [1, n_plain_toks + n_target_toks]
-            toks_inp = toks_inp.unsqueeze(0)
-
+            # [n_active_beams, n_plain_toks + beam_seq_len]
             toks_inp_mask = toks_inp != self.tkz.pad_token_id
-            chunks_mask = torch.ones((1, n_chunks), dtype=torch.bool, device=self.device)
-            # [1, n_chunks], [1, n_plain_toks + n_target_toks] -> [1, n_chunks + n_plain_toks + n_target_toks]
-            # seq_len_out = n_chunks + n_plain_toks + n_target_toks
-            # [1, seq_len_out]
+            # [n_active_beams, n_chunks]
+            chunks_mask = torch.ones((n_active_beams, n_chunks), dtype=torch.bool, device=self.device)
+            # [n_active_beams, n_chunks + n_plain_toks + beam_seq_len]
             inp_mask = torch.concatenate([chunks_mask, toks_inp_mask], dim=1)
             token_type_ids = None
             if self.cfg.token_types_for_embs:
                 token_type_ids = torch.zeros(inp_mask.shape, dtype=torch.int64, device=self.device)
                 token_type_ids[:, 1:n_chunks] = 1
+            # print(f'chunks_emb_inp: {chunks_emb_inp.shape}. toks_inp: {toks_inp.shape}, inp_mask: {inp_mask.shape} all: {inp_mask.all()}. token_type_ids: {token_type_ids.shape}')
             mix_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
-                inputs_starting_embeds=chunks_emb, input_ids=toks_inp, attention_mask=inp_mask, token_type_ids=token_type_ids,
+                inputs_starting_embeds=chunks_emb_inp, input_ids=toks_inp, attention_mask=inp_mask, token_type_ids=token_type_ids,
             )
 
-            # [1, seq_len_out, d_model]
+            # [n_active_beams, n_chunks + n_plain_toks + beam_seq_len, d_model]
             lhs = mix_out.last_hidden_state
-            # [1, d_model]
+            # [n_active_beams, d_model]
             out_logits = lhs[:, -1]
-            # out_logits = lhs[:, 1:n_target_toks + 1][target_mask]
             if self.cfg.out_embs_type == EncmixOutEmbsType.Non:
                 raise Exception(f'Out embeddings type {self.cfg.out_embs_type} is not supported')
             if self.cfg.out_embs_type == EncmixOutEmbsType.Inp:
                 # [d_model, vocab_size]
                 wemb_weights = self.bert_model.embeddings.word_embeddings.weight
-                # [1, vocab_size]
+                # [n_active_beams, vocab_size]
                 out_logits = out_logits @ wemb_weights.T
             else:
-                # [1, vocab_size]
+                # [n_active_beams, vocab_size]
                 out_logits = self.out_word_embeddings(out_logits)
 
-            # [1, vocab_size]
-            probs_pred = torch.softmax(out_logits, dim=-1)
-            # [1]
-            toks_pred = torch.argmax(probs_pred, dim=-1)
+            return out_logits
 
-            target_toks = torch.concatenate([target_toks[:-1], toks_pred, mask_toks_single])
-            # print(toks_pred.shape, target_toks.shape)
-            if toks_pred.squeeze().item() == self.tkz.sep_token_id or len(target_toks) == max_out_toks:
-                target_toks = target_toks[:-1]
-                break
+        beams = beam_search.run(run_inference)
+        for beam in beams:
+            print(self.tkz.decode(beam.tokens_cur))
 
-        return target_toks
+        return beams[0].tokens_cur
 
 
 class EncmixBertGan(nn.Module):
