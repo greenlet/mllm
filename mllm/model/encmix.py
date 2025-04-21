@@ -158,8 +158,11 @@ class EncmixBert(nn.Module):
         n_chunks = chunk_toks.shape[0]
         chunk_toks_mask = chunk_toks != self.tkz.pad_token_id
         # [n_chunks, seq_len] -> [n_chunks, seq_len, d_model]
+        token_type_ids = None
+        if self.cfg.token_types_for_embs:
+            token_type_ids = torch.zeros(chunk_toks.shape, dtype=torch.int64, device=self.device)
         chunks_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
-            input_ids=chunk_toks, attention_mask=chunk_toks_mask
+            input_ids=chunk_toks, attention_mask=chunk_toks_mask, token_type_ids=token_type_ids,
         )
         # [n_chunks, seq_len, d_model] -> [n_chunks, d_model]
         chunks_emb = chunks_out.last_hidden_state[: ,0]
@@ -199,7 +202,6 @@ class EncmixBert(nn.Module):
         # seq_len_out = n_chunks + n_plain_toks + n_target_toks
         # [n_target_toks, seq_len_out]
         inp_mask = torch.concatenate([chunks_mask, toks_inp_mask], dim=1)
-        token_type_ids = None
         if self.cfg.token_types_for_embs:
             token_type_ids = torch.zeros(inp_mask.shape, dtype=torch.int64, device=self.device)
             token_type_ids[:, 1:n_chunks] = 1
@@ -232,9 +234,11 @@ class EncmixBert(nn.Module):
     def predict(self, chunk_toks: torch.Tensor, plain_toks: Optional[torch.Tensor] = None, max_out_toks: int = 20) -> torch.Tensor:
         n_chunks = chunk_toks.shape[0]
         chunk_toks_mask = chunk_toks != self.tkz.pad_token_id
-        # [n_chunks, seq_len] -> [n_chunks, seq_len, d_model]
+        token_type_ids = None
+        if self.cfg.token_types_for_embs:
+            token_type_ids = torch.zeros(chunk_toks.shape, dtype=torch.int64, device=self.device)
         chunks_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
-            input_ids=chunk_toks, attention_mask=chunk_toks_mask
+            input_ids=chunk_toks, attention_mask=chunk_toks_mask, token_type_ids=token_type_ids,
         )
         # [n_chunks, seq_len, d_model] -> [n_chunks, d_model]
         chunks_emb = chunks_out.last_hidden_state[: ,0]
@@ -265,7 +269,6 @@ class EncmixBert(nn.Module):
             # seq_len_out = n_chunks + n_plain_toks + n_target_toks
             # [1, seq_len_out]
             inp_mask = torch.concatenate([chunks_mask, toks_inp_mask], dim=1)
-            token_type_ids = None
             if self.cfg.token_types_for_embs:
                 token_type_ids = torch.zeros(inp_mask.shape, dtype=torch.int64, device=self.device)
                 token_type_ids[:, 1:n_chunks] = 1
@@ -314,11 +317,12 @@ class EncmixBert(nn.Module):
         )
 
         n_chunks = chunk_toks.shape[0]
-        num_beams = 5
         chunk_toks_mask = chunk_toks != self.tkz.pad_token_id
-        # [n_chunks, seq_len] -> [n_chunks, seq_len, d_model]
+        token_type_ids = None
+        if self.cfg.token_types_for_embs:
+            token_type_ids = torch.zeros(chunk_toks.shape, dtype=torch.int64, device=self.device)
         chunks_out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert_model(
-            input_ids=chunk_toks, attention_mask=chunk_toks_mask
+            input_ids=chunk_toks, attention_mask=chunk_toks_mask, token_type_ids=token_type_ids,
         )
         # [n_chunks, seq_len, d_model] -> [n_chunks, d_model]
         chunks_emb = chunks_out.last_hidden_state[: ,0]
@@ -454,8 +458,12 @@ class EncmixBertGan(nn.Module):
         # [1, n_ctx] = [CLS, TOK*, SEP]
         c_toks_t = self._tkz_inp(context, max_len=self.cfg.inp_len, strip=False)
         assert c_toks_t[0, 0] == self.tkz.cls_token_id and c_toks_t[0, -1] == self.tkz.sep_token_id, f'{c_toks_t}. cls_tok_id = {self.tkz.cls_token_id}. sep_tok_id = {self.tkz.sep_token_id}'
+
+        token_type_ids = None
+        if self.cfg.token_types_for_embs:
+            token_type_ids = torch.zeros((1, c_toks_t.shape[1]), dtype=torch.int64, device=self.device)
         c_out: BaseModelOutputWithPoolingAndCrossAttentions = self.gen_model(
-            input_ids=c_toks_t, attention_mask = c_toks_t != self.tkz.pad_token_id,
+            input_ids=c_toks_t, attention_mask=c_toks_t != self.tkz.pad_token_id, token_type_ids=token_type_ids,
         )
         # [1, d_model]
         c_emb = c_out.last_hidden_state[:, 0]
@@ -483,10 +491,12 @@ class EncmixBertGan(nn.Module):
         # [1, max_out_toks]
         amask_toks_t = torch.ones((1, max_out_toks), dtype=torch.int64, device=self.device) * self.tkz.mask_token_id
 
+        # [1]
         cls_toks_t = torch.tensor([[self.tkz.cls_token_id]], device=self.device)
         # [1, 1, d_model]
         cls_wemb = self.gen_model.embeddings.word_embeddings(cls_toks_t)
 
+        # [1]
         sep_toks_t = torch.tensor([[self.tkz.sep_token_id]], device=self.device)
         # [1, 1, d_model]
         sep_wemb = self.gen_model.embeddings.word_embeddings(sep_toks_t)
@@ -496,8 +506,12 @@ class EncmixBertGan(nn.Module):
 
         # [1, n_qa + max_out_toks + 1]
         qam_toks_t = torch.concatenate([qacap_toks_t, amask_toks_t, sep_toks_t], dim=-1)
+
+        if self.cfg.token_types_for_embs:
+            token_type_ids = torch.zeros((1, 2 + qam_toks_t.shape[1]), dtype=torch.int64, device=self.device)
+            token_type_ids[:, 1] = 1
         qam_out: BaseModelOutputWithPoolingAndCrossAttentions = self.gen_model(
-            inputs_starting_embeds=cc_emb, input_ids=qam_toks_t, attention_mask=qam_toks_t != self.tkz.pad_token_id,
+            inputs_starting_embeds=cc_emb, input_ids=qam_toks_t, token_type_ids=token_type_ids,
         )
         # [1, n_ctx + n_qa + max_out_toks]
         qam_lhs = qam_out.last_hidden_state
@@ -513,8 +527,11 @@ class EncmixBertGan(nn.Module):
         tgt1, a1_emb = 0, a_emb_pred
         # [1, 1 + 1 + n_qacap + n_ans]
         inp1_emb = torch.concatenate([cls_wemb, c_wemb[:, 1:-1], qacap_wemb, a1_emb], dim=1)
+
+        if self.cfg.token_types_for_embs:
+            token_type_ids = torch.zeros((1, inp1_emb.shape[1] + 1), dtype=torch.int64, device=self.device)
         gan_out1: BaseModelOutputWithPoolingAndCrossAttentions = self.dis_model(
-            inputs_starting_embeds=inp1_emb, input_ids=sep_toks_t, attention_mask=sep_toks_t != self.tkz.pad_token_id,
+            inputs_starting_embeds=inp1_emb, input_ids=sep_toks_t, token_type_ids=token_type_ids,
         )
         # [1, d_model]
         dis_pooler_out1 = gan_out1.last_hidden_state[:, 0]
@@ -527,8 +544,10 @@ class EncmixBertGan(nn.Module):
             tgt2, a2_emb = 1, a_wemb
             # [1, 1 + 1 + n_qacap + n_ans]
             inp2_emb = torch.concatenate([cls_wemb, c_wemb[:, 1:-1], qacap_wemb, a2_emb], dim=1)
+            if self.cfg.token_types_for_embs:
+                token_type_ids = torch.zeros((1, inp2_emb.shape[1] + 1), dtype=torch.int64, device=self.device)
             gan_out2: BaseModelOutputWithPoolingAndCrossAttentions = self.dis_model(
-                inputs_starting_embeds=inp2_emb, input_ids=sep_toks_t, attention_mask=sep_toks_t != self.tkz.pad_token_id,
+                inputs_starting_embeds=inp2_emb, input_ids=sep_toks_t, token_type_ids=token_type_ids,
             )
             # [1, d_model]
             dis_pooler_out2 = gan_out2.last_hidden_state[:, 0]

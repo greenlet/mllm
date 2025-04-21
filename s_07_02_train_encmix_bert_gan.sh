@@ -8,6 +8,7 @@ mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fname=encmix_bert_cfg_01_base.yaml
 #model_cfg_fname=encmix_bert_cfg_02_large.yaml
+model_cfg_fname=encmix_bert_cfg_03_base_tte.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
@@ -21,11 +22,11 @@ out_embs_type=inp
 train_ds_type=qna
 #pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 
-#device=cpu
-#epochs=5
-#train_epoch_steps=20
-#val_epoch_steps=20
-#batch_size=5
+device=cpu
+epochs=5
+train_epoch_steps=20
+val_epoch_steps=20
+batch_size=5
 
 device=cuda
 epochs=700
@@ -36,8 +37,8 @@ batch_size=1
 #train_subdir=last
 
 #learning_rate=0.0001
-#learning_rate=0.00005
-learning_rate=0.00001
+learning_rate=0.00005
+#learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
