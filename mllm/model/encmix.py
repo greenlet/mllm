@@ -644,3 +644,285 @@ def qna_gan_loss(logits: torch.Tensor, target: torch.Tensor) -> tuple[torch.Tens
     return loss, loss_gen, loss_dis
 
 
+class EncmixBertSep(nn.Module):
+    cfg: EncmixBertCfg
+    tkz: PreTrainedTokenizer
+    device: torch.device
+    enc_model: MixBertModel
+    dec_model: MixBertModel
+
+    def __init__(self, cfg: EncmixBertCfg, tkz: PreTrainedTokenizer, device: Optional[torch.device] = None):
+        super().__init__()
+        self.cfg = cfg
+        self.tkz = tkz
+        self.device = device if device is not None else torch.device('cpu')
+        type_vocab_size = 2
+        self.enc_model = MixBertModel.from_pretrained(
+            self.cfg.pretrained_model_name, torch_dtype=torch.float32, device_map=self.device, type_vocab_size=type_vocab_size,
+        )
+        self.dec_model = MixBertModel.from_pretrained(
+            self.cfg.pretrained_model_name, torch_dtype=torch.float32, device_map=self.device, type_vocab_size=type_vocab_size,
+        )
+        print(self.dec_model.config)
+        # print(self.bert_model)
+        assert self.tkz.pad_token_id == 0, f'pad_token_id = {self.tkz.pad_token_id}'
+
+        if self.cfg.out_embs_type == EncmixOutEmbsType.New:
+            self.out_word_embeddings = nn.Linear(self.cfg.d_model, self.tkz.vocab_size, bias=False, device=self.device)
+        else:
+            self.out_word_embeddings = None
+
+        self._init_params()
+
+    def _init_params(self):
+        if self.out_word_embeddings is not None:
+            # for n, p in self.out_word_embeddings.named_parameters():
+            #     if p.dim() > 1:
+            #         nn.init.xavier_uniform_(p)
+            # print(self.out_word_embeddings.weight.shape, self.bert_model.embeddings.word_embeddings.weight.shape)
+            self.out_word_embeddings.weight = nn.Parameter(self.dec_model.embeddings.word_embeddings.weight.clone(), requires_grad=True)
+
+    def _get_token_type_ids(self, shape: tuple[int], target_range: Optional[range] = None) -> Optional[torch.Tensor]:
+        token_type_ids = None
+        if self.cfg.token_types_for_embs:
+            token_type_ids = torch.zeros(shape, dtype=torch.int64, device=self.device)
+            if target_range is not None:
+                token_type_ids[:, target_range] = 1
+        return token_type_ids
+
+    # chunk_toks: [n_chunks, seq_len]
+    # plain_toks: [n_plain_toks]
+    # target_toks: [n_target_toks]
+    # out_logits: [n_target_toks]
+    def run_chunks_plain_seq(self, chunk_toks: torch.Tensor, target_toks: torch.Tensor, plain_toks: Optional[torch.Tensor] = None) -> torch.Tensor:
+        n_chunks = chunk_toks.shape[0]
+        # [n_chunks, seq_len]
+        chunk_toks_mask = chunk_toks != self.tkz.pad_token_id
+        # [n_chunks, seq_len]
+        token_type_ids = self._get_token_type_ids(chunk_toks.shape)
+        chunks_out: BaseModelOutputWithPoolingAndCrossAttentions = self.enc_model(
+            input_ids=chunk_toks, attention_mask=chunk_toks_mask, token_type_ids=token_type_ids,
+        )
+        # [n_chunks, seq_len, d_model]
+        chunks_lhs = chunks_out.last_hidden_state
+        # [n_chunks, d_model]
+        chunks_emb = chunks_lhs[:, 0]
+        # [1, 1, d_model]
+        cls_wemb = self.dec_model.embeddings.word_embeddings(torch.tensor([[self.tkz.cls_token_id]], device=self.device))
+        # [n_chunks + 1, d_model]
+        chunks_emb = torch.concatenate([cls_wemb[0], chunks_emb], dim=0)
+        n_chunks += 1
+
+        n_target_toks = len(target_toks)
+
+        # [n_target_toks] -> [n_target_toks, n_target_toks]
+        target_toks_inp = target_toks.repeat(n_target_toks, 1)
+        target_toks_inp = torch.tril(target_toks_inp)
+        target_mask = torch.eye(n_target_toks, dtype=torch.bool, device=self.device)
+        target_toks_inp[target_mask] = self.tkz.mask_token_id
+
+        # [n_chunks, d_model] -> [n_target_toks, n_chunks, d_model]
+        chunks_emb = chunks_emb.repeat(n_target_toks, 1, 1)
+
+        if plain_toks is None:
+            n_plain_toks = 0
+            toks_inp = target_toks_inp
+        else:
+            # Remove first CLS token
+            if plain_toks[0] == self.tkz.cls_token_id:
+                plain_toks = plain_toks[1:]
+            n_plain_toks = len(plain_toks)
+            # [n_plain_toks] -> [n_target_toks, n_plain_toks]
+            plain_toks_inp = plain_toks.repeat(n_target_toks, 1)
+            # [n_target_toks, n_plain_toks], [n_target_toks, n_target_toks] -> [n_target_toks, n_plain_toks + n_target_toks]
+            toks_inp = torch.concatenate([plain_toks_inp, target_toks_inp], dim=1)
+
+        toks_inp_mask = toks_inp != self.tkz.pad_token_id
+        chunks_mask = torch.ones((n_target_toks, n_chunks), dtype=torch.bool, device=self.device)
+        # [n_target_toks, n_chunks], [n_target_toks, n_plain_toks + n_target_toks] -> [n_target_toks, n_chunks + n_plain_toks + n_target_toks]
+        # seq_len_out = n_chunks + n_plain_toks + n_target_toks
+        # [n_target_toks, seq_len_out]
+        inp_mask = torch.concatenate([chunks_mask, toks_inp_mask], dim=1)
+        token_type_ids = self._get_token_type_ids(inp_mask.shape, range(1, n_chunks))
+        mix_out: BaseModelOutputWithPoolingAndCrossAttentions = self.dec_model(
+            inputs_starting_embeds=chunks_emb, input_ids=toks_inp, attention_mask=inp_mask, token_type_ids=token_type_ids,
+        )
+
+        # [n_target_toks, seq_len_out, d_model]
+        lhs = mix_out.last_hidden_state
+        # [n_target_toks, n_target_toks, d_model]
+        out_logits = lhs[:, n_chunks + n_plain_toks:][target_mask]
+        # out_logits = lhs[:, 1:n_target_toks + 1][target_mask]
+        if self.cfg.out_embs_type == EncmixOutEmbsType.Non:
+            pass
+        elif self.cfg.out_embs_type == EncmixOutEmbsType.Inp:
+            # [d_model, vocab_size]
+            wemb_weights = self.dec_model.embeddings.word_embeddings.weight
+            # [n_target_toks, vocab_size]
+            out_logits = out_logits @ wemb_weights.T
+        else:
+            # [n_target_toks, vocab_size]
+            out_logits = self.out_word_embeddings(out_logits)
+
+        return out_logits
+
+    # chunk_toks: [n_chunks, seq_len]
+    # plain_toks: [n_plain_toks]
+    # target_toks: [n_target_toks]
+    # out_toks: [<=max_out_toks]
+    def predict(self, chunk_toks: torch.Tensor, plain_toks: Optional[torch.Tensor] = None, max_out_toks: int = 20) -> torch.Tensor:
+        n_chunks = chunk_toks.shape[0]
+        chunk_toks_mask = chunk_toks != self.tkz.pad_token_id
+        token_type_ids = None
+        if self.cfg.token_types_for_embs:
+            token_type_ids = torch.zeros(chunk_toks.shape, dtype=torch.int64, device=self.device)
+        chunks_out: BaseModelOutputWithPoolingAndCrossAttentions = self.dec_model(
+            input_ids=chunk_toks, attention_mask=chunk_toks_mask, token_type_ids=token_type_ids,
+        )
+        # [n_chunks, seq_len, d_model] -> [n_chunks, d_model]
+        chunks_emb = chunks_out.last_hidden_state[: ,0]
+        # [1, 1, d_model]
+        cls_wemb = self.dec_model.embeddings.word_embeddings(torch.tensor([[self.tkz.cls_token_id]], device=self.device))
+        # [n_chunks + 1, d_model]
+        chunks_emb = torch.concatenate([cls_wemb[0], chunks_emb], dim=0)
+        n_chunks += 1
+
+        # [n_chunks, d_model] -> [1, n_chunks, d_model]
+        chunks_emb = chunks_emb.unsqueeze(0)
+        mask_toks_single = torch.tensor([self.tkz.mask_token_id], dtype=chunk_toks.dtype, device=self.device)
+        target_toks = mask_toks_single
+        while True:
+            if plain_toks is None:
+                n_plain_toks = 0
+                toks_inp = target_toks
+            else:
+                n_plain_toks = len(plain_toks)
+                # [n_plain_toks], [n_target_toks] -> [n_plain_toks + n_target_toks]
+                toks_inp = torch.concatenate([plain_toks, target_toks])
+            # [n_plain_toks + n_target_toks] -> [1, n_plain_toks + n_target_toks]
+            toks_inp = toks_inp.unsqueeze(0)
+
+            toks_inp_mask = toks_inp != self.tkz.pad_token_id
+            chunks_mask = torch.ones((1, n_chunks), dtype=torch.bool, device=self.device)
+            # [1, n_chunks], [1, n_plain_toks + n_target_toks] -> [1, n_chunks + n_plain_toks + n_target_toks]
+            # seq_len_out = n_chunks + n_plain_toks + n_target_toks
+            # [1, seq_len_out]
+            inp_mask = torch.concatenate([chunks_mask, toks_inp_mask], dim=1)
+            if self.cfg.token_types_for_embs:
+                token_type_ids = torch.zeros(inp_mask.shape, dtype=torch.int64, device=self.device)
+                token_type_ids[:, 1:n_chunks] = 1
+            mix_out: BaseModelOutputWithPoolingAndCrossAttentions = self.dec_model(
+                inputs_starting_embeds=chunks_emb, input_ids=toks_inp, attention_mask=inp_mask, token_type_ids=token_type_ids,
+            )
+
+            # [1, seq_len_out, d_model]
+            lhs = mix_out.last_hidden_state
+            # [1, d_model]
+            out_logits = lhs[:, -1]
+            # out_logits = lhs[:, 1:n_target_toks + 1][target_mask]
+            if self.cfg.out_embs_type == EncmixOutEmbsType.Non:
+                raise Exception(f'Out embeddings type {self.cfg.out_embs_type} is not supported')
+            if self.cfg.out_embs_type == EncmixOutEmbsType.Inp:
+                # [d_model, vocab_size]
+                wemb_weights = self.dec_model.embeddings.word_embeddings.weight
+                # [1, vocab_size]
+                out_logits = out_logits @ wemb_weights.T
+            else:
+                # [1, vocab_size]
+                out_logits = self.out_word_embeddings(out_logits)
+
+            # [1, vocab_size]
+            probs_pred = torch.softmax(out_logits, dim=-1)
+            # [1]
+            toks_pred = torch.argmax(probs_pred, dim=-1)
+
+            target_toks = torch.concatenate([target_toks[:-1], toks_pred, mask_toks_single])
+            # print(toks_pred.shape, target_toks.shape)
+            if toks_pred.squeeze().item() == self.tkz.sep_token_id or len(target_toks) == max_out_toks:
+                target_toks = target_toks[:-1]
+                break
+
+        return target_toks
+
+    # chunk_toks: [n_chunks, seq_len]
+    # plain_toks: [n_plain_toks]
+    # target_toks: [n_target_toks]
+    # out_toks: [<=max_out_toks]
+    def predict_beam(self, chunk_toks: torch.Tensor, plain_toks: Optional[torch.Tensor] = None, max_out_toks: int = 20,
+                     num_beams: int = 5, temperature: float = 1,) -> list[int]:
+        beam_search = BeamSearch(
+            num_beams=num_beams, max_len=max_out_toks, temperature=temperature, next_token_id=self.tkz.mask_token_id,
+            last_token_id=self.tkz.sep_token_id, device=self.device,
+        )
+
+        n_chunks = chunk_toks.shape[0]
+        chunk_toks_mask = chunk_toks != self.tkz.pad_token_id
+        token_type_ids = None
+        if self.cfg.token_types_for_embs:
+            token_type_ids = torch.zeros(chunk_toks.shape, dtype=torch.int64, device=self.device)
+        chunks_out: BaseModelOutputWithPoolingAndCrossAttentions = self.dec_model(
+            input_ids=chunk_toks, attention_mask=chunk_toks_mask, token_type_ids=token_type_ids,
+        )
+        # [n_chunks, seq_len, d_model] -> [n_chunks, d_model]
+        chunks_emb = chunks_out.last_hidden_state[: ,0]
+        # [1, 1, d_model]
+        cls_wemb = self.dec_model.embeddings.word_embeddings(torch.tensor([[self.tkz.cls_token_id]], device=self.device))
+        # [n_chunks + 1, d_model]
+        chunks_emb = torch.concatenate([cls_wemb[0], chunks_emb], dim=0)
+        n_chunks += 1
+
+        # toks_inp: [n_active_beams, beam_seq_len] -> [n_active_beams, vocab_size]
+        def run_inference(beam_seq_batch: torch.Tensor) -> torch.Tensor:
+            n_active_beams = beam_seq_batch.shape[0]
+            # [n_active_beams, beam_seq_len]
+            toks_inp = beam_seq_batch
+            if plain_toks is not None:
+                plain_toks_inp = plain_toks.repeat((n_active_beams, 1))
+                # [n_active_beams, n_plain_toks + beam_seq_len]
+                # print(plain_toks_inp.shape, beam_seq_batch.shape)
+                toks_inp = torch.concatenate([plain_toks_inp, beam_seq_batch], dim=-1)
+
+            # [n_active_beams, n_chunks, d_model]
+            chunks_emb_inp = chunks_emb.repeat((n_active_beams, 1, 1))
+            # chunks_emb_inp = chunks_emb_inp[:, :1]
+
+            # [n_active_beams, n_plain_toks + beam_seq_len]
+            toks_inp_mask = toks_inp != self.tkz.pad_token_id
+            # [n_active_beams, n_chunks]
+            chunks_mask = torch.ones((n_active_beams, n_chunks), dtype=torch.bool, device=self.device)
+            # [n_active_beams, n_chunks + n_plain_toks + beam_seq_len]
+            inp_mask = torch.concatenate([chunks_mask, toks_inp_mask], dim=1)
+            token_type_ids = None
+            if self.cfg.token_types_for_embs:
+                token_type_ids = torch.zeros(inp_mask.shape, dtype=torch.int64, device=self.device)
+                token_type_ids[:, 1:n_chunks] = 1
+            # print(f'chunks_emb_inp: {chunks_emb_inp.shape}. toks_inp: {toks_inp.shape}, inp_mask: {inp_mask.shape} all: {inp_mask.all()}. token_type_ids: {token_type_ids.shape}')
+            mix_out: BaseModelOutputWithPoolingAndCrossAttentions = self.dec_model(
+                inputs_starting_embeds=chunks_emb_inp, input_ids=toks_inp, attention_mask=inp_mask, token_type_ids=token_type_ids,
+            )
+
+            # [n_active_beams, n_chunks + n_plain_toks + beam_seq_len, d_model]
+            lhs = mix_out.last_hidden_state
+            # [n_active_beams, d_model]
+            out_logits = lhs[:, -1]
+            if self.cfg.out_embs_type == EncmixOutEmbsType.Non:
+                raise Exception(f'Out embeddings type {self.cfg.out_embs_type} is not supported')
+            if self.cfg.out_embs_type == EncmixOutEmbsType.Inp:
+                # [d_model, vocab_size]
+                wemb_weights = self.dec_model.embeddings.word_embeddings.weight
+                # [n_active_beams, vocab_size]
+                out_logits = out_logits @ wemb_weights.T
+            else:
+                # [n_active_beams, vocab_size]
+                out_logits = self.out_word_embeddings(out_logits)
+
+            return out_logits
+
+        beams = beam_search.run(run_inference)
+        for beam in beams:
+            print(self.tkz.decode(beam.tokens_cur))
+
+        return beams[0].tokens_cur
+
+
+
