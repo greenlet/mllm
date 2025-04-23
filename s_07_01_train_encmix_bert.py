@@ -13,9 +13,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import EncdecBertCfg, EncmixBertCfg, copy_override_encmix_bert_cfg, gen_prefpostfix_encmix_bert, \
-    EncmixOutEmbsType, EncmixTrainDsType
+    EncmixOutEmbsType, EncmixTrainDsType, EncmixModelType
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNAME
-from mllm.model.encmix import EncmixBert
+from mllm.model.encmix import EncmixBert, EncmixBertSep
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, QnaQuesInp, \
     get_squadv2_df, split_df, gen_loss, get_squadv2_batch_iterator, get_squadv2_tensor_iterators
 from transformers import AutoTokenizer
@@ -34,8 +34,13 @@ class ArgsEncmixBertTrain(BaseModel):
     )
     train_ds_type: EncmixTrainDsType = Field(
         EncmixTrainDsType.Msk,
-        description=f'Train dataset type, one of: {[tds.value for tds in EncmixTrainDsType]}',
+        description=f'Train dataset type, one of: {[t.value for t in EncmixTrainDsType]}',
         cli=('--train-ds-type',),
+    )
+    encmix_model_type: EncmixModelType = Field(
+        EncmixModelType.One,
+        description=f'Encmix model type, one of: {[t.value for t in EncmixModelType]}',
+        cli=('--encmix-model-type',),
     )
     train_root_path: Path = Field(
         ...,
@@ -118,7 +123,7 @@ def main(args: ArgsEncmixBertTrain) -> int:
         model_cfg, inp_len=args.inp_len, out_embs_type=args.out_embs_type,
     )
 
-    prefix, suffix = gen_prefpostfix_encmix_bert(model_cfg, train_ds_type=args.train_ds_type)
+    prefix, suffix = gen_prefpostfix_encmix_bert(model_cfg, train_ds_type=args.train_ds_type, encmix_model_type=args.encmix_model_type)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -141,13 +146,22 @@ def main(args: ArgsEncmixBertTrain) -> int:
     tkz = AutoTokenizer.from_pretrained(model_cfg.tokenizer_name)
 
     print(model_cfg)
-    model = EncmixBert(model_cfg, tkz=tkz, device=device)
+    if args.encmix_model_type == EncmixModelType.One:
+        model = EncmixBert(model_cfg, tkz=tkz, device=device)
+    elif args.encmix_model_type == EncmixModelType.Sep:
+        model = EncmixBertSep(model_cfg, tkz=tkz, device=device)
+    else:
+        raise Exception(f'model type {args.encmix_model_type} is not supported.')
 
     if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
-        pretrained_checkpoint = torch.load(pretrained_model_path)
+        pretrained_checkpoint = torch.load(pretrained_model_path, map_location=device)
         model.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        # if isinstance(model, EncmixBert):
+        #     model.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        # else:
+        #     model.enc_model.load_state_dict(pretrained_checkpoint['model'], strict=False)
 
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)

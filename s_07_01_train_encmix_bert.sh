@@ -20,6 +20,8 @@ out_embs_type=inp
 #out_embs_type=new
 #train_ds_type=msk
 train_ds_type=qna
+#encmix_model_type=one
+encmix_model_type=sep
 
 #device=cpu
 #epochs=5
@@ -33,7 +35,7 @@ train_epoch_steps=500
 val_epoch_steps=50
 #batch_size=15
 batch_size=1
-train_subdir=last
+#train_subdir=last
 
 #learning_rate=0.0001
 learning_rate=0.00005
@@ -48,6 +50,7 @@ python s_07_01_train_encmix_bert.py \
   --data-path $data_path \
   --wiki-ds-name $wiki_ds_name \
   --train-ds-type $train_ds_type \
+  --encmix-model-type $encmix_model_type \
   --train-root-path $train_root_path \
   --train-subdir "$train_subdir" \
   --model-cfg-fpath $model_cfg_fpath \

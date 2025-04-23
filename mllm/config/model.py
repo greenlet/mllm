@@ -323,6 +323,11 @@ class EncmixTrainDsType(str, Enum):
     Qna = 'qna'
 
 
+class EncmixModelType(str, Enum):
+    One = 'one'
+    Sep = 'sep'
+
+
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
 
 
@@ -869,8 +874,10 @@ def gen_prefpostfix_encdecrnk_bert(model_cfg: EncdecRankBertCfg) -> tuple[str, s
     return prefix, postfix
 
 
-def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg, train_ds_type: Optional[EncmixTrainDsType] = None) -> tuple[str, str]:
+def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg, train_ds_type: Optional[EncmixTrainDsType] = None, encmix_model_type: Optional[EncmixModelType] = None) -> tuple[str, str]:
     prefix, postfix_parts = f'encmixbert', []
+    if encmix_model_type is not None:
+        prefix = f'{prefix}{encmix_model_type.value}'
 
     bert_str = model_cfg.pretrained_model_name.replace('_', '_')
     if model_cfg.tokenizer_name != model_cfg.pretrained_model_name:
@@ -888,8 +895,9 @@ def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg, train_ds_type: Optiona
     tte = 't' if model_cfg.token_types_for_embs else 'f'
     postfix_parts.append(f'tte_{tte}')
 
-    if train_ds_type:
+    if train_ds_type is not None:
         postfix_parts.append(f'ds_{train_ds_type.value}')
+
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix
