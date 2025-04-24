@@ -13,11 +13,12 @@ model_cfg_fname=encmix_bert_cfg_03_base_tte.yaml
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encmix_bert
+train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
 #inp_len=128
 inp_len=256
-out_embs_type=inp
-#out_embs_type=new
+#out_embs_type=inp
+out_embs_type=new
 #train_ds_type=msk
 train_ds_type=qna
 #encmix_model_type=one
@@ -29,6 +30,7 @@ encmix_model_type=sep
 #val_epoch_steps=20
 #batch_size=5
 
+pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 device=cuda
 epochs=700
 train_epoch_steps=500
@@ -38,8 +40,8 @@ batch_size=1
 #train_subdir=last
 
 #learning_rate=0.0001
-learning_rate=0.00005
-#learning_rate=0.00001
+#learning_rate=0.00005
+learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
@@ -52,6 +54,7 @@ python s_07_01_train_encmix_bert.py \
   --train-ds-type $train_ds_type \
   --encmix-model-type $encmix_model_type \
   --train-root-path $train_root_path \
+  --pretrained-model-path "$pretrained_model_path" \
   --train-subdir "$train_subdir" \
   --model-cfg-fpath $model_cfg_fpath \
   --inp-len $inp_len \

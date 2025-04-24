@@ -157,11 +157,24 @@ def main(args: ArgsEncmixBertTrain) -> int:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path, map_location=device)
-        model.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        # if isinstance(model, EncmixBert):
-        #     model.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        # else:
-        #     model.enc_model.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        # model.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        if isinstance(model, EncmixBert):
+            print(list(pretrained_checkpoint['model'].keys()))
+            model.load_state_dict(pretrained_checkpoint['model'], strict=True)
+        else:
+            print(list(pretrained_checkpoint['model'].keys()))
+            prefix = 'enc_bert.bert_model.'
+            prefix_len = len(prefix)
+            model_chkpt = {}
+            for k, v in pretrained_checkpoint['model'].items():
+                if k.startswith(prefix):
+                    k = k[prefix_len:]
+                if k.startswith('dec_pyr.'):
+                    continue
+                model_chkpt[k] = v
+            model.enc_model.load_state_dict(model_chkpt, strict=True)
+            del pretrained_checkpoint
+            del model_chkpt
 
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
