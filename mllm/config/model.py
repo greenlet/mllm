@@ -328,6 +328,13 @@ class EncmixModelType(str, Enum):
     Sep = 'sep'
 
 
+class GenmixBertCfg(BaseModel):
+    inp_len: int
+    d_model: int
+    pretrained_model_name: str = ''
+    tokenizer_name: str = ''
+
+
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
 
 
