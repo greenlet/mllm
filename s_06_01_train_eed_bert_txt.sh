@@ -27,7 +27,8 @@ batch_size=10
 in_empty_ans=false
 #ques_inp=enc
 ques_inp=dec
-enc_emb_exp_type=mat
+enc_emb_exp_type=emb
+#enc_emb_exp_type=mat
 enc_emb_exp_bias=true
 
 

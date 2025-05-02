@@ -1,4 +1,6 @@
 import torch
+from torch.nn import CrossEntropyLoss
+import torch.nn.functional as F
 from transformers import PreTrainedTokenizer, BertTokenizer, BertGenerationEncoder, BertGenerationDecoder
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 
@@ -78,7 +80,7 @@ def get_eed_bert_model(inp_len: int, ques_inp: QnaQuesInp, enc_emb_exp_type: Enc
 
 # docs_toks_aug: [n_batch, seq_len]
 # docs_toks_tgt: [n_tgt]
-def run_eed_model_on_masked_input(model: EncoderEmbDecoderModel, tkz: PreTrainedTokenizer, docs_toks_aug: torch.Tensor, docs_toks_tgt: torch.Tensor) -> torch.Tensor:
+def run_eed_model_on_masked_input_old(model: EncoderEmbDecoderModel, tkz: PreTrainedTokenizer, docs_toks_aug: torch.Tensor, docs_toks_tgt: torch.Tensor) -> torch.Tensor:
     assert tkz.pad_token_id == 0, f'pad_token_id = {tkz.pad_token_id}'
     device = docs_toks_aug.device
     enc_toks_inp = docs_toks_aug
@@ -102,5 +104,35 @@ def run_eed_model_on_masked_input(model: EncoderEmbDecoderModel, tkz: PreTrained
         input_ids=dec_toks_inp, attention_mask=dec_toks_inp_mask, encoder_hidden_states=enc_emb, use_cache=False,
     )
     loss = qna_loss(dec_out.logits, dec_toks, dec_tgt_mask)
+    return loss
+
+
+# docs_toks_aug: [n_batch, seq_len]
+# docs_toks_tgt: [n_tgt]
+def run_eed_model_on_masked_input(model: EncoderEmbDecoderModel, tkz: PreTrainedTokenizer, docs_toks_aug: torch.Tensor, docs_toks_tgt: torch.Tensor) -> torch.Tensor:
+    assert tkz.pad_token_id == 0, f'pad_token_id = {tkz.pad_token_id}'
+    if docs_toks_tgt[0] != tkz.cls_token_id:
+        docs_toks_tgt = F.pad(docs_toks_tgt, (1, 0), 'constant', tkz.cls_token_id)
+    device = docs_toks_aug.device
+    enc_toks_inp = docs_toks_aug
+    enc_toks_inp_mask = (enc_toks_inp > 0).to(device)
+    # [n_batch, seq_len] -> [n_batch, seq_len, d_model]
+    enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=enc_toks_inp, attention_mask=enc_toks_inp_mask)
+    enc_lhs = enc_out.last_hidden_state
+    # model.config.enc_emb_exp_type = EncEmbExpansionType.Emb: [n_batch, seq_len, d_model] -> [n_batch, d_model]
+    # model.config.enc_emb_exp_type = EncEmbExpansionType.Mat: [n_batch, seq_len, d_model] -> [seq_len, d_model]
+    # [n_batch, seq_len, d_model] -> [1, dec_seq_len, d_model]
+    enc_emb = model.run_expansion(enc_lhs)
+
+    n_tgt = len(docs_toks_tgt)
+    # [n_tgt] -> [1, n_tgt]
+    doc_toks_tgt = docs_toks_tgt.unsqueeze(0)
+    dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
+        input_ids=doc_toks_tgt, encoder_hidden_states=enc_emb,
+    )
+    loss_fct = CrossEntropyLoss()
+    logits = dec_out.logits.view(-1, model.decoder.config.vocab_size)[:-1]
+    labels = doc_toks_tgt[0][1:]
+    loss = loss_fct(logits, labels)
     return loss
 

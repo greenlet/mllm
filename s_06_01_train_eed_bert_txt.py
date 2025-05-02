@@ -243,7 +243,7 @@ def main(args: ArgsTrainEedBertQna) -> int:
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            docs_toks_aug, docs_toks_tgt = next(train_batch_it)
+            docs_toks_aug, _, docs_toks_tgt, _ = next(train_batch_it)
 
             optimizer.zero_grad()
             loss = run_eed_model_on_masked_input(model, tkz, docs_toks_aug, docs_toks_tgt)
@@ -275,7 +275,7 @@ def main(args: ArgsTrainEedBertQna) -> int:
         val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            docs_toks_aug, docs_toks_tgt = next(val_batch_it)
+            docs_toks_aug, _, docs_toks_tgt, _ = next(val_batch_it)
             with torch.no_grad():
                 loss = run_eed_model_on_masked_input(model, tkz, docs_toks_aug, docs_toks_tgt)
             if torch.isnan(loss):
