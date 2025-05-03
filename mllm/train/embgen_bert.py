@@ -8,7 +8,7 @@ from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType
 from mllm.train.utils import QnaQuesInp, QnaBatch, qna_loss
 
 
-def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> torch.Tensor:
+def run_eed_model_on_batch_old(model: EncoderEmbDecoderModel, batch: QnaBatch) -> torch.Tensor:
     ctxs_toks, other_toks = batch.gen_tensors()
     ctxs_mask = (ctxs_toks > 0).to(batch.device)
     ctx_enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=ctxs_toks, attention_mask=ctxs_mask)
@@ -52,6 +52,58 @@ def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> to
             loss = loss + l
         loss = loss / n_qas
         return loss
+
+    raise Exception(f'Question input type {batch.ques_inp} is not supported.')
+
+
+def run_eed_model_on_batch(model: EncoderEmbDecoderModel, batch: QnaBatch) -> torch.Tensor:
+    ctxs_toks, other_toks = batch.gen_tensors()
+    ctxs_mask = (ctxs_toks > 0).to(batch.device)
+    ctx_enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=ctxs_toks, attention_mask=ctxs_mask)
+    ctx_lhs = ctx_enc_out.last_hidden_state
+
+    if batch.ques_inp == QnaQuesInp.Enc:
+        q_toks_l, a_toks_l, a_att_masks_l, a_tgt_masks_l = other_toks
+        loss = torch.tensor(0, dtype=torch.float32, device=batch.device)
+        n_ans = len(a_toks_l)
+        for q_toks, a_toks, a_att_mask, a_tgt_mask in zip(q_toks_l, a_toks_l, a_att_masks_l, a_tgt_masks_l):
+            q_toks = q_toks.unsqueeze(0)
+            q_mask = (q_toks > 0).to(batch.device)
+            q_enc_out: BaseModelOutputWithPastAndCrossAttentions = model.encoder(input_ids=q_toks, attention_mask=q_mask)
+            ctxq_lhs = torch.concatenate([ctx_lhs, q_enc_out.last_hidden_state], dim=0)
+            ctxq_emb = model.run_expansion(ctxq_lhs)
+            if a_toks[0] != batch.tkz.cls_token_id:
+                a_toks = F.pad(a_toks, (1, 0), 'constant', batch.tkz.cls_token_id)
+            a_toks_inp = a_toks.unsqueeze(0)
+            a_dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
+                input_ids=a_toks_inp, encoder_hidden_states=ctxq_emb,
+            )
+
+            logits = a_dec_out.logits.view(-1, model.decoder.config.vocab_size)[:-1]
+            labels = a_toks_inp[0][1:]
+            l = F.cross_entropy(logits, labels)
+
+            loss = loss + l
+        loss = loss / n_ans
+        return loss
+
+    # if batch.ques_inp == QnaQuesInp.Dec:
+    #     ctx_emb = model.run_expansion(ctx_enc_out.last_hidden_state)
+    #     qa_toks_l, qa_att_masks_l, qa_tgt_masks_l = other_toks
+    #     loss = torch.tensor(0, dtype=torch.float32, device=batch.device)
+    #     n_qas = len(qa_toks_l)
+    #     for ind in range(n_qas):
+    #         qa_toks, qa_att_mask, qa_tgt_mask = qa_toks_l[ind].unsqueeze(0), qa_att_masks_l[ind], qa_tgt_masks_l[ind]
+    #         qa_toks = qa_toks.repeat(len(qa_att_mask), 1)
+    #         qa_toks_inp = qa_toks * qa_att_mask
+    #         qa_toks_inp[qa_tgt_mask] = batch.tkz.mask_token_id
+    #         dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
+    #             input_ids=qa_toks_inp, attention_mask=qa_att_mask, encoder_hidden_states=ctx_emb, use_cache=False,
+    #         )
+    #         l = qna_loss(dec_out.logits, qa_toks, qa_tgt_mask)
+    #         loss = loss + l
+    #     loss = loss / n_qas
+    #     return loss
 
     raise Exception(f'Question input type {batch.ques_inp} is not supported.')
 
@@ -130,9 +182,8 @@ def run_eed_model_on_masked_input(model: EncoderEmbDecoderModel, tkz: PreTrained
     dec_out: CausalLMOutputWithCrossAttentions = model.decoder(
         input_ids=doc_toks_tgt, encoder_hidden_states=enc_emb,
     )
-    loss_fct = CrossEntropyLoss()
     logits = dec_out.logits.view(-1, model.decoder.config.vocab_size)[:-1]
     labels = doc_toks_tgt[0][1:]
-    loss = loss_fct(logits, labels)
+    loss = F.cross_entropy(logits, labels)
     return loss
 

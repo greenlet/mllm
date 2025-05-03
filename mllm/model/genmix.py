@@ -36,9 +36,7 @@ class GenmixBert(nn.Module):
 
 
 
-if __name__ == '__main__':
-    from transformers import BertTokenizer, EncoderDecoderModel
-
+def test_train():
     tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
     model = EncoderDecoderModel.from_encoder_decoder_pretrained("google-bert/bert-base-uncased",
                                                                 "google-bert/bert-base-uncased")
@@ -67,4 +65,29 @@ if __name__ == '__main__':
     print(type(out))
     print('loss:', out.loss)
 
+
+def test_generate():
+    from transformers import AutoTokenizer
+
+    # load a fine-tuned seq2seq model and corresponding tokenizer
+    model = EncoderDecoderModel.from_pretrained("patrickvonplaten/bert2bert_cnn_daily_mail")
+    tokenizer = AutoTokenizer.from_pretrained("patrickvonplaten/bert2bert_cnn_daily_mail")
+
+    # let's perform inference on a long piece of text
+    ARTICLE_TO_SUMMARIZE = (
+        "PG&E stated it scheduled the blackouts in response to forecasts for high winds "
+        "amid dry conditions. The aim is to reduce the risk of wildfires. Nearly 800 thousand customers were "
+        "scheduled to be affected by the shutoffs which were expected to last through at least midday tomorrow."
+    )
+    input_ids = tokenizer(ARTICLE_TO_SUMMARIZE, return_tensors="pt").input_ids
+
+    # autoregressively generate summary (uses greedy decoding by default)
+    generated_ids = model.generate(input_ids)
+    generated_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    print(generated_text)
+
+
+if __name__ == '__main__':
+    # test_train()
+    test_generate()
 
