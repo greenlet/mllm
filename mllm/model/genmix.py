@@ -3,10 +3,11 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn
 from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, \
     BatchEncoding
-from transformers.modeling_outputs import Seq2SeqLMOutput
+from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
 from mllm.config.model import GenmixBertCfg
 
@@ -30,9 +31,24 @@ class GenmixBert(nn.Module):
         )
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
 
-    def run_train(self, input_ids: torch.Tensor, labels: torch.Tensor):
-        gen_out: Seq2SeqLMOutput = self.gen(input_ids=input_ids, decoder_input_ids=labels)
-        return gen_out.loss
+    # input_ids: [src_len]
+    # target_ids: [tgt_len]
+    def run_train(self, input_ids: torch.Tensor, target_ids: torch.Tensor):
+        if input_ids[0] != self.tkz.cls_token_id:
+            input_ids = F.pad(input_ids, (1, 0), 'constant', self.tkz.cls_token_id)
+        # [n_seq * inp_len]
+        src_len = len(input_ids)
+        pad_size = src_len - src_len // self.cfg.inp_len
+        if pad_size > 0:
+            input_ids = F.pad(input_ids, (0, pad_size), 'constant', self.tkz.pad_token_id)
+        # [n_seq, inp_len]
+        input_ids = input_ids.reshape(-1, self.cfg.inp_len)
+        input_mask = input_ids != self.tkz.pad_token_id
+        enc_out: BaseModelOutputWithPoolingAndCrossAttentions = self.enc(input_ids=input_ids, attention_mask=input_mask)
+
+        # gen_out: Seq2SeqLMOutput = self.gen(input_ids=input_ids, decoder_input_ids=labels)
+        # return gen_out.loss
+        return 0
 
 
 
