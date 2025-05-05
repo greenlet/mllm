@@ -646,9 +646,25 @@ def create_encmix_bert_cfg(
 
     cfg_enc_mix_bert = EncmixBertCfg(
         inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name,
-        tokenizer_name=tokenizer_name, out_embs_type=out_embs_type, token_types_for_embs=True,
+        tokenizer_name=tokenizer_name, out_embs_type=out_embs_type, token_types_for_embs=token_types_for_embs,
     )
     return cfg_enc_mix_bert
+
+
+def create_genmix_bert_cfg(
+        pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', inp_len = 128,
+) -> GenmixBertCfg:
+    model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
+    bert_cfg: BertConfig = model.config
+    d_model = bert_cfg.hidden_size
+
+    tokenizer_name = tokenizer_name or pretrained_model_name
+
+    cfg_gen_mix_bert = GenmixBertCfg(
+        inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name,
+        tokenizer_name=tokenizer_name,
+    )
+    return cfg_gen_mix_bert
 
 
 def copy_override_encdec_hg_cfg(
@@ -785,6 +801,16 @@ def copy_override_encmix_bert_cfg(
     )
 
 
+def copy_override_genmix_bert_cfg(
+        cfg: GenmixBertCfg, inp_len: int = 0,
+) -> GenmixBertCfg:
+    inp_len = inp_len or cfg.inp_len
+
+    return create_genmix_bert_cfg(
+        pretrained_model_name=cfg.pretrained_model_name, tokenizer_name=cfg.tokenizer_name, inp_len=inp_len,
+    )
+
+
 def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
     prefix = f'encdechg'
     enc, dec = model_cfg.enc_pyr, model_cfg.dec_pyr
@@ -905,6 +931,23 @@ def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg, train_ds_type: Optiona
     if train_ds_type is not None:
         postfix_parts.append(f'ds_{train_ds_type.value}')
 
+
+    postfix = '-'.join(postfix_parts)
+    return prefix, postfix
+
+
+def gen_prefpostfix_genmix_bert(model_cfg: GenmixBertCfg) -> tuple[str, str]:
+    prefix, postfix_parts = f'genmixbert', []
+
+    bert_str = model_cfg.pretrained_model_name.replace('_', '_')
+    if model_cfg.tokenizer_name != model_cfg.pretrained_model_name:
+        tkz_name = model_cfg.tokenizer_name.replace('-', '_')
+        bert_str = f'{bert_str}-{tkz_name}'
+    postfix_parts.append(bert_str)
+
+    postfix_parts.append(f'd{model_cfg.d_model}')
+
+    postfix_parts.append(f'inp{model_cfg.inp_len}')
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix

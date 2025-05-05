@@ -7,6 +7,7 @@ train_encdec_root_path=$data_path/train_mllm_encdec_bert
 mllm_src_path=$code_path/mllm
 
 inp_len=128
+#inp_len=256
 
 device=cpu
 epochs=5
@@ -18,8 +19,8 @@ device=cuda
 epochs=500
 train_epoch_steps=500
 val_epoch_steps=50
-batch_size=10
-#batch_size=5
+#batch_size=10
+batch_size=5
 
 #pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 #train_subdir=last
@@ -27,8 +28,8 @@ batch_size=10
 in_empty_ans=false
 ques_inp=enc
 #ques_inp=dec
-enc_emb_exp_type=emb
-#enc_emb_exp_type=mat
+#enc_emb_exp_type=emb
+enc_emb_exp_type=mat
 enc_emb_exp_bias=true
 
 

@@ -271,7 +271,8 @@ def main(args: ArgsTrainEedBertQna) -> int:
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             batch: QnaBatch = next(val_batch_it)
-            loss = run_eed_model_on_batch(model, batch)
+            with torch.no_grad():
+                loss = run_eed_model_on_batch(model, batch)
             if torch.isnan(loss):
                 print(f'Loss is nan!!!')
                 import sys

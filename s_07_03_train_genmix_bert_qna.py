@@ -12,8 +12,7 @@ from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import EncdecBertCfg, EncmixBertCfg, copy_override_encmix_bert_cfg, gen_prefpostfix_encmix_bert, \
-    EncmixOutEmbsType, EncmixTrainDsType, EncmixModelType
+from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.encmix import EncmixBert, EncmixBertSep
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, QnaQuesInp, \
@@ -21,7 +20,7 @@ from mllm.train.utils import find_create_train_path, log_weights_grads_stats, ge
 from transformers import AutoTokenizer
 
 
-class ArgsEncmixBertTrain(BaseModel):
+class ArgsGenmixBertTrain(BaseModel):
     data_path: Path = Field(
         ...,
         description='Root data path. Must contain subpath `wikipedia/WIKI_DS_NAME` with Wikipedia dataset.',
@@ -31,16 +30,6 @@ class ArgsEncmixBertTrain(BaseModel):
         '20200501.en',
         description='Wikipedia dataset name of the format YYYYMMDD.LANG, for example: 20220301.en',
         cli=('--wiki-ds-name',),
-    )
-    train_ds_type: EncmixTrainDsType = Field(
-        EncmixTrainDsType.Msk,
-        description=f'Train dataset type, one of: {[t.value for t in EncmixTrainDsType]}',
-        cli=('--train-ds-type',),
-    )
-    encmix_model_type: EncmixModelType = Field(
-        EncmixModelType.One,
-        description=f'Encmix model type, one of: {[t.value for t in EncmixModelType]}',
-        cli=('--encmix-model-type',),
     )
     train_root_path: Path = Field(
         ...,
@@ -62,11 +51,6 @@ class ArgsEncmixBertTrain(BaseModel):
         ...,
         description='Input tokens number. Must be a power of 2. INP_LEN = 2^k will produce model with k layers.',
         cli=('--inp-len',),
-    )
-    out_embs_type: EncmixOutEmbsType = Field(
-        EncmixOutEmbsType.Non,
-        description=f'Out embeddings type. Possible values: {[t.value for t in EncmixOutEmbsType]}.',
-        cli=('--out-embs-type',),
     )
     batch_size: int = Field(
         3,
@@ -110,7 +94,7 @@ class ArgsEncmixBertTrain(BaseModel):
     )
 
 
-def main(args: ArgsEncmixBertTrain) -> int:
+def main(args: ArgsGenmixBertTrain) -> int:
     print(args)
 
     if args.random_seed is not None:
@@ -118,15 +102,15 @@ def main(args: ArgsEncmixBertTrain) -> int:
 
     device = torch.device(args.device)
 
-    model_cfg = parse_yaml_file_as(EncmixBertCfg, args.model_cfg_fpath)
-    model_cfg = copy_override_encmix_bert_cfg(
-        model_cfg, inp_len=args.inp_len, out_embs_type=args.out_embs_type,
+    model_cfg = parse_yaml_file_as(GenmixBertCfg, args.model_cfg_fpath)
+    model_cfg = copy_override_genmix_bert_cfg(
+        model_cfg, inp_len=args.inp_len,
     )
 
-    prefix, suffix = gen_prefpostfix_encmix_bert(model_cfg, train_ds_type=args.train_ds_type, encmix_model_type=args.encmix_model_type)
+    prefix, suffix = gen_prefpostfix_genmix_bert(model_cfg)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
-
+#
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
     checkpoint = None
     if args.train_subdir == 'last':
@@ -305,5 +289,5 @@ def main(args: ArgsEncmixBertTrain) -> int:
 if __name__ == '__main__':
     def rethrow(e):
         raise e
-    run_and_exit(ArgsEncmixBertTrain, main, 'Train EncmixBert model to predict masked input.', exception_handler=rethrow)
+    run_and_exit(ArgsGenmixBertTrain, main, 'Train EncmixBert model to predict masked input.', exception_handler=rethrow)
 

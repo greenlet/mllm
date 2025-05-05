@@ -36,6 +36,8 @@ from transformers.models.auto.configuration_auto import AutoConfig
 from transformers.models.auto.modeling_auto import AutoModel, AutoModelForCausalLM
 from transformers.models.encoder_decoder.configuration_encoder_decoder import EncoderDecoderConfig
 
+from mllm.config.model import DecPyrCfg, HgEnhanceType
+from mllm.model.encdec_ranker_hg import DecoderPyramid
 
 logger = logging.get_logger(__name__)
 
@@ -171,6 +173,7 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start
 class EncEmbExpansionType(str, Enum):
     Emb = 'emb'
     Mat = 'mat'
+    Pyr = 'pyr'
 
 
 class EncoderEmbDecoderConfig(PretrainedConfig):
@@ -318,6 +321,21 @@ class EncoderEmbDecoderModel(PreTrainedModel):
         else:
             self.emb_mat_width = None
             self.emb_mat_height = None
+
+        if self.config.enc_emb_exp_type == EncEmbExpansionType.Pyr:
+            cfg_gen: BertGenerationConfig = self.config.encoder
+            d_model, n_heads, d_inner = cfg_gen.hidden_size, cfg_gen.num_attention_heads, cfg_gen.intermediate_size
+            n_vocab, n_layers, dropout_rate = cfg_gen.vocab_size, cfg_gen.num_hidden_layers, cfg_gen.hidden_dropout_prob
+            inp_len = self.config.enc_inp_len
+            d_k = d_v = d_model // n_heads
+            pyr_cfg = DecPyrCfg(
+                d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=1,
+                n_layers=n_layers, dropout_rate=dropout_rate, n_vocab=n_vocab, n_similar_layers=1,
+                enhance_type=HgEnhanceType.MatmulBeginBias, temperature=0,
+            )
+            self.dec_pyr = DecoderPyramid(pyr_cfg)
+        else:
+            self.dec_pyr = None
 
         # tie encoder, decoder weights if config set accordingly
         self.tie_weights()
@@ -635,6 +653,9 @@ class EncoderEmbDecoderModel(PreTrainedModel):
             emb = self.emb_mat_height(emb)
             # [inp_len, d_model] -> [1, inp_len, d_model]
             emb = emb.unsqueeze(0)
+        elif self.config.enc_emb_exp_type == EncEmbExpansionType.Pyr:
+            d_model, inp_len, inp_batch_size = self.config.encoder.hidden_size, self.config.enc_inp_len, self.config.enc_inp_batch_size
+            self.dec_pyr
         else:
             raise Exception(f'Encoder embedding expansion type {self.config.enc_emb_exp_type} is not supported')
 

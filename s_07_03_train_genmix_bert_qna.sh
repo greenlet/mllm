@@ -48,7 +48,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_07_03_train_encmix_bert.py \
+python s_07_03_train_encmix_bert_qna.py \
   --data-path $data_path \
   --wiki-ds-name $wiki_ds_name \
   --train-ds-type $train_ds_type \

@@ -46,10 +46,26 @@ class GenmixBert(nn.Module):
         input_mask = input_ids != self.tkz.pad_token_id
         enc_out: BaseModelOutputWithPoolingAndCrossAttentions = self.enc(input_ids=input_ids, attention_mask=input_mask)
 
-        # gen_out: Seq2SeqLMOutput = self.gen(input_ids=input_ids, decoder_input_ids=labels)
-        # return gen_out.loss
-        return 0
+        # [n_seq, inp_len, d_model]
+        emb = enc_out.last_hidden_state
+        # [n_seq, d_model]
+        emb = emb[:, 0]
+        # [1, n_seq, d_model]
+        emb = emb.unsqueeze(0)
 
+        if target_ids[0] != self.tkz.cls_token_id:
+            target_ids = F.pad(target_ids, (1, 0), 'constant', self.tkz.cls_token_id)
+        # [1, tgt_len]
+        target_ids = target_ids.unsqueeze(0)
+
+        gen_out: Seq2SeqLMOutput = self.gen(inputs_embeds=emb, decoder_input_ids=target_ids)
+        # [1, tgt_len, n_vocab]
+        gen_logits = gen_out.logits
+
+        logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)[:-1]
+        labels = target_ids[0][1:]
+        loss = F.cross_entropy(logits, labels)
+        return loss
 
 
 def test_train():
