@@ -13,8 +13,10 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNAME
+from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.encmix import EncmixBert, EncmixBertSep
+from mllm.model.genmix import GenmixBert
+from mllm.train.encmix_bert import get_squadv2_txt_iterators
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, QnaQuesInp, \
     get_squadv2_df, split_df, gen_loss, get_squadv2_batch_iterator, get_squadv2_tensor_iterators
 from transformers import AutoTokenizer
@@ -110,7 +112,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
     prefix, suffix = gen_prefpostfix_genmix_bert(model_cfg)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
-#
+
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
     checkpoint = None
     if args.train_subdir == 'last':
@@ -122,69 +124,48 @@ def main(args: ArgsGenmixBertTrain) -> int:
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        chkpt_model_cfg = parse_yaml_file_as(EncmixBertCfg, train_path / ENCMIX_BERT_MODEL_CFG_FNAME)
+        chkpt_model_cfg = parse_yaml_file_as(GenmixBertCfg, train_path / GENMIX_BERT_MODEL_CFG_FNAME)
         assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
-        to_yaml_file(train_path / ENCMIX_BERT_MODEL_CFG_FNAME, model_cfg)
-
-    tkz = AutoTokenizer.from_pretrained(model_cfg.tokenizer_name)
+        to_yaml_file(train_path / GENMIX_BERT_MODEL_CFG_FNAME, model_cfg)
 
     print(model_cfg)
-    if args.encmix_model_type == EncmixModelType.One:
-        model = EncmixBert(model_cfg, tkz=tkz, device=device)
-    elif args.encmix_model_type == EncmixModelType.Sep:
-        model = EncmixBertSep(model_cfg, tkz=tkz, device=device)
-    else:
-        raise Exception(f'model type {args.encmix_model_type} is not supported.')
+    model = GenmixBert(model_cfg, device=device)
+    tkz = model.tkz
 
     if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
         print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
         pretrained_checkpoint = torch.load(pretrained_model_path, map_location=device)
         # model.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        if isinstance(model, EncmixBert):
-            print(list(pretrained_checkpoint['model'].keys()))
-            model.load_state_dict(pretrained_checkpoint['model'], strict=True)
-        else:
-            print(list(pretrained_checkpoint['model'].keys()))
-            prefix = 'enc_bert.bert_model.'
-            prefix_len = len(prefix)
-            model_chkpt = {}
-            for k, v in pretrained_checkpoint['model'].items():
-                if k.startswith(prefix):
-                    k = k[prefix_len:]
-                if k.startswith('dec_pyr.'):
-                    continue
-                model_chkpt[k] = v
-            model.enc_model.load_state_dict(model_chkpt, strict=True)
-            del pretrained_checkpoint
-            del model_chkpt
+        print(list(pretrained_checkpoint['model'].keys()))
+        prefix = 'enc_bert.bert_model.'
+        prefix_len = len(prefix)
+        model_chkpt = {}
+        for k, v in pretrained_checkpoint['model'].items():
+            if k.startswith(prefix):
+                k = k[prefix_len:]
+            if k.startswith('dec_pyr.'):
+                continue
+            model_chkpt[k] = v
+        model.enc_model.load_state_dict(model_chkpt, strict=True)
+        del pretrained_checkpoint
+        del model_chkpt
 
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
     last_epoch, val_loss_min, shuffle = -1, None, False
     if checkpoint is not None:
-        model.load_state_dict(checkpoint['model'], strict=False)
+        model.load_state_dict(checkpoint['model'], strict=True)
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
         shuffle = True
-        # for t in itertools.chain(checkpoint['model'].values(), checkpoint['optimizer'].values()):
-        #     t.to('cpu')
         del checkpoint
 
     val_ratio = 0.05
-    if args.train_ds_type == EncmixTrainDsType.Msk:
-        train_batch_it, val_batch_it = get_wiki_ds_batch_iterators(
-            wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.batch_size,
-            tkz=tkz, device=device, shuffle=shuffle, val_ratio=val_ratio,
-        )
-    else:
-        train_batch_it, val_batch_it = get_squadv2_tensor_iterators(
-            inp_len=args.inp_len, batch_size=args.batch_size, ques_inp=QnaQuesInp.Enc, exclude_empty_answers=True,
-            tkz=tkz, device=device, val_ratio=val_ratio,
-        )
+    train_it, val_it = get_squadv2_txt_iterators(exclude_empty_answers=True, val_ratio=val_ratio)
 
     sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=13, threshold=1e-6, min_lr=1e-8)

@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import torch
@@ -14,20 +15,25 @@ from mllm.config.model import GenmixBertCfg
 
 class GenmixBert(nn.Module):
     cfg: GenmixBertCfg
+    device: torch.device
     enc: BertModel
     gen: EncoderDecoderModel
 
-    def __init__(self, cfg: GenmixBertCfg):
+    def __init__(self, cfg: GenmixBertCfg, device: torch.device):
         super().__init__()
         self.cfg = cfg
+        self.device = device
         self.tkz = BertTokenizer.from_pretrained(self.cfg.tokenizer_name)
-        self.enc = BertModel.from_pretrained(self.cfg.pretrained_model_name, torch_dtype=torch.float32)
+        self.enc = BertModel.from_pretrained(
+            self.cfg.pretrained_model_name, torch_dtype=torch.float32, device_map=self.device,
+        )
         encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
             self.cfg.pretrained_model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
+            device_map=self.device,
         )
         decoder: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
             self.cfg.pretrained_model_name, add_cross_attention=True, is_decoder=True,
-            bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
+            bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
         )
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
 
@@ -66,6 +72,27 @@ class GenmixBert(nn.Module):
         labels = target_ids[0][1:]
         loss = F.cross_entropy(logits, labels)
         return loss
+
+    def _to_toks(self, s: str, inp_len: Optional[int] = None) -> torch.Tensor:
+        t = self.tkz(s, return_tensors='pt').input_ids.to(self.device)
+        assert t[0] == self.tkz.cls_token_id and t[-1] == self.tkz.sep_token_id
+        if inp_len is not None:
+            div = len(t) % inp_len
+            if div > 0:
+                t = F.pad(t, (0, div), 'constant', self.tkz.pad_token_id)
+            t = t.reshape(-1, inp_len)
+        return t
+
+    def run_qna_txt(self, context: str, question: str, answer: str) -> torch.Tensor:
+        # [n_ctx, inp_len]
+        ctx_toks = self._to_toks(context, inp_len=self.cfg.inp_len)
+        # [n_qst, inp_len]
+        qst_toks = self._to_toks(question, inp_len=self.cfg.inp_len)
+        # [n_ans]
+        ans_toks = self._to_toks(answer)
+        # [n_ctx + n_qst, inp_len]
+        cq_inp = torch.concat([ctx_toks, qst_toks])
+        inp_mask = cq_inp != self.tkz.pad_token_id
 
 
 def test_train():
