@@ -1,4 +1,3 @@
-import itertools
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -14,12 +13,9 @@ from tqdm import trange
 
 from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert
 from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME
-from mllm.model.encmix import EncmixBert, EncmixBertSep
 from mllm.model.genmix import GenmixBert
 from mllm.train.encmix_bert import get_squadv2_txt_iterators
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, QnaQuesInp, \
-    get_squadv2_df, split_df, gen_loss, get_squadv2_batch_iterator, get_squadv2_tensor_iterators
-from transformers import AutoTokenizer
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 
 
 class ArgsGenmixBertTrain(BaseModel):
@@ -168,13 +164,11 @@ def main(args: ArgsGenmixBertTrain) -> int:
     train_it, val_it = get_squadv2_txt_iterators(exclude_empty_answers=True, val_ratio=val_ratio)
 
     sched_wait_steps = 0
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=13, threshold=1e-6, min_lr=1e-8)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
     # lr = scheduler.get_last_lr()[0]
     lr = optimizer.param_groups[0]['lr']
     print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
-
-    loss_fn = gen_loss
 
     print(model)
 
@@ -187,13 +181,12 @@ def main(args: ArgsGenmixBertTrain) -> int:
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            docs_toks_aug, plain_toks, docs_toks_tgt, _ = next(train_batch_it)
+            qna_item = next(train_it)
 
             optimizer.zero_grad()
-            out_logits = model.run_chunks_plain_seq(
-                chunk_toks=docs_toks_aug, plain_toks=plain_toks, target_toks=docs_toks_tgt,
+            loss = model.run_on_qna_txt(
+                context=qna_item.context, question=qna_item.question, answer=qna_item.answer,
             )
-            loss = loss_fn(out_logits, docs_toks_tgt)
 
             loss.backward()
             # Gradients must be available after loss.backward()
@@ -222,13 +215,13 @@ def main(args: ArgsGenmixBertTrain) -> int:
         val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            docs_toks_aug, plain_toks, docs_toks_tgt, _ = next(val_batch_it)
+            qna_item = next(val_it)
 
             with torch.no_grad():
-                out_logits = model.run_chunks_plain_seq(
-                    chunk_toks=docs_toks_aug, plain_toks=plain_toks, target_toks=docs_toks_tgt,
+                loss = model.run_on_qna_txt(
+                    context=qna_item.context, question=qna_item.question, answer=qna_item.answer,
                 )
-                loss = loss_fn(out_logits, docs_toks_tgt)
+
             val_loss += loss.item()
 
             s = f'Val. loss: {loss.item():.6f}'
