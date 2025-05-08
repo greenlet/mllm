@@ -1,4 +1,5 @@
 import shutil
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -23,11 +24,6 @@ class ArgsGenmixBertTrain(BaseModel):
         ...,
         description='Root data path. Must contain subpath `wikipedia/WIKI_DS_NAME` with Wikipedia dataset.',
         cli=('--data-path',),
-    )
-    wiki_ds_name: str = Field(
-        '20200501.en',
-        description='Wikipedia dataset name of the format YYYYMMDD.LANG, for example: 20220301.en',
-        cli=('--wiki-ds-name',),
     )
     train_root_path: Path = Field(
         ...,
@@ -187,6 +183,9 @@ def main(args: ArgsGenmixBertTrain) -> int:
             loss = model.run_on_qna_txt(
                 context=qna_item.context, question=qna_item.question, answer=qna_item.answer,
             )
+            if loss.isnan():
+                print('Loss is NaN!!!')
+                sys.exit(0)
 
             loss.backward()
             # Gradients must be available after loss.backward()
@@ -221,6 +220,9 @@ def main(args: ArgsGenmixBertTrain) -> int:
                 loss = model.run_on_qna_txt(
                     context=qna_item.context, question=qna_item.question, answer=qna_item.answer,
                 )
+                if loss.isnan():
+                    print('Loss is NaN!!!')
+                    sys.exit(0)
 
             val_loss += loss.item()
 

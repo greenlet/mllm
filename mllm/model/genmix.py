@@ -75,11 +75,13 @@ class GenmixBert(nn.Module):
 
     def _to_toks(self, s: str, inp_len: Optional[int] = None) -> torch.Tensor:
         t = self.tkz(s, return_tensors='pt').input_ids.to(self.device)
-        assert t[0] == self.tkz.cls_token_id and t[-1] == self.tkz.sep_token_id
+        assert t[0][0] == self.tkz.cls_token_id and t[0][-1] == self.tkz.sep_token_id
         if inp_len is not None:
-            div = len(t) % inp_len
-            if div > 0:
-                t = F.pad(t, (0, div), 'constant', self.tkz.pad_token_id)
+            t = t.reshape(-1)
+            mod = len(t) % inp_len
+            if mod > 0:
+                pad_size = inp_len - mod
+                t = F.pad(t, (0, pad_size), 'constant', self.tkz.pad_token_id)
             t = t.reshape(-1, inp_len)
         return t
 
@@ -88,8 +90,10 @@ class GenmixBert(nn.Module):
         ctx_toks = self._to_toks(context, inp_len=self.cfg.inp_len)
         # [n_qst, inp_len]
         qst_toks = self._to_toks(question, inp_len=self.cfg.inp_len)
-        # [n_ans]
+        # [1, n_ans]
         ans_toks = self._to_toks(answer)
+        # [n_ans]
+        ans_toks = ans_toks[0]
         # [n_ctx + n_qst, inp_len]
         cq_inp = torch.concat([ctx_toks, qst_toks])
         # [n_ctx + n_qst, inp_len]

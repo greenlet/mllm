@@ -32,6 +32,7 @@ def get_squadv2_txt_iterator(df_squad: pd.DataFrame) -> QnaTxtGen:
             qna_tuple = QnaTuple(ind=ind, context=context, question=question, answer=answer)
             yield qna_tuple
 
+        i_off += 1
         if i_off == n:
             np.random.shuffle(inds)
             i_off = 0
