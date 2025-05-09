@@ -30,8 +30,8 @@ batch_size=1
 #train_subdir=last
 
 #learning_rate=0.0001
-learning_rate=0.00005
-#learning_rate=0.00001
+#learning_rate=0.00005
+learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
