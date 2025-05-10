@@ -85,15 +85,11 @@ class GenmixBert(nn.Module):
             t = t.reshape(-1, inp_len)
         return t
 
-    def run_on_qna_txt(self, context: str, question: str, answer: str) -> torch.Tensor:
+    def context_question_to_emb(self, context: str, question: str) -> torch.Tensor:
         # [n_ctx, inp_len]
         ctx_toks = self._to_toks(context, inp_len=self.cfg.inp_len)
         # [n_qst, inp_len]
         qst_toks = self._to_toks(question, inp_len=self.cfg.inp_len)
-        # [1, n_ans]
-        ans_toks = self._to_toks(answer)
-        # [n_ans]
-        ans_toks = ans_toks[0]
         # [n_ctx + n_qst, inp_len]
         cq_inp = torch.concat([ctx_toks, qst_toks])
         # [n_ctx + n_qst, inp_len]
@@ -107,7 +103,15 @@ class GenmixBert(nn.Module):
         emb = emb[:, 0]
         # [1, n_cq, d_model]
         emb = emb.unsqueeze(0)
+        return emb
 
+    def run_on_qna_txt(self, context: str, question: str, answer: str) -> torch.Tensor:
+        emb = self.context_question_to_emb(context=context, question=question)
+
+        # [1, n_ans]
+        ans_toks = self._to_toks(answer)
+        # [n_ans]
+        ans_toks = ans_toks[0]
         # tgt_len = n_ans - 1
         # [tgt_len]
         target_ids = ans_toks[:-1]
@@ -116,7 +120,7 @@ class GenmixBert(nn.Module):
         # [1, tgt_len]
         target_ids = target_ids.unsqueeze(0)
 
-        gen_out: Seq2SeqLMOutput = self.gen(inputs_embeds=emb, decoder_input_ids=target_ids)
+        gen_out: Seq2SeqLMOutput = self.gen(inputs_embeds=emb, decoder_input_ids=target_ids, use_cache=False)
         # [1, tgt_len, n_vocab]
         gen_logits = gen_out.logits
 
@@ -126,6 +130,33 @@ class GenmixBert(nn.Module):
         labels = ans_toks[1:]
         loss = F.cross_entropy(logits, labels)
         return loss
+
+    def gen_on_qna_txt(self, context: str, question: str) -> torch.Tensor:
+        emb = self.context_question_to_emb(context=context, question=question)
+
+        out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id)
+        return out_toks
+
+    def gen_emb_on_qna_txt(self, context: str, question: str) -> torch.Tensor:
+        # [n_ctx, inp_len]
+        ctx_toks = self._to_toks(context, inp_len=self.cfg.inp_len)
+        # [n_qst, inp_len]
+        qst_toks = self._to_toks(question, inp_len=self.cfg.inp_len)
+        # [n_ctx + n_qst, inp_len]
+        cq_inp = torch.concat([ctx_toks, qst_toks])
+        # [n_ctx + n_qst, inp_len]
+        inp_mask = cq_inp != self.tkz.pad_token_id
+
+        enc_out: BaseModelOutputWithPoolingAndCrossAttentions = self.enc(input_ids=cq_inp, attention_mask=inp_mask, use_cache=False)
+        # n_cq = n_ctx + n_qst
+        # [n_cq, inp_len, d_model]
+        emb = enc_out.last_hidden_state
+        # [n_cq d_model]
+        emb = emb[:, 0]
+        # [1, n_cq, d_model]
+        emb = emb.unsqueeze(0)
+
+        return emb
 
 
 def test_train():
