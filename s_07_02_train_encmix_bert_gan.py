@@ -16,9 +16,9 @@ from mllm.config.model import EncdecBertCfg, EncmixBertCfg, copy_override_encmix
     EncmixOutEmbsType, EncmixTrainDsType
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.encmix import EncmixBert, qna_gan_loss, EncmixBertGan
-from mllm.train.encmix_bert import get_squadv2_txt_iterators
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, QnaQuesInp, \
-    get_squadv2_df, split_df, gen_loss, get_squadv2_batch_iterator, get_squadv2_tensor_iterators
+    get_squadv2_df, split_df, gen_loss, get_squadv2_batch_iterator, get_squadv2_tensor_iterators, \
+    get_squadv2_txt_iterators
 from transformers import AutoTokenizer
 
 

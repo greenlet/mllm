@@ -15,8 +15,7 @@ from tqdm import trange
 from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert
 from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.genmix import GenmixBert
-from mllm.train.encmix_bert import get_squadv2_txt_iterators
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators
 
 
 class ArgsGenmixBertTrain(BaseModel):

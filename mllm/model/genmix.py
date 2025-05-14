@@ -128,7 +128,13 @@ class GenmixBert(nn.Module):
         logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)
         # [tgt_len, n_vocab]
         labels = ans_toks[1:]
-        loss = F.cross_entropy(logits, labels)
+        # [tgt_len,]
+        loss = F.cross_entropy(logits, labels, reduction='none')
+        # The last one is sep_token_id
+        assert loss.shape[0] > 1
+        loss_1, loss_2 = loss[:-1].mean(), loss[-1]
+        w1, w2 = 50, 1
+        loss = (loss_1 * w1 + loss_2 * w2) / (w1 + w2)
         return loss
 
     def gen_on_qna_txt(self, context: str, question: str) -> torch.Tensor:
