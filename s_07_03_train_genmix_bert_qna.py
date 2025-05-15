@@ -12,10 +12,12 @@ from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert
+from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert, \
+    GenmixTrainDsType
 from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.genmix import GenmixBert
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
+    get_billsum_txt_iterators
 
 
 class ArgsGenmixBertTrain(BaseModel):
@@ -34,6 +36,11 @@ class ArgsGenmixBertTrain(BaseModel):
         description='Train subdirectory. Can have values: "last", "<subdirectory-name>". When set to "last", '
             'last subdirectory of TRAIN_ROOT_PATH containing training snapshot will be taken.',
         cli=('--train-subdir',)
+    )
+    train_ds_type: GenmixTrainDsType = Field(
+        GenmixTrainDsType.Qna,
+        description=f'Train dataset type, one of: {[t.value for t in GenmixTrainDsType]}',
+        cli=('--train-ds-type',),
     )
     model_cfg_fpath: Path = Field(
         ...,
@@ -100,7 +107,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
         model_cfg, inp_len=args.inp_len,
     )
 
-    prefix, suffix = gen_prefpostfix_genmix_bert(model_cfg)
+    prefix, suffix = gen_prefpostfix_genmix_bert(model_cfg, train_ds_type=args.train_ds_type)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -156,7 +163,12 @@ def main(args: ArgsGenmixBertTrain) -> int:
         del checkpoint
 
     val_ratio = 0.05
-    train_it, val_it = get_squadv2_txt_iterators(exclude_empty_answers=True, val_ratio=val_ratio)
+    if args.train_ds_type == GenmixTrainDsType.Qna:
+        train_it, val_it = get_squadv2_txt_iterators(exclude_empty_answers=True, val_ratio=val_ratio)
+    elif args.train_ds_type == GenmixTrainDsType.Sum:
+        train_it, val_it = get_billsum_txt_iterators(val_ratio=val_ratio)
+    else:
+        raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
 
     sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
@@ -176,12 +188,15 @@ def main(args: ArgsGenmixBertTrain) -> int:
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            qna_item = next(train_it)
+            item = next(train_it)
 
             optimizer.zero_grad()
-            loss = model.run_on_qna_txt(
-                context=qna_item.context, question=qna_item.question, answer=qna_item.answer,
-            )
+            if args.train_ds_type == GenmixTrainDsType.Qna:
+                loss = model.run_on_qna_txt(
+                    context=item.context, question=item.question, answer=item.answer,
+                )
+            elif args.train_ds_type == GenmixTrainDsType.Sum:
+                loss = model
             if loss.isnan():
                 print('Loss is NaN!!!')
                 sys.exit(0)
@@ -213,11 +228,11 @@ def main(args: ArgsGenmixBertTrain) -> int:
         val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            qna_item = next(val_it)
+            item = next(val_it)
 
             with torch.no_grad():
                 loss = model.run_on_qna_txt(
-                    context=qna_item.context, question=qna_item.question, answer=qna_item.answer,
+                    context=item.context, question=item.question, answer=item.answer,
                 )
                 if loss.isnan():
                     print('Loss is NaN!!!')

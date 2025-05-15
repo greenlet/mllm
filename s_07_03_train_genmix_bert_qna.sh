@@ -13,6 +13,8 @@ train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
 inp_len=128
 #inp_len=256
+#train_ds_type=qna
+train_ds_type=sum
 
 #device=cpu
 #epochs=5
@@ -43,6 +45,7 @@ python s_07_03_train_genmix_bert_qna.py \
   --train-root-path $train_root_path \
   --pretrained-model-path "$pretrained_model_path" \
   --train-subdir "$train_subdir" \
+  --train-ds-type "$train_ds_type" \
   --model-cfg-fpath $model_cfg_fpath \
   --inp-len $inp_len \
   --batch-size $batch_size \

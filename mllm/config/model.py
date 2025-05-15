@@ -333,6 +333,13 @@ class GenmixBertCfg(BaseModel):
     d_model: int
     pretrained_model_name: str = ''
     tokenizer_name: str = ''
+    max_inp_chunks: int
+    max_out_toks: int
+
+
+class GenmixTrainDsType(str, Enum):
+    Qna = 'qna'
+    Sum = 'sum'
 
 
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
@@ -652,7 +659,8 @@ def create_encmix_bert_cfg(
 
 
 def create_genmix_bert_cfg(
-        pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', inp_len = 128,
+        pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', inp_len = 128, max_inp_chunks: int = 0,
+        max_out_toks: int = 0,
 ) -> GenmixBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -662,7 +670,7 @@ def create_genmix_bert_cfg(
 
     cfg_gen_mix_bert = GenmixBertCfg(
         inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name,
-        tokenizer_name=tokenizer_name,
+        tokenizer_name=tokenizer_name, max_inp_chunks=max_inp_chunks, max_out_toks=max_out_toks,
     )
     return cfg_gen_mix_bert
 
@@ -802,12 +810,15 @@ def copy_override_encmix_bert_cfg(
 
 
 def copy_override_genmix_bert_cfg(
-        cfg: GenmixBertCfg, inp_len: int = 0,
+        cfg: GenmixBertCfg, inp_len: int = 0, max_inp_chunks: Optional[int] = None, max_out_toks: Optional[int] = None,
 ) -> GenmixBertCfg:
     inp_len = inp_len or cfg.inp_len
+    max_inp_chunks = coalesce(max_inp_chunks, cfg.max_inp_chunks)
+    max_out_toks = coalesce(max_out_toks, cfg.max_out_toks)
 
     return create_genmix_bert_cfg(
         pretrained_model_name=cfg.pretrained_model_name, tokenizer_name=cfg.tokenizer_name, inp_len=inp_len,
+        max_inp_chunks=max_inp_chunks, max_out_toks=max_out_toks,
     )
 
 
@@ -931,12 +942,11 @@ def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg, train_ds_type: Optiona
     if train_ds_type is not None:
         postfix_parts.append(f'ds_{train_ds_type.value}')
 
-
     postfix = '-'.join(postfix_parts)
     return prefix, postfix
 
 
-def gen_prefpostfix_genmix_bert(model_cfg: GenmixBertCfg) -> tuple[str, str]:
+def gen_prefpostfix_genmix_bert(model_cfg: GenmixBertCfg, train_ds_type: Optional[GenmixTrainDsType] = None) -> tuple[str, str]:
     prefix, postfix_parts = f'genmixbert', []
 
     bert_str = model_cfg.pretrained_model_name.replace('_', '_')
@@ -948,6 +958,15 @@ def gen_prefpostfix_genmix_bert(model_cfg: GenmixBertCfg) -> tuple[str, str]:
     postfix_parts.append(f'd{model_cfg.d_model}')
 
     postfix_parts.append(f'inp{model_cfg.inp_len}')
+
+    if train_ds_type is not None:
+        postfix_parts.append(f'ds_{train_ds_type.value}')
+
+    if model_cfg.max_inp_chunks > 0:
+        postfix_parts.append(f'maxi{model_cfg.max_inp_chunks}')
+
+    if model_cfg.max_out_toks > 0:
+        postfix_parts.append(f'maxo{model_cfg.max_out_toks}')
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix

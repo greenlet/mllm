@@ -1,4 +1,6 @@
 d_model: 768
 inp_len: 128
+max_inp_chunks: 10
+max_out_toks: 128
 pretrained_model_name: bert-base-uncased
 tokenizer_name: bert-base-uncased
