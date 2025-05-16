@@ -17,7 +17,7 @@ from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_
 from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.genmix import GenmixBert
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
-    get_billsum_txt_iterators
+    get_billsum_txt_iterators, SumTuple, QnaTuple
 
 
 class ArgsGenmixBertTrain(BaseModel):
@@ -51,6 +51,16 @@ class ArgsGenmixBertTrain(BaseModel):
         ...,
         description='Input tokens number. Must be a power of 2. INP_LEN = 2^k will produce model with k layers.',
         cli=('--inp-len',),
+    )
+    max_inp_chunks: int = Field(
+        ...,
+        description='Maximum input chunks. Model input will have dimensions [n, INP_LEN] where n <= MAX_INP_CHUNKS.',
+        cli=('--max-inp-chunks',),
+    )
+    max_out_toks: int = Field(
+        ...,
+        description='Maximum output tokens to use in training.',
+        cli=('--max-out-toks',),
     )
     batch_size: int = Field(
         3,
@@ -104,7 +114,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
 
     model_cfg = parse_yaml_file_as(GenmixBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmix_bert_cfg(
-        model_cfg, inp_len=args.inp_len,
+        model_cfg, inp_len=args.inp_len, max_inp_chunks=args.max_inp_chunks, max_out_toks=args.max_out_toks,
     )
 
     prefix, suffix = gen_prefpostfix_genmix_bert(model_cfg, train_ds_type=args.train_ds_type)
@@ -192,11 +202,15 @@ def main(args: ArgsGenmixBertTrain) -> int:
 
             optimizer.zero_grad()
             if args.train_ds_type == GenmixTrainDsType.Qna:
+                item: QnaTuple = item
                 loss = model.run_on_qna_txt(
                     context=item.context, question=item.question, answer=item.answer,
                 )
             elif args.train_ds_type == GenmixTrainDsType.Sum:
-                loss = model
+                item: SumTuple = item
+                loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
+            else:
+                raise
             if loss.isnan():
                 print('Loss is NaN!!!')
                 sys.exit(0)
@@ -231,9 +245,16 @@ def main(args: ArgsGenmixBertTrain) -> int:
             item = next(val_it)
 
             with torch.no_grad():
-                loss = model.run_on_qna_txt(
-                    context=item.context, question=item.question, answer=item.answer,
-                )
+                if args.train_ds_type == GenmixTrainDsType.Qna:
+                    item: QnaTuple = item
+                    loss = model.run_on_qna_txt(
+                        context=item.context, question=item.question, answer=item.answer,
+                    )
+                elif args.train_ds_type == GenmixTrainDsType.Sum:
+                    item: SumTuple = item
+                    loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
+                else:
+                    raise
                 if loss.isnan():
                     print('Loss is NaN!!!')
                     sys.exit(0)

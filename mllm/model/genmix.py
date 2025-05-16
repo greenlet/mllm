@@ -126,9 +126,9 @@ class GenmixBert(nn.Module):
 
         # [tgt_len, n_vocab]
         logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)
-        # [tgt_len, n_vocab]
+        # [tgt_len]
         labels = ans_toks[1:]
-        # [tgt_len,]
+        # [tgt_len]
         loss = F.cross_entropy(logits, labels, reduction='none')
         # The last one is sep_token_id
         assert loss.shape[0] > 1
@@ -147,31 +147,30 @@ class GenmixBert(nn.Module):
         prompt = f'Summarize following text. Title: {title}. Text: {text}'
         # [n_prompt, inp_len]
         prompt_toks = self._to_toks(prompt, inp_len=self.cfg.inp_len)
+        if self.cfg.max_inp_chunks > 0:
+            prompt_toks = prompt_toks[:self.cfg.max_inp_chunks]
+        # [n_prompt, inp_len]
+        prompt_mask = prompt_toks != self.tkz.pad_token_id
 
-        # [n_qst, inp_len]
-        qst_toks = self._to_toks(question, inp_len=self.cfg.inp_len)
-        # [n_ctx + n_qst, inp_len]
-        cq_inp = torch.concat([ctx_toks, qst_toks])
-        # [n_ctx + n_qst, inp_len]
-        inp_mask = cq_inp != self.tkz.pad_token_id
-
-        enc_out: BaseModelOutputWithPoolingAndCrossAttentions = self.enc(input_ids=cq_inp, attention_mask=inp_mask)
-        # n_cq = n_ctx + n_qst
-        # [n_cq, inp_len, d_model]
+        enc_out: BaseModelOutputWithPoolingAndCrossAttentions = self.enc(
+            input_ids=prompt_toks, attention_mask=prompt_mask,
+        )
+        # [n_prompt, inp_len, d_model]
         emb = enc_out.last_hidden_state
-        # [n_cq d_model]
+        # [n_prompt, d_model]
         emb = emb[:, 0]
-        # [1, n_cq, d_model]
+        # [1, n_prompt, d_model]
         emb = emb.unsqueeze(0)
-        return emb
 
-        # [1, n_ans]
-        ans_toks = self._to_toks(answer)
-        # [n_ans]
-        ans_toks = ans_toks[0]
-        # tgt_len = n_ans - 1
+        # [1, n_sum]
+        sum_toks = self._to_toks(summary)
+        if 0 < self.cfg.max_out_toks < sum_toks.shape[1]:
+            sum_toks = sum_toks[:, :self.cfg.max_out_toks]
+        # [n_sum]
+        sum_toks = sum_toks[0]
+        # tgt_len = n_sum - 1
         # [tgt_len]
-        target_ids = ans_toks[:-1]
+        target_ids = sum_toks[:-1]
         if target_ids[0] != self.tkz.cls_token_id:
             target_ids = F.pad(target_ids, (1, 0), 'constant', self.tkz.cls_token_id)
         # [1, tgt_len]
@@ -183,17 +182,19 @@ class GenmixBert(nn.Module):
 
         # [tgt_len, n_vocab]
         logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)
-        # [tgt_len, n_vocab]
-        labels = ans_toks[1:]
-        # [tgt_len,]
+        # [tgt_len]
+        labels = sum_toks[1:]
+        # [tgt_len]
         loss = F.cross_entropy(logits, labels, reduction='none')
         # The last one is sep_token_id
         assert loss.shape[0] > 1
-        loss_1, loss_2 = loss[:-1].mean(), loss[-1]
-        w1, w2 = 50, 1
-        loss = (loss_1 * w1 + loss_2 * w2) / (w1 + w2)
+        if labels[-1] == self.tkz.sep_token_id:
+            loss_1, loss_2 = loss[:-1].mean(), loss[-1]
+            w1, w2 = 50, 1
+            loss = (loss_1 * w1 + loss_2 * w2) / (w1 + w2)
+        else:
+            loss = loss.mean()
         return loss
-
 
 
 def test_train():

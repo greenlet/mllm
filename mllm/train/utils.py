@@ -719,7 +719,7 @@ def gen_loss(logits: torch.Tensor, tokens: torch.Tensor, sep_token_id: int = 102
 def get_billsum_df() -> pd.DataFrame:
     ds_name = 'billsum'
     billsum = load_dataset(ds_name)
-    df = pd.concat([billsum['train'].to_pandas(), billsum['validation'].to_pandas(), billsum['ca_test'].to_pandas()], axis=0)
+    df = pd.concat([billsum['train'].to_pandas(), billsum['test'].to_pandas(), billsum['ca_test'].to_pandas()], axis=0)
     return df
 
 

@@ -15,12 +15,14 @@ inp_len=128
 #inp_len=256
 #train_ds_type=qna
 train_ds_type=sum
+max_inp_chunks=10
+max_out_toks=50
 
-#device=cpu
-#epochs=5
-#train_epoch_steps=20
-#val_epoch_steps=20
-#batch_size=5
+device=cpu
+epochs=5
+train_epoch_steps=20
+val_epoch_steps=20
+batch_size=5
 
 #pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 device=cuda
@@ -48,6 +50,8 @@ python s_07_03_train_genmix_bert_qna.py \
   --train-ds-type "$train_ds_type" \
   --model-cfg-fpath $model_cfg_fpath \
   --inp-len $inp_len \
+  --max-inp-chunks $max_inp_chunks \
+  --max-out-toks $max_out_toks \
   --batch-size $batch_size \
   --device $device \
   --epochs $epochs \
