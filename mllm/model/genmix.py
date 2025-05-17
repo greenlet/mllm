@@ -105,6 +105,26 @@ class GenmixBert(nn.Module):
         emb = emb.unsqueeze(0)
         return emb
 
+    def text_title_to_emb(self, text: str, title: str) -> torch.Tensor:
+        prompt = f'Summarize following text. Title: {title}. Text: {text}'
+        # [n_prompt, inp_len]
+        prompt_toks = self._to_toks(prompt, inp_len=self.cfg.inp_len)
+        if self.cfg.max_inp_chunks > 0:
+            prompt_toks = prompt_toks[:self.cfg.max_inp_chunks]
+        # [n_prompt, inp_len]
+        prompt_mask = prompt_toks != self.tkz.pad_token_id
+
+        enc_out: BaseModelOutputWithPoolingAndCrossAttentions = self.enc(
+            input_ids=prompt_toks, attention_mask=prompt_mask,
+        )
+        # [n_prompt, inp_len, d_model]
+        emb = enc_out.last_hidden_state
+        # [n_prompt, d_model]
+        emb = emb[:, 0]
+        # [1, n_prompt, d_model]
+        emb = emb.unsqueeze(0)
+        return emb
+
     def run_on_qna_txt(self, context: str, question: str, answer: str) -> torch.Tensor:
         emb = self.context_question_to_emb(context=context, question=question)
 
@@ -144,23 +164,7 @@ class GenmixBert(nn.Module):
         return out_toks
 
     def run_on_sum_txt(self, text: str, summary: str, title: str) -> torch.Tensor:
-        prompt = f'Summarize following text. Title: {title}. Text: {text}'
-        # [n_prompt, inp_len]
-        prompt_toks = self._to_toks(prompt, inp_len=self.cfg.inp_len)
-        if self.cfg.max_inp_chunks > 0:
-            prompt_toks = prompt_toks[:self.cfg.max_inp_chunks]
-        # [n_prompt, inp_len]
-        prompt_mask = prompt_toks != self.tkz.pad_token_id
-
-        enc_out: BaseModelOutputWithPoolingAndCrossAttentions = self.enc(
-            input_ids=prompt_toks, attention_mask=prompt_mask,
-        )
-        # [n_prompt, inp_len, d_model]
-        emb = enc_out.last_hidden_state
-        # [n_prompt, d_model]
-        emb = emb[:, 0]
-        # [1, n_prompt, d_model]
-        emb = emb.unsqueeze(0)
+        emb = self.text_title_to_emb(text=text, title=title)
 
         # [1, n_sum]
         sum_toks = self._to_toks(summary)
@@ -195,6 +199,12 @@ class GenmixBert(nn.Module):
         else:
             loss = loss.mean()
         return loss
+
+    def gen_on_sum_txt(self, text: str, title: str) -> torch.Tensor:
+        emb = self.text_title_to_emb(text=text, title=title)
+
+        out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id)
+        return out_toks
 
 
 def test_train():
