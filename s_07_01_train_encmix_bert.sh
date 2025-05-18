@@ -15,12 +15,13 @@ model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encmix_bert
 train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
-#inp_len=128
-inp_len=256
+inp_len=128
+#inp_len=256
 #out_embs_type=inp
 out_embs_type=new
 #train_ds_type=msk
-train_ds_type=qna
+#train_ds_type=qna
+train_ds_type=sub
 #encmix_model_type=one
 encmix_model_type=sep
 

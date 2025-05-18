@@ -17,6 +17,8 @@ inp_len=128
 train_ds_type=sum
 max_inp_chunks=10
 max_out_toks=50
+bert_model_name=bert-base-uncased
+#bert_model_name=bert-large-uncased
 
 device=cpu
 epochs=5
@@ -49,6 +51,7 @@ python s_07_03_train_genmix_bert_qna.py \
   --train-subdir "$train_subdir" \
   --train-ds-type "$train_ds_type" \
   --model-cfg-fpath $model_cfg_fpath \
+  --bert-model-name $bert_model_name \
   --inp-len $inp_len \
   --max-inp-chunks $max_inp_chunks \
   --max-out-toks $max_out_toks \

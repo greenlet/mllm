@@ -799,6 +799,7 @@ def get_billsum_txt_iterator(df_sum: pd.DataFrame) -> SumTxtGen:
 
 def get_billsum_txt_iterators(val_ratio: float = 0.05) -> tuple[SumTxtGen, SumTxtGen]:
     df_bs = get_billsum_df()
+    df_bs = df_bs.sample(n=len(df_bs))
     df_bs_t, df_bs_v = split_df(df_bs, val_ratio=val_ratio)
     print(f'Billsum n_total = {len(df_bs)}. n_train = {len(df_bs_t)}. n_val = {len(df_bs_v)}')
 

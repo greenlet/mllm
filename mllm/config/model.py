@@ -321,6 +321,7 @@ class EncmixBertCfg(BaseModel):
 class EncmixTrainDsType(str, Enum):
     Msk = 'msk'
     Qna = 'qna'
+    Sub = 'sub'
 
 
 class EncmixModelType(str, Enum):
@@ -810,14 +811,17 @@ def copy_override_encmix_bert_cfg(
 
 
 def copy_override_genmix_bert_cfg(
-        cfg: GenmixBertCfg, inp_len: int = 0, max_inp_chunks: Optional[int] = None, max_out_toks: Optional[int] = None,
+        cfg: GenmixBertCfg, pretrained_model_name: Optional[str] = None, tokenizer_name: Optional[str] = None, inp_len: int = 0,
+        max_inp_chunks: Optional[int] = None, max_out_toks: Optional[int] = None,
 ) -> GenmixBertCfg:
+    pretrained_model_name = coalesce(pretrained_model_name, cfg.pretrained_model_name)
+    tokenizer_name = coalesce(tokenizer_name, cfg.tokenizer_name)
     inp_len = inp_len or cfg.inp_len
     max_inp_chunks = coalesce(max_inp_chunks, cfg.max_inp_chunks)
     max_out_toks = coalesce(max_out_toks, cfg.max_out_toks)
 
     return create_genmix_bert_cfg(
-        pretrained_model_name=cfg.pretrained_model_name, tokenizer_name=cfg.tokenizer_name, inp_len=inp_len,
+        pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, inp_len=inp_len,
         max_inp_chunks=max_inp_chunks, max_out_toks=max_out_toks,
     )
 

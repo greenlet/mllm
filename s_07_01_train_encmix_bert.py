@@ -17,7 +17,8 @@ from mllm.config.model import EncdecBertCfg, EncmixBertCfg, copy_override_encmix
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, ENCMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.encmix import EncmixBert, EncmixBertSep
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, QnaQuesInp, \
-    get_squadv2_df, split_df, gen_loss, get_squadv2_batch_iterator, get_squadv2_tensor_iterators
+    get_squadv2_df, split_df, gen_loss, get_squadv2_batch_iterator, get_squadv2_tensor_iterators, \
+    get_billsum_txt_iterators, SumTuple
 from transformers import AutoTokenizer
 
 
@@ -196,11 +197,17 @@ def main(args: ArgsEncmixBertTrain) -> int:
             wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.batch_size,
             tkz=tkz, device=device, shuffle=shuffle, val_ratio=val_ratio,
         )
-    else:
+    elif args.train_ds_type == EncmixTrainDsType.Qna:
         train_batch_it, val_batch_it = get_squadv2_tensor_iterators(
             inp_len=args.inp_len, batch_size=args.batch_size, ques_inp=QnaQuesInp.Enc, exclude_empty_answers=True,
             tkz=tkz, device=device, val_ratio=val_ratio,
         )
+    elif args.train_ds_type == EncmixTrainDsType.Sub:
+        train_batch_it, val_batch_it = get_billsum_txt_iterators(
+            val_ratio=val_ratio,
+        )
+    else:
+        raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
 
     sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=13, threshold=1e-6, min_lr=1e-8)
@@ -222,13 +229,20 @@ def main(args: ArgsEncmixBertTrain) -> int:
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            docs_toks_aug, plain_toks, docs_toks_tgt, _ = next(train_batch_it)
+            if args.train_ds_type in (EncmixTrainDsType.Msk, EncmixTrainDsType.Qna):
+                docs_toks_aug, plain_toks, docs_toks_tgt, _ = next(train_batch_it)
 
-            optimizer.zero_grad()
-            out_logits = model.run_chunks_plain_seq(
-                chunk_toks=docs_toks_aug, plain_toks=plain_toks, target_toks=docs_toks_tgt,
-            )
-            loss = loss_fn(out_logits, docs_toks_tgt)
+                optimizer.zero_grad()
+                out_logits = model.run_chunks_plain_seq(
+                    chunk_toks=docs_toks_aug, plain_toks=plain_toks, target_toks=docs_toks_tgt,
+                )
+                loss = loss_fn(out_logits, docs_toks_tgt)
+            elif args.train_ds_type == EncmixTrainDsType.Sub:
+                optimizer.zero_grad()
+                item: SumTuple = next(train_batch_it)
+                loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
+            else:
+                raise
 
             loss.backward()
             # Gradients must be available after loss.backward()
@@ -257,13 +271,19 @@ def main(args: ArgsEncmixBertTrain) -> int:
         val_loss = 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            docs_toks_aug, plain_toks, docs_toks_tgt, _ = next(val_batch_it)
-
             with torch.no_grad():
-                out_logits = model.run_chunks_plain_seq(
-                    chunk_toks=docs_toks_aug, plain_toks=plain_toks, target_toks=docs_toks_tgt,
-                )
-                loss = loss_fn(out_logits, docs_toks_tgt)
+                if args.train_ds_type in (EncmixTrainDsType.Msk, EncmixTrainDsType.Qna):
+                    docs_toks_aug, plain_toks, docs_toks_tgt, _ = next(train_batch_it)
+                    out_logits = model.run_chunks_plain_seq(
+                        chunk_toks=docs_toks_aug, plain_toks=plain_toks, target_toks=docs_toks_tgt,
+                    )
+                    loss = loss_fn(out_logits, docs_toks_tgt)
+                elif args.train_ds_type == EncmixTrainDsType.Sub:
+                    item: SumTuple = next(train_batch_it)
+                    loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
+                else:
+                    raise
+
             val_loss += loss.item()
 
             s = f'Val. loss: {loss.item():.6f}'

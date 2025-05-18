@@ -47,6 +47,11 @@ class ArgsGenmixBertTrain(BaseModel):
         description='Path to EncdecHg model config Yaml file.',
         cli=('--model-cfg-fpath',),
     )
+    bert_model_name: str = Field(
+        'bert-base-uncased',
+        description='Bert pretrained model name (bert-base-uncased, bert-large-uncased).',
+        cli=('--bert-model-name',),
+    )
     inp_len: int = Field(
         ...,
         description='Input tokens number. Must be a power of 2. INP_LEN = 2^k will produce model with k layers.',
@@ -114,7 +119,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
 
     model_cfg = parse_yaml_file_as(GenmixBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmix_bert_cfg(
-        model_cfg, inp_len=args.inp_len, max_inp_chunks=args.max_inp_chunks, max_out_toks=args.max_out_toks,
+        model_cfg, pretrained_model_name=args.bert_model_name, inp_len=args.inp_len, max_inp_chunks=args.max_inp_chunks, max_out_toks=args.max_out_toks,
     )
 
     prefix, suffix = gen_prefpostfix_genmix_bert(model_cfg, train_ds_type=args.train_ds_type)
