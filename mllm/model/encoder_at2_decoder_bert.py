@@ -154,15 +154,15 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start
     return shifted_input_ids
 
 
-class EncoderAtt2DecoderConfig(PretrainedConfig):
-    enc_emb_exp_type: EncEmbExpansionType
-    enc_emb_exp_bias: bool = False
-    enc_inp_len: int = 0
-    enc_inp_batch_size: int = 0
+class EncoderAt2DecoderConfig(PretrainedConfig):
     model_type = "encoder-decoder"
     is_composition = True
+    enc_inp_len: int = 0
+    last_enc_to_all_dec_at2_enabled: bool = True
+    enc_at2_enabled: bool = True
+    dec_at2_eanbled: bool = True
 
-    def __init__(self, enc_emb_exp_type: EncEmbExpansionType, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         assert (
             "encoder" in kwargs and "decoder" in kwargs
@@ -175,10 +175,10 @@ class EncoderAtt2DecoderConfig(PretrainedConfig):
         self.encoder = AutoConfig.for_model(encoder_model_type, **encoder_config)
         self.decoder = AutoConfig.for_model(decoder_model_type, **decoder_config)
         self.is_encoder_decoder = True
-        self.enc_emb_exp_type = enc_emb_exp_type
-        self.enc_emb_exp_bias = kwargs.get('enc_emb_exp_bias', False)
-        self.enc_inp_len = kwargs.get('enc_inp_len', 0)
-        self.enc_inp_batch_size = kwargs.get('enc_inp_batch_size', 0)
+        self.enc_inp_len = kwargs.get('enc_inp_len', self.enc_inp_len)
+        self.last_enc_to_all_dec_at2_enabled = kwargs.get('last_enc_to_all_dec_at2_enabled', self.last_enc_to_all_dec_at2_enabled)
+        self.enc_at2_enabled = kwargs.get('enc_at2_enabled', self.enc_at2_enabled)
+        self.dec_at2_eanbled = kwargs.get('dec_at2_eanbled', self.dec_at2_eanbled)
 
     @classmethod
     def from_encoder_decoder_configs(
@@ -198,7 +198,7 @@ class EncoderAtt2DecoderConfig(PretrainedConfig):
 
 
 @add_start_docstrings(ENCODER_DECODER_START_DOCSTRING)
-class EncoderEmbDecoderModel(PreTrainedModel):
+class EncoderAt2DecoderModel(PreTrainedModel):
     r"""
     [`EncoderDecoderModel`] is a generic model class that will be instantiated as a transformer architecture with one
     of the base model classes of the library as encoder and another one as decoder when created with the
@@ -206,8 +206,8 @@ class EncoderEmbDecoderModel(PreTrainedModel):
     :meth*~transformers.AutoModelForCausalLM.from_pretrained* class method for the decoder.
     """
 
-    config_class = EncoderEmbDecoderConfig
-    config: EncoderEmbDecoderConfig
+    config_class = EncoderAt2DecoderConfig
+    config: EncoderAt2DecoderConfig
     base_model_prefix = "encoder_decoder"
     main_input_name = "input_ids"
     supports_gradient_checkpointing = True
@@ -217,14 +217,12 @@ class EncoderEmbDecoderModel(PreTrainedModel):
         config: Optional[PretrainedConfig] = None,
         encoder: Optional[PreTrainedModel] = None,
         decoder: Optional[PreTrainedModel] = None,
-        enc_emb_exp_type: Optional[EncEmbExpansionType] = None,
         **kwargs,
     ):
         if config is None and (encoder is None or decoder is None):
             raise ValueError("Either a configuration or an encoder and a decoder has to be provided.")
         if config is None:
-            assert enc_emb_exp_type is not None
-            config = EncoderEmbDecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config, enc_emb_exp_type=enc_emb_exp_type, **kwargs)
+            config = EncoderAt2DecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config, **kwargs)
         else:
             if not isinstance(config, self.config_class):
                 raise ValueError(f"Config: {config} has to be of type {self.config_class}")
@@ -289,32 +287,6 @@ class EncoderEmbDecoderModel(PreTrainedModel):
                 "following discussion on GitHub: https://github.com/huggingface/transformers/issues/23350"
             )
 
-        if self.config.enc_emb_exp_type == EncEmbExpansionType.Mat:
-            cfg_gen: BertGenerationConfig = self.config.encoder
-            d_model, inp_len, inp_batch_size = cfg_gen.hidden_size, self.config.enc_inp_len, self.config.enc_inp_batch_size
-            assert inp_len > 0, f'inp_len (={inp_len}) must be positive integer'
-            assert inp_batch_size > 0, f'inp_batch_size (={inp_batch_size}) must be positive integer'
-            self.emb_mat_width = nn.Linear(in_features=d_model, out_features=inp_len * d_model, bias=self.config.enc_emb_exp_bias)
-            self.emb_mat_height = nn.Linear(in_features=inp_batch_size * d_model, out_features=d_model, bias=self.config.enc_emb_exp_bias)
-        else:
-            self.emb_mat_width = None
-            self.emb_mat_height = None
-
-        if self.config.enc_emb_exp_type == EncEmbExpansionType.Pyr:
-            cfg_gen: BertGenerationConfig = self.config.encoder
-            d_model, n_heads, d_inner = cfg_gen.hidden_size, cfg_gen.num_attention_heads, cfg_gen.intermediate_size
-            n_vocab, n_layers, dropout_rate = cfg_gen.vocab_size, cfg_gen.num_hidden_layers, cfg_gen.hidden_dropout_prob
-            inp_len = self.config.enc_inp_len
-            d_k = d_v = d_model // n_heads
-            pyr_cfg = DecPyrCfg(
-                d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=1,
-                n_layers=n_layers, dropout_rate=dropout_rate, n_vocab=n_vocab, n_similar_layers=1,
-                enhance_type=HgEnhanceType.MatmulBeginBias, temperature=0,
-            )
-            self.dec_pyr = DecoderPyramid(pyr_cfg)
-        else:
-            self.dec_pyr = None
-
         # tie encoder, decoder weights if config set accordingly
         self.tie_weights()
 
@@ -361,7 +333,7 @@ class EncoderEmbDecoderModel(PreTrainedModel):
         ```python
         >>> from transformers import EncoderDecoderModel
 
-        >>> model = EncoderEmbDecoderModel.from_pretrained("patrickvonplaten/bert2bert-cnn_dailymail-fp16")
+        >>> model = EncoderAt2DecoderModel.from_pretrained("patrickvonplaten/bert2bert-cnn_dailymail-fp16")
         ```"""
 
         from_tf = kwargs.pop("from_tf", False)
@@ -432,7 +404,7 @@ class EncoderEmbDecoderModel(PreTrainedModel):
                 del tf_model
                 gc.collect()
 
-                model = EncoderEmbDecoderModel.from_encoder_decoder_pretrained(
+                model = EncoderAt2DecoderModel.from_encoder_decoder_pretrained(
                     encoder_dir, decoder_dir, encoder_from_tf=True, decoder_from_tf=True
                 )
                 # This is only for copying some specific attributes of this particular model.
@@ -513,11 +485,11 @@ class EncoderEmbDecoderModel(PreTrainedModel):
         >>> from transformers import EncoderDecoderModel
 
         >>> # initialize a bert2bert from two pretrained BERT models. Note that the cross-attention layers will be randomly initialized
-        >>> model = EncoderEmbDecoderModel.from_encoder_decoder_pretrained("google-bert/bert-base-uncased", "google-bert/bert-base-uncased")
+        >>> model = EncoderAt2DecoderModel.from_encoder_decoder_pretrained("google-bert/bert-base-uncased", "google-bert/bert-base-uncased")
         >>> # saving model after fine-tuning
         >>> model.save_pretrained("./bert2bert")
         >>> # load fine-tuned model
-        >>> model = EncoderEmbDecoderModel.from_pretrained("./bert2bert")
+        >>> model = EncoderAt2DecoderModel.from_pretrained("./bert2bert")
         ```"""
 
         kwargs_encoder = {
@@ -668,7 +640,7 @@ class EncoderEmbDecoderModel(PreTrainedModel):
         >>> import torch
 
         >>> tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
-        >>> model = EncoderEmbDecoderModel.from_encoder_decoder_pretrained(
+        >>> model = EncoderAt2DecoderModel.from_encoder_decoder_pretrained(
         ...     "google-bert/bert-base-uncased", "google-bert/bert-base-uncased"
         ... )  # initialize Bert2Bert from pre-trained checkpoints
 
@@ -684,7 +656,7 @@ class EncoderEmbDecoderModel(PreTrainedModel):
 
         >>> # save and load from pretrained
         >>> model.save_pretrained("bert2bert")
-        >>> model = EncoderEmbDecoderModel.from_pretrained("bert2bert")
+        >>> model = EncoderAt2DecoderModel.from_pretrained("bert2bert")
 
         >>> # generation
         >>> generated = model.generate(input_ids)
