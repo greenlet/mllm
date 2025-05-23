@@ -61,22 +61,121 @@ class SelfAttention2(nn.Module):
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
         self.is_decoder = config.is_decoder
 
+    # [batch_size, seq_len, d_model] -> [batch_size, seq_len, n_heads, d_head]
     def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(new_x_shape)
-        return x.permute(0, 2, 1, 3)
+        return x
 
     def forward(
         self,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.FloatTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
         output_attentions: Optional[bool] = False,
     ) -> Tuple[torch.Tensor]:
-        return (torch.ones(1),)
+        # [batch_size, seq_len, d_model]
+        query_layer = self.query(hidden_states)
+        key_layer = self.key(hidden_states)
+        value_layer = self.value(hidden_states)
+        # [batch_size, seq_len, n_heads, d_head]
+        query_layer = self.transpose_for_scores(query_layer)
+        key_layer = self.transpose_for_scores(key_layer)
+        value_layer = self.transpose_for_scores(value_layer)
+
+        # Take the dot product between "query" and "key" to get the raw attention scores.
+        # [batch_size, seq_len, n_heads, n_heads]
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+
+        # Normalize the attention scores to probabilities.
+        # [batch_size, seq_len, n_heads, n_heads]
+        attention_probs = nn.functional.softmax(attention_scores, dim=-1)
+
+        # # Dropout for internal attention.
+        # attention_probs = self.dropout(attention_probs)
+
+        # [batch_size, seq_len, n_heads, d_head]
+        context_layer = torch.matmul(attention_probs, value_layer)
+
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        # [batch_size, seq_len, d_model]
+        context_layer = context_layer.view(new_context_layer_shape)
+
+        outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
+
+        return outputs
+
+
+class CrossAttention2(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
+            raise ValueError(
+                f"The hidden size ({config.hidden_size}) is not a multiple of the number of attention "
+                f"heads ({config.num_attention_heads})"
+            )
+
+        self.num_attention_heads = config.num_attention_heads
+        self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
+        self.all_head_size = self.num_attention_heads * self.attention_head_size
+
+        self.query = nn.Linear(config.hidden_size, self.all_head_size)
+        self.key = nn.Linear(config.hidden_size, self.all_head_size)
+        self.value = nn.Linear(config.hidden_size, self.all_head_size)
+
+        self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
+        self.is_decoder = config.is_decoder
+
+    # [batch_size, seq_len, d_model] -> [batch_size, seq_len, n_heads, d_head]
+    def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        x = x.view(new_x_shape)
+        return x
+
+    def forward(
+        self,
+        encoder_hidden_states: torch.Tensor,
+        decoder_hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        output_attentions: Optional[bool] = False,
+    ) -> Tuple[torch.Tensor]:
+        # [batch_size, 1, d_model]
+        decoder_last_hidden_state = decoder_hidden_states[..., -1:, :]
+        query_layer = self.query(decoder_last_hidden_state)
+
+        # [batch_size, dec_seq_len, d_model]
+        key_layer = self.key(encoder_hidden_states)
+        value_layer = self.value(encoder_hidden_states)
+
+        # [batch_size, 1, n_heads, d_head]
+        query_layer = self.transpose_for_scores(query_layer)
+
+        # [batch_size, seq_len, n_heads, d_head]
+        key_layer = self.transpose_for_scores(key_layer)
+        value_layer = self.transpose_for_scores(value_layer)
+
+        # Take the dot product between "query" and "key" to get the raw attention scores.
+        # [batch_size, seq_len, n_heads, n_heads]
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+
+        # Normalize the attention scores to probabilities.
+        # [batch_size, seq_len, n_heads, n_heads]
+        attention_probs = nn.functional.softmax(attention_scores, dim=-1)
+
+        # # Dropout for internal attention.
+        # attention_probs = self.dropout(attention_probs)
+
+        # [batch_size, seq_len, n_heads, d_head]
+        context_layer = torch.matmul(attention_probs, value_layer)
+
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        # [batch_size, seq_len, d_model]
+        context_layer = context_layer.view(new_context_layer_shape)
+
+        outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
+
+        return outputs
 
 
 # Copied from transformers.models.bert.modeling_bert.BertSelfOutput with Bert->BertGeneration
