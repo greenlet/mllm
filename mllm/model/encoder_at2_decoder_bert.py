@@ -160,7 +160,7 @@ class EncoderAt2DecoderConfig(PretrainedConfig):
     enc_inp_len: int = 0
     last_enc_to_all_dec_at2_enabled: bool = True
     enc_at2_enabled: bool = True
-    dec_at2_eanbled: bool = True
+    dec_at2_enabled: bool = True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -178,7 +178,7 @@ class EncoderAt2DecoderConfig(PretrainedConfig):
         self.enc_inp_len = kwargs.get('enc_inp_len', self.enc_inp_len)
         self.last_enc_to_all_dec_at2_enabled = kwargs.get('last_enc_to_all_dec_at2_enabled', self.last_enc_to_all_dec_at2_enabled)
         self.enc_at2_enabled = kwargs.get('enc_at2_enabled', self.enc_at2_enabled)
-        self.dec_at2_eanbled = kwargs.get('dec_at2_eanbled', self.dec_at2_eanbled)
+        self.dec_at2_enabled = kwargs.get('dec_at2_enabled', self.dec_at2_enabled)
 
     @classmethod
     def from_encoder_decoder_configs(

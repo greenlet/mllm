@@ -425,6 +425,9 @@ class BertGenerationLayer(nn.Module):
         self.attention = BertGenerationAttention(config)
         self.is_decoder = config.is_decoder
         self.add_cross_attention = config.add_cross_attention
+        self.last_enc_to_all_dec_at2_enabled: bool = config.last_enc_to_all_dec_at2_enabled
+        self.enc_at2_enabled: bool = config.enc_at2_enabled
+        self.dec_at2_enabled: bool = config.dec_at2_enabled
         if self.add_cross_attention:
             if not self.is_decoder:
                 raise ValueError(f"{self} should be used as a decoder model if cross attention is added")
