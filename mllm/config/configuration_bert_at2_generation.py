@@ -17,7 +17,7 @@
 from transformers import PretrainedConfig
 
 
-class BertGenerationConfig(PretrainedConfig):
+class BertAt2GenerationConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`BertGenerationPreTrainedModel`]. It is used to
     instantiate a BertGeneration model according to the specified arguments, defining the model architecture.
@@ -85,7 +85,7 @@ class BertGenerationConfig(PretrainedConfig):
     >>> configuration = model.config
     ```"""
 
-    model_type = "bert-generation"
+    model_type = "bert-at2-generation"
 
     def __init__(
         self,
@@ -105,9 +105,9 @@ class BertGenerationConfig(PretrainedConfig):
         eos_token_id=1,
         position_embedding_type="absolute",
         use_cache=True,
-        last_enc_to_all_dec_at2_enabled: bool = True,
-        enc_at2_enabled: bool = True,
-        dec_at2_enabled: bool = True,
+        last_enc_to_all_dec_at2_enabled: bool = False,
+        enc_at2_enabled: bool = False,
+        dec_at2_enabled: bool = False,
         **kwargs,
     ):
         super().__init__(pad_token_id=pad_token_id, bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs)
@@ -130,5 +130,5 @@ class BertGenerationConfig(PretrainedConfig):
         self.dec_at2_enabled = dec_at2_enabled
 
 
-__all__ = ["BertGenerationConfig"]
+__all__ = ["BertAt2GenerationConfig"]
 

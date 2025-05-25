@@ -10,7 +10,7 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.onnx.symbolic_opset9 import unsqueeze
-from transformers import BertGenerationConfig
+from transformers import BertGenerationConfig, BertTokenizer, BatchEncoding
 
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
@@ -158,9 +158,6 @@ class EncoderAt2DecoderConfig(PretrainedConfig):
     model_type = "encoder-decoder"
     is_composition = True
     enc_inp_len: int = 0
-    last_enc_to_all_dec_at2_enabled: bool = True
-    enc_at2_enabled: bool = True
-    dec_at2_enabled: bool = True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -176,13 +173,10 @@ class EncoderAt2DecoderConfig(PretrainedConfig):
         self.decoder = AutoConfig.for_model(decoder_model_type, **decoder_config)
         self.is_encoder_decoder = True
         self.enc_inp_len = kwargs.get('enc_inp_len', self.enc_inp_len)
-        self.last_enc_to_all_dec_at2_enabled = kwargs.get('last_enc_to_all_dec_at2_enabled', self.last_enc_to_all_dec_at2_enabled)
-        self.enc_at2_enabled = kwargs.get('enc_at2_enabled', self.enc_at2_enabled)
-        self.dec_at2_enabled = kwargs.get('dec_at2_enabled', self.dec_at2_enabled)
 
     @classmethod
     def from_encoder_decoder_configs(
-        cls, encoder_config: PretrainedConfig, decoder_config: PretrainedConfig, enc_emb_exp_type: EncEmbExpansionType, **kwargs
+        cls, encoder_config: PretrainedConfig, decoder_config: PretrainedConfig, **kwargs
     ) -> PretrainedConfig:
         r"""
         Instantiate a [`EncoderDecoderConfig`] (or a derived class) from a pre-trained encoder model configuration and
@@ -194,7 +188,7 @@ class EncoderAt2DecoderConfig(PretrainedConfig):
         decoder_config.is_decoder = True
         decoder_config.add_cross_attention = True
 
-        return cls(enc_emb_exp_type=enc_emb_exp_type, encoder=encoder_config.to_dict(), decoder=decoder_config.to_dict(), **kwargs)
+        return cls(encoder=encoder_config.to_dict(), decoder=decoder_config.to_dict(), **kwargs)
 
 
 @add_start_docstrings(ENCODER_DECODER_START_DOCSTRING)
@@ -769,3 +763,36 @@ class EncoderAt2DecoderModel(PreTrainedModel):
         # apply decoder cache reordering here
         return self.decoder._reorder_cache(past_key_values, beam_idx)
 
+
+def test_train():
+    tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
+    model = EncoderAt2DecoderModel.from_encoder_decoder_pretrained("google-bert/bert-base-uncased",
+                                                                   "google-bert/bert-base-uncased")
+    model.train()
+    model.config.decoder_start_token_id = tokenizer.cls_token_id
+    model.config.pad_token_id = tokenizer.pad_token_id
+
+    tkz_inp: BatchEncoding = tokenizer(
+        ("The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side.During its construction, the Eiffel Tower surpassed the Washington Monument to become the tallest man-made structure in the world, a title it held for 41 years until the Chrysler Building in New York City was  finished in 1930. It was the first structure to reach a height of 300 metres. Due to the addition of a broadcasting aerial at the top of the tower in 1957, it is now taller than the Chrysler Building by 5.2 metres (17 ft).Excluding transmitters, the Eiffel Tower is the second tallest free-standing structure in France after the Millau Viaduct.",
+         "The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side.During its construction, the Eiffel Tower surpassed the Washington Monument to become the tallest man-made structure in the world, a title it held for 41 years until the Chrysler Building in New York City was  finished in 1930. It was the first structure to reach a height of 300 metres. Due to the addition of a broadcasting aerial at the top of the tower in 1957, it is now taller than the Chrysler Building by 5.2 metres (17 ft).Excluding transmitters, the Eiffel Tower is the second tallest free-standing structure in France after the Millau Viaduct."),
+        return_tensors="pt",
+    )
+    input_ids = tkz_inp.input_ids
+
+    tkz_lbl: BatchEncoding = tokenizer(
+        ("the eiffel tower surpassed the washington monument to become the tallest structure in the world. it was the first structure to reach a height of 300 metres in paris in 1930. it is now taller than the chrysler building by 5. 2 metres ( 17 ft ) and is the second tallest free - standing structure in paris.",
+         "the eiffel tower surpassed the washington monument to become the tallest structure in the world. it was the first structure to reach a height of 300 metres in paris in 1930. it is now taller than the chrysler building by 5. 2 metres ( 17 ft ) and is the second tallest free - standing structure in paris."),
+        return_tensors="pt",
+    )
+    print(type(tkz_lbl))
+    print(tkz_lbl)
+    decoder_input_ids = tkz_lbl.input_ids
+
+    # the forward function automatically creates the correct decoder_input_ids
+    out = model(input_ids=input_ids, decoder_input_ids=decoder_input_ids)
+    print(type(out))
+    print('loss:', out.loss)
+
+
+if __name__ == '__main__':
+    test_train()

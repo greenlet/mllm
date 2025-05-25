@@ -20,7 +20,6 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from transformers import BertGenerationConfig
 
 from transformers.activations import ACT2FN
 from transformers.generation import GenerationMixin
@@ -35,10 +34,12 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
+from mllm.config.configuration_bert_at2_generation import BertAt2GenerationConfig
+
 logger = logging.get_logger(__name__)
 
 _CHECKPOINT_FOR_DOC = "google/bert_for_seq_generation_L-24_bbc_encoder"
-_CONFIG_FOR_DOC = "BertGenerationConfig"
+_CONFIG_FOR_DOC = "BertAt2GenerationConfig"
 
 
 class SelfAttention2(nn.Module):
@@ -728,7 +729,7 @@ class BertGenerationPreTrainedModel(PreTrainedModel):
     models.
     """
 
-    config_class = BertGenerationConfig
+    config_class = BertAt2GenerationConfig
     base_model_prefix = "bert"
     supports_gradient_checkpointing = True
 
@@ -762,7 +763,7 @@ BERT_GENERATION_START_DOCSTRING = r"""
     and behavior.
 
     Parameters:
-        config ([`BertGenerationConfig`]): Model configuration class with all the parameters of the model.
+        config ([`BertAt2GenerationConfig`]): Model configuration class with all the parameters of the model.
             Initializing with a config file does not load the weights associated with the model, only the
             configuration. Check out the [`~PreTrainedModel.from_pretrained`] method to load the model weights.
 """
@@ -1073,11 +1074,12 @@ class BertGenerationDecoder(BertGenerationPreTrainedModel, GenerationMixin):
         Example:
 
         ```python
-        >>> from transformers import AutoTokenizer, BertGenerationDecoder, BertGenerationConfig
+        >>> from transformers import AutoTokenizer, BertGenerationDecoder
         >>> import torch
+        >>> from mllm.config.configuration_bert_at2_generation import BertAt2GenerationConfig
 
         >>> tokenizer = AutoTokenizer.from_pretrained("google/bert_for_seq_generation_L-24_bbc_encoder")
-        >>> config = BertGenerationConfig.from_pretrained("google/bert_for_seq_generation_L-24_bbc_encoder")
+        >>> config = BertAt2GenerationConfig.from_pretrained("google/bert_for_seq_generation_L-24_bbc_encoder")
         >>> config.is_decoder = True
         >>> model = BertGenerationDecoder.from_pretrained(
         ...     "google/bert_for_seq_generation_L-24_bbc_encoder", config=config
