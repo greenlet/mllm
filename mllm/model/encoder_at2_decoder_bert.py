@@ -3,25 +3,22 @@ import inspect
 import os
 import tempfile
 import warnings
-from enum import Enum
 from typing import Optional, Tuple, Union
 
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from torch.onnx.symbolic_opset9 import unsqueeze
-from transformers import BertGenerationConfig, BertTokenizer, BatchEncoding
-
+from transformers import BertTokenizer, BatchEncoding
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
 from transformers.modeling_utils import PreTrainedModel
-from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
 from transformers.models.auto.configuration_auto import AutoConfig
 from transformers.models.auto.modeling_auto import AutoModel, AutoModelForCausalLM
-from transformers.models.encoder_decoder.configuration_encoder_decoder import EncoderDecoderConfig
+from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, \
+    replace_return_docstrings
 
-from mllm.config.model import DecPyrCfg, HgEnhanceType
-from mllm.model.encdec_ranker_hg import DecoderPyramid
+from mllm.config.configuration_bert_at2_generation import BertAt2GenerationConfig
+from mllm.model.at2_decoder import BertGenerationEncoder, BertGenerationAt2Decoder
 
 logger = logging.get_logger(__name__)
 
@@ -169,8 +166,12 @@ class EncoderAt2DecoderConfig(PretrainedConfig):
         decoder_config = kwargs.pop("decoder")
         decoder_model_type = decoder_config.pop("model_type")
 
-        self.encoder = AutoConfig.for_model(encoder_model_type, **encoder_config)
-        self.decoder = AutoConfig.for_model(decoder_model_type, **decoder_config)
+        if '-at2-' in encoder_model_type:
+            self.encoder = BertAt2GenerationConfig(**encoder_config)
+            self.decoder = BertAt2GenerationConfig(**decoder_config)
+        else:
+            self.encoder = AutoConfig.for_model(encoder_model_type, **encoder_config)
+            self.decoder = AutoConfig.for_model(decoder_model_type, **decoder_config)
         self.is_encoder_decoder = True
         self.enc_inp_len = kwargs.get('enc_inp_len', self.enc_inp_len)
 
@@ -425,7 +426,6 @@ class EncoderAt2DecoderModel(PreTrainedModel):
         cls,
         encoder_pretrained_model_name_or_path: Optional[str] = None,
         decoder_pretrained_model_name_or_path: Optional[str] = None,
-        enc_emb_exp_type: Optional[EncEmbExpansionType] = None,
         *model_args,
         **kwargs,
     ) -> PreTrainedModel:
@@ -564,46 +564,8 @@ class EncoderAt2DecoderModel(PreTrainedModel):
             decoder = AutoModelForCausalLM.from_pretrained(decoder_pretrained_model_name_or_path, **kwargs_decoder)
 
         # instantiate config with corresponding kwargs
-        config = EncoderEmbDecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config, enc_emb_exp_type=enc_emb_exp_type, **kwargs)
+        config = EncoderAt2DecoderConfig.from_encoder_decoder_configs(encoder.config, decoder.config, **kwargs)
         return cls(encoder=encoder, decoder=decoder, config=config)
-
-    def run_expansion(self, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
-        if self.config.enc_emb_exp_type == EncEmbExpansionType.Emb:
-            # Get embeddings from first CLS tokens
-            # [batch_size, input_len, d_model] -> [1, batch_size, d_model]
-            # From batch_size embedding sequences we get only first embeddings and get batch_size embeddings as
-            # an embedding input to decoder
-            emb = encoder_hidden_states[:, 0].unsqueeze(0)
-        elif self.config.enc_emb_exp_type == EncEmbExpansionType.Mat:
-            d_model, inp_len, inp_batch_size = self.config.encoder.hidden_size, self.config.enc_inp_len, self.config.enc_inp_batch_size
-            # Get embeddings from first CLS tokens
-            # [batch_size, input_len, d_model] -> [batch_size, d_model]
-            emb = encoder_hidden_states[:, 0]
-            batch_size = len(emb)
-            assert batch_size <= inp_batch_size, f'batch_size (={batch_size}) must be <= inp_batch_size (={inp_batch_size})'
-            # [batch_size, d_model] -> [inp_batch_size, d_model] by appending zeros to the end of the batch
-            emb = nn.functional.pad(emb, (0, 0, 0, inp_batch_size - len(emb)))
-            # [inp_batch_size, d_model] -> [inp_batch_size, inp_len * d_model]
-            emb: torch.Tensor = self.emb_mat_width(emb)
-            # [inp_batch_size, inp_len * d_model] -> [inp_len * d_model, inp_batch_size]
-            emb = emb.transpose(0, 1)
-            # [inp_len * d_model, inp_batch_size] -> [inp_len, d_model, inp_batch_size]
-            emb = emb.reshape((inp_len, d_model, inp_batch_size))
-            # [inp_len, d_model, inp_batch_size] -> [inp_len, inp_batch_size, d_model]
-            emb = emb.transpose(1, 2)
-            # [inp_len, inp_batch_size, d_model] -> [inp_len, inp_batch_size * d_model]
-            emb = emb.reshape((inp_len, inp_batch_size * d_model))
-            # [inp_len, inp_batch_size * d_model] -> [inp_len, d_model]
-            emb = self.emb_mat_height(emb)
-            # [inp_len, d_model] -> [1, inp_len, d_model]
-            emb = emb.unsqueeze(0)
-        elif self.config.enc_emb_exp_type == EncEmbExpansionType.Pyr:
-            d_model, inp_len, inp_batch_size = self.config.encoder.hidden_size, self.config.enc_inp_len, self.config.enc_inp_batch_size
-            self.dec_pyr
-        else:
-            raise Exception(f'Encoder embedding expansion type {self.config.enc_emb_exp_type} is not supported')
-
-        return emb
 
     @add_start_docstrings_to_model_forward(ENCODER_DECODER_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=Seq2SeqLMOutput, config_class=_CONFIG_FOR_DOC)
@@ -764,23 +726,32 @@ class EncoderAt2DecoderModel(PreTrainedModel):
         return self.decoder._reorder_cache(past_key_values, beam_idx)
 
 
-def test_train():
-    tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
-    model = EncoderAt2DecoderModel.from_encoder_decoder_pretrained("google-bert/bert-base-uncased",
-                                                                   "google-bert/bert-base-uncased")
+def sample_train():
+    bert_model_name = 'google-bert/bert-base-uncased'
+    tokenizer = BertTokenizer.from_pretrained(bert_model_name)
+    enc_model: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
+        bert_model_name, bos_token_id=101, eos_token_id=102,
+    )
+    dec_model: BertGenerationAt2Decoder = BertGenerationAt2Decoder.from_pretrained(
+        bert_model_name, add_cross_attention=True, is_decoder=True, bos_token_id=101, eos_token_id=102,
+        enc_at2_enabled=True, dec_at2_enabled=True, last_enc_to_all_dec_at2_enabled=True,
+    )
+    model = EncoderAt2DecoderModel(
+        encoder=enc_model, decoder=dec_model,
+    )
     model.train()
     model.config.decoder_start_token_id = tokenizer.cls_token_id
     model.config.pad_token_id = tokenizer.pad_token_id
 
     tkz_inp: BatchEncoding = tokenizer(
         ("The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side.During its construction, the Eiffel Tower surpassed the Washington Monument to become the tallest man-made structure in the world, a title it held for 41 years until the Chrysler Building in New York City was  finished in 1930. It was the first structure to reach a height of 300 metres. Due to the addition of a broadcasting aerial at the top of the tower in 1957, it is now taller than the Chrysler Building by 5.2 metres (17 ft).Excluding transmitters, the Eiffel Tower is the second tallest free-standing structure in France after the Millau Viaduct.",
-         "The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side.During its construction, the Eiffel Tower surpassed the Washington Monument to become the tallest man-made structure in the world, a title it held for 41 years until the Chrysler Building in New York City was  finished in 1930. It was the first structure to reach a height of 300 metres. Due to the addition of a broadcasting aerial at the top of the tower in 1957, it is now taller than the Chrysler Building by 5.2 metres (17 ft).Excluding transmitters, the Eiffel Tower is the second tallest free-standing structure in France after the Millau Viaduct."),
+         "The tower is 324 metres (1,063 ft) tall"),
         return_tensors="pt",
     )
     input_ids = tkz_inp.input_ids
 
     tkz_lbl: BatchEncoding = tokenizer(
-        ("the eiffel tower surpassed the washington monument to become the tallest structure in the world. it was the first structure to reach a height of 300 metres in paris in 1930. it is now taller than the chrysler building by 5. 2 metres ( 17 ft ) and is the second tallest free - standing structure in paris.",
+        ("the eiffel tower surpassed the washington monument to become the tallest",
          "the eiffel tower surpassed the washington monument to become the tallest structure in the world. it was the first structure to reach a height of 300 metres in paris in 1930. it is now taller than the chrysler building by 5. 2 metres ( 17 ft ) and is the second tallest free - standing structure in paris."),
         return_tensors="pt",
     )
@@ -795,4 +766,4 @@ def test_train():
 
 
 if __name__ == '__main__':
-    test_train()
+    sample_train()

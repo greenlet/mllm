@@ -1004,7 +1004,7 @@ class BertGenerationOnlyLMHead(nn.Module):
     """BertGeneration Model with a `language modeling` head on top for CLM fine-tuning.""",
     BERT_GENERATION_START_DOCSTRING,
 )
-class BertGenerationDecoder(BertGenerationPreTrainedModel, GenerationMixin):
+class BertGenerationAt2Decoder(BertGenerationPreTrainedModel, GenerationMixin):
     _tied_weights_keys = ["lm_head.decoder.weight", "lm_head.decoder.bias"]
 
     def __init__(self, config):
@@ -1081,7 +1081,7 @@ class BertGenerationDecoder(BertGenerationPreTrainedModel, GenerationMixin):
         >>> tokenizer = AutoTokenizer.from_pretrained("google/bert_for_seq_generation_L-24_bbc_encoder")
         >>> config = BertAt2GenerationConfig.from_pretrained("google/bert_for_seq_generation_L-24_bbc_encoder")
         >>> config.is_decoder = True
-        >>> model = BertGenerationDecoder.from_pretrained(
+        >>> model = BertGenerationAt2Decoder.from_pretrained(
         ...     "google/bert_for_seq_generation_L-24_bbc_encoder", config=config
         ... )
 
@@ -1145,7 +1145,7 @@ class BertGenerationDecoder(BertGenerationPreTrainedModel, GenerationMixin):
 
 
 __all__ = [
-    "BertGenerationDecoder",
+    "BertGenerationAt2Decoder",
     "BertGenerationEncoder",
     "BertGenerationPreTrainedModel",
     "load_tf_weights_in_bert_generation",
