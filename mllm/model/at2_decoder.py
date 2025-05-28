@@ -433,6 +433,20 @@ class BertGenerationLayer(nn.Module):
             if not self.is_decoder:
                 raise ValueError(f"{self} should be used as a decoder model if cross attention is added")
             self.crossattention = BertGenerationAttention(config, position_embedding_type="absolute")
+
+        if self.last_enc_to_all_dec_at2_enabled or self.enc_at2_enabled or self.dec_at2_enabled:
+            if not self.is_decoder:
+                raise ValueError(f"{self} should be used as a decoder model if at2 attention is added")
+
+        if self.enc_at2_enabled:
+            self.enc_at2 = SelfAttention2(config)
+
+        if self.dec_at2_enabled:
+            self.dec_at2 = SelfAttention2(config)
+
+        if self.last_enc_to_all_dec_at2_enabled:
+            self.last_enc_to_all_dec_at2 = CrossAttention2(config)
+
         self.intermediate = BertGenerationIntermediate(config)
         self.output = BertGenerationOutput(config)
 
@@ -493,6 +507,19 @@ class BertGenerationLayer(nn.Module):
         layer_output = apply_chunking_to_forward(
             self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
         )
+
+        if self.enc_at2_enabled:
+            layer_output = self.enc_at2(
+                hidden_states=layer_output,
+            )
+
+        # if self.dec_at2_enabled:
+        #     layer_output = self.dec_at2_enabled
+
+        # if self.last_enc_to_all_dec_at2_enabled:
+        #     pass
+
+
         outputs = (layer_output,) + outputs
 
         # if decoder, return the attn key/values as the last output
