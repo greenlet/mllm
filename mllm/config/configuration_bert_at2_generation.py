@@ -105,7 +105,7 @@ class BertAt2GenerationConfig(PretrainedConfig):
         eos_token_id=1,
         position_embedding_type="absolute",
         use_cache=True,
-        last_enc_to_all_dec_at2_enabled: bool = False,
+        last_dec_to_all_enc_at2_enabled: bool = False,
         enc_at2_enabled: bool = False,
         dec_at2_enabled: bool = False,
         **kwargs,
@@ -125,7 +125,7 @@ class BertAt2GenerationConfig(PretrainedConfig):
         self.layer_norm_eps = layer_norm_eps
         self.position_embedding_type = position_embedding_type
         self.use_cache = use_cache
-        self.last_enc_to_all_dec_at2_enabled = last_enc_to_all_dec_at2_enabled
+        self.last_dec_to_all_enc_at2_enabled = last_dec_to_all_enc_at2_enabled
         self.enc_at2_enabled = enc_at2_enabled
         self.dec_at2_enabled = dec_at2_enabled
 

@@ -733,7 +733,7 @@ def sample_train():
     )
     dec_model: BertGenerationAt2Decoder = BertGenerationAt2Decoder.from_pretrained(
         bert_model_name, add_cross_attention=True, is_decoder=True, bos_token_id=101, eos_token_id=102,
-        enc_at2_enabled=True, dec_at2_enabled=True, last_enc_to_all_dec_at2_enabled=True, use_cache=False,
+        enc_at2_enabled=True, dec_at2_enabled=True, last_dec_to_all_enc_at2_enabled=True, use_cache=False,
     )
     model = EncoderAt2DecoderModel(
         encoder=enc_model, decoder=dec_model,
