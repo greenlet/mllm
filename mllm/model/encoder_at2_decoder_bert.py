@@ -638,7 +638,12 @@ class EncoderAt2DecoderModel(PreTrainedModel):
         elif isinstance(encoder_outputs, tuple):
             encoder_outputs = BaseModelOutput(*encoder_outputs)
 
+        # [n_batch, seq_len, d_model]
         encoder_hidden_states = encoder_outputs[0]
+
+        # First embedding extracted
+        # [1, n_batch, d_model]
+        encoder_hidden_states = encoder_hidden_states[:, 0].unsqueeze(0)
 
         # optionally project encoder_hidden_states
         if (

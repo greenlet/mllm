@@ -509,23 +509,23 @@ class BertGenerationLayer(nn.Module):
         )
 
         if self.dec_at2_enabled:
-            layer_output = self.dec_at2(hidden_states=layer_output)
+            out = self.dec_at2(hidden_states=layer_output)
+            layer_output = out[0]
 
         if self.enc_at2_enabled:
-            outputs = self.enc_at2(
+            out = self.enc_at2(
                 hidden_states=encoder_hidden_states,
             )
-            encoder_hidden_states = outputs[0]
+            encoder_hidden_states = out[0]
 
         if self.last_dec_to_all_enc_at2_enabled:
-            outputs = self.last_dec_to_all_enc_at2(
+            out = self.last_dec_to_all_enc_at2(
                 encoder_hidden_states=encoder_hidden_states,
                 decoder_hidden_states=layer_output,
             )
-            encoder_hidden_states = outputs[0]
+            encoder_hidden_states = out[0]
 
-
-        outputs = (layer_output, encoder_hidden_states) + outputs
+        outputs = ((layer_output, encoder_hidden_states),) + outputs
 
         # if decoder, return the attn key/values as the last output
         if self.is_decoder:
@@ -601,7 +601,7 @@ class BertEncoder(nn.Module):
                     output_attentions,
                 )
 
-            hidden_states = layer_outputs[0]
+            hidden_states, encoder_hidden_states = layer_outputs[0]
             if use_cache:
                 next_decoder_cache += (layer_outputs[-1],)
             if output_attentions:
