@@ -8,7 +8,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from transformers import BertTokenizer, BatchEncoding
+from transformers import BertTokenizer, BatchEncoding, GenerationMixin
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
 from transformers.modeling_utils import PreTrainedModel
@@ -193,7 +193,7 @@ class EncoderAt2DecoderConfig(PretrainedConfig):
 
 
 @add_start_docstrings(ENCODER_DECODER_START_DOCSTRING)
-class EncoderAt2DecoderModel(PreTrainedModel):
+class EncoderAt2DecoderModel(PreTrainedModel, GenerationMixin):
     r"""
     [`EncoderDecoderModel`] is a generic model class that will be instantiated as a transformer architecture with one
     of the base model classes of the library as encoder and another one as decoder when created with the
