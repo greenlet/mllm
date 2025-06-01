@@ -975,4 +975,3 @@ def gen_prefpostfix_genmix_bert(model_cfg: GenmixBertCfg, train_ds_type: Optiona
     postfix = '-'.join(postfix_parts)
     return prefix, postfix
 
-

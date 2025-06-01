@@ -4,12 +4,11 @@ data_path=$HOME/data
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
-model_cfg_fname=genmix_bert_cfg_01_base_tte.yaml
+model_cfg_fname=at2_cfg_01_base_tte.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
-train_root_path=$data_path/train_mllm_genmix_bert
-train_encdec_root_path=$data_path/train_mllm_encdec_bert
+train_root_path=$data_path/train_mllm_genat2_bert
 
 inp_len=128
 #inp_len=256
@@ -19,6 +18,9 @@ max_inp_chunks=10
 max_out_toks=50
 bert_model_name=bert-base-uncased
 #bert_model_name=bert-large-uncased
+enc_at2_enabled=true
+dec_at2_enabled=true
+last_dec_to_all_enc_at2_enabled=true
 
 device=cpu
 epochs=5
@@ -55,6 +57,9 @@ python s_07_04_train_genat2_bert.py \
   --inp-len $inp_len \
   --max-inp-chunks $max_inp_chunks \
   --max-out-toks $max_out_toks \
+  --enc-at2-enabled $enc_at2_enabled \
+  --dec-at2-enabled $dec_at2_enabled \
+  --last-dec-to-all-enc-at2-enabled $last_dec_to_all_enc_at2_enabled \
   --batch-size $batch_size \
   --device $device \
   --epochs $epochs \

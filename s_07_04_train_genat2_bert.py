@@ -14,13 +14,19 @@ from tqdm import trange
 
 from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert, \
     GenmixTrainDsType
-from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME
+from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME, is_arg_true, create_bool_str_field
+from mllm.model.genat2_bert import Genat2Cfg, gen_prefpostfix_genat2
 from mllm.model.genmix import GenmixBert
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
     get_billsum_txt_iterators, SumTuple, QnaTuple
 
 
-class ArgsGenmixBertTrain(BaseModel):
+ENC_AT2_ENABLED_ARG = '--enc-at2-enabled', 'Enables Encoder embeddings SelfAttention2'
+DEC_AT2_ENABLED_ARG = '--dec-at2-enabled', 'Enables Decoder embeddings SelfAttention2'
+LAST_DEC_TO_ALL_ENC_AT2_ENABLED_ARG = '--last-dec-to-all-enc-at2-enabled', 'Enables last Decoder embedding to Encoder embeddings CrossAttention2'
+
+
+class ArgsGenat2BertTrain(BaseModel):
     data_path: Path = Field(
         ...,
         description='Root data path. Must contain subpath `wikipedia/WIKI_DS_NAME` with Wikipedia dataset.',
@@ -30,6 +36,11 @@ class ArgsGenmixBertTrain(BaseModel):
         ...,
         description='Path to train root directory. New train subdirectory will be created within each new run.',
         cli=('--train-root-path',),
+    )
+    pretrained_model_path: Optional[Path] = Field(
+        None,
+        description='Path to EncdecHg model train directory.',
+        cli=('--pretrained-model-path',),
     )
     train_subdir: str = Field(
         '',
@@ -67,6 +78,22 @@ class ArgsGenmixBertTrain(BaseModel):
         description='Maximum output tokens to use in training.',
         cli=('--max-out-toks',),
     )
+
+    enc_at2_enabled_str: str = create_bool_str_field(*ENC_AT2_ENABLED_ARG)
+    @property
+    def enc_at2_enabled(self) -> bool:
+        return is_arg_true(ENC_AT2_ENABLED_ARG[0], self.enc_at2_enabled_str)
+    
+    dec_at2_enabled_str: str = create_bool_str_field(*DEC_AT2_ENABLED_ARG)
+    @property
+    def dec_at2_enabled(self) -> bool:
+        return is_arg_true(DEC_AT2_ENABLED_ARG[0], self.dec_at2_enabled_str)
+
+    last_dec_to_all_enc_at2_enabled_str: str = create_bool_str_field(*LAST_DEC_TO_ALL_ENC_AT2_ENABLED_ARG)
+    @property
+    def last_dec_to_all_enc_at2_enabled(self) -> bool:
+        return is_arg_true(LAST_DEC_TO_ALL_ENC_AT2_ENABLED_ARG[0], self.last_dec_to_all_enc_at2_enabled_str)
+
     batch_size: int = Field(
         3,
         description='Documents batch size. Must be greater or equal than 2.',
@@ -102,14 +129,9 @@ class ArgsGenmixBertTrain(BaseModel):
         description='Random seed.',
         cli=('--random-seed',),
     )
-    pretrained_model_path: Optional[Path] = Field(
-        None,
-        description='Path to EncdecHg model train directory.',
-        cli=('--pretrained-model-path',),
-    )
 
 
-def main(args: ArgsGenmixBertTrain) -> int:
+def main(args: ArgsGenat2BertTrain) -> int:
     print(args)
 
     if args.random_seed is not None:
@@ -117,15 +139,15 @@ def main(args: ArgsGenmixBertTrain) -> int:
 
     device = torch.device(args.device)
 
-    model_cfg = parse_yaml_file_as(GenmixBertCfg, args.model_cfg_fpath)
-    model_cfg = copy_override_genmix_bert_cfg(
-        model_cfg, pretrained_model_name=args.bert_model_name, inp_len=args.inp_len, max_inp_chunks=args.max_inp_chunks, max_out_toks=args.max_out_toks,
+    model_cfg = Genat2Cfg.copy_override(
+        args.model_cfg_fpath, inp_len=args.inp_len, max_inp_chunks=args.max_inp_chunks, max_out_toks=args.max_out_toks,
+        enc_at2_enabled=args.enc_at2_enabled, dec_at2_enabled=args.dec_at2_enabled, last_dec_to_all_enc_at2_enabled=args.last_dec_to_all_enc_at2_enabled,
     )
 
-    prefix, suffix = gen_prefpostfix_genmix_bert(model_cfg, train_ds_type=args.train_ds_type)
+    prefix, suffix = gen_prefpostfix_genat2(model_cfg, train_ds_type=args.train_ds_type)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
-
+#
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
     checkpoint = None
     if args.train_subdir == 'last':
@@ -306,7 +328,7 @@ if __name__ == '__main__':
     def rethrow(e):
         raise e
     run_and_exit(
-        ArgsGenmixBertTrain, main, 'Train Genat2Bert model on summary and qna datasets.',
+        ArgsGenat2BertTrain, main, 'Train Genat2Bert model on summary and qna datasets.',
         exception_handler=rethrow,
     )
 

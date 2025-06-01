@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,19 @@ def is_arg_true(name: str, val) -> bool:
         return False
     raise Exception(f'{name} value can either have value from {ARG_TRUE_VALUES_STR} which means True '
                     f'or {ARG_FALSE_VALUES_STR} to be False (case insensitive). Value given: "{val}"')
+
+
+def create_bool_str_field(arg_name: str, desc_part: str, default_value: str = 'true') -> Field:
+    ref_name = arg_name.strip('-').replace('-', '_').upper()
+    field = Field(
+        default_value,
+        required=False,
+        description=f'Boolean flag. {desc_part}. ' \
+            f'{ref_name} can take value from {ARG_TRUE_VALUES_STR} to be True or {ARG_FALSE_VALUES_STR} to be False. '
+            f'Case insensitive.',
+        cli=(arg_name,),
+    )
+    return field
 
 
 class ArgsTokensChunksTrain(BaseModel):

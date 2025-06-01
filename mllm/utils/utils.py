@@ -130,3 +130,13 @@ def coalesce(val: Optional[T], fallback_val: T) -> T:
 def reraise(*args, **kwargs):
     raise
 
+
+def bool_to_str(val: bool, first: bool = True, cap: bool = True) -> str:
+    res = str(val)
+    if first:
+        res = res[0]
+    if cap:
+        res = res.upper()
+    else:
+        res = res.lower()
+    return res
