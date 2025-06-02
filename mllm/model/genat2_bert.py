@@ -1,9 +1,11 @@
 import dataclasses
+import os.path
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
 
+import torch
 import yaml
 from torch import nn
 from transformers import BertTokenizer
@@ -59,9 +61,6 @@ class Genat2Cfg:
             enc_at2_enabled: Optional[bool] = None, dec_at2_enabled: Optional[bool] = None, last_dec_to_all_enc_at2_enabled: Optional[bool] = None,
     ) -> 'Genat2Cfg':
         if not isinstance(cfg, Genat2Cfg):
-            fpath = Path(cfg)
-            if fpath.is_dir():
-                fpath /= cls.file_name
             cfg = cls.load_from_yaml(cfg)
 
         inp_len = inp_len or cfg.inp_len
@@ -90,25 +89,79 @@ class Genat2Cfg:
         data['bert'] = EncoderAt2DecoderConfig.from_dict(data['bert'])
         return cls(**data)
 
-    def save_to_yaml(self, fpath: Path):
+    def save_to_yaml(self, fpath: Union[Path, str]):
+        fpath = Path(fpath)
+        if fpath.is_dir():
+            fpath /= self.file_name
         data = self.to_dict()
         with open(fpath, 'w') as f:
             yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
 
     @classmethod
-    def load_from_yaml(cls, fpath: Path) -> 'Genat2Cfg':
+    def load_from_yaml(cls, fpath: Union[Path, str]) -> 'Genat2Cfg':
+        fpath = Path(fpath)
+        if fpath.is_dir():
+            fpath /= cls.file_name
         with open(fpath, 'r') as f:
             data = yaml.safe_load(f)
         return cls.from_dict(data)
 
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, self.__class__):
+            return False
+        return self.to_dict() == other.to_dict()
+
 
 class Genat2Model(nn.Module):
     cfg: Genat2Cfg
+    device: torch.device
+    tkz: BertTokenizer
     model: EncoderAt2DecoderModel
 
-    def __init__(self, cfg: Genat2Cfg):
+    def __init__(self, cfg: Genat2Cfg, device: Optional[torch.device] = None):
         super().__init__()
         self.cfg = cfg
+        self.device = device if device is not None else torch.device('cpu')
+        self.tkz = BertTokenizer.from_pretrained(self.cfg.pretrained_model_name)
+        enc_model: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
+            self.cfg.pretrained_model_name, config=self.cfg.bert.encoder, device_map=self.device,
+        )
+        dec_model: BertGenerationAt2Decoder = BertGenerationAt2Decoder.from_pretrained(
+            self.cfg.pretrained_model_name, config=self.cfg.bert.decoder, device_map=self.device,
+        )
+        self.model = EncoderAt2DecoderModel(
+            encoder=enc_model, decoder=dec_model,
+        )
+        self.model.config.decoder_start_token_id = self.tkz.cls_token_id
+        self.model.config.pad_token_id = self.tkz.pad_token_id
+
+    def load_weights_from_pretrained_encoder(self, pretrained_model_path: Path):
+        if pretrained_model_path.is_dir():
+            pretrained_model_path /= 'best.pth'
+        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
+        pretrained_checkpoint = torch.load(pretrained_model_path)
+        # model.load_state_dict(pretrained_checkpoint['model'], strict=False)
+        print(list(pretrained_checkpoint['model'].keys()))
+        prefix = 'enc_bert.bert_model.'
+        prefix_len = len(prefix)
+        model_chkpt = {}
+        for k, v in pretrained_checkpoint['model'].items():
+            if k.startswith(prefix):
+                k = k[prefix_len:]
+            if k.startswith('dec_pyr.') or k in ('pooler.dense.weight', 'pooler.dense.bias', 'embeddings.token_type_embeddings.weight'):
+                continue
+            model_chkpt[k] = v
+        self.model.encoder.load_state_dict(model_chkpt, strict=True)
+        del pretrained_checkpoint
+        del model_chkpt
+
+    def run_on_qna_txt(self, context: str, question: str, answer: str) -> torch.Tensor:
+        loss = torch.tensor(0)
+        return loss
+
+    def run_on_sum_txt(self, title: str, text: str, summary: str) -> torch.Tensor:
+        loss = torch.tensor(0)
+        return loss
 
 
 def gen_prefpostfix_genat2(model_cfg: Genat2Cfg, train_ds_type: Optional[GenmixTrainDsType] = None) -> tuple[str, str]:
@@ -144,7 +197,30 @@ def run_create_config():
     print(cfg)
 
 
+def run_create_model():
+    cfg_fpath = Path(os.path.abspath('.')).parent / 'config/cfg/genat2_cfg_01_base.yaml'
+    print(cfg_fpath, cfg_fpath.exists())
+    cfg = Genat2Cfg.copy_override(cfg_fpath)
+    model = Genat2Model(cfg)
+    print(model)
+
+
+def run_load_checkpoint():
+    cfg_fpath = Path(os.path.abspath('.')).parent / 'config/cfg/genat2_cfg_01_base.yaml'
+    pretrained_model_path = Path(os.path.expandvars('$HOME/data')) / 'train_mllm_encdec_bert' / 'encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0'
+    if not pretrained_model_path.exists():
+        print(f'Path {pretrained_model_path} does not exist. Stopping.')
+        return
+    print(cfg_fpath, cfg_fpath.exists())
+    cfg = Genat2Cfg.copy_override(cfg_fpath)
+    model = Genat2Model(cfg, device=torch.device('cuda'))
+    model.load_weights_from_pretrained_encoder(pretrained_model_path)
+    print(model)
+
+
 if __name__ == '__main__':
-    run_create_config()
+    # run_create_config()
+    # run_create_model()
+    run_load_checkpoint()
 
 

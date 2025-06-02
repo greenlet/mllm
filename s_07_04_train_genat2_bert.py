@@ -1,6 +1,7 @@
 import shutil
 import sys
 from pathlib import Path
+from pprint import pprint
 from typing import Optional
 
 import numpy as np
@@ -15,7 +16,7 @@ from tqdm import trange
 from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert, \
     GenmixTrainDsType
 from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME, is_arg_true, create_bool_str_field
-from mllm.model.genat2_bert import Genat2Cfg, gen_prefpostfix_genat2
+from mllm.model.genat2_bert import Genat2Cfg, gen_prefpostfix_genat2, Genat2Model
 from mllm.model.genmix import GenmixBert
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
     get_billsum_txt_iterators, SumTuple, QnaTuple
@@ -147,7 +148,7 @@ def main(args: ArgsGenat2BertTrain) -> int:
     prefix, suffix = gen_prefpostfix_genat2(model_cfg, train_ds_type=args.train_ds_type)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
-#
+
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
     checkpoint = None
     if args.train_subdir == 'last':
@@ -159,33 +160,16 @@ def main(args: ArgsGenat2BertTrain) -> int:
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        chkpt_model_cfg = parse_yaml_file_as(GenmixBertCfg, train_path / GENMIX_BERT_MODEL_CFG_FNAME)
+        chkpt_model_cfg = Genat2Cfg.load_from_yaml(train_path)
         assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
-        to_yaml_file(train_path / GENMIX_BERT_MODEL_CFG_FNAME, model_cfg)
+        model_cfg.save_to_yaml(train_path)
 
-    print(model_cfg)
-    model = GenmixBert(model_cfg, device=device)
-    tkz = model.tkz
+    pprint(model_cfg)
+    model = Genat2Model(model_cfg, device=device)
 
     if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
-        pretrained_model_path = args.pretrained_model_path / 'best.pth'
-        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
-        pretrained_checkpoint = torch.load(pretrained_model_path, map_location=device)
-        # model.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        print(list(pretrained_checkpoint['model'].keys()))
-        prefix = 'enc_bert.bert_model.'
-        prefix_len = len(prefix)
-        model_chkpt = {}
-        for k, v in pretrained_checkpoint['model'].items():
-            if k.startswith(prefix):
-                k = k[prefix_len:]
-            if k.startswith('dec_pyr.'):
-                continue
-            model_chkpt[k] = v
-        model.enc_model.load_state_dict(model_chkpt, strict=True)
-        del pretrained_checkpoint
-        del model_chkpt
+        model.load_weights_from_pretrained_encoder(args.pretrained_model_path)
 
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
@@ -196,7 +180,6 @@ def main(args: ArgsGenat2BertTrain) -> int:
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
-        shuffle = True
         del checkpoint
 
     val_ratio = 0.05
@@ -279,7 +262,7 @@ def main(args: ArgsGenat2BertTrain) -> int:
                     )
                 elif args.train_ds_type == GenmixTrainDsType.Sum:
                     item: SumTuple = item
-                    loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
+                    loss = model.run_on_sum_txt(title=item.title, text=item.text, summary=item.summary)
                 else:
                     raise
                 if loss.isnan():
