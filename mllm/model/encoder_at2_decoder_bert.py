@@ -644,6 +644,7 @@ class EncoderAt2DecoderModel(PreTrainedModel, GenerationMixin):
         # First embedding extracted
         # [1, n_batch, d_model]
         encoder_hidden_states = encoder_hidden_states[:, 0].unsqueeze(0)
+        attention_mask = None
 
         # optionally project encoder_hidden_states
         if (

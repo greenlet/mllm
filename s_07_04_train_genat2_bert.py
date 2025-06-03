@@ -22,9 +22,10 @@ from mllm.train.utils import find_create_train_path, log_weights_grads_stats, ge
     get_billsum_txt_iterators, SumTuple, QnaTuple
 
 
-ENC_AT2_ENABLED_ARG = '--enc-at2-enabled', 'Enables Encoder embeddings SelfAttention2'
-DEC_AT2_ENABLED_ARG = '--dec-at2-enabled', 'Enables Decoder embeddings SelfAttention2'
-LAST_DEC_TO_ALL_ENC_AT2_ENABLED_ARG = '--last-dec-to-all-enc-at2-enabled', 'Enables last Decoder embedding to Encoder embeddings CrossAttention2'
+encoder_enc_at2_enabled_ARG = '--encoder-enc-at2-enabled', 'Enables SelfAttention2 in Encoder'
+decoder_enc_at2_enabled_ARG = '--decoder-enc-at2-enabled', 'Enables SelfAttention2 of encoder embeddings in Decoder'
+decoder_dec_at2_enabled_ARG = '--decoder-dec-at2-enabled', 'Enables SelfAttention2 of decoder embeddings in Decoder'
+decoder_last_dec_to_all_enc_at2_enabled_ARG = '--decoder-last-dec-to-all-enc-at2-enabled', 'Enables CrossAttention2 of last decoder embedding to encoder embeddings in Decoder'
 
 
 class ArgsGenat2BertTrain(BaseModel):
@@ -80,20 +81,25 @@ class ArgsGenat2BertTrain(BaseModel):
         cli=('--max-out-toks',),
     )
 
-    enc_at2_enabled_str: str = create_bool_str_field(*ENC_AT2_ENABLED_ARG)
+    encoder_enc_at2_enabled_str: str = create_bool_str_field(*encoder_enc_at2_enabled_ARG)
     @property
-    def enc_at2_enabled(self) -> bool:
-        return is_arg_true(ENC_AT2_ENABLED_ARG[0], self.enc_at2_enabled_str)
+    def encoder_enc_at2_enabled(self) -> bool:
+        return is_arg_true(encoder_enc_at2_enabled_ARG[0], self.encoder_enc_at2_enabled_str)
     
-    dec_at2_enabled_str: str = create_bool_str_field(*DEC_AT2_ENABLED_ARG)
+    decoder_enc_at2_enabled_str: str = create_bool_str_field(*decoder_enc_at2_enabled_ARG)
     @property
-    def dec_at2_enabled(self) -> bool:
-        return is_arg_true(DEC_AT2_ENABLED_ARG[0], self.dec_at2_enabled_str)
+    def decoder_enc_at2_enabled(self) -> bool:
+        return is_arg_true(decoder_enc_at2_enabled_ARG[0], self.decoder_enc_at2_enabled_str)
 
-    last_dec_to_all_enc_at2_enabled_str: str = create_bool_str_field(*LAST_DEC_TO_ALL_ENC_AT2_ENABLED_ARG)
+    decoder_dec_at2_enabled_str: str = create_bool_str_field(*decoder_dec_at2_enabled_ARG)
     @property
-    def last_dec_to_all_enc_at2_enabled(self) -> bool:
-        return is_arg_true(LAST_DEC_TO_ALL_ENC_AT2_ENABLED_ARG[0], self.last_dec_to_all_enc_at2_enabled_str)
+    def decoder_dec_at2_enabled(self) -> bool:
+        return is_arg_true(decoder_dec_at2_enabled_ARG[0], self.decoder_dec_at2_enabled_str)
+
+    decoder_last_dec_to_all_enc_at2_enabled_str: str = create_bool_str_field(*decoder_last_dec_to_all_enc_at2_enabled_ARG)
+    @property
+    def decoder_last_dec_to_all_enc_at2_enabled(self) -> bool:
+        return is_arg_true(decoder_last_dec_to_all_enc_at2_enabled_ARG[0], self.decoder_last_dec_to_all_enc_at2_enabled_str)
 
     batch_size: int = Field(
         3,
@@ -142,7 +148,8 @@ def main(args: ArgsGenat2BertTrain) -> int:
 
     model_cfg = Genat2Cfg.copy_override(
         args.model_cfg_fpath, inp_len=args.inp_len, max_inp_chunks=args.max_inp_chunks, max_out_toks=args.max_out_toks,
-        enc_at2_enabled=args.enc_at2_enabled, dec_at2_enabled=args.dec_at2_enabled, last_dec_to_all_enc_at2_enabled=args.last_dec_to_all_enc_at2_enabled,
+        encoder_enc_at2_enabled=args.encoder_enc_at2_enabled, decoder_enc_at2_enabled=args.decoder_enc_at2_enabled,
+        decoder_dec_at2_enabled=args.decoder_dec_at2_enabled, decoder_last_dec_to_all_enc_at2_enabled=args.decoder_last_dec_to_all_enc_at2_enabled,
     )
 
     prefix, suffix = gen_prefpostfix_genat2(model_cfg, train_ds_type=args.train_ds_type)

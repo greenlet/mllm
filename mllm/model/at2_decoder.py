@@ -434,9 +434,9 @@ class BertGenerationLayer(nn.Module):
                 raise ValueError(f"{self} should be used as a decoder model if cross attention is added")
             self.crossattention = BertGenerationAttention(config, position_embedding_type="absolute")
 
-        if self.last_dec_to_all_enc_at2_enabled or self.enc_at2_enabled or self.dec_at2_enabled:
+        if self.last_dec_to_all_enc_at2_enabled or self.dec_at2_enabled:
             if not self.is_decoder:
-                raise ValueError(f"{self} should be used as a decoder model if at2 attention is added")
+                raise ValueError(f"{self} should be used as a decoder model if last_dec_to_all_enc_at2 or dec_at2 attention is added")
 
         if self.dec_at2_enabled:
             self.dec_at2 = SelfAttention2(config)
@@ -504,19 +504,24 @@ class BertGenerationLayer(nn.Module):
             cross_attn_present_key_value = cross_attention_outputs[-1]
             present_key_value = present_key_value + cross_attn_present_key_value
 
-        layer_output = apply_chunking_to_forward(
-            self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
-        )
+        layer_output = attention_output
+        # layer_output = apply_chunking_to_forward(
+        #     self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
+        # )
 
         if self.dec_at2_enabled:
             out = self.dec_at2(hidden_states=layer_output)
             layer_output = out[0]
 
         if self.enc_at2_enabled:
+            inp = encoder_hidden_states if self.is_decoder else layer_output
             out = self.enc_at2(
-                hidden_states=encoder_hidden_states,
+                hidden_states=inp,
             )
-            encoder_hidden_states = out[0]
+            if self.is_decoder:
+                encoder_hidden_states = out[0]
+            else:
+                layer_output = out[0]
 
         if self.last_dec_to_all_enc_at2_enabled:
             out = self.last_dec_to_all_enc_at2(
@@ -524,6 +529,10 @@ class BertGenerationLayer(nn.Module):
                 decoder_hidden_states=layer_output,
             )
             encoder_hidden_states = out[0]
+
+        layer_output = apply_chunking_to_forward(
+            self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, layer_output
+        )
 
         outputs = ((layer_output, encoder_hidden_states),) + outputs
 

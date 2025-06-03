@@ -761,10 +761,10 @@ def get_squadv2_txt_iterators(exclude_empty_answers: bool, val_ratio: float = 0.
     print(f'Squad v2 n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
 
     train_it = get_squadv2_txt_iterator(
-        df_sum=df_sq_t,
+        df_squad=df_sq_t,
     )
     val_it = get_squadv2_txt_iterator(
-        df_sum=df_sq_v,
+        df_squad=df_sq_v,
     )
     return train_it, val_it
 

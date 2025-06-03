@@ -13,15 +13,16 @@ train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
 inp_len=128
 #inp_len=256
-#train_ds_type=qna
-train_ds_type=sum
+train_ds_type=qna
+#train_ds_type=sum
 max_inp_chunks=10
 max_out_toks=50
 bert_model_name=bert-base-uncased
 #bert_model_name=bert-large-uncased
-enc_at2_enabled=true
-dec_at2_enabled=true
-last_dec_to_all_enc_at2_enabled=true
+encoder_enc_at2_enabled=true
+decoder_enc_at2_enabled=true
+decoder_dec_at2_enabled=true
+decoder_last_dec_to_all_enc_at2_enabled=true
 
 device=cpu
 epochs=5
@@ -29,14 +30,14 @@ train_epoch_steps=20
 val_epoch_steps=20
 batch_size=5
 
-##pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
-#device=cuda
-#epochs=700
-#train_epoch_steps=500
-#val_epoch_steps=50
-##batch_size=15
-#batch_size=1
-##train_subdir=last
+#pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+device=cuda
+epochs=700
+train_epoch_steps=500
+val_epoch_steps=50
+#batch_size=15
+batch_size=1
+#train_subdir=last
 
 #learning_rate=0.0001
 #learning_rate=0.00005
@@ -46,7 +47,7 @@ random_seed=200
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-echo "
+#echo "
 python s_07_04_train_genat2_bert.py \
   --data-path $data_path \
   --train-root-path $train_root_path \
@@ -58,9 +59,10 @@ python s_07_04_train_genat2_bert.py \
   --inp-len $inp_len \
   --max-inp-chunks $max_inp_chunks \
   --max-out-toks $max_out_toks \
-  --enc-at2-enabled $enc_at2_enabled \
-  --dec-at2-enabled $dec_at2_enabled \
-  --last-dec-to-all-enc-at2-enabled $last_dec_to_all_enc_at2_enabled \
+  --encoder-enc-at2-enabled $encoder_enc_at2_enabled \
+  --decoder-enc-at2-enabled $decoder_enc_at2_enabled \
+  --decoder-dec-at2-enabled $decoder_dec_at2_enabled \
+  --decoder-last-dec-to-all-enc-at2-enabled $decoder_last_dec_to_all_enc_at2_enabled \
   --batch-size $batch_size \
   --device $device \
   --epochs $epochs \
@@ -68,5 +70,5 @@ python s_07_04_train_genat2_bert.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed
-"
+#"
 

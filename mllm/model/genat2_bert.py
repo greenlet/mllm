@@ -8,7 +8,9 @@ from typing import Optional, Union
 import torch
 import yaml
 from torch import nn
+import torch.nn.functional as F
 from transformers import BertTokenizer
+from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from mllm.config.configuration_bert_at2_generation import BertAt2GenerationConfig
 from mllm.config.model import GenmixTrainDsType
@@ -30,17 +32,19 @@ class Genat2Cfg:
     @classmethod
     def create(
             cls, inp_len: int = 128, pretrained_model_name: str = 'bert-base-uncased', max_inp_chunks: int = 10, max_out_toks: int = 50,
-            enc_at2_enabled: bool = True, dec_at2_enabled: bool = True, last_dec_to_all_enc_at2_enabled: bool = True,
+            encoder_enc_at2_enabled: bool = True, decoder_enc_at2_enabled: bool = True, decoder_dec_at2_enabled: bool = True,
+            decoder_last_dec_to_all_enc_at2_enabled: bool = True,
     ) -> 'Genat2Cfg':
         tokenizer = BertTokenizer.from_pretrained(pretrained_model_name)
         print(tokenizer)
         enc_model: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
             pretrained_model_name, bos_token_id=tokenizer.cls_token_id, eos_token_id=tokenizer.sep_token_id,
+            enc_at2_enabled=encoder_enc_at2_enabled,
         )
         dec_model: BertGenerationAt2Decoder = BertGenerationAt2Decoder.from_pretrained(
             pretrained_model_name, add_cross_attention=True, is_decoder=True, bos_token_id=tokenizer.cls_token_id,
             eos_token_id=tokenizer.sep_token_id, use_cache=False,
-            enc_at2_enabled=enc_at2_enabled, dec_at2_enabled=dec_at2_enabled, last_dec_to_all_enc_at2_enabled=last_dec_to_all_enc_at2_enabled,
+            enc_at2_enabled=decoder_enc_at2_enabled, dec_at2_enabled=decoder_dec_at2_enabled, last_dec_to_all_enc_at2_enabled=decoder_last_dec_to_all_enc_at2_enabled,
         )
         model = EncoderAt2DecoderModel(
             encoder=enc_model, decoder=dec_model,
@@ -58,7 +62,8 @@ class Genat2Cfg:
     @classmethod
     def copy_override(
             cls, cfg: Union['Genat2Cfg', Path], inp_len: int = 0, pretrained_model_name: str = '', max_inp_chunks: int = 0, max_out_toks: int = 0,
-            enc_at2_enabled: Optional[bool] = None, dec_at2_enabled: Optional[bool] = None, last_dec_to_all_enc_at2_enabled: Optional[bool] = None,
+            encoder_enc_at2_enabled: Optional[bool] = None, decoder_enc_at2_enabled: Optional[bool] = None, decoder_dec_at2_enabled: Optional[bool] = None,
+            decoder_last_dec_to_all_enc_at2_enabled: Optional[bool] = None,
     ) -> 'Genat2Cfg':
         if not isinstance(cfg, Genat2Cfg):
             cfg = cls.load_from_yaml(cfg)
@@ -68,10 +73,12 @@ class Genat2Cfg:
         max_inp_chunks = max_inp_chunks or cfg.max_inp_chunks
         max_out_toks = max_out_toks or cfg.max_out_toks
         bert_cfg = EncoderAt2DecoderConfig.from_dict(deepcopy(cfg.bert.to_dict()))
+        enc_cfg: BertAt2GenerationConfig = bert_cfg.encoder
         dec_cfg: BertAt2GenerationConfig = bert_cfg.decoder
-        dec_cfg.enc_at2_enabled = coalesce(enc_at2_enabled, dec_cfg.enc_at2_enabled)
-        dec_cfg.dec_at2_enabled = coalesce(dec_at2_enabled, dec_cfg.dec_at2_enabled)
-        dec_cfg.last_dec_to_all_enc_at2_enabled = coalesce(last_dec_to_all_enc_at2_enabled, dec_cfg.last_dec_to_all_enc_at2_enabled)
+        enc_cfg.enc_at2_enabled = coalesce(encoder_enc_at2_enabled, enc_cfg.enc_at2_enabled)
+        dec_cfg.enc_at2_enabled = coalesce(decoder_enc_at2_enabled, dec_cfg.enc_at2_enabled)
+        dec_cfg.dec_at2_enabled = coalesce(decoder_dec_at2_enabled, dec_cfg.dec_at2_enabled)
+        dec_cfg.last_dec_to_all_enc_at2_enabled = coalesce(decoder_last_dec_to_all_enc_at2_enabled, dec_cfg.last_dec_to_all_enc_at2_enabled)
 
         return Genat2Cfg(
             inp_len=inp_len, pretrained_model_name=pretrained_model_name, max_inp_chunks=max_inp_chunks,
@@ -155,8 +162,70 @@ class Genat2Model(nn.Module):
         del pretrained_checkpoint
         del model_chkpt
 
+    def _to_toks(self, s: str, inp_len: Optional[int] = None) -> torch.Tensor:
+        t = self.tkz(s, return_tensors='pt').input_ids.to(self.device)
+        assert t[0][0] == self.tkz.cls_token_id and t[0][-1] == self.tkz.sep_token_id
+        if inp_len is not None:
+            t = t.reshape(-1)
+            mod = len(t) % inp_len
+            if mod > 0:
+                pad_size = inp_len - mod
+                t = F.pad(t, (0, pad_size), 'constant', self.tkz.pad_token_id)
+            t = t.reshape(-1, inp_len)
+        return t
+
     def run_on_qna_txt(self, context: str, question: str, answer: str) -> torch.Tensor:
-        loss = torch.tensor(0)
+        context = f'<context>{context}</context>'
+        question = f'<question>{question}</question>'
+        # [n_ctx, inp_len]
+        ctx_toks = self._to_toks(context, inp_len=self.cfg.inp_len)
+        # [n_qst, inp_len]
+        qst_toks = self._to_toks(question, inp_len=self.cfg.inp_len)
+        n_cq = ctx_toks.shape[0] + qst_toks.shape[0]
+        if n_cq > self.cfg.max_inp_chunks:
+            diff = n_cq - self.cfg.max_inp_chunks
+            ctx_toks = ctx_toks[:ctx_toks.shape[0] - diff]
+
+        # n_cq = n_ctx + n_qst
+        # [n_cq, inp_len]
+        cq_inp = torch.concat([ctx_toks, qst_toks])
+
+        # [n_cq, inp_len]
+        inp_mask = cq_inp != self.tkz.pad_token_id
+
+        # [1, n_ans]
+        ans_toks = self._to_toks(answer)
+        # [n_ans]
+        ans_toks = ans_toks[0]
+        n_ans = ans_toks.shape[0]
+        if n_ans > self.cfg.max_out_toks:
+            diff = n_ans - self.cfg.max_out_toks
+            ans_toks = torch.concat([ans_toks[:-diff - 1], ans_toks[-1:]])
+        # tgt_len = n_ans - 1
+        # [tgt_len]
+        target_ids = ans_toks[:-1]
+        if target_ids[0] != self.tkz.cls_token_id:
+            target_ids = F.pad(target_ids, (1, 0), 'constant', self.tkz.cls_token_id)
+        # [1, tgt_len]
+        target_ids = target_ids.unsqueeze(0)
+
+        gen_out: Seq2SeqLMOutput = self.model(
+            input_ids=cq_inp, attention_mask=inp_mask, decoder_input_ids=target_ids, use_cache=False,
+        )
+        # [1, tgt_len, n_vocab]
+        gen_logits = gen_out.logits
+
+        # [tgt_len, n_vocab]
+        logits = gen_logits.view(-1, self.cfg.bert.decoder.vocab_size)
+        # [tgt_len]
+        labels = ans_toks[1:]
+        # [tgt_len]
+        loss = F.cross_entropy(logits, labels, reduction='none')
+        # The last one is sep_token_id
+        assert loss.shape[0] > 1
+        loss_1, loss_2 = loss[:-1].mean(), loss[-1]
+        w1, w2 = 50, 1
+        loss = (loss_1 * w1 + loss_2 * w2) / (w1 + w2)
         return loss
 
     def run_on_sum_txt(self, title: str, text: str, summary: str) -> torch.Tensor:
@@ -170,14 +239,16 @@ def gen_prefpostfix_genat2(model_cfg: Genat2Cfg, train_ds_type: Optional[GenmixT
     bert_str = model_cfg.pretrained_model_name.replace('_', '_')
     postfix_parts.append(bert_str)
 
+    enc_cfg: BertAt2GenerationConfig = model_cfg.bert.encoder
     dec_cfg: BertAt2GenerationConfig = model_cfg.bert.decoder
     postfix_parts.append(f'd{dec_cfg.hidden_size}')
 
     postfix_parts.append(f'inp{model_cfg.inp_len}')
 
-    postfix_parts.append(f'dat2{bool_to_str(dec_cfg.dec_at2_enabled, cap=False)}')
-    postfix_parts.append(f'eat2{bool_to_str(dec_cfg.dec_at2_enabled, cap=False)}')
-    postfix_parts.append(f'ldeat2{bool_to_str(dec_cfg.last_dec_to_all_enc_at2_enabled, cap=False)}')
+    postfix_parts.append(f'eeat2{bool_to_str(enc_cfg.enc_at2_enabled, cap=False)}')
+    postfix_parts.append(f'deat2{bool_to_str(dec_cfg.enc_at2_enabled, cap=False)}')
+    postfix_parts.append(f'ddat2{bool_to_str(dec_cfg.dec_at2_enabled, cap=False)}')
+    postfix_parts.append(f'dldeat2{bool_to_str(dec_cfg.last_dec_to_all_enc_at2_enabled, cap=False)}')
 
     if train_ds_type is not None:
         postfix_parts.append(f'ds_{train_ds_type.value}')
@@ -219,8 +290,8 @@ def run_load_checkpoint():
 
 
 if __name__ == '__main__':
-    # run_create_config()
+    run_create_config()
     # run_create_model()
-    run_load_checkpoint()
+    # run_load_checkpoint()
 
 
