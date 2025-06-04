@@ -229,7 +229,49 @@ class Genat2Model(nn.Module):
         return loss
 
     def run_on_sum_txt(self, title: str, text: str, summary: str) -> torch.Tensor:
-        loss = torch.tensor(0)
+        prompt = f'Summarize following text. Title: {title}. Text: {text}'
+        # [n_prompt, inp_len]
+        prompt_toks = self._to_toks(prompt, inp_len=self.cfg.inp_len)
+        if self.cfg.max_inp_chunks > 0:
+            prompt_toks = prompt_toks[:self.cfg.max_inp_chunks]
+        # [n_prompt, inp_len]
+        prompt_mask = prompt_toks != self.tkz.pad_token_id
+
+        # [1, n_sum]
+        sum_toks = self._to_toks(summary)
+        if 0 < self.cfg.max_out_toks < sum_toks.shape[1]:
+            sum_toks = sum_toks[:, :self.cfg.max_out_toks]
+        # [n_sum]
+        sum_toks = sum_toks[0]
+        # tgt_len = n_sum - 1
+        # [tgt_len]
+        target_ids = sum_toks[:-1]
+        if target_ids[0] != self.tkz.cls_token_id:
+            target_ids = F.pad(target_ids, (1, 0), 'constant', self.tkz.cls_token_id)
+        # [1, tgt_len]
+        target_ids = target_ids.unsqueeze(0)
+
+        gen_out: Seq2SeqLMOutput = self.model(
+            input_ids=prompt_toks, attention_mask=prompt_mask, decoder_input_ids=target_ids, use_cache=False,
+        )
+        # [1, tgt_len, n_vocab]
+        gen_logits = gen_out.logits
+
+        # [tgt_len, n_vocab]
+        dec_cfg = self.cfg.bert.decoder
+        logits = gen_logits.view(-1, dec_cfg.vocab_size)
+        # [tgt_len]
+        labels = sum_toks[1:]
+        # [tgt_len]
+        loss = F.cross_entropy(logits, labels, reduction='none')
+        # The last one is sep_token_id
+        assert loss.shape[0] > 1
+        if labels[-1] == self.tkz.sep_token_id:
+            loss_1, loss_2 = loss[:-1].mean(), loss[-1]
+            w1, w2 = 50, 1
+            loss = (loss_1 * w1 + loss_2 * w2) / (w1 + w2)
+        else:
+            loss = loss.mean()
         return loss
 
 

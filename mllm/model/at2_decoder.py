@@ -504,10 +504,10 @@ class BertGenerationLayer(nn.Module):
             cross_attn_present_key_value = cross_attention_outputs[-1]
             present_key_value = present_key_value + cross_attn_present_key_value
 
-        layer_output = attention_output
-        # layer_output = apply_chunking_to_forward(
-        #     self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
-        # )
+        # layer_output = attention_output
+        layer_output = apply_chunking_to_forward(
+            self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
+        )
 
         if self.dec_at2_enabled:
             out = self.dec_at2(hidden_states=layer_output)
@@ -530,9 +530,9 @@ class BertGenerationLayer(nn.Module):
             )
             encoder_hidden_states = out[0]
 
-        layer_output = apply_chunking_to_forward(
-            self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, layer_output
-        )
+        # layer_output = apply_chunking_to_forward(
+        #     self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, layer_output
+        # )
 
         outputs = ((layer_output, encoder_hidden_states),) + outputs
 
