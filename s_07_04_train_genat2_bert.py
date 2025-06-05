@@ -16,7 +16,8 @@ from tqdm import trange
 from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert, \
     GenmixTrainDsType
 from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME, is_arg_true, create_bool_str_field
-from mllm.model.genat2_bert import Genat2Cfg, gen_prefpostfix_genat2, Genat2Model
+from mllm.model.genat2_bert import Genat2Model
+from mllm.config.configuration_bert_at2_generation import Genat2Cfg, gen_prefpostfix_genat2
 from mllm.model.genmix import GenmixBert
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
     get_billsum_txt_iterators, SumTuple, QnaTuple

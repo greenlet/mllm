@@ -13,8 +13,8 @@ train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
 inp_len=128
 #inp_len=256
-#train_ds_type=qna
-train_ds_type=sum
+train_ds_type=qna
+#train_ds_type=sum
 max_inp_chunks=10
 max_out_toks=50
 bert_model_name=bert-base-uncased
@@ -43,6 +43,7 @@ batch_size=1
 #learning_rate=0.00005
 learning_rate=0.00001
 random_seed=200
+random_seed=2000
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 

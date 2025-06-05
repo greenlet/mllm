@@ -3,6 +3,7 @@ import inspect
 import os
 import tempfile
 import warnings
+from enum import Enum
 from typing import Optional, Tuple, Union
 
 import torch
@@ -17,7 +18,7 @@ from transformers.models.auto.modeling_auto import AutoModel, AutoModelForCausal
 from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, \
     replace_return_docstrings
 
-from mllm.config.configuration_bert_at2_generation import BertAt2GenerationConfig
+from mllm.config.configuration_bert_at2_generation import BertAt2GenerationConfig, EncoderAt2DecoderConfig
 from mllm.model.at2_decoder import BertGenerationEncoder, BertGenerationAt2Decoder
 
 logger = logging.get_logger(__name__)
@@ -150,46 +151,6 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start
 
     return shifted_input_ids
 
-
-class EncoderAt2DecoderConfig(PretrainedConfig):
-    model_type = "encoder-decoder"
-    is_composition = True
-    enc_inp_len: int = 0
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        assert (
-            "encoder" in kwargs and "decoder" in kwargs
-        ), "Config has to be initialized with encoder and decoder config"
-        encoder_config = kwargs.pop("encoder")
-        encoder_model_type = encoder_config.pop("model_type")
-        decoder_config = kwargs.pop("decoder")
-        decoder_model_type = decoder_config.pop("model_type")
-
-        if '-at2-' in encoder_model_type:
-            self.encoder = BertAt2GenerationConfig(**encoder_config)
-            self.decoder = BertAt2GenerationConfig(**decoder_config)
-        else:
-            self.encoder = AutoConfig.for_model(encoder_model_type, **encoder_config)
-            self.decoder = AutoConfig.for_model(decoder_model_type, **decoder_config)
-        self.is_encoder_decoder = True
-        self.enc_inp_len = kwargs.get('enc_inp_len', self.enc_inp_len)
-
-    @classmethod
-    def from_encoder_decoder_configs(
-        cls, encoder_config: PretrainedConfig, decoder_config: PretrainedConfig, **kwargs
-    ) -> PretrainedConfig:
-        r"""
-        Instantiate a [`EncoderDecoderConfig`] (or a derived class) from a pre-trained encoder model configuration and
-        decoder model configuration.
-
-        Returns:
-            [`EncoderDecoderConfig`]: An instance of a configuration object
-        """
-        decoder_config.is_decoder = True
-        decoder_config.add_cross_attention = True
-
-        return cls(encoder=encoder_config.to_dict(), decoder=decoder_config.to_dict(), **kwargs)
 
 
 @add_start_docstrings(ENCODER_DECODER_START_DOCSTRING)
