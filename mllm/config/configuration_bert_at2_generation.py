@@ -149,7 +149,7 @@ class EncEmbAggType(str, Enum):
     Mat = 'mat'
 
 
-class EncEmbExpansionType(str, Enum):
+class EncEmbExpType(str, Enum):
     Non = 'non'
     Mat = 'mat'
 
@@ -158,6 +158,8 @@ class EncoderAt2DecoderConfig(PretrainedConfig):
     model_type = "encoder-decoder"
     is_composition = True
     enc_inp_len: int = 0
+    enc_emb_agg_type: EncEmbAggType
+    enc_emb_exp_type: EncEmbExpType
 
 
     def __init__(self, **kwargs):

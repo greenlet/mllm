@@ -5,6 +5,7 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
+from nbconvert.nbconvertapp import nbconvert_flags
 from torch import nn
 from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, \
     BatchEncoding
@@ -99,10 +100,22 @@ class GenmixBert(nn.Module):
         # n_cq = n_ctx + n_qst
         # [n_cq, inp_len, d_model]
         emb = enc_out.last_hidden_state
-        # [n_cq d_model]
-        emb = emb[:, 0]
-        # [1, n_cq, d_model]
-        emb = emb.unsqueeze(0)
+
+        # # [n_cq d_model]
+        # emb = emb[:, 0]
+        # # [1, n_cq, d_model]
+        # emb = emb.unsqueeze(0)
+
+        if self.cfg.n_first_embs > 0:
+            n_first_embs = self.cfg.n_first_embs
+        else:
+            n_first_embs = emb.shape[1]
+
+        # [n_cq n_first_embs, d_model]
+        emb = emb[:, :n_first_embs]
+        # [n_cq * n_first_embs, d_model]
+        emb = emb.reshape((1, -1, self.cfg.d_model))
+
         return emb
 
     def text_title_to_emb(self, text: str, title: str) -> torch.Tensor:
@@ -119,10 +132,22 @@ class GenmixBert(nn.Module):
         )
         # [n_prompt, inp_len, d_model]
         emb = enc_out.last_hidden_state
-        # [n_prompt, d_model]
-        emb = emb[:, 0]
-        # [1, n_prompt, d_model]
-        emb = emb.unsqueeze(0)
+
+        # # [n_prompt, d_model]
+        # emb = emb[:, 0]
+        # # [1, n_prompt, d_model]
+        # emb = emb.unsqueeze(0)
+
+        if self.cfg.n_first_embs > 0:
+            n_first_embs = self.cfg.n_first_embs
+        else:
+            n_first_embs = emb.shape[1]
+
+        # [n_prompt, n_first_embs, d_model]
+        emb = emb[:, :n_first_embs]
+        # [n_prompt * n_first_embs, d_model]
+        emb = emb.reshape((1, -1, self.cfg.d_model))
+
         return emb
 
     def run_on_qna_txt(self, context: str, question: str, answer: str) -> torch.Tensor:

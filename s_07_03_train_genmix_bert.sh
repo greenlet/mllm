@@ -13,6 +13,7 @@ train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
 inp_len=128
 #inp_len=256
+n_first_embs=10
 #train_ds_type=qna
 train_ds_type=sum
 max_inp_chunks=10
@@ -44,7 +45,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_07_03_train_genmix_bert_qna.py \
+python s_07_03_train_genmix_bert.py \
   --data-path $data_path \
   --train-root-path $train_root_path \
   --pretrained-model-path "$pretrained_model_path" \
@@ -53,6 +54,7 @@ python s_07_03_train_genmix_bert_qna.py \
   --model-cfg-fpath $model_cfg_fpath \
   --bert-model-name $bert_model_name \
   --inp-len $inp_len \
+  --n-first-embs $n_first_embs \
   --max-inp-chunks $max_inp_chunks \
   --max-out-toks $max_out_toks \
   --batch-size $batch_size \

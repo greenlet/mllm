@@ -57,6 +57,13 @@ class ArgsGenmixBertTrain(BaseModel):
         description='Input tokens number. Must be a power of 2. INP_LEN = 2^k will produce model with k layers.',
         cli=('--inp-len',),
     )
+    n_first_embs: int = Field(
+        ...,
+        description=
+            'Number of the first embeddings to be extracted from embedding generating model. If N_FIRST_EMBS > INP_LEN '
+            'then all INP_LEN embeddings will be passed to Generating model.',
+        cli=('--n-first-embs',),
+    )
     max_inp_chunks: int = Field(
         ...,
         description='Maximum input chunks. Model input will have dimensions [n, INP_LEN] where n <= MAX_INP_CHUNKS.',
@@ -119,7 +126,8 @@ def main(args: ArgsGenmixBertTrain) -> int:
 
     model_cfg = parse_yaml_file_as(GenmixBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmix_bert_cfg(
-        model_cfg, pretrained_model_name=args.bert_model_name, inp_len=args.inp_len, max_inp_chunks=args.max_inp_chunks, max_out_toks=args.max_out_toks,
+        model_cfg, pretrained_model_name=args.bert_model_name, inp_len=args.inp_len, max_inp_chunks=args.max_inp_chunks,
+        max_out_toks=args.max_out_toks, n_first_embs=args.n_first_embs,
     )
 
     prefix, suffix = gen_prefpostfix_genmix_bert(model_cfg, train_ds_type=args.train_ds_type)
