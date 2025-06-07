@@ -225,10 +225,10 @@ class GenmixBert(nn.Module):
             loss = loss.mean()
         return loss
 
-    def gen_on_sum_txt(self, text: str, title: str) -> torch.Tensor:
+    def gen_on_sum_txt(self, text: str, title: str, max_len: int = 100) -> torch.Tensor:
         emb = self.text_title_to_emb(text=text, title=title)
 
-        out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id)
+        out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, max_length=max_len)
         return out_toks
 
 

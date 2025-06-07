@@ -13,7 +13,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert, \
-    GenmixTrainDsType
+    GenmixTrainDsType, GenmixEmbAggType, GenmixEmbExpType
 from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.genmix import GenmixBert
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
@@ -63,6 +63,22 @@ class ArgsGenmixBertTrain(BaseModel):
             'Number of the first embeddings to be extracted from embedding generating model. If N_FIRST_EMBS > INP_LEN '
             'then all INP_LEN embeddings will be passed to Generating model.',
         cli=('--n-first-embs',),
+    )
+    n_second_embs: int = Field(
+        ...,
+        description=
+            'Number of embeddings that will be created from N_FIRST_EMBS and serve as an input to Generator.',
+        cli=('--n-second-embs',),
+    )
+    emb_agg_type: GenmixEmbAggType = Field(
+        GenmixEmbAggType.Fst,
+        description=f'Aggregation method for N_FIRST_EMBS: {[t.value for t in GenmixEmbAggType]}',
+        cli=('--emg-agg-type',),
+    )
+    emb_exp_type: GenmixEmbExpType = Field(
+        GenmixEmbExpType.Non,
+        description=f'Embeddings expansion type from N_FIRST_EMBS to N_SECOND_EMBS: {[t.value for t in GenmixEmbExpType]}',
+        cli=('--emg-exp-type',),
     )
     max_inp_chunks: int = Field(
         ...,
@@ -127,7 +143,8 @@ def main(args: ArgsGenmixBertTrain) -> int:
     model_cfg = parse_yaml_file_as(GenmixBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmix_bert_cfg(
         model_cfg, pretrained_model_name=args.bert_model_name, inp_len=args.inp_len, max_inp_chunks=args.max_inp_chunks,
-        max_out_toks=args.max_out_toks, n_first_embs=args.n_first_embs,
+        max_out_toks=args.max_out_toks, n_first_embs=args.n_first_embs, n_second_embs=args.n_second_embs,
+        emb_agg_type=args.emb_agg_type, emb_exp_type=args.emb_exp_type,
     )
 
     prefix, suffix = gen_prefpostfix_genmix_bert(model_cfg, train_ds_type=args.train_ds_type)

@@ -329,6 +329,17 @@ class EncmixModelType(str, Enum):
     Sep = 'sep'
 
 
+class GenmixEmbAggType(str, Enum):
+    Fst = 'fst'
+    Avg = 'avg'
+    Mat = 'mat'
+
+
+class GenmixEmbExpType(str, Enum):
+    Non = 'non'
+    Mat = 'mat'
+
+
 class GenmixBertCfg(BaseModel):
     inp_len: int
     d_model: int
@@ -337,6 +348,10 @@ class GenmixBertCfg(BaseModel):
     max_inp_chunks: int
     max_out_toks: int
     n_first_embs: int = -1
+    n_second_embs: int = -1
+    emb_agg_type: GenmixEmbAggType
+    emb_exp_type: GenmixEmbExpType
+
 
 
 class GenmixTrainDsType(str, Enum):
@@ -662,7 +677,8 @@ def create_encmix_bert_cfg(
 
 def create_genmix_bert_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', inp_len = 128, max_inp_chunks: int = 0,
-        max_out_toks: int = 0, n_first_embs: int = 1,
+        max_out_toks: int = 0, n_first_embs: int = 1, n_second_embs: int = 1, emb_agg_type: GenmixEmbAggType = GenmixEmbAggType.Fst,
+        emb_exp_type: GenmixEmbExpType = GenmixEmbExpType.Non,
 ) -> GenmixBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -672,7 +688,8 @@ def create_genmix_bert_cfg(
 
     cfg_gen_mix_bert = GenmixBertCfg(
         inp_len=inp_len, d_model=d_model, pretrained_model_name=pretrained_model_name,
-        tokenizer_name=tokenizer_name, max_inp_chunks=max_inp_chunks, max_out_toks=max_out_toks, n_first_embs=n_first_embs,
+        tokenizer_name=tokenizer_name, max_inp_chunks=max_inp_chunks, max_out_toks=max_out_toks,
+        n_first_embs=n_first_embs, n_second_embs=n_second_embs, emb_agg_type=emb_agg_type, emb_exp_type=emb_exp_type,
     )
     return cfg_gen_mix_bert
 
@@ -813,7 +830,8 @@ def copy_override_encmix_bert_cfg(
 
 def copy_override_genmix_bert_cfg(
         cfg: GenmixBertCfg, pretrained_model_name: Optional[str] = None, tokenizer_name: Optional[str] = None, inp_len: int = 0,
-        max_inp_chunks: Optional[int] = None, max_out_toks: Optional[int] = None, n_first_embs: int = -1,
+        max_inp_chunks: Optional[int] = None, max_out_toks: Optional[int] = None, n_first_embs: int = -1, n_second_embs: int = -1,
+        emb_agg_type: Optional[GenmixEmbAggType] = None, emb_exp_type: Optional[GenmixEmbExpType] = None,
 ) -> GenmixBertCfg:
     pretrained_model_name = coalesce(pretrained_model_name, cfg.pretrained_model_name)
     tokenizer_name = coalesce(tokenizer_name, cfg.tokenizer_name)
@@ -821,10 +839,14 @@ def copy_override_genmix_bert_cfg(
     max_inp_chunks = coalesce(max_inp_chunks, cfg.max_inp_chunks)
     max_out_toks = coalesce(max_out_toks, cfg.max_out_toks)
     n_first_embs = n_first_embs if n_first_embs >= 0 else cfg.n_first_embs
+    n_second_embs = n_second_embs if n_second_embs >= 0 else cfg.n_second_embs
+    emb_agg_type = coalesce(emb_agg_type, cfg.emb_agg_type)
+    emb_exp_type = coalesce(emb_exp_type, cfg.emb_exp_type)
 
     return create_genmix_bert_cfg(
         pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, inp_len=inp_len,
-        max_inp_chunks=max_inp_chunks, max_out_toks=max_out_toks, n_first_embs=n_first_embs,
+        max_inp_chunks=max_inp_chunks, max_out_toks=max_out_toks, n_first_embs=n_first_embs, n_second_embs=n_second_embs,
+        emb_agg_type=emb_agg_type, emb_exp_type=emb_exp_type,
     )
 
 
@@ -975,6 +997,9 @@ def gen_prefpostfix_genmix_bert(model_cfg: GenmixBertCfg, train_ds_type: Optiona
         postfix_parts.append(f'maxo{model_cfg.max_out_toks}')
 
     postfix_parts.append(f'nfemb{model_cfg.n_first_embs}')
+    postfix_parts.append(f'nsemb{model_cfg.n_second_embs}')
+    postfix_parts.append(f'emagg_{model_cfg.emb_agg_type.value}')
+    postfix_parts.append(f'emexp_{model_cfg.emb_exp_type.value}')
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix

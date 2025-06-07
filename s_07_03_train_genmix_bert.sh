@@ -13,7 +13,10 @@ train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
 inp_len=128
 #inp_len=256
-n_first_embs=10
+n_first_embs=1
+n_second_embs=1
+emb_agg_type=mat
+emb_exp_type=non
 #train_ds_type=qna
 train_ds_type=sum
 max_inp_chunks=10
@@ -55,6 +58,9 @@ python s_07_03_train_genmix_bert.py \
   --bert-model-name $bert_model_name \
   --inp-len $inp_len \
   --n-first-embs $n_first_embs \
+  --n-second-embs $n_second_embs \
+  --emb-agg-type $emb_agg_type \
+  --emb-exp-type $emb_exp_type \
   --max-inp-chunks $max_inp_chunks \
   --max-out-toks $max_out_toks \
   --batch-size $batch_size \

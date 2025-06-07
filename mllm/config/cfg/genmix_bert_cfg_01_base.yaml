@@ -1,6 +1,10 @@
 d_model: 768
+emb_agg_type: fst
+emb_exp_type: non
 inp_len: 128
 max_inp_chunks: 10
 max_out_toks: 128
+n_first_embs: 1
+n_second_embs: 1
 pretrained_model_name: bert-base-uncased
 tokenizer_name: bert-base-uncased
