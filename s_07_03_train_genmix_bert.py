@@ -59,26 +59,24 @@ class ArgsGenmixBertTrain(BaseModel):
     )
     n_first_embs: int = Field(
         ...,
-        description=
-            'Number of the first embeddings to be extracted from embedding generating model. If N_FIRST_EMBS > INP_LEN '
+        description='Number of the first embeddings to be extracted from embedding generating model. If N_FIRST_EMBS > INP_LEN '
             'then all INP_LEN embeddings will be passed to Generating model.',
         cli=('--n-first-embs',),
     )
     n_second_embs: int = Field(
         ...,
-        description=
-            'Number of embeddings that will be created from N_FIRST_EMBS and serve as an input to Generator.',
+        description='Number of embeddings that will be created from N_FIRST_EMBS and serve as an input to Generator.',
         cli=('--n-second-embs',),
     )
     emb_agg_type: GenmixEmbAggType = Field(
         GenmixEmbAggType.Fst,
         description=f'Aggregation method for N_FIRST_EMBS: {[t.value for t in GenmixEmbAggType]}',
-        cli=('--emg-agg-type',),
+        cli=('--emb-agg-type',),
     )
     emb_exp_type: GenmixEmbExpType = Field(
         GenmixEmbExpType.Non,
         description=f'Embeddings expansion type from N_FIRST_EMBS to N_SECOND_EMBS: {[t.value for t in GenmixEmbExpType]}',
-        cli=('--emg-exp-type',),
+        cli=('--emb-exp-type',),
     )
     max_inp_chunks: int = Field(
         ...,

@@ -4,7 +4,7 @@ data_path=$HOME/data
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
-model_cfg_fname=genmix_bert_cfg_01_base_tte.yaml
+model_cfg_fname=genmix_bert_cfg_01_base.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
@@ -13,10 +13,14 @@ train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
 inp_len=128
 #inp_len=256
+#n_first_embs=1
+#n_second_embs=1
+#emb_agg_type=mat
+#emb_exp_type=non
 n_first_embs=1
-n_second_embs=1
-emb_agg_type=mat
-emb_exp_type=non
+n_second_embs=128
+emb_agg_type=fst
+emb_exp_type=mat
 #train_ds_type=qna
 train_ds_type=sum
 max_inp_chunks=10

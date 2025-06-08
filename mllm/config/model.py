@@ -988,18 +988,18 @@ def gen_prefpostfix_genmix_bert(model_cfg: GenmixBertCfg, train_ds_type: Optiona
     postfix_parts.append(f'inp{model_cfg.inp_len}')
 
     if train_ds_type is not None:
-        postfix_parts.append(f'ds_{train_ds_type.value}')
+        postfix_parts.append(f'ds{train_ds_type.value.capitalize()}')
 
     if model_cfg.max_inp_chunks > 0:
-        postfix_parts.append(f'maxi{model_cfg.max_inp_chunks}')
+        postfix_parts.append(f'mxi{model_cfg.max_inp_chunks}')
 
     if model_cfg.max_out_toks > 0:
-        postfix_parts.append(f'maxo{model_cfg.max_out_toks}')
+        postfix_parts.append(f'mxo{model_cfg.max_out_toks}')
 
-    postfix_parts.append(f'nfemb{model_cfg.n_first_embs}')
-    postfix_parts.append(f'nsemb{model_cfg.n_second_embs}')
-    postfix_parts.append(f'emagg_{model_cfg.emb_agg_type.value}')
-    postfix_parts.append(f'emexp_{model_cfg.emb_exp_type.value}')
+    postfix_parts.append(f'nfem{model_cfg.n_first_embs}')
+    postfix_parts.append(f'nsem{model_cfg.n_second_embs}')
+    postfix_parts.append(f'emag{model_cfg.emb_agg_type.value.capitalize()}')
+    postfix_parts.append(f'emex{model_cfg.emb_exp_type.value.capitalize()}')
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix

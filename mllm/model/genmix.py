@@ -11,7 +11,7 @@ from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, 
     BatchEncoding
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
-from mllm.config.model import GenmixBertCfg
+from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType
 
 
 class GenmixBert(nn.Module):
@@ -19,6 +19,8 @@ class GenmixBert(nn.Module):
     device: torch.device
     enc: BertModel
     gen: EncoderDecoderModel
+    n_first_embs: int
+    n_second_embs: int
 
     def __init__(self, cfg: GenmixBertCfg, device: torch.device):
         super().__init__()
@@ -37,6 +39,42 @@ class GenmixBert(nn.Module):
             bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
         )
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
+
+        if self.cfg.n_first_embs > 0:
+            self.n_first_embs = min(self.cfg.n_first_embs, self.cfg.inp_len)
+        elif self.cfg.emb_agg_type == GenmixEmbAggType.Avg:
+            self.n_first_embs = 1
+        else:
+            self.n_first_embs = self.cfg.inp_len
+
+        if self.cfg.n_second_embs > 0:
+            self.n_second_embs = self.cfg.n_second_embs
+        else:
+            self.n_second_embs = self.cfg.inp_len
+
+        if self.cfg.emb_agg_type == GenmixEmbAggType.Fst:
+            # Leave n_first_embs intact
+            pass
+        elif self.cfg.emb_agg_type == GenmixEmbAggType.Avg:
+            assert self.n_first_embs == 1, f'For embeddings aggregation type {self.cfg.emb_agg_type} n_first_embs (={self.n_first_embs} must be equal to 1)'
+            assert self.cfg.emb_exp_type == GenmixEmbExpType.Mat or self.n_second_embs == 1, \
+                f'For embeddings aggregation type {self.cfg.emb_agg_type} and expansion type {self.cfg.emb_exp_type} n_second_embs (={self.n_second_embs}) must be equal to 1'
+        elif self.cfg.emb_agg_type == GenmixEmbAggType.Mat:
+            in_features = self.cfg.inp_len * self.cfg.d_model
+            out_features = self.n_first_embs * self.cfg.d_model
+            self.emb_agg = nn.Linear(in_features, out_features, bias=False, device=self.device)
+        else:
+            raise Exception(f'Embedding aggregation type {self.cfg.emb_agg_type} is not supported')
+
+        if self.cfg.emb_exp_type == GenmixEmbExpType.Non:
+            pass
+        elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat:
+            in_features = self.n_first_embs * self.cfg.d_model
+            out_features = self.n_second_embs * self.cfg.d_model
+            self.emb_exp = nn.Linear(in_features, out_features, bias=False, device=self.device)
+        else:
+            raise Exception(f'Embedding expansion type {self.cfg.emb_exp_type} is not supported')
+
 
     # input_ids: [src_len]
     # target_ids: [tgt_len]
@@ -113,6 +151,25 @@ class GenmixBert(nn.Module):
 
         # [n_cq n_first_embs, d_model]
         emb = emb[:, :n_first_embs]
+
+        if self.cfg.emb_agg_type == GenmixEmbAggType.Fst:
+            # Just leave n_first_embeddings intact
+            pass
+        elif self.cfg.emb_agg_type == GenmixEmbAggType.Avg:
+            assert self.cfg
+            pass
+        elif self.cfg.emb_agg_type == GenmixEmbAggType.Mat:
+            pass
+        else:
+            raise Exception(f'Embedding aggregation type {self.cfg.emb_agg_type} is not supported')
+
+        if self.cfg.emb_exp_type == GenmixEmbExpType.Non:
+            pass
+        elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat:
+            pass
+        else:
+            raise Exception(f'Embedding expansion type {self.cfg.emb_exp_type} is not supported')
+
         # [n_cq * n_first_embs, d_model]
         emb = emb.reshape((1, -1, self.cfg.d_model))
 
@@ -138,16 +195,45 @@ class GenmixBert(nn.Module):
         # # [1, n_prompt, d_model]
         # emb = emb.unsqueeze(0)
 
-        if self.cfg.n_first_embs > 0:
-            n_first_embs = self.cfg.n_first_embs
+        n_prompt = emb.shape[0]
+        if self.cfg.emb_agg_type == GenmixEmbAggType.Fst:
+            # [n_prompt, n_first_embs, d_model]
+            emb = emb[:, :self.n_first_embs]
+            # [1, n_prompt * n_first_embs, d_model]
+            emb = emb.reshape((1, -1, self.cfg.d_model))
+        elif self.cfg.emb_agg_type == GenmixEmbAggType.Avg:
+            assert self.n_first_embs == 1
+            # [n_prompt * 1, d_model]
+            emb = torch.mean(emb, dim=1, keepdim=False)
+            # [1, n_prompt * 1, d_model]
+            emb = emb.unsqueeze(0)
+        elif self.cfg.emb_agg_type == GenmixEmbAggType.Mat:
+            # [n_prompt, inp_len * d_model]
+            emb = emb.reshape((n_prompt, self.cfg.inp_len * self.cfg.d_model))
+            # [n_prompt, n_first_embs * d_model]
+            emb = self.emb_agg(emb)
+            # [1, n_prompt * n_first_embs, d_model]
+            emb = emb.reshape((1, n_prompt * self.n_first_embs, self.cfg.d_model))
         else:
-            n_first_embs = emb.shape[1]
+            raise
 
-        # [n_prompt, n_first_embs, d_model]
-        emb = emb[:, :n_first_embs]
-        # [n_prompt * n_first_embs, d_model]
-        emb = emb.reshape((1, -1, self.cfg.d_model))
+        # emb: [1, n_prompt * n_first_embs, d_model]
+        if self.cfg.emb_exp_type == GenmixEmbExpType.Non:
+            assert self.n_first_embs == self.n_second_embs, f'n_first_embs (={self.n_first_embs}) != n_second_embs (={self.n_second_embs})'
+            pass
+        elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat:
+            # [1, n_prompt, n_first_embs * d_model]
+            emb = emb.reshape((1, n_prompt, self.n_first_embs * self.cfg.d_model))
+            # [1, n_prompt, n_second_embs * d_model]
+            emb = self.emb_exp(emb)
+            # [1, n_prompt, n_second_embs, d_model]
+            emb = emb.reshape(1, n_prompt, self.n_second_embs, self.cfg.d_model)
+            # [1, n_second_embs, d_model]
+            emb = torch.mean(emb, dim=1, keepdim=False)
+        else:
+            raise
 
+        # emb: [1, n_embs, d_model]
         return emb
 
     def run_on_qna_txt(self, context: str, question: str, answer: str) -> torch.Tensor:
