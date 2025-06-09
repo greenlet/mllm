@@ -9,6 +9,7 @@ matplotlib
 #mteb
 mwparserfromhell
 numpy
+openai
 pandas
 pydantic
 pydantic-cli
