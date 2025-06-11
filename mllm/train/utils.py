@@ -1,3 +1,4 @@
+import os.path
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -810,4 +811,69 @@ def get_billsum_txt_iterators(val_ratio: float = 0.05) -> tuple[SumTxtGen, SumTx
         df_sum=df_bs_v,
     )
     return train_it, val_it
+
+
+
+@dataclass
+class WikiTuple:
+    ind: int
+    title: str
+    text: str
+
+
+WikiTxtGen = Generator[WikiTuple, None, None]
+
+
+def get_wiki_iterator(ds: Dataset, inds: np.ndarray) -> WikiTxtGen:
+    n = len(inds)
+    i_off = 0
+    while True:
+        ind = inds[i_off].item()
+        row = ds[ind]
+
+        wiki_item = WikiTuple(ind=ind, title=row['title'], text=row['text'])
+        yield wiki_item
+
+        i_off += 1
+        if i_off == n:
+            np.random.shuffle(inds)
+            i_off = 0
+
+
+def get_wiki_iterators(data_path: Path, val_ratio: float = 0.05, shuffle: bool = False) -> tuple[WikiTxtGen, WikiTxtGen]:
+    wiki_ds_name, wiki_ds_subdir = '20200501.en', 'wikipedia'
+    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
+    ds = dss['train']
+    n_docs = len(ds)
+    print(f'Wikipedia {wiki_ds_name} docs: {n_docs}')
+
+    doc_inds = np.arange(n_docs)
+    # np.random.seed(777)
+    np.random.shuffle(doc_inds)
+    n_docs_val = int(n_docs * val_ratio)
+    n_docs_train = n_docs - n_docs_val
+    doc_inds_train, doc_inds_val = doc_inds[:n_docs_train].copy(), doc_inds[n_docs_train:].copy()
+
+    if shuffle:
+        np.random.shuffle(doc_inds_train)
+        np.random.shuffle(doc_inds_val)
+
+    train_it = get_wiki_iterator(ds, doc_inds_train)
+    val_it = get_wiki_iterator(ds, doc_inds_val)
+    return train_it, val_it
+
+
+def run_get_wiki_iterators():
+    data_path = Path(os.path.expandvars('$HOME')) / 'data'
+    train_it, val_it = get_wiki_iterators(
+        data_path=data_path,
+    )
+    item = next(train_it)
+    print('Train:', item)
+    item = next(val_it)
+    print('Val:', item)
+
+
+if __name__ == '__main__':
+    run_get_wiki_iterators()
 
