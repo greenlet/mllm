@@ -317,6 +317,43 @@ class GenmixBert(nn.Module):
         out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, max_length=max_len)
         return out_toks
 
+    def run_on_wiki_txt(self, title: str, text: str) -> torch.Tensor:
+        emb = self.text_title_to_emb(text=text, title=title)
+
+        # [1, n_sum]
+        sum_toks = self._to_toks(summary)
+        if 0 < self.cfg.max_out_toks < sum_toks.shape[1]:
+            sum_toks = sum_toks[:, :self.cfg.max_out_toks]
+        # [n_sum]
+        sum_toks = sum_toks[0]
+        # tgt_len = n_sum - 1
+        # [tgt_len]
+        target_ids = sum_toks[:-1]
+        if target_ids[0] != self.tkz.cls_token_id:
+            target_ids = F.pad(target_ids, (1, 0), 'constant', self.tkz.cls_token_id)
+        # [1, tgt_len]
+        target_ids = target_ids.unsqueeze(0)
+
+        gen_out: Seq2SeqLMOutput = self.gen(inputs_embeds=emb, decoder_input_ids=target_ids, use_cache=False)
+        # [1, tgt_len, n_vocab]
+        gen_logits = gen_out.logits
+
+        # [tgt_len, n_vocab]
+        logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)
+        # [tgt_len]
+        labels = sum_toks[1:]
+        # [tgt_len]
+        loss = F.cross_entropy(logits, labels, reduction='none')
+        # The last one is sep_token_id
+        assert loss.shape[0] > 1
+        if labels[-1] == self.tkz.sep_token_id:
+            loss_1, loss_2 = loss[:-1].mean(), loss[-1]
+            w1, w2 = 50, 1
+            loss = (loss_1 * w1 + loss_2 * w2) / (w1 + w2)
+        else:
+            loss = loss.mean()
+        return loss
+
 
 def test_train():
     tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")

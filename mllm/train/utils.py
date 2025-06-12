@@ -13,7 +13,7 @@ import torch.utils.tensorboard as tb
 from datasets import Dataset, load_dataset
 from torch import nn
 from torch.nn.modules import activation
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizer, AutoTokenizer
 
 from mllm.data.common import DsView, TDs, TBatch
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
@@ -242,6 +242,7 @@ def mask_random_words(
         rem_conseq_max_times: int = 5,
         ) -> Optional[str]:
     rv = np.random.rand()
+    # print(rv, rem_freq, rem_conseq_freq)
     if rv < 1 - (rem_freq + rem_conseq_freq):
         return
     lines = NEWLINE_PAT.split(s)
@@ -874,6 +875,20 @@ def run_get_wiki_iterators():
     print('Val:', item)
 
 
+def run_mask_seq():
+    pretrained_model_name = 'bert-base-uncased'
+    tkz = AutoTokenizer.from_pretrained(pretrained_model_name)
+    s = 'Hall Films for Thames Television. It was first shown on ITV during its CITV output on weekday afternoons. Four series were made comprising 65 episodes which aired between 6 September 1988'
+
+    # print(tkz)
+    s_masked = mask_random_words(
+        s, mask_tok_str=tkz.mask_token, rem_freq=0, rem_prob=0, rem_conseq_freq=0.33,
+        rem_conseq_prob=0.2, rem_conseq_max_len=20, rem_conseq_max_times=1)
+    print(s)
+    print(s_masked)
+
+
 if __name__ == '__main__':
-    run_get_wiki_iterators()
+    # run_get_wiki_iterators()
+    run_mask_seq()
 

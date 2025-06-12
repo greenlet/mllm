@@ -357,6 +357,7 @@ class GenmixBertCfg(BaseModel):
 class GenmixTrainDsType(str, Enum):
     Qna = 'qna'
     Sum = 'sum'
+    Wki = 'wki'
 
 
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')

@@ -17,7 +17,7 @@ from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_
 from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME
 from mllm.model.genmix import GenmixBert
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
-    get_billsum_txt_iterators, SumTuple, QnaTuple
+    get_billsum_txt_iterators, SumTuple, QnaTuple, get_wiki_iterators, WikiTuple
 
 
 class ArgsGenmixBertTrain(BaseModel):
@@ -205,6 +205,10 @@ def main(args: ArgsGenmixBertTrain) -> int:
         train_it, val_it = get_squadv2_txt_iterators(exclude_empty_answers=True, val_ratio=val_ratio)
     elif args.train_ds_type == GenmixTrainDsType.Sum:
         train_it, val_it = get_billsum_txt_iterators(val_ratio=val_ratio)
+    elif args.train_ds_type == GenmixTrainDsType.Wki:
+        train_it, val_it = get_wiki_iterators(
+            data_path=args.data_path, val_ratio=val_ratio, shuffle=False,
+        )
     else:
         raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
 
@@ -237,6 +241,11 @@ def main(args: ArgsGenmixBertTrain) -> int:
             elif args.train_ds_type == GenmixTrainDsType.Sum:
                 item: SumTuple = item
                 loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
+            elif args.train_ds_type == GenmixTrainDsType.Wki:
+                item: WikiTuple = item
+                loss = model.run_on_wiki_txt(
+                    title=item.title, text=item.text,
+                )
             else:
                 raise
             if loss.isnan():
