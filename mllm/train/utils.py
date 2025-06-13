@@ -864,6 +864,67 @@ def get_wiki_iterators(data_path: Path, val_ratio: float = 0.05, shuffle: bool =
     return train_it, val_it
 
 
+@dataclass
+class MaskedSubstr:
+    src_str: str
+    prefix_str: str
+    target_str: str
+
+
+def extract_random_words_seq(
+        s: str, mask_tok_str: str, rem_freq: float = 0.33, rem_prob: float = 0.15,
+        rem_conseq_freq: float = 0.33, rem_conseq_prob: float = 0.2, rem_conseq_max_len: int = 20,
+        rem_conseq_max_times: int = 5,
+        ) -> Optional[str]:
+    rv = np.random.rand()
+    # print(rv, rem_freq, rem_conseq_freq)
+    if rv < 1 - (rem_freq + rem_conseq_freq):
+        return
+    lines = NEWLINE_PAT.split(s)
+    res = []
+    n_total = 0
+    for line in lines:
+        if not line:
+            continue
+        words = STR_DELIM_PAT.split(line)
+        words = filter(None, words)
+        words = list(words)
+        if not words:
+            continue
+        res.append(words)
+        n_total += len(words)
+
+    if n_total < 5:
+        return
+
+    if rv < 1 - rem_conseq_freq:
+        mask = np.random.rand(n_total) <= rem_prob
+    else:
+        rem_conseq_times = np.random.randint(1, rem_conseq_max_times + 1)
+        rem_interval = n_total // rem_conseq_times
+        off = 0
+        mask = np.full(n_total, False, dtype=bool)
+        while off < n_total:
+            n_rem = int(n_total * rem_conseq_prob)
+            n_rem = np.random.randint(2, max(n_rem, 2) + 1)
+            n_rem = min(n_rem, rem_conseq_max_len)
+            i = np.random.randint(off, off + rem_interval)
+            i1 = max(i - n_rem // 2, 0)
+            i2 = min(i1 + n_rem, n_total - 1)
+            if i1 < i2:
+                mask[i1:i2] = True
+            off = max(off + rem_interval, i2 + int(n_rem * 1.5))
+
+    im = 0
+    for words in res:
+        for iw in range(len(words)):
+            if mask[im]:
+                words[iw] = mask_tok_str
+            im += 1
+
+    return '\n'.join([' '.join(words) for words in res])
+
+
 def run_get_wiki_iterators():
     data_path = Path(os.path.expandvars('$HOME')) / 'data'
     train_it, val_it = get_wiki_iterators(

@@ -175,8 +175,7 @@ class GenmixBert(nn.Module):
 
         return emb
 
-    def text_title_to_emb(self, text: str, title: str) -> torch.Tensor:
-        prompt = f'Summarize following text. Title: {title}. Text: {text}'
+    def prompt_to_emb(self, prompt: str) -> torch.Tensor:
         # [n_prompt, inp_len]
         prompt_toks = self._to_toks(prompt, inp_len=self.cfg.inp_len)
         if self.cfg.max_inp_chunks > 0:
@@ -234,6 +233,11 @@ class GenmixBert(nn.Module):
             raise
 
         # emb: [1, n_embs, d_model]
+        return emb
+
+    def text_title_to_emb(self, text: str, title: str) -> torch.Tensor:
+        prompt = f'Summarize following text. Title: {title}. Text: {text}'
+        emb = self.prompt_to_emb(prompt)
         return emb
 
     def run_on_qna_txt(self, context: str, question: str, answer: str) -> torch.Tensor:
@@ -318,7 +322,8 @@ class GenmixBert(nn.Module):
         return out_toks
 
     def run_on_wiki_txt(self, title: str, text: str) -> torch.Tensor:
-        emb = self.text_title_to_emb(text=text, title=title)
+        prompt = f'Cite the text starting from words "<words>". Text: {text}'
+        emb = self.prompt_to_emb(prompt=prompt)
 
         # [1, n_sum]
         sum_toks = self._to_toks(summary)
