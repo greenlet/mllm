@@ -864,6 +864,11 @@ def get_wiki_iterators(data_path: Path, val_ratio: float = 0.05, shuffle: bool =
     return train_it, val_it
 
 
+def tokenize_words(tkz: PreTrainedTokenizer, s: str) -> list[tuple[str, list[int]]]:
+    toks = tkz.tokenize(s)
+    print(toks)
+
+
 @dataclass
 class MaskedSubstr:
     src_str: str
@@ -875,7 +880,7 @@ def extract_random_words_seq(
         s: str, mask_tok_str: str, rem_freq: float = 0.33, rem_prob: float = 0.15,
         rem_conseq_freq: float = 0.33, rem_conseq_prob: float = 0.2, rem_conseq_max_len: int = 20,
         rem_conseq_max_times: int = 5,
-        ) -> Optional[str]:
+        ) -> Optional[MaskedSubstr]:
     rv = np.random.rand()
     # print(rv, rem_freq, rem_conseq_freq)
     if rv < 1 - (rem_freq + rem_conseq_freq):
@@ -949,7 +954,12 @@ def run_mask_seq():
     print(s_masked)
 
 
+def run_tkz_words():
+    pass
+
+
 if __name__ == '__main__':
     # run_get_wiki_iterators()
     run_mask_seq()
+    run_tkz_words()
 
