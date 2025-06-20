@@ -1,6 +1,7 @@
 # python=3.10
 
 accelerate
+alembic
 #apache_beam
 #datasets==1.18.4
 datasets
