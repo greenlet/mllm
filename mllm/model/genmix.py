@@ -12,6 +12,7 @@ from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, 
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
 from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType
+from mllm.train.utils import WordToks
 
 
 class GenmixBert(nn.Module):
@@ -321,8 +322,13 @@ class GenmixBert(nn.Module):
         out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, max_length=max_len)
         return out_toks
 
-    def run_on_wiki_txt(self, title: str, text: str) -> torch.Tensor:
-        prompt = f'Cite the text starting from words "<words>". Text: {text}'
+    def run_on_wiki_txt(self, title: str, text: str, mask_tgt: bool, max_tgt_len_fraq: float = 0.2, max_tgt_len: int = 10) -> torch.Tensor:
+        wt = WordToks(
+            tkz=self.tkz, s=text, max_tgt_len_fraq=max_tgt_len_fraq, max_tgt_len=max_tgt_len,
+        )
+        tags_list_str = ', '.join(wt.tags_names)
+        inp_str = wt.inp_masked_str if mask_tgt else wt.inp_str
+        prompt = f'Cite the text between the tags: {tags_list_str}. Text: {inp_str}'
         emb = self.prompt_to_emb(prompt=prompt)
 
         # [1, n_sum]

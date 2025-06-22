@@ -14,10 +14,13 @@ from tqdm import trange
 
 from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert, \
     GenmixTrainDsType, GenmixEmbAggType, GenmixEmbExpType
-from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME
+from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
 from mllm.model.genmix import GenmixBert
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
     get_billsum_txt_iterators, SumTuple, QnaTuple, get_wiki_iterators, WikiTuple
+
+
+mask_tgt_ARG = '--mask-tgt', 'Masks textual target'
 
 
 class ArgsGenmixBertTrain(BaseModel):
@@ -42,6 +45,12 @@ class ArgsGenmixBertTrain(BaseModel):
         description=f'Train dataset type, one of: {[t.value for t in GenmixTrainDsType]}',
         cli=('--train-ds-type',),
     )
+
+    mask_tgt_str: str = create_bool_str_field(*mask_tgt_ARG)
+    @property
+    def mask_tgt(self) -> bool:
+        return is_arg_true(mask_tgt_ARG[0], self.mask_tgt_str)
+
     model_cfg_fpath: Path = Field(
         ...,
         description='Path to EncdecHg model config Yaml file.',
@@ -211,6 +220,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
         )
     else:
         raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
+    mask_tgt = args.mask_tgt
 
     sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
@@ -244,7 +254,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
             elif args.train_ds_type == GenmixTrainDsType.Wki:
                 item: WikiTuple = item
                 loss = model.run_on_wiki_txt(
-                    title=item.title, text=item.text,
+                    title=item.title, text=item.text, mask_tgt=mask_tgt,
                 )
             else:
                 raise
@@ -290,6 +300,11 @@ def main(args: ArgsGenmixBertTrain) -> int:
                 elif args.train_ds_type == GenmixTrainDsType.Sum:
                     item: SumTuple = item
                     loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
+                elif args.train_ds_type == GenmixTrainDsType.Wki:
+                    item: WikiTuple = item
+                    loss = model.run_on_wiki_txt(
+                        title=item.title, text=item.text, mask_tgt=mask_tgt,
+                    )
                 else:
                     raise
                 if loss.isnan():

@@ -869,65 +869,92 @@ def tokenize_words(tkz: PreTrainedTokenizer, s: str) -> list[tuple[str, list[int
     print(toks)
 
 
-@dataclass
-class MaskedSubstr:
-    src_str: str
-    prefix_str: str
-    target_str: str
+class WordToks:
+    tkz: PreTrainedTokenizer
+    s: str
+    toks_ids: list[int]
+    toks_strs: list[str]
+    words_inds_lens: list[tuple[int, int]]
+    tags_names: list[str] = ['cite_begin', 'cite_end']
+    tags_dict: dict[str, str]
+    max_tgt_len_fraq: float
+    max_tgt_len: int
+    off_words_tgt: int
+    n_words_tgt: int
+    inp_toks: list[int]
+    inp_masked_toks: list[int]
+    tgt_toks: list[int]
+    inp_str: str
+    inp_masked_str: str
+    tgt_str: str
 
+    def __init__(self, tkz: PreTrainedTokenizer, s: str, max_tgt_len_fraq: float = 0, max_tgt_len: int = 0):
+        self.tkz = tkz
+        self.s = s
+        self.toks_ids = self.tkz(s, add_special_tokens=False).input_ids
+        self.toks_strs = self.tkz.convert_ids_to_tokens(self.toks_ids)
+        self.words_inds_lens = self.calc_inds_lens()
+        self.tags_dict = {tname: f'<|{tname}|>' for tname in self.tags_names}
+        assert max_tgt_len_fraq > 0 or max_tgt_len > 0, \
+            f'At least max_tgt_len_fraq (={max_tgt_len_fraq}) or max_tgt_len (={max_tgt_len}) must be positive.'
+        self.max_tgt_len_fraq = max_tgt_len_fraq
+        self.max_tgt_len = max_tgt_len
+        self.off_words_tgt, self.n_words_tgt = self.gen_words_inds()
+        self.inp_toks, self.inp_masked_toks, self.tgt_toks = self.create_tgt_toks()
+        self.inp_str, self.inp_masked_str, self.tgt_str = self.get_tgt_strs()
+    
+    def calc_inds_lens(self) -> list[tuple[int, int]]:
+        res = []
+        n_toks_ids, n_toks_strs = len(self.toks_ids), len(self.toks_strs)
+        assert n_toks_ids == n_toks_strs, f'n_toks_ids (={n_toks_ids}) must be equal to n_toks_strs (={n_toks_strs})'
+        assert n_toks_ids > 0
+        assert not self.toks_strs[0].startswith('##'), f'First token cannot start from ##. Tokens: {self.toks_strs}'
+        if n_toks_ids == 0:
+            return res
+        off, len_ = 0, 1
+        for i in range(1, n_toks_strs):
+            tok_str = self.toks_strs[i]
+            if not tok_str.startswith('##'):
+                res.append((off, len_))
+                off, len_ = i, 1
+            else:
+                len_ += 1
+        res.append((off, len_))
+        return res
 
-def extract_random_words_seq(
-        s: str, mask_tok_str: str, rem_freq: float = 0.33, rem_prob: float = 0.15,
-        rem_conseq_freq: float = 0.33, rem_conseq_prob: float = 0.2, rem_conseq_max_len: int = 20,
-        rem_conseq_max_times: int = 5,
-        ) -> Optional[MaskedSubstr]:
-    rv = np.random.rand()
-    # print(rv, rem_freq, rem_conseq_freq)
-    if rv < 1 - (rem_freq + rem_conseq_freq):
-        return
-    lines = NEWLINE_PAT.split(s)
-    res = []
-    n_total = 0
-    for line in lines:
-        if not line:
-            continue
-        words = STR_DELIM_PAT.split(line)
-        words = filter(None, words)
-        words = list(words)
-        if not words:
-            continue
-        res.append(words)
-        n_total += len(words)
+    def gen_words_inds(self) -> tuple[int, int]:
+        n_words = len(self.words_inds_lens)
+        if self.max_tgt_len <= 0:
+            max_len = int(self.max_tgt_len_fraq * n_words)
+        elif self.max_tgt_len_fraq <= 0:
+            max_len = self.max_tgt_len
+        else:
+            max_len = min(self.max_tgt_len, int(self.max_tgt_len_fraq * n_words))
+        max_len = min(max_len, int(0.5 * n_words))
+        max_len = max(max_len, 1)
+        cite_len = np.random.randint(1, max_len + 1)
+        n_rest = n_words - cite_len
+        assert n_rest > 0, f'n_rest (={n_rest}) must be positive.'
+        off = np.random.randint(n_rest + 1)
+        return off, cite_len
+    
+    def create_tgt_toks(self) -> tuple[list[int], list[int], list[int]]:
+        tags_toks = {tname: self.tkz(tval, add_special_tokens=False).input_ids for tname, tval in self.tags_dict.items()}
+        # print(len(self.words_inds_lens), self.words_inds_lens)
+        # print(self.off_words_tgt, self.n_words_tgt)
+        off_toks_tgt, n_toks_tgt = self.words_inds_lens[self.off_words_tgt][0], self.words_inds_lens[self.n_words_tgt][0]
+        i_tgt_beg, i_tgt_end = off_toks_tgt, off_toks_tgt + n_toks_tgt
+        tgt_pre_toks = self.toks_ids[:i_tgt_beg]
+        tgt_toks = self.toks_ids[i_tgt_beg:i_tgt_end]
+        tgt_nxt_toks = self.toks_ids[i_tgt_end:]
+        tag_beg_toks, tag_end_toks = tags_toks['cite_begin'], tags_toks['cite_end']
+        inp_toks = [*tgt_pre_toks, *tag_beg_toks, *tgt_toks, *tag_end_toks, *tgt_nxt_toks]
+        tgt_mask_toks = [self.tkz.mask_token_id] * len(tgt_toks)
+        inp_masked_toks = [*tgt_pre_toks, *tag_beg_toks, *tgt_mask_toks, *tag_end_toks, *tgt_nxt_toks]
+        return inp_toks, inp_masked_toks, tgt_toks
 
-    if n_total < 5:
-        return
-
-    if rv < 1 - rem_conseq_freq:
-        mask = np.random.rand(n_total) <= rem_prob
-    else:
-        rem_conseq_times = np.random.randint(1, rem_conseq_max_times + 1)
-        rem_interval = n_total // rem_conseq_times
-        off = 0
-        mask = np.full(n_total, False, dtype=bool)
-        while off < n_total:
-            n_rem = int(n_total * rem_conseq_prob)
-            n_rem = np.random.randint(2, max(n_rem, 2) + 1)
-            n_rem = min(n_rem, rem_conseq_max_len)
-            i = np.random.randint(off, off + rem_interval)
-            i1 = max(i - n_rem // 2, 0)
-            i2 = min(i1 + n_rem, n_total - 1)
-            if i1 < i2:
-                mask[i1:i2] = True
-            off = max(off + rem_interval, i2 + int(n_rem * 1.5))
-
-    im = 0
-    for words in res:
-        for iw in range(len(words)):
-            if mask[im]:
-                words[iw] = mask_tok_str
-            im += 1
-
-    return '\n'.join([' '.join(words) for words in res])
+    def get_tgt_strs(self) -> tuple[str, str, str]:
+        return self.tkz.decode(self.inp_toks), self.tkz.decode(self.inp_masked_toks), self.tkz.decode(self.tgt_toks)
 
 
 def run_get_wiki_iterators():
@@ -954,12 +981,22 @@ def run_mask_seq():
     print(s_masked)
 
 
-def run_tkz_words():
-    pass
+def run_words_tkz():
+    pretrained_model_name = 'bert-base-uncased'
+    tkz = AutoTokenizer.from_pretrained(pretrained_model_name)
+    s = 'This directory holds the individual version scripts. Users of other migration tools may notice that the files here don’t use ascending integers, and instead use a partial GUID approach.'
+    wt = WordToks(
+        tkz=tkz, s=s, max_tgt_len_fraq=0.5, max_tgt_len=15,
+    )
+    print(wt.s)
+    print(wt.toks_strs)
+    print(wt.inp_str)
+    print(wt.inp_masked_str)
+    print(wt.tgt_str)
 
 
 if __name__ == '__main__':
     # run_get_wiki_iterators()
-    run_mask_seq()
-    run_tkz_words()
+    # run_mask_seq()
+    run_words_tkz()
 
