@@ -51,6 +51,16 @@ class ArgsGenmixBertTrain(BaseModel):
     def mask_tgt(self) -> bool:
         return is_arg_true(mask_tgt_ARG[0], self.mask_tgt_str)
 
+    max_tgt_len_freq: float = Field(
+        ...,
+        description='Max target words ratio to the total number of words. When MAX_TGT_LEN > 0, the minimum of the resulting values will be taken.',
+        cli=('--max-tgt-len-freq',),
+    )
+    max_tgt_len: int = Field(
+        ...,
+        description='Max target words number. When MAX_TGT_LEN_FREQ > 0, the minimum of the resulting values will be taken.',
+        cli=('--max-tgt-len',),
+    )
     model_cfg_fpath: Path = Field(
         ...,
         description='Path to EncdecHg model config Yaml file.',
@@ -141,6 +151,7 @@ class ArgsGenmixBertTrain(BaseModel):
 
 def main(args: ArgsGenmixBertTrain) -> int:
     print(args)
+    mask_tgt = args.mask_tgt
 
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
@@ -154,7 +165,10 @@ def main(args: ArgsGenmixBertTrain) -> int:
         emb_agg_type=args.emb_agg_type, emb_exp_type=args.emb_exp_type,
     )
 
-    prefix, suffix = gen_prefpostfix_genmix_bert(model_cfg, train_ds_type=args.train_ds_type)
+    prefix, suffix = gen_prefpostfix_genmix_bert(
+        model_cfg, train_ds_type=args.train_ds_type, mask_tgt=mask_tgt, max_tgt_len_freq=args.max_tgt_len_freq,
+        max_tgt_len=args.max_tgt_len,
+    )
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
 
@@ -220,7 +234,6 @@ def main(args: ArgsGenmixBertTrain) -> int:
         )
     else:
         raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
-    mask_tgt = args.mask_tgt
 
     sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
@@ -254,7 +267,8 @@ def main(args: ArgsGenmixBertTrain) -> int:
             elif args.train_ds_type == GenmixTrainDsType.Wki:
                 item: WikiTuple = item
                 loss = model.run_on_wiki_txt(
-                    title=item.title, text=item.text, mask_tgt=mask_tgt,
+                    title=item.title, text=item.text, mask_tgt=mask_tgt, max_tgt_len_freq=args.max_tgt_len_freq,
+                    max_tgt_len=args.max_tgt_len,
                 )
             else:
                 raise
@@ -303,7 +317,8 @@ def main(args: ArgsGenmixBertTrain) -> int:
                 elif args.train_ds_type == GenmixTrainDsType.Wki:
                     item: WikiTuple = item
                     loss = model.run_on_wiki_txt(
-                        title=item.title, text=item.text, mask_tgt=mask_tgt,
+                        title=item.title, text=item.text, mask_tgt=mask_tgt, max_tgt_len_freq=args.max_tgt_len_freq,
+                        max_tgt_len=args.max_tgt_len,
                     )
                 else:
                     raise

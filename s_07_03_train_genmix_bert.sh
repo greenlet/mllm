@@ -24,8 +24,10 @@ emb_exp_type=mat
 #train_ds_type=qna
 #train_ds_type=sum
 train_ds_type=wki
-mask_tgt=false
-#mask_tgt=true
+#mask_tgt=false
+mask_tgt=true
+max_tgt_len_freq=0.2
+max_tgt_len=10
 max_inp_chunks=10
 max_out_toks=50
 bert_model_name=bert-base-uncased
@@ -62,6 +64,8 @@ python s_07_03_train_genmix_bert.py \
   --train-subdir "$train_subdir" \
   --train-ds-type "$train_ds_type" \
   --mask-tgt "$mask_tgt" \
+  --max-tgt-len-freq $max_tgt_len_freq \
+  --max-tgt-len $max_tgt_len \
   --model-cfg-fpath $model_cfg_fpath \
   --bert-model-name $bert_model_name \
   --inp-len $inp_len \

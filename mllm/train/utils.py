@@ -842,8 +842,10 @@ def get_wiki_iterator(ds: Dataset, inds: np.ndarray) -> WikiTxtGen:
 
 
 def get_wiki_iterators(data_path: Path, val_ratio: float = 0.05, shuffle: bool = False) -> tuple[WikiTxtGen, WikiTxtGen]:
-    wiki_ds_name, wiki_ds_subdir = '20200501.en', 'wikipedia'
-    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
+    # wiki_ds_name, wiki_ds_subdir = '20200501.en', 'wikipedia'
+    # dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
+    wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
+    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))
     ds = dss['train']
     n_docs = len(ds)
     print(f'Wikipedia {wiki_ds_name} docs: {n_docs}')
@@ -877,7 +879,7 @@ class WordToks:
     words_inds_lens: list[tuple[int, int]]
     tags_names: list[str] = ['cite_begin', 'cite_end']
     tags_dict: dict[str, str]
-    max_tgt_len_fraq: float
+    max_tgt_len_freq: float
     max_tgt_len: int
     off_words_tgt: int
     n_words_tgt: int
@@ -888,16 +890,18 @@ class WordToks:
     inp_masked_str: str
     tgt_str: str
 
-    def __init__(self, tkz: PreTrainedTokenizer, s: str, max_tgt_len_fraq: float = 0, max_tgt_len: int = 0):
+    def __init__(self, tkz: PreTrainedTokenizer, s: str, max_tgt_len_freq: float = 0, max_tgt_len: int = 0, max_toks: int = 0):
         self.tkz = tkz
         self.s = s
         self.toks_ids = self.tkz(s, add_special_tokens=False).input_ids
+        if max_toks > 0:
+            self.toks_ids = self.toks_ids[:max_toks]
         self.toks_strs = self.tkz.convert_ids_to_tokens(self.toks_ids)
         self.words_inds_lens = self.calc_inds_lens()
         self.tags_dict = {tname: f'<|{tname}|>' for tname in self.tags_names}
-        assert max_tgt_len_fraq > 0 or max_tgt_len > 0, \
-            f'At least max_tgt_len_fraq (={max_tgt_len_fraq}) or max_tgt_len (={max_tgt_len}) must be positive.'
-        self.max_tgt_len_fraq = max_tgt_len_fraq
+        assert max_tgt_len_freq > 0 or max_tgt_len > 0, \
+            f'At least max_tgt_len_freq (={max_tgt_len_freq}) or max_tgt_len (={max_tgt_len}) must be positive.'
+        self.max_tgt_len_freq = max_tgt_len_freq
         self.max_tgt_len = max_tgt_len
         self.off_words_tgt, self.n_words_tgt = self.gen_words_inds()
         self.inp_toks, self.inp_masked_toks, self.tgt_toks = self.create_tgt_toks()
@@ -925,16 +929,16 @@ class WordToks:
     def gen_words_inds(self) -> tuple[int, int]:
         n_words = len(self.words_inds_lens)
         if self.max_tgt_len <= 0:
-            max_len = int(self.max_tgt_len_fraq * n_words)
-        elif self.max_tgt_len_fraq <= 0:
+            max_len = int(self.max_tgt_len_freq * n_words)
+        elif self.max_tgt_len_freq <= 0:
             max_len = self.max_tgt_len
         else:
-            max_len = min(self.max_tgt_len, int(self.max_tgt_len_fraq * n_words))
+            max_len = min(self.max_tgt_len, int(self.max_tgt_len_freq * n_words))
         max_len = min(max_len, int(0.5 * n_words))
         max_len = max(max_len, 1)
         cite_len = np.random.randint(1, max_len + 1)
         n_rest = n_words - cite_len
-        assert n_rest > 0, f'n_rest (={n_rest}) must be positive.'
+        assert n_words > 1 and n_rest > 0, f'n_rest (={n_rest}) must be positive when n_words (={n_words}) > 1.'
         off = np.random.randint(n_rest + 1)
         return off, cite_len
     
@@ -986,13 +990,15 @@ def run_words_tkz():
     tkz = AutoTokenizer.from_pretrained(pretrained_model_name)
     s = 'This directory holds the individual version scripts. Users of other migration tools may notice that the files here don’t use ascending integers, and instead use a partial GUID approach.'
     wt = WordToks(
-        tkz=tkz, s=s, max_tgt_len_fraq=0.5, max_tgt_len=15,
+        tkz=tkz, s=s, max_tgt_len_freq=0.5, max_tgt_len=15,
     )
     print(wt.s)
     print(wt.toks_strs)
     print(wt.inp_str)
     print(wt.inp_masked_str)
     print(wt.tgt_str)
+    print(tkz(wt.tags_dict['cite_begin'], add_special_tokens=False).input_ids)
+    print(tkz(wt.tags_dict['cite_end'], add_special_tokens=False).input_ids)
 
 
 if __name__ == '__main__':

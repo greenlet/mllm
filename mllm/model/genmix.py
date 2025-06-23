@@ -114,16 +114,27 @@ class GenmixBert(nn.Module):
         return loss
 
     def _to_toks(self, s: str, inp_len: Optional[int] = None) -> torch.Tensor:
-        t = self.tkz(s, return_tensors='pt').input_ids.to(self.device)
-        assert t[0][0] == self.tkz.cls_token_id and t[0][-1] == self.tkz.sep_token_id
-        if inp_len is not None:
-            t = t.reshape(-1)
-            mod = len(t) % inp_len
-            if mod > 0:
-                pad_size = inp_len - mod
-                t = F.pad(t, (0, pad_size), 'constant', self.tkz.pad_token_id)
-            t = t.reshape(-1, inp_len)
-        return t
+        if inp_len is None:
+            t = self.tkz(s, return_tensors='pt').input_ids.to(self.device)
+            assert t[0][0] == self.tkz.cls_token_id and t[0][-1] == self.tkz.sep_token_id
+            return t
+        input_ids = self.tkz(s).input_ids
+        assert input_ids[0] == self.tkz.cls_token_id and input_ids[-1] == self.tkz.sep_token_id
+        # Excluding cls and sep tokens
+        input_ids = input_ids[1:-1]
+        chunks = []
+        while input_ids:
+            n = min(len(input_ids), inp_len - 2)
+            ids = input_ids[:n]
+            chunks.append([self.tkz.cls_token_id, *ids, self.tkz.sep_token_id])
+            input_ids = input_ids[n:]
+
+        res = np.full((len(chunks), inp_len), self.tkz.pad_token_id)
+        for i in range(len(chunks)):
+            ch = chunks[i]
+            res[i][:len(ch)] = ch
+        res = torch.from_numpy(res).to(self.device)
+        return res
 
     def context_question_to_emb(self, context: str, question: str) -> torch.Tensor:
         # [n_ctx, inp_len]
@@ -322,9 +333,12 @@ class GenmixBert(nn.Module):
         out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, max_length=max_len)
         return out_toks
 
-    def run_on_wiki_txt(self, title: str, text: str, mask_tgt: bool, max_tgt_len_fraq: float = 0.2, max_tgt_len: int = 10) -> torch.Tensor:
+    def run_on_wiki_txt(self, title: str, text: str, mask_tgt: bool, max_tgt_len_freq: float = 0.2, max_tgt_len: int = 10) -> torch.Tensor:
+        max_toks = 0
+        if self.cfg.max_inp_chunks > 0:
+            max_toks = (self.cfg.inp_len - 2) * self.cfg.max_inp_chunks - 17 - 14 - 5
         wt = WordToks(
-            tkz=self.tkz, s=text, max_tgt_len_fraq=max_tgt_len_fraq, max_tgt_len=max_tgt_len,
+            tkz=self.tkz, s=text, max_tgt_len_freq=max_tgt_len_freq, max_tgt_len=max_tgt_len, max_toks=max_toks,
         )
         tags_list_str = ', '.join(wt.tags_names)
         inp_str = wt.inp_masked_str if mask_tgt else wt.inp_str
@@ -332,14 +346,13 @@ class GenmixBert(nn.Module):
         emb = self.prompt_to_emb(prompt=prompt)
 
         # [1, n_sum]
-        sum_toks = self._to_toks(summary)
-        if 0 < self.cfg.max_out_toks < sum_toks.shape[1]:
-            sum_toks = sum_toks[:, :self.cfg.max_out_toks]
+        cite_toks = self._to_toks(wt.tgt_str)
+
         # [n_sum]
-        sum_toks = sum_toks[0]
+        cite_toks = cite_toks[0]
         # tgt_len = n_sum - 1
         # [tgt_len]
-        target_ids = sum_toks[:-1]
+        target_ids = cite_toks[:-1]
         if target_ids[0] != self.tkz.cls_token_id:
             target_ids = F.pad(target_ids, (1, 0), 'constant', self.tkz.cls_token_id)
         # [1, tgt_len]
@@ -352,7 +365,7 @@ class GenmixBert(nn.Module):
         # [tgt_len, n_vocab]
         logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)
         # [tgt_len]
-        labels = sum_toks[1:]
+        labels = cite_toks[1:]
         # [tgt_len]
         loss = F.cross_entropy(logits, labels, reduction='none')
         # The last one is sep_token_id

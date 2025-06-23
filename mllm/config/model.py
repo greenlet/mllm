@@ -975,7 +975,10 @@ def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg, train_ds_type: Optiona
     return prefix, postfix
 
 
-def gen_prefpostfix_genmix_bert(model_cfg: GenmixBertCfg, train_ds_type: Optional[GenmixTrainDsType] = None) -> tuple[str, str]:
+def gen_prefpostfix_genmix_bert(
+        model_cfg: GenmixBertCfg, train_ds_type: GenmixTrainDsType, mask_tgt: bool, max_tgt_len_freq: float,
+        max_tgt_len: int,
+) -> tuple[str, str]:
     prefix, postfix_parts = f'genmixbert', []
 
     bert_str = model_cfg.pretrained_model_name.replace('_', '_')
@@ -988,8 +991,13 @@ def gen_prefpostfix_genmix_bert(model_cfg: GenmixBertCfg, train_ds_type: Optiona
 
     postfix_parts.append(f'inp{model_cfg.inp_len}')
 
-    if train_ds_type is not None:
-        postfix_parts.append(f'ds{train_ds_type.value.capitalize()}')
+    postfix_parts.append(f'ds{train_ds_type.value.capitalize()}')
+
+    if train_ds_type == GenmixTrainDsType.Wki:
+        mask_tgt_str = str(mask_tgt)[0]
+        postfix_parts.append(f'msktgt{mask_tgt_str}')
+        postfix_parts.append(f'msklf{max_tgt_len_freq}')
+        postfix_parts.append(f'mskl{max_tgt_len}')
 
     if model_cfg.max_inp_chunks > 0:
         postfix_parts.append(f'mxi{model_cfg.max_inp_chunks}')
