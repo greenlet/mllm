@@ -938,7 +938,7 @@ class WordToks:
         max_len = max(max_len, 1)
         cite_len = np.random.randint(1, max_len + 1)
         n_rest = n_words - cite_len
-        assert n_words > 1 and n_rest > 0, f'n_rest (={n_rest}) must be positive when n_words (={n_words}) > 1.'
+        assert n_words == 1 or n_rest > 0, f'n_rest (={n_rest}) must be positive when n_words (={n_words}) > 1.'
         off = np.random.randint(n_rest + 1)
         return off, cite_len
     
@@ -946,8 +946,8 @@ class WordToks:
         tags_toks = {tname: self.tkz(tval, add_special_tokens=False).input_ids for tname, tval in self.tags_dict.items()}
         # print(len(self.words_inds_lens), self.words_inds_lens)
         # print(self.off_words_tgt, self.n_words_tgt)
-        off_toks_tgt, n_toks_tgt = self.words_inds_lens[self.off_words_tgt][0], self.words_inds_lens[self.n_words_tgt][0]
-        i_tgt_beg, i_tgt_end = off_toks_tgt, off_toks_tgt + n_toks_tgt
+        i_tgt_beg = self.words_inds_lens[self.off_words_tgt][0]
+        i_tgt_end = sum(self.words_inds_lens[self.off_words_tgt + self.n_words_tgt])
         tgt_pre_toks = self.toks_ids[:i_tgt_beg]
         tgt_toks = self.toks_ids[i_tgt_beg:i_tgt_end]
         tgt_nxt_toks = self.toks_ids[i_tgt_end:]

@@ -71,6 +71,8 @@ class GenmixBert(nn.Module):
             pass
         elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat:
             in_features = self.n_first_embs * self.cfg.d_model
+            if self.cfg.max_inp_chunks > 0:
+                in_features *= self.cfg.max_inp_chunks
             out_features = self.n_second_embs * self.cfg.d_model
             self.emb_exp = nn.Linear(in_features, out_features, bias=False, device=self.device)
         else:
@@ -233,14 +235,24 @@ class GenmixBert(nn.Module):
             assert self.n_first_embs == self.n_second_embs, f'n_first_embs (={self.n_first_embs}) != n_second_embs (={self.n_second_embs})'
             pass
         elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat:
-            # [1, n_prompt, n_first_embs * d_model]
-            emb = emb.reshape((1, n_prompt, self.n_first_embs * self.cfg.d_model))
-            # [1, n_prompt, n_second_embs * d_model]
-            emb = self.emb_exp(emb)
-            # [1, n_prompt, n_second_embs, d_model]
-            emb = emb.reshape(1, n_prompt, self.n_second_embs, self.cfg.d_model)
-            # [1, n_second_embs, d_model]
-            emb = torch.mean(emb, dim=1, keepdim=False)
+            if self.cfg.max_inp_chunks > 0:
+                pad_size = (self.cfg.max_inp_chunks - n_prompt) * self.n_first_embs
+                emb = F.pad(emb, (0, 0, 0, pad_size), 'constant', 0)
+                # [1, max_inp_chunks * n_first_embs * d_model]
+                emb = emb.reshape((1, self.cfg.max_inp_chunks * self.n_first_embs * self.cfg.d_model))
+                # [1, n_second_embs * d_model]
+                emb = self.emb_exp(emb)
+                # [1, n_second_embs, d_model]
+                emb = emb.reshape((1, self.n_second_embs, self.cfg.d_model))
+            else:
+                # [1, n_prompt, n_first_embs * d_model]
+                emb = emb.reshape((1, n_prompt, self.n_first_embs * self.cfg.d_model))
+                # [1, n_prompt, n_second_embs * d_model]
+                emb = self.emb_exp(emb)
+                # [1, n_prompt, n_second_embs, d_model]
+                emb = emb.reshape((1, n_prompt, self.n_second_embs, self.cfg.d_model))
+                # [1, n_second_embs, d_model]
+                emb = torch.mean(emb, dim=1, keepdim=False)
         else:
             raise
 
@@ -340,7 +352,8 @@ class GenmixBert(nn.Module):
         wt = WordToks(
             tkz=self.tkz, s=text, max_tgt_len_freq=max_tgt_len_freq, max_tgt_len=max_tgt_len, max_toks=max_toks,
         )
-        tags_list_str = ', '.join(wt.tags_names)
+        # tags_list_str = ', '.join(wt.tags_names)
+        tags_list_str = ', '.join(wt.tags_dict.values())
         inp_str = wt.inp_masked_str if mask_tgt else wt.inp_str
         prompt = f'Cite the text between the tags: {tags_list_str}. Text: {inp_str}'
         emb = self.prompt_to_emb(prompt=prompt)
