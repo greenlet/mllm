@@ -39,6 +39,7 @@ class GenmixBert(nn.Module):
             self.cfg.pretrained_model_name, add_cross_attention=True, is_decoder=True,
             bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
         )
+        del encoder.embeddings.word_embeddings
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
 
         if self.cfg.n_first_embs > 0:
@@ -69,12 +70,17 @@ class GenmixBert(nn.Module):
 
         if self.cfg.emb_exp_type == GenmixEmbExpType.Non:
             pass
-        elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat:
+        elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat or self.cfg.emb_exp_type == GenmixEmbExpType.Mtb:
             in_features = self.n_first_embs * self.cfg.d_model
-            if self.cfg.max_inp_chunks > 0:
-                in_features *= self.cfg.max_inp_chunks
             out_features = self.n_second_embs * self.cfg.d_model
-            self.emb_exp = nn.Linear(in_features, out_features, bias=False, device=self.device)
+            bias = self.cfg.emb_exp_type == GenmixEmbExpType.Mtb
+            if self.cfg.max_inp_chunks > 0:
+                self.emb_exp = nn.ModuleList([
+                    nn.Linear(in_features, out_features, bias=bias, device=self.device)
+                    for _ in range(self.cfg.max_inp_chunks)
+                ])
+            else:
+                self.emb_exp = nn.Linear(in_features, out_features, bias=bias, device=self.device)
         else:
             raise Exception(f'Embedding expansion type {self.cfg.emb_exp_type} is not supported')
 
@@ -234,16 +240,22 @@ class GenmixBert(nn.Module):
         if self.cfg.emb_exp_type == GenmixEmbExpType.Non:
             assert self.n_first_embs == self.n_second_embs, f'n_first_embs (={self.n_first_embs}) != n_second_embs (={self.n_second_embs})'
             pass
-        elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat:
+        elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat or self.cfg.emb_exp_type == GenmixEmbExpType.Mtb:
             if self.cfg.max_inp_chunks > 0:
-                pad_size = (self.cfg.max_inp_chunks - n_prompt) * self.n_first_embs
-                emb = F.pad(emb, (0, 0, 0, pad_size), 'constant', 0)
-                # [1, max_inp_chunks * n_first_embs * d_model]
-                emb = emb.reshape((1, self.cfg.max_inp_chunks * self.n_first_embs * self.cfg.d_model))
+                emb = emb.reshape((1, n_prompt, self.n_first_embs * self.cfg.d_model))
+                emb_res = None
+                for i in range(n_prompt):
+                    emb_exp: nn.Linear = self.emb_exp[i]
+                    # [1, n_first_embs * d_model] -> [1, n_second_embs * d_model]
+                    emb_i = emb_exp(emb[:, i])
+                    if emb_res is None:
+                        emb_res = emb_i
+                    else:
+                        emb_res = emb_res + emb_i
                 # [1, n_second_embs * d_model]
-                emb = self.emb_exp(emb)
+                emb_res = emb_res / n_prompt
                 # [1, n_second_embs, d_model]
-                emb = emb.reshape((1, self.n_second_embs, self.cfg.d_model))
+                emb = emb_res.reshape((1, self.n_second_embs, self.cfg.d_model))
             else:
                 # [1, n_prompt, n_first_embs * d_model]
                 emb = emb.reshape((1, n_prompt, self.n_first_embs * self.cfg.d_model))

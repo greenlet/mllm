@@ -947,7 +947,7 @@ class WordToks:
         # print(len(self.words_inds_lens), self.words_inds_lens)
         # print(self.off_words_tgt, self.n_words_tgt)
         i_tgt_beg = self.words_inds_lens[self.off_words_tgt][0]
-        i_tgt_end = sum(self.words_inds_lens[self.off_words_tgt + self.n_words_tgt])
+        i_tgt_end = sum(self.words_inds_lens[self.off_words_tgt + self.n_words_tgt - 1])
         tgt_pre_toks = self.toks_ids[:i_tgt_beg]
         tgt_toks = self.toks_ids[i_tgt_beg:i_tgt_end]
         tgt_nxt_toks = self.toks_ids[i_tgt_end:]

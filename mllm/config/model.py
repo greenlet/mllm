@@ -338,6 +338,7 @@ class GenmixEmbAggType(str, Enum):
 class GenmixEmbExpType(str, Enum):
     Non = 'non'
     Mat = 'mat'
+    Mtb = 'mtb'
 
 
 class GenmixBertCfg(BaseModel):
@@ -1002,7 +1003,7 @@ def gen_prefpostfix_genmix_bert(
     if model_cfg.max_inp_chunks > 0:
         postfix_parts.append(f'mxi{model_cfg.max_inp_chunks}')
 
-    if model_cfg.max_out_toks > 0:
+    if model_cfg.max_out_toks > 0 and train_ds_type != GenmixTrainDsType.Wki:
         postfix_parts.append(f'mxo{model_cfg.max_out_toks}')
 
     postfix_parts.append(f'nfem{model_cfg.n_first_embs}')
