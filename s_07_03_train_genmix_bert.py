@@ -190,7 +190,6 @@ def main(args: ArgsGenmixBertTrain) -> int:
 
     print(model_cfg)
     model = GenmixBert(model_cfg, device=device)
-    tkz = model.tkz
 
     if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'
@@ -207,7 +206,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
             if k.startswith('dec_pyr.'):
                 continue
             model_chkpt[k] = v
-        model.enc_model.load_state_dict(model_chkpt, strict=True)
+        model.enc.load_state_dict(model_chkpt, strict=True)
         del pretrained_checkpoint
         del model_chkpt
 

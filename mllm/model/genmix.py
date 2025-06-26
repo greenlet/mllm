@@ -74,7 +74,7 @@ class GenmixBert(nn.Module):
             in_features = self.n_first_embs * self.cfg.d_model
             out_features = self.n_second_embs * self.cfg.d_model
             bias = self.cfg.emb_exp_type == GenmixEmbExpType.Mtb
-            if self.cfg.max_inp_chunks > 0:
+            if self.cfg.max_inp_chunks > 0 and False:
                 self.emb_exp = nn.ModuleList([
                     nn.Linear(in_features, out_features, bias=bias, device=self.device)
                     for _ in range(self.cfg.max_inp_chunks)
@@ -241,7 +241,7 @@ class GenmixBert(nn.Module):
             assert self.n_first_embs == self.n_second_embs, f'n_first_embs (={self.n_first_embs}) != n_second_embs (={self.n_second_embs})'
             pass
         elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat or self.cfg.emb_exp_type == GenmixEmbExpType.Mtb:
-            if self.cfg.max_inp_chunks > 0:
+            if self.cfg.max_inp_chunks > 0 and False:
                 emb = emb.reshape((1, n_prompt, self.n_first_embs * self.cfg.d_model))
                 emb_res = None
                 for i in range(n_prompt):
