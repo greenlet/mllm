@@ -978,7 +978,7 @@ def gen_prefpostfix_encmix_bert(model_cfg: EncmixBertCfg, train_ds_type: Optiona
 
 def gen_prefpostfix_genmix_bert(
         model_cfg: GenmixBertCfg, train_ds_type: GenmixTrainDsType, mask_tgt: bool, max_tgt_len_freq: float,
-        max_tgt_len: int,
+        max_tgt_len: int, pred_tgt_all: bool,
 ) -> tuple[str, str]:
     prefix, postfix_parts = f'genmixbert', []
 
@@ -999,6 +999,9 @@ def gen_prefpostfix_genmix_bert(
         postfix_parts.append(f'msktgt{mask_tgt_str}')
         postfix_parts.append(f'msklf{max_tgt_len_freq}')
         postfix_parts.append(f'mskl{max_tgt_len}')
+        pred_tgt_all_str = str(pred_tgt_all)[0]
+        postfix_parts.append(f'tgtall{pred_tgt_all_str}')
+
 
     if model_cfg.max_inp_chunks > 0:
         postfix_parts.append(f'mxi{model_cfg.max_inp_chunks}')

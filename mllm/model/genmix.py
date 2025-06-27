@@ -357,7 +357,10 @@ class GenmixBert(nn.Module):
         out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, max_length=max_len)
         return out_toks
 
-    def run_on_wiki_txt(self, title: str, text: str, mask_tgt: bool, max_tgt_len_freq: float = 0.2, max_tgt_len: int = 10) -> torch.Tensor:
+    def run_on_wiki_txt(
+            self, title: str, text: str, mask_tgt: bool, max_tgt_len_freq: float = 0.2, max_tgt_len: int = 10,
+            pred_tgt_all: bool = False,
+        ) -> torch.Tensor:
         max_toks = 0
         if self.cfg.max_inp_chunks > 0:
             max_toks = (self.cfg.inp_len - 2) * self.cfg.max_inp_chunks - 17 - 14 - 5
@@ -369,38 +372,71 @@ class GenmixBert(nn.Module):
         inp_str = wt.inp_masked_str if mask_tgt else wt.inp_str
         prompt = f'Cite the text between the tags: {tags_list_str}. Text: {inp_str}'
         emb = self.prompt_to_emb(prompt=prompt)
+        tgt_str = wt.tgt_str
 
         # [1, n_sum]
-        cite_toks = self._to_toks(wt.tgt_str)
+        cite_toks = self._to_toks(tgt_str)
 
-        # [n_sum]
-        cite_toks = cite_toks[0]
-        # tgt_len = n_sum - 1
-        # [tgt_len]
-        target_ids = cite_toks[:-1]
-        if target_ids[0] != self.tkz.cls_token_id:
-            target_ids = F.pad(target_ids, (1, 0), 'constant', self.tkz.cls_token_id)
-        # [1, tgt_len]
-        target_ids = target_ids.unsqueeze(0)
+        if pred_tgt_all:
+            # [n_sum]
+            cite_toks = cite_toks[0]
+            i1, i2 = 0, len(cite_toks)
+            if cite_toks[0] == self.tkz.cls_token_id:
+                i1 += 1
+            if cite_toks[-1] == self.tkz.sep_token_id:
+                i2 -= 1
+            # [1, tgt_len]
+            cite_toks = cite_toks[i1:i2].unsqueeze(0)
+            # [1, tgt_len]
+            inp_ids = torch.ones_like(cite_toks) * self.tkz.mask_token_id
+            # [1, tgt_len]
+            inp_mask = inp_ids > 0
+            gen_out: Seq2SeqLMOutput = self.gen(
+                inputs_embeds=emb, decoder_input_ids=inp_ids, decoder_attention_mask=inp_mask, use_cache=False,
+            )
+            # [1, tgt_len, n_vocab]
+            gen_logits = gen_out.logits
 
-        gen_out: Seq2SeqLMOutput = self.gen(inputs_embeds=emb, decoder_input_ids=target_ids, use_cache=False)
-        # [1, tgt_len, n_vocab]
-        gen_logits = gen_out.logits
-
-        # [tgt_len, n_vocab]
-        logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)
-        # [tgt_len]
-        labels = cite_toks[1:]
-        # [tgt_len]
-        loss = F.cross_entropy(logits, labels, reduction='none')
-        # The last one is sep_token_id
-        assert loss.shape[0] > 1
-        if labels[-1] == self.tkz.sep_token_id:
-            loss_1, loss_2 = loss[:-1].mean(), loss[-1]
-            w1, w2 = 50, 1
-            loss = (loss_1 * w1 + loss_2 * w2) / (w1 + w2)
-        else:
+            # [tgt_len, n_vocab]
+            logits = gen_logits[0]
+            # [tgt_len]
+            labels = cite_toks[0]
+            # [tgt_len]
+            loss = F.cross_entropy(logits, labels, reduction='none')
+            # The last one is sep_token_id
+            assert loss.shape[0] > 0
             loss = loss.mean()
+        else:
+            # [n_sum]
+            cite_toks = cite_toks[0]
+            # tgt_len = n_sum - 1
+            # [tgt_len]
+            target_ids = cite_toks[:-1]
+            if target_ids[0] != self.tkz.cls_token_id:
+                target_ids = F.pad(target_ids, (1, 0), 'constant', self.tkz.cls_token_id)
+            # [1, tgt_len]
+            target_ids = target_ids.unsqueeze(0)
+
+            gen_out: Seq2SeqLMOutput = self.gen(inputs_embeds=emb, decoder_input_ids=target_ids, use_cache=False)
+            # [1, tgt_len, n_vocab]
+            gen_logits = gen_out.logits
+
+            # [tgt_len, n_vocab]
+            logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)
+            # [tgt_len]
+            labels = cite_toks[1:]
+
+            # [tgt_len]
+            loss = F.cross_entropy(logits, labels, reduction='none')
+            # The last one is sep_token_id
+            assert loss.shape[0] > 1
+            if labels[-1] == self.tkz.sep_token_id:
+                loss_1, loss_2 = loss[:-1].mean(), loss[-1]
+                w1, w2 = 50, 1
+                loss = (loss_1 * w1 + loss_2 * w2) / (w1 + w2)
+            else:
+                loss = loss.mean()
+
         return loss
 
 

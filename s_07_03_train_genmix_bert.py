@@ -21,6 +21,7 @@ from mllm.train.utils import find_create_train_path, log_weights_grads_stats, ge
 
 
 mask_tgt_ARG = '--mask-tgt', 'Masks textual target'
+pred_tgt_all_ARG = '--pred-tgt-all', 'Predict all target tokens at once'
 
 
 class ArgsGenmixBertTrain(BaseModel):
@@ -61,6 +62,12 @@ class ArgsGenmixBertTrain(BaseModel):
         description='Max target words number. When MAX_TGT_LEN_FREQ > 0, the minimum of the resulting values will be taken.',
         cli=('--max-tgt-len',),
     )
+
+    pred_tgt_all_str: str = create_bool_str_field(*pred_tgt_all_ARG)
+    @property
+    def pred_tgt_all(self) -> bool:
+        return is_arg_true(pred_tgt_all_ARG[0], self.pred_tgt_all_str)
+
     model_cfg_fpath: Path = Field(
         ...,
         description='Path to EncdecHg model config Yaml file.',
@@ -151,7 +158,7 @@ class ArgsGenmixBertTrain(BaseModel):
 
 def main(args: ArgsGenmixBertTrain) -> int:
     print(args)
-    mask_tgt = args.mask_tgt
+    mask_tgt, pred_tgt_all = args.mask_tgt, args.pred_tgt_all
 
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
@@ -167,7 +174,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
 
     prefix, suffix = gen_prefpostfix_genmix_bert(
         model_cfg, train_ds_type=args.train_ds_type, mask_tgt=mask_tgt, max_tgt_len_freq=args.max_tgt_len_freq,
-        max_tgt_len=args.max_tgt_len,
+        max_tgt_len=args.max_tgt_len, pred_tgt_all=pred_tgt_all,
     )
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
@@ -267,7 +274,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
                 item: WikiTuple = item
                 loss = model.run_on_wiki_txt(
                     title=item.title, text=item.text, mask_tgt=mask_tgt, max_tgt_len_freq=args.max_tgt_len_freq,
-                    max_tgt_len=args.max_tgt_len,
+                    max_tgt_len=args.max_tgt_len, pred_tgt_all=pred_tgt_all,
                 )
             else:
                 raise
@@ -317,7 +324,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
                     item: WikiTuple = item
                     loss = model.run_on_wiki_txt(
                         title=item.title, text=item.text, mask_tgt=mask_tgt, max_tgt_len_freq=args.max_tgt_len_freq,
-                        max_tgt_len=args.max_tgt_len,
+                        max_tgt_len=args.max_tgt_len, pred_tgt_all=pred_tgt_all,
                     )
                 else:
                     raise

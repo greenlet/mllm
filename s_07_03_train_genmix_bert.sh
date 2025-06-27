@@ -34,6 +34,8 @@ max_tgt_len_freq=0.2
 max_tgt_len=10
 max_inp_chunks=1
 max_out_toks=50
+#pred_tgt_all=false
+pred_tgt_all=true
 
 #max_inp_chunks=10
 #n_first_embs=5
@@ -74,6 +76,7 @@ python s_07_03_train_genmix_bert.py \
   --mask-tgt "$mask_tgt" \
   --max-tgt-len-freq $max_tgt_len_freq \
   --max-tgt-len $max_tgt_len \
+  --pred-tgt-all $pred_tgt_all \
   --model-cfg-fpath $model_cfg_fpath \
   --bert-model-name $bert_model_name \
   --inp-len $inp_len \
