@@ -5,7 +5,7 @@ import tensorflow as tf
 from tensorflow_text import BertTokenizer as BertTokenizerLayer
 from tensorflow_text import FastBertTokenizer, ShrinkLongestTrimmer, case_fold_utf8, combine_segments, pad_model_inputs
 
-from ...modeling_tf_utils import keras
+from transformers.modeling_tf_utils import keras
 from .tokenization_bert import BertTokenizer
 
 

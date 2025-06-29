@@ -25,13 +25,13 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 
-from ...configuration_utils import PretrainedConfig
-from ...generation import GenerationMixin
-from ...modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
-from ...modeling_utils import PreTrainedModel
-from ...utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
-from ..auto.configuration_auto import AutoConfig
-from ..auto.modeling_auto import AutoModel, AutoModelForCausalLM
+from transformers.configuration_utils import PretrainedConfig
+from transformers.generation import GenerationMixin
+from transformers.modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
+from transformers.modeling_utils import PreTrainedModel
+from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
+from transformers import AutoConfig
+from transformers import AutoModel, AutoModelForCausalLM
 from .configuration_encoder_decoder import EncoderDecoderConfig
 
 
@@ -210,12 +210,12 @@ class EncoderDecoderModel(PreTrainedModel, GenerationMixin):
         super().__init__(config)
 
         if encoder is None:
-            from ..auto.modeling_auto import AutoModel
+            from transformers import AutoModel
 
             encoder = AutoModel.from_config(config.encoder)
 
         if decoder is None:
-            from ..auto.modeling_auto import AutoModelForCausalLM
+            from transformers import AutoModelForCausalLM
 
             decoder = AutoModelForCausalLM.from_config(config.decoder)
 

@@ -272,7 +272,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
                 loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
             elif args.train_ds_type == GenmixTrainDsType.Wki:
                 item: WikiTuple = item
-                loss = model.run_on_wiki_txt(
+                loss = model.run_on_wiki_txt_all(
                     title=item.title, text=item.text, mask_tgt=mask_tgt, max_tgt_len_freq=args.max_tgt_len_freq,
                     max_tgt_len=args.max_tgt_len, pred_tgt_all=pred_tgt_all,
                 )
@@ -322,7 +322,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
                     loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
                 elif args.train_ds_type == GenmixTrainDsType.Wki:
                     item: WikiTuple = item
-                    loss = model.run_on_wiki_txt(
+                    loss = model.run_on_wiki_txt_all(
                         title=item.title, text=item.text, mask_tgt=mask_tgt, max_tgt_len_freq=args.max_tgt_len_freq,
                         max_tgt_len=args.max_tgt_len, pred_tgt_all=pred_tgt_all,
                     )

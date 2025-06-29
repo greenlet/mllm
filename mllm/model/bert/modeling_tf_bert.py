@@ -25,8 +25,8 @@ from typing import Dict, Optional, Tuple, Union
 import numpy as np
 import tensorflow as tf
 
-from ...activations_tf import get_tf_activation
-from ...modeling_tf_outputs import (
+from transformers.activations_tf import get_tf_activation
+from transformers.modeling_tf_outputs import (
     TFBaseModelOutputWithPastAndCrossAttentions,
     TFBaseModelOutputWithPoolingAndCrossAttentions,
     TFCausalLMOutputWithCrossAttentions,
@@ -37,7 +37,7 @@ from ...modeling_tf_outputs import (
     TFSequenceClassifierOutput,
     TFTokenClassifierOutput,
 )
-from ...modeling_tf_utils import (
+from transformers.modeling_tf_utils import (
     TFCausalLanguageModelingLoss,
     TFMaskedLanguageModelingLoss,
     TFModelInputType,
@@ -52,8 +52,8 @@ from ...modeling_tf_utils import (
     keras_serializable,
     unpack_inputs,
 )
-from ...tf_utils import check_embeddings_within_bounds, shape_list, stable_softmax
-from ...utils import (
+from transformers.tf_utils import check_embeddings_within_bounds, shape_list, stable_softmax
+from transformers.utils import (
     ModelOutput,
     add_code_sample_docstrings,
     add_start_docstrings,

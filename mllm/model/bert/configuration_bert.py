@@ -18,9 +18,9 @@
 from collections import OrderedDict
 from typing import Mapping
 
-from ...configuration_utils import PretrainedConfig
-from ...onnx import OnnxConfig
-from ...utils import logging
+from transformers.configuration_utils import PretrainedConfig
+from transformers.onnx import OnnxConfig
+from transformers.utils import logging
 
 
 logger = logging.get_logger(__name__)

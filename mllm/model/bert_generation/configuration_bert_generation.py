@@ -14,7 +14,7 @@
 # limitations under the License.
 """BertGeneration model configuration"""
 
-from ...configuration_utils import PretrainedConfig
+from transformers.configuration_utils import PretrainedConfig
 
 
 class BertGenerationConfig(PretrainedConfig):

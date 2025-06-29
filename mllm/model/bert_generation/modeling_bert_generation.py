@@ -21,12 +21,12 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 
-from ...activations import ACT2FN
-from ...generation import GenerationMixin
-from ...modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
-from ...modeling_utils import PreTrainedModel
-from ...pytorch_utils import apply_chunking_to_forward, find_pruneable_heads_and_indices, prune_linear_layer
-from ...utils import (
+from transformers.activations import ACT2FN
+from transformers.generation import GenerationMixin
+from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
+from transformers.modeling_utils import PreTrainedModel
+from transformers.pytorch_utils import apply_chunking_to_forward, find_pruneable_heads_and_indices, prune_linear_layer
+from transformers.utils import (
     add_code_sample_docstrings,
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
@@ -562,7 +562,7 @@ class BertGenerationEmbeddings(nn.Module):
             "position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)), persistent=False
         )
 
-    def forward(self, input_ids=None, position_ids=None, inputs_embeds=None, past_key_values_length=0):
+    def forward(self, input_ids=None, position_ids=None, inputs_embeds=None, past_key_values_length=0, do_not_transform_embeds: Optional[bool] = None):
         if input_ids is not None:
             input_shape = input_ids.size()
         else:
@@ -578,8 +578,9 @@ class BertGenerationEmbeddings(nn.Module):
         position_embeddings = self.position_embeddings(position_ids)
 
         embeddings = inputs_embeds + position_embeddings
-        embeddings = self.LayerNorm(embeddings)
-        embeddings = self.dropout(embeddings)
+        if not do_not_transform_embeds:
+            embeddings = self.LayerNorm(embeddings)
+            embeddings = self.dropout(embeddings)
         return embeddings
 
 
@@ -735,6 +736,7 @@ class BertGenerationEncoder(BertGenerationPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        do_not_transform_embeds: Optional[bool] = None,
         **kwargs,  # NOOP kwargs, for now
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
         r"""
@@ -812,6 +814,7 @@ class BertGenerationEncoder(BertGenerationPreTrainedModel):
             position_ids=position_ids,
             inputs_embeds=inputs_embeds,
             past_key_values_length=past_key_values_length,
+            do_not_transform_embeds=do_not_transform_embeds,
         )
 
         encoder_outputs = self.encoder(

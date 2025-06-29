@@ -25,11 +25,11 @@ from flax.traverse_util import flatten_dict, unflatten_dict
 from jax import lax
 from jax.random import PRNGKey
 
-from ...modeling_flax_outputs import FlaxBaseModelOutput, FlaxCausalLMOutputWithCrossAttentions, FlaxSeq2SeqLMOutput
-from ...modeling_flax_utils import FlaxPreTrainedModel
-from ...utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
-from ..auto.configuration_auto import AutoConfig
-from ..auto.modeling_flax_auto import FlaxAutoModel, FlaxAutoModelForCausalLM
+from transformers.modeling_flax_outputs import FlaxBaseModelOutput, FlaxCausalLMOutputWithCrossAttentions, FlaxSeq2SeqLMOutput
+from transformers.modeling_flax_utils import FlaxPreTrainedModel
+from transformers.utils import add_start_docstrings, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
+from transformers import AutoConfig
+from transformers import FlaxAutoModel, FlaxAutoModelForCausalLM
 from .configuration_encoder_decoder import EncoderDecoderConfig
 
 
@@ -212,7 +212,7 @@ class FlaxEncoderDecoderModule(nn.Module):
         decoder_config = self.config.decoder
 
         # Copied from `modeling_hybrid_clip.py` with modifications.
-        from ...models.auto.modeling_flax_auto import FLAX_MODEL_FOR_CAUSAL_LM_MAPPING, FLAX_MODEL_MAPPING
+        from transformers.models.auto.modeling_flax_auto import FLAX_MODEL_FOR_CAUSAL_LM_MAPPING, FLAX_MODEL_MAPPING
 
         encoder_module = FLAX_MODEL_MAPPING[encoder_config.__class__].module_class
         decoder_module = FLAX_MODEL_FOR_CAUSAL_LM_MAPPING[decoder_config.__class__].module_class

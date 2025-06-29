@@ -15,9 +15,9 @@
 # limitations under the License.
 
 
-from ...configuration_utils import PretrainedConfig
-from ...utils import logging
-from ..auto import AutoConfig
+from transformers.configuration_utils import PretrainedConfig
+from transformers.utils import logging
+from transformers import AutoConfig
 
 
 logger = logging.get_logger(__name__)

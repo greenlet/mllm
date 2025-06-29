@@ -5,13 +5,14 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
-from nbconvert.nbconvertapp import nbconvert_flags
 from torch import nn
-from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, \
-    BatchEncoding
+# from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, BatchEncoding
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
 from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType
+from mllm.model.bert import BertModel, BertTokenizer
+from mllm.model.bert_generation import BertGenerationEncoder, BertGenerationDecoder
+from mllm.model.encoder_decoder import EncoderDecoderModel
 from mllm.train.utils import WordToks
 
 
@@ -195,7 +196,7 @@ class GenmixBert(nn.Module):
 
         return emb
 
-    def prompt_to_emb(self, prompt: str) -> torch.Tensor:
+    def prompt_to_emb(self, prompt: str) -> tuple[torch.Tensor, torch.Tensor]:
         # [n_prompt, inp_len]
         prompt_toks = self._to_toks(prompt, inp_len=self.cfg.inp_len)
         if self.cfg.max_inp_chunks > 0:
@@ -268,8 +269,9 @@ class GenmixBert(nn.Module):
         else:
             raise
 
+        # prompt_toks: [n_prompt, inp_len]
         # emb: [1, n_embs, d_model]
-        return emb
+        return prompt_toks, emb
 
     def text_title_to_emb(self, text: str, title: str) -> torch.Tensor:
         prompt = f'Summarize following text. Title: {title}. Text: {text}'
@@ -393,6 +395,7 @@ class GenmixBert(nn.Module):
             inp_mask = inp_ids > 0
             gen_out: Seq2SeqLMOutput = self.gen(
                 inputs_embeds=emb, decoder_input_ids=inp_ids, decoder_attention_mask=inp_mask, use_cache=False,
+                do_not_transform_embeds=True,
             )
             # [1, tgt_len, n_vocab]
             gen_logits = gen_out.logits
@@ -417,7 +420,105 @@ class GenmixBert(nn.Module):
             # [1, tgt_len]
             target_ids = target_ids.unsqueeze(0)
 
-            gen_out: Seq2SeqLMOutput = self.gen(inputs_embeds=emb, decoder_input_ids=target_ids, use_cache=False)
+            gen_out: Seq2SeqLMOutput = self.gen(
+                inputs_embeds=emb, decoder_input_ids=target_ids, use_cache=False,
+                do_not_transform_embeds=True,
+            )
+            # [1, tgt_len, n_vocab]
+            gen_logits = gen_out.logits
+
+            # [tgt_len, n_vocab]
+            logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)
+            # [tgt_len]
+            labels = cite_toks[1:]
+
+            # [tgt_len]
+            loss = F.cross_entropy(logits, labels, reduction='none')
+            # The last one is sep_token_id
+            assert loss.shape[0] > 1
+            if labels[-1] == self.tkz.sep_token_id:
+                loss_1, loss_2 = loss[:-1].mean(), loss[-1]
+                w1, w2 = 50, 1
+                loss = (loss_1 * w1 + loss_2 * w2) / (w1 + w2)
+            else:
+                loss = loss.mean()
+
+        return loss
+
+    def run_on_wiki_txt_all(
+            self, title: str, text: str, mask_tgt: bool, max_tgt_len_freq: float = 0.2, max_tgt_len: int = 10,
+            pred_tgt_all: bool = False,
+        ) -> torch.Tensor:
+        max_toks = self.cfg.inp_len - 2
+        if self.cfg.max_inp_chunks > 0:
+            max_toks = (self.cfg.inp_len - 2) * self.cfg.max_inp_chunks - 17 - 14 - 5
+        wt = WordToks(
+            tkz=self.tkz, s=text, max_tgt_len_freq=max_tgt_len_freq, max_tgt_len=max_tgt_len, max_toks=max_toks,
+        )
+        # tags_list_str = ', '.join(wt.tags_names)
+        tags_list_str = ', '.join(wt.tags_dict.values())
+        inp_str = wt.inp_masked_str if mask_tgt else wt.inp_str
+        prompt = f'Cite the text between the tags: {tags_list_str}. Text: {inp_str}'
+        text_toks = self.tkz(text, add_special_tokens=False, return_tensors='pt').input_ids.to(self.device)
+        text_toks = text_toks[:, :self.cfg.inp_len - 2].clone()
+        masked_text_toks = text_toks.clone()
+        max_tgt_len = min(max_tgt_len, text_toks.shape[1] - 1)
+        tgt_len = np.random.randint(1, max_tgt_len + 1)
+        n_rest = text_toks.shape[1] - tgt_len
+        off = np.random.randint(n_rest)
+        masked_text_toks[:, off:off + tgt_len] = self.tkz.mask_token_id
+
+        masked_text = self.tkz.decode(masked_text_toks[0].detach().cpu().numpy())
+        masked_toks, emb = self.prompt_to_emb(prompt=masked_text)
+
+        # [1, n_sum]
+        cite_toks = masked_toks[:1]
+
+        if pred_tgt_all:
+            # [n_sum]
+            cite_toks = cite_toks[0]
+            i1, i2 = 0, len(cite_toks)
+            if cite_toks[0] == self.tkz.cls_token_id:
+                i1 += 1
+            if cite_toks[-1] == self.tkz.sep_token_id:
+                i2 -= 1
+            # [1, tgt_len]
+            cite_toks = cite_toks[i1:i2].unsqueeze(0)
+            # [1, tgt_len]
+            inp_ids = torch.ones_like(cite_toks) * self.tkz.mask_token_id
+            # [1, tgt_len]
+            inp_mask = inp_ids > 0
+            gen_out: Seq2SeqLMOutput = self.gen(
+                inputs_embeds=emb, decoder_input_ids=inp_ids, decoder_attention_mask=inp_mask, use_cache=False,
+                do_not_transform_embeds=True,
+            )
+            # [1, tgt_len, n_vocab]
+            gen_logits = gen_out.logits
+
+            # [tgt_len, n_vocab]
+            logits = gen_logits[0]
+            # [tgt_len]
+            labels = cite_toks[0]
+            # [tgt_len]
+            loss = F.cross_entropy(logits, labels, reduction='none')
+            # The last one is sep_token_id
+            assert loss.shape[0] > 0
+            loss = loss.mean()
+        else:
+            # [n_sum]
+            cite_toks = cite_toks[0]
+            # tgt_len = n_sum - 1
+            # [tgt_len]
+            target_ids = cite_toks[:-1]
+            if target_ids[0] != self.tkz.cls_token_id:
+                target_ids = F.pad(target_ids, (1, 0), 'constant', self.tkz.cls_token_id)
+            # [1, tgt_len]
+            target_ids = target_ids.unsqueeze(0)
+
+            gen_out: Seq2SeqLMOutput = self.gen(
+                inputs_embeds=emb, decoder_input_ids=target_ids, use_cache=False,
+                do_not_transform_embeds=True,
+            )
             # [1, tgt_len, n_vocab]
             gen_logits = gen_out.logits
 
