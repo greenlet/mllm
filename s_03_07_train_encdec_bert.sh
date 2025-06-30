@@ -1,8 +1,8 @@
 
 code_path=$HOME/prog
 data_path=$HOME/data
-wiki_ds_name=20200501.en
-#wiki_ds_name=20220301.en
+#wiki_ds_name=20200501.en
+wiki_ds_name=20220301.en
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
@@ -26,11 +26,11 @@ dec_n_similar_layers=1
 dec_enhance_type=mmbb
 dec_dropout_rate=0
 
-#device=cpu
-#epochs=5
-#train_epoch_steps=20
-#val_epoch_steps=20
-#docs_batch_size=5
+device=cpu
+epochs=5
+train_epoch_steps=20
+val_epoch_steps=20
+docs_batch_size=5
 
 device=cuda
 epochs=700

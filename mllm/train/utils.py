@@ -321,7 +321,8 @@ class EedWikiIterator:
         self.device = device
         self.preserve_edge_tokens = preserve_edge_tokens
 
-    def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        docs_toks_src = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
         docs_toks_aug = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
         docs_toks_tgt = None
         i_rnd = np.random.randint(len(doc_inds))
@@ -344,6 +345,7 @@ class EedWikiIterator:
                 else:
                     i_off = np.random.randint(n_toks - self.inp_len + 1)
                     doc_toks = doc_toks[i_off:i_off + self.inp_len].copy()
+            docs_toks_src[i, :len(doc_toks)] = doc_toks
 
             if i == i_rnd:
                 toks_tgt = doc_toks.copy()
@@ -362,11 +364,12 @@ class EedWikiIterator:
 
             docs_toks_aug[i, :len(doc_toks)] = doc_toks
 
+        docs_toks_src_t = torch.from_numpy(docs_toks_src).to(self.device)
         docs_toks_aug_t = torch.from_numpy(docs_toks_aug).to(self.device)
         docs_toks_tgt_t = torch.from_numpy(docs_toks_tgt).to(self.device)
-        return docs_toks_aug_t, docs_toks_tgt_t
+        return docs_toks_aug_t, docs_toks_src_t, docs_toks_tgt_t
 
-    def get_batch(self, i_batch: int) -> tuple[torch.Tensor, torch.Tensor, int]:
+    def get_batch(self, i_batch: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
         i1 = i_batch * self.docs_batch_size
         i2 = i1 + self.docs_batch_size
         batch_inds = self.inds[i1:i2].copy()
@@ -376,14 +379,14 @@ class EedWikiIterator:
         if i2 >= len(batch_inds):
             i_batch = 0
             np.random.shuffle(self.inds)
-        batch_toks_aug, batch_toks_tgt = self.get_batch_tokens(batch_inds)
-        return batch_toks_aug, batch_toks_tgt, i_batch
+        batch_toks_aug, batch_toks, batch_toks_tgt = self.get_batch_tokens(batch_inds)
+        return batch_toks_aug, batch_toks, batch_toks_tgt, i_batch
 
     def get_batch_iterator(self) -> ChunkTargetToksGen:
         i_batch = 0
         while True:
-            batch_toks_aug, batch_toks_tgt, i_batch = self.get_batch(i_batch)
-            yield batch_toks_aug, None, batch_toks_tgt, None
+            batch_toks_aug, batch_toks, batch_toks_tgt, i_batch = self.get_batch(i_batch)
+            yield batch_toks_aug, batch_toks, batch_toks_tgt, None
 
 
 def get_wiki_ds_batch_iterators(
@@ -391,7 +394,8 @@ def get_wiki_ds_batch_iterators(
         device: torch.device, shuffle: bool = False, val_ratio: float = 0.05) -> tuple[ChunkTargetToksGen, ChunkTargetToksGen]:
     print(f'Loading Wikipedia dataset: {wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
-    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
+    # dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
+    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))
     ds = dss['train']
     n_docs = len(ds)
     print(f'Wikipedia {wiki_ds_name} docs: {n_docs}')

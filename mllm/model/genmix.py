@@ -449,16 +449,8 @@ class GenmixBert(nn.Module):
             self, title: str, text: str, mask_tgt: bool, max_tgt_len_freq: float = 0.2, max_tgt_len: int = 10,
             pred_tgt_all: bool = False,
         ) -> torch.Tensor:
-        max_toks = self.cfg.inp_len - 2
-        if self.cfg.max_inp_chunks > 0:
-            max_toks = (self.cfg.inp_len - 2) * self.cfg.max_inp_chunks - 17 - 14 - 5
-        wt = WordToks(
-            tkz=self.tkz, s=text, max_tgt_len_freq=max_tgt_len_freq, max_tgt_len=max_tgt_len, max_toks=max_toks,
-        )
-        # tags_list_str = ', '.join(wt.tags_names)
-        tags_list_str = ', '.join(wt.tags_dict.values())
-        inp_str = wt.inp_masked_str if mask_tgt else wt.inp_str
-        prompt = f'Cite the text between the tags: {tags_list_str}. Text: {inp_str}'
+        if len(text.split()) < 2:
+            text = f'{title} {text}'
         text_toks = self.tkz(text, add_special_tokens=False, return_tensors='pt').input_ids.to(self.device)
         text_toks = text_toks[:, :self.cfg.inp_len - 2].clone()
         masked_text_toks = text_toks.clone()
@@ -472,7 +464,7 @@ class GenmixBert(nn.Module):
         masked_toks, emb = self.prompt_to_emb(prompt=masked_text)
 
         # [1, n_sum]
-        cite_toks = masked_toks[:1]
+        cite_toks = text_toks[:1]
 
         if pred_tgt_all:
             # [n_sum]

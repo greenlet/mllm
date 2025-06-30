@@ -188,7 +188,10 @@ def main(args: ArgsEncdecBertTrain) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    loss_fn = EncdecMaskPadLoss(pad_tok_ind=tkz.pad_token_id, pad_weight=0.1)
+    loss_fn = EncdecMaskPadLoss(
+        msk_tok_ind=tkz.mask_token_id, pad_tok_ind=tkz.pad_token_id,
+        reg_weight=1, msk_weight=1, pad_weight=0.1,
+    )
 
     print(model)
 
@@ -202,7 +205,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
         train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp, tokens_inp_aug = next(train_batch_it)
+            tokens_inp_aug, tokens_inp, tokens_tgt, _ = next(train_batch_it)
             # tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
             # tokens_inp_aug = tokens_inp
 
@@ -250,10 +253,10 @@ def main(args: ArgsEncdecBertTrain) -> int:
         val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp, _ = next(val_batch_it)
+            tokens_inp_aug, tokens_inp, tokens_tgt, _ = next(val_batch_it)
 
-            mask = tokens_inp != tkz.pad_token_id
-            out_logits = model(tokens_inp, mask)
+            mask = tokens_inp_aug != tkz.pad_token_id
+            out_logits = model(tokens_inp_aug, mask)
             loss = loss_fn(out_logits, tokens_inp)
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss

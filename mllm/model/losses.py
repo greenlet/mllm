@@ -170,17 +170,28 @@ class RankerCosEmbLoss(nn.Module):
 
 
 class EncdecMaskPadLoss(nn.Module):
+    msk_tok_ind: int
     pad_tok_ind: int
+    reg_weight: float
+    msk_weight: float
     pad_weight: float
-    nonpad_weight: float
+    total_weight: float
     # prob_cap: float
 
-    def __init__(self, pad_tok_ind: int, pad_weight: float = 0.01, prob_cap: float = 1e-6):
+    def __init__(
+            self, msk_tok_ind: int, pad_tok_ind: int, reg_weight: float = 1, msk_weight: float = 1, pad_weight: float = 0.01,
+            prob_cap: float = 1e-6):
         super().__init__()
-        pad_weight = min(max(pad_weight, 0), 1)
         assert 0 <= prob_cap <= 1, f'prob_cap (={prob_cap}) must pertain to [0, 1] interval'
+        assert reg_weight > 0, f'reg_weight (={reg_weight}) must be > 0'
+        assert msk_weight > 0, f'msk_weight (={msk_weight}) must be > 0'
+        assert pad_weight > 0, f'pad_weight (={pad_weight}) must be > 0'
+        self.msk_tok_ind = msk_tok_ind
         self.pad_tok_ind = pad_tok_ind
+        self.reg_weight = reg_weight
+        self.msk_weight = msk_weight
         self.pad_weight = pad_weight
+        self.total_weight = self.reg_weight + self.msk_weight + self.pad_weight
         self.nonpad_weight = 1 - pad_weight
         self.register_buffer('prob_cap', torch.scalar_tensor(prob_cap))
 
@@ -189,10 +200,12 @@ class EncdecMaskPadLoss(nn.Module):
     def forward(self, logits_pred: torch.Tensor, tokens_gt: torch.Tensor) -> torch.Tensor:
         # tokens_gt: (batch_size, inp_len, 1)
         tokens_gt = tokens_gt.to(torch.int64).unsqueeze(-1)
+        # mask_msk: (batch_size, inp_len, 1)
+        mask_msk = tokens_gt == self.msk_tok_ind
         # mask_pad: (batch_size, inp_len, 1)
         mask_pad = tokens_gt == self.pad_tok_ind
-        # mask_npad: (batch_size, inp_len, 1)
-        mask_npad = ~mask_pad
+        # mask_reg: (batch_size, inp_len, 1)
+        mask_reg = ~mask_msk & ~mask_pad
 
         # probs_pred: (batch_size, inp_len, vocab_size)
         probs_pred = torch.softmax(logits_pred, dim=-1)
@@ -200,21 +213,29 @@ class EncdecMaskPadLoss(nn.Module):
         probs_gt = torch.gather(probs_pred, dim=2, index=tokens_gt)
         # probs_gt = torch.maximum(probs_gt, self.prob_cap)
 
+        # probs_gt_reg: (n_reg_tokens, )
+        # probs_gt_msk: (n_msk_tokens, )
         # probs_gt_pad: (n_pad_tokens, )
-        # probs_gt_npad: (n_nonpad_tokens, )
-        # n_pad_tokens + n_nonpad_tokens = batch_size * inp_len
-        probs_gt_pad, probs_gt_npad = probs_gt[mask_pad], probs_gt[mask_npad]
+        # n_reg_tokens + n_msk_tokens + n_pad_tokens = batch_size * inp_len
+        probs_gt_reg, probs_gt_msk, probs_gt_pad = probs_gt[mask_reg], probs_gt[mask_msk], probs_gt[mask_pad]
 
+        # loss_reg: (1,)
+        # loss_msk: (1,)
         # loss_pad: (1,)
-        # loss_npad: (1,)
-        loss_pad = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
-        loss_npad = loss_pad
+        loss_reg = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
+        loss_msk, loss_pad = loss_reg, loss_reg
+        total_weight = 0
+        if probs_gt_reg.size()[0] > 0:
+            loss_reg = -torch.mean(torch.log(probs_gt_reg))
+            total_weight += self.reg_weight
+        if probs_gt_msk.size()[0] > 0:
+            loss_msk = -torch.mean(torch.log(probs_gt_msk))
+            total_weight += self.msk_weight
         if probs_gt_pad.size()[0] > 0:
             loss_pad = -torch.mean(torch.log(probs_gt_pad))
-        if probs_gt_npad.size()[0] > 0:
-            loss_npad = -torch.mean(torch.log(probs_gt_npad))
+            total_weight += self.pad_weight
         # loss: (1,)
-        loss = loss_npad * self.nonpad_weight + loss_pad * self.pad_weight
+        loss = (loss_reg * self.reg_weight + loss_msk * self.msk_weight + loss_pad * self.pad_weight) / total_weight
         return loss
 
 
