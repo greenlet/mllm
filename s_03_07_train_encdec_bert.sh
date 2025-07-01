@@ -37,7 +37,7 @@ epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=15
-#train_subdir=last
+train_subdir=last
 #pretrained_model_path=$train_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
 
 learning_rate=0.0001
