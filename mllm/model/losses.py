@@ -320,6 +320,29 @@ class EncdecMaskPadLossExt(nn.Module):
         return loss
 
 
+class EncdecTargenMaskLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    # logits_pred: [batch_size, inp_len, vocab_size]
+    # tokens_tgt: [batch_size, tgt_len]
+    def forward(self, logits_pred: torch.Tensor, tokens_tgt: torch.Tensor) -> torch.Tensor:
+        # [batch_size, tgt_len, 1]
+        toks_tgt = tokens_tgt.to(torch.int64).unsqueeze(-1)
+
+        # [batch_size, tgt_len, vocab_size]
+        logits_pred = logits_pred[:, :toks_tgt.shape[1]]
+        # [batch_size, tgt_len, vocab_size]
+        probs_pred = torch.softmax(logits_pred, dim=-1)
+        # [batch_size, tgt_len, 1]
+        print(probs_pred.shape, toks_tgt.shape)
+        probs_tgt = torch.gather(probs_pred, dim=2, index=toks_tgt)
+
+        # [1,]
+        loss = -torch.mean(torch.log(probs_tgt))
+        return loss
+
+
 class RankLossType(str, Enum):
     Avg = 'avg'
     Max = 'max'

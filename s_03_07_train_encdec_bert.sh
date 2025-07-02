@@ -21,6 +21,9 @@ dec_n_layers=0
 dec_n_similar_layers=1
 #n_similar_layers=2
 
+pred_masked_seq=true
+pred_masked_seq=false
+
 #dec_enhance_type=matmul
 #dec_enhance_type=mmbeg
 dec_enhance_type=mmbb
@@ -37,8 +40,8 @@ epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=15
-train_subdir=last
-#pretrained_model_path=$train_root_path/encdechg-20241216_224415-inp128-pos_emb-lrs7x1-rdc_avg-enh_mmbeg-step2-d512-h8-t1
+#train_subdir=last
+pretrained_model_path=$train_root_path/encdecbert-20250629_222704-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 
 learning_rate=0.0001
 learning_rate=0.00005
@@ -67,6 +70,7 @@ python s_03_07_train_encdec_bert.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed \
-  --pretrained-model-path "$pretrained_model_path"
+  --pretrained-model-path "$pretrained_model_path" \
+  --pred-masked-seq $pred_masked_seq
 #"
 

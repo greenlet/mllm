@@ -16,11 +16,13 @@ from transformers import AutoTokenizer
 from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
     gen_prefpostfix_encdec_bert
 from mllm.data.utils import HfDsIterator
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
 from mllm.model.encdec_ranker_hg import EncdecBert
-from mllm.model.losses import EncdecMaskPadLoss
+from mllm.model.losses import EncdecMaskPadLoss, EncdecTargenMaskLoss, EncdecMaskPadLossExt
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators
 
+
+pred_masked_seq_ARG = '--pred-masked-seq', 'Predict masked sequence only'
 
 class ArgsEncdecBertTrain(BaseModel):
     data_path: Path = Field(
@@ -121,9 +123,15 @@ class ArgsEncdecBertTrain(BaseModel):
         cli=('--pretrained-model-path',),
     )
 
+    pred_masked_seq_str: str = create_bool_str_field(*pred_masked_seq_ARG)
+    @property
+    def pred_masked_seq(self) -> bool:
+        return is_arg_true(pred_masked_seq_ARG[0], self.pred_masked_seq_str)
+
 
 def main(args: ArgsEncdecBertTrain) -> int:
     print(args)
+    pred_masked_seq = args.pred_masked_seq
 
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
@@ -176,6 +184,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
+        del checkpoint
         shuffle = True
 
     train_batch_it, val_batch_it = get_wiki_ds_batch_iterators(
@@ -188,10 +197,17 @@ def main(args: ArgsEncdecBertTrain) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    loss_fn = EncdecMaskPadLoss(
-        msk_tok_ind=tkz.mask_token_id, pad_tok_ind=tkz.pad_token_id,
-        reg_weight=1, msk_weight=1, pad_weight=0.1,
-    )
+    if not pred_masked_seq:
+        # loss_fn = EncdecMaskPadLoss(
+        #     msk_tok_ind=tkz.mask_token_id, pad_tok_ind=tkz.pad_token_id,
+        #     reg_weight=1, msk_weight=1, pad_weight=0.1,
+        # )
+        loss_fn = EncdecMaskPadLossExt(
+            msk_tok_id=tkz.mask_token_id, spc_tok_ids=[tkz.pad_token_id, tkz.cls_token_id, tkz.sep_token_id],
+            reg_weight=1, msk_weight=1, spc_weight=0.1,
+        )
+    else:
+        loss_fn = EncdecTargenMaskLoss()
 
     print(model)
 
@@ -212,7 +228,13 @@ def main(args: ArgsEncdecBertTrain) -> int:
             optimizer.zero_grad()
             mask = tokens_inp_aug != tkz.pad_token_id
             out_logits = model(tokens_inp_aug, mask)
-            loss = loss_fn(out_logits, tokens_inp)
+
+            if not pred_masked_seq:
+                # loss = loss_fn(out_logits, tokens_inp)
+                loss = loss_fn(out_logits, tokens_inp_aug, tokens_inp)
+            else:
+                loss = loss_fn(out_logits, tokens_tgt)
+
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
 
@@ -255,9 +277,16 @@ def main(args: ArgsEncdecBertTrain) -> int:
         for _ in pbar:
             tokens_inp_aug, tokens_inp, tokens_tgt, _ = next(val_batch_it)
 
-            mask = tokens_inp_aug != tkz.pad_token_id
-            out_logits = model(tokens_inp_aug, mask)
-            loss = loss_fn(out_logits, tokens_inp)
+            with torch.no_grad():
+                mask = tokens_inp_aug != tkz.pad_token_id
+                out_logits = model(tokens_inp_aug, mask)
+
+                if not pred_masked_seq:
+                    # loss = loss_fn(out_logits, tokens_inp)
+                    loss = loss_fn(out_logits, tokens_inp_aug, tokens_inp)
+                else:
+                    loss = loss_fn(out_logits, tokens_tgt)
+
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
 
