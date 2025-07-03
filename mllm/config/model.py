@@ -273,6 +273,12 @@ class EncdecBertCfg(BaseModel):
     dec_pyr: DecPyrCfg
 
 
+class EncdecOneTgtType(str, Enum):
+    All = 'all'
+    AllMsk = 'allmsk'
+    MskSeq = 'mskseq'
+
+
 class DecRankHgCfg(BaseModel):
     d_model: int
     mlp_layers: str = ''
@@ -869,21 +875,35 @@ def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
     return prefix, postfix
 
 
-def gen_prefpostfix_encdec_bert(model_cfg: EncdecBertCfg) -> tuple[str, str]:
-    prefix = f'encdecbert'
+def gen_prefpostfix_encdec_bert(model_cfg: EncdecBertCfg, one_tgt_type: EncdecOneTgtType) -> tuple[str, str]:
+    prefix, postfix_parts = f'encdecbert', []
     enc, dec = model_cfg.enc_bert, model_cfg.dec_pyr
+
+    brt_str = enc.pretrained_model_name
+    if enc.tokenizer_name != enc.pretrained_model_name:
+        tkz_name = enc.tokenizer_name
+        brt_str = f'{brt_str}-{tkz_name}'
+    postfix_parts.append(brt_str)
+
+    postfix_parts.append(f'd{enc.d_model}')
+    postfix_parts.append(f'emb_{enc.emb_type}')
+    postfix_parts.append(f'inp{dec.inp_len}')
+    postfix_parts.append(f'lrs{dec.n_layers}x{dec.n_similar_layers}')
+    postfix_parts.append(f'enh_{dec.enhance_type.value}')
+    postfix_parts.append(f'step{dec.step}')
+    postfix_parts.append(f'h{dec.n_heads}')
+    postfix_parts.append(f'tgt_{one_tgt_type.value}')
+
     dp_rate = np.round(dec.dropout_rate, 2)
     if dp_rate < 1e-6:
         dp_rate = 0
-    temp = np.round(dec.temperature, 2)
-    brt_str = enc.pretrained_model_name.replace('_', '_')
-    if enc.tokenizer_name != enc.pretrained_model_name:
-        tkz_name = enc.tokenizer_name.replace('-', '_')
-        brt_str = f'{brt_str}-{tkz_name}'
-    postfix = (f'{brt_str}-d{enc.d_model}-emb_{enc.emb_type}-inp{dec.inp_len}-lrs{dec.n_layers}x{dec.n_similar_layers}-enh_{dec.enhance_type.value}-step{dec.step}-h{dec.n_heads}-'
-               f'dp{dp_rate}-t{temp}')
-    return prefix, postfix
+    postfix_parts.append(f'dp{dp_rate}')
 
+    temp = np.round(dec.temperature, 2)
+    postfix_parts.append(f't{temp}')
+
+    postfix = '-'.join(postfix_parts)
+    return prefix, postfix
 
 def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
     prefix = f'rankerhg'

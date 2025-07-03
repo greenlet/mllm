@@ -208,14 +208,15 @@ def mask_random_tokens(toks: np.ndarray, tkz: PreTrainedTokenizer, rem_freq: flo
     if n_total < 5:
         return res
 
-    if rv <= rem_freq:
+    if rv < rem_freq:
         mask: np.ndarray = np.random.rand(n_total) <= rem_prob
     elif rv <= rem_freq + rem_conseq_freq:
         rem_conseq_times = np.random.randint(1, rem_conseq_max_times + 1)
         rem_interval = n_total // rem_conseq_times
         off = 0
         mask = np.full(n_total, False, dtype=bool)
-        while off < n_total:
+        i_conseq = 0
+        while i_conseq < rem_conseq_times and off < n_total:
             n_rem = int(n_total * rem_conseq_prob)
             n_rem = np.random.randint(2, max(n_rem, 2) + 1)
             n_rem = min(n_rem, rem_conseq_max_len)
@@ -225,6 +226,7 @@ def mask_random_tokens(toks: np.ndarray, tkz: PreTrainedTokenizer, rem_freq: flo
             if i1 < i2:
                 mask[i1:i2] = True
             off = max(off + rem_interval, i2 + int(n_rem * 1.5))
+            i_conseq += 1
 
     toks_str = [tkz.decode(t) for t in toks]
     mask = extend_mask_to_words(mask, toks_str)
@@ -303,13 +305,14 @@ class EedWikiIterator:
     docs_batch_size: int
     device: torch.device
     preserve_edge_tokens: bool
+    conseq: bool = False
     rem_freq: float = 0
     rem_conseq_freq: float = 1
     rem_conseq_max_len: int = 30
     rem_conseq_max_times: int = 1
 
     def __init__(self, ds: Dataset, inds: np.ndarray, inp_len: int, tkz: PreTrainedTokenizer,
-                 docs_batch_size: int, device: torch.device, preserve_edge_tokens: bool = False):
+                 docs_batch_size: int, device: torch.device, preserve_edge_tokens: bool = False, conseq: bool = False):
         assert tkz.pad_token_id is not None
         self.ds = ds
         self.inds = inds.copy()
@@ -320,6 +323,25 @@ class EedWikiIterator:
         self.docs_batch_size = docs_batch_size
         self.device = device
         self.preserve_edge_tokens = preserve_edge_tokens
+        self.conseq = conseq
+
+    def mask_tokens(self, toks: np.ndarray) -> np.ndarray:
+        if self.conseq:
+            n_toks = len(toks)
+            assert n_toks > 1, f'n_toks (={n_toks}) must be > 1'
+            max_prob, max_len = 0.2, 15
+            max_len = min(max_len, int(max_prob * len(toks)), n_toks // 2)
+            max_len = max(max_len, 1)
+            mask_len = np.random.randint(1, max_len + 1)
+            mask_off = np.random.randint(n_toks - mask_len + 1)
+            masked_toks = toks.copy()
+            masked_toks[mask_off:mask_off + mask_len] = True
+        else:
+            masked_toks = mask_random_tokens(
+                toks, self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq,
+                rem_conseq_max_len=self.rem_conseq_max_len, rem_conseq_max_times=self.rem_conseq_max_times,
+            )
+        return masked_toks
 
     def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         docs_toks_src = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
@@ -350,15 +372,9 @@ class EedWikiIterator:
             if i == i_rnd:
                 toks_tgt = doc_toks.copy()
                 if self.preserve_edge_tokens:
-                    doc_toks[1:-1] = mask_random_tokens(
-                        doc_toks[1:-1], self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq,
-                        rem_conseq_max_len=self.rem_conseq_max_len, rem_conseq_max_times=self.rem_conseq_max_times,
-                    )
+                    doc_toks[1:-1] = self.mask_tokens(doc_toks[1:-1])
                 else:
-                    doc_toks = mask_random_tokens(
-                        doc_toks, self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq,
-                        rem_conseq_max_len=self.rem_conseq_max_len, rem_conseq_max_times=self.rem_conseq_max_times,
-                    )
+                    doc_toks = self.mask_tokens(doc_toks)
                 docs_toks_tgt = np.concatenate([toks_tgt[doc_toks == self.tkz.mask_token_id], [self.tkz.sep_token_id]])
                 # print(i, self.tkz.decode(docs_toks_tgt))
 
@@ -390,7 +406,7 @@ class EedWikiIterator:
 
 
 def get_wiki_ds_batch_iterators(
-        wiki_ds_name: str, data_path: Path, inp_len: int, docs_batch_size: int, tkz: PreTrainedTokenizer,
+        wiki_ds_name: str, data_path: Path, inp_len: int, docs_batch_size: int, tkz: PreTrainedTokenizer, mask_conseq: bool,
         device: torch.device, shuffle: bool = False, val_ratio: float = 0.05) -> tuple[ChunkTargetToksGen, ChunkTargetToksGen]:
     print(f'Loading Wikipedia dataset: {wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
@@ -413,11 +429,11 @@ def get_wiki_ds_batch_iterators(
 
     train_batch_it = EedWikiIterator(
         ds=ds, inds=doc_inds_train, inp_len=inp_len, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
-        preserve_edge_tokens=True,
+        preserve_edge_tokens=True, conseq=mask_conseq,
     ).get_batch_iterator()
     val_batch_it = EedWikiIterator(
         ds=ds, inds=doc_inds_val, inp_len=inp_len, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
-        preserve_edge_tokens=True,
+        preserve_edge_tokens=True, conseq=mask_conseq,
     ).get_batch_iterator()
     return train_batch_it, val_batch_it
 
