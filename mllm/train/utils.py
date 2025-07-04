@@ -334,14 +334,14 @@ class EedWikiIterator:
             max_len = max(max_len, 1)
             mask_len = np.random.randint(1, max_len + 1)
             mask_off = np.random.randint(n_toks - mask_len + 1)
-            masked_toks = toks.copy()
-            masked_toks[mask_off:mask_off + mask_len] = True
+            res = toks.copy()
+            res[mask_off:mask_off + mask_len] = self.tkz.mask_token_id
         else:
-            masked_toks = mask_random_tokens(
+            res = mask_random_tokens(
                 toks, self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq,
                 rem_conseq_max_len=self.rem_conseq_max_len, rem_conseq_max_times=self.rem_conseq_max_times,
             )
-        return masked_toks
+        return res
 
     def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         docs_toks_src = np.full((len(doc_inds), self.inp_len), self.pad_tok_ind)
@@ -432,6 +432,154 @@ def get_wiki_ds_batch_iterators(
         preserve_edge_tokens=True, conseq=mask_conseq,
     ).get_batch_iterator()
     val_batch_it = EedWikiIterator(
+        ds=ds, inds=doc_inds_val, inp_len=inp_len, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
+        preserve_edge_tokens=True, conseq=mask_conseq,
+    ).get_batch_iterator()
+    return train_batch_it, val_batch_it
+
+
+
+class EedWikiIterator2:
+    ds: Dataset
+    inds: np.ndarray
+    inp_len: int
+    pad_tok_ind: int
+    mask_tok_repr: str
+    tkz: PreTrainedTokenizer
+    docs_batch_size: int
+    device: torch.device
+    preserve_edge_tokens: bool
+    conseq: bool = False
+    rem_freq: float = 0
+    rem_conseq_freq: float = 1
+    rem_conseq_max_len: int = 30
+    rem_conseq_max_times: int = 1
+
+    def __init__(self, ds: Dataset, inds: np.ndarray, inp_len: int, tkz: PreTrainedTokenizer,
+                 docs_batch_size: int, device: torch.device, preserve_edge_tokens: bool = False, conseq: bool = False):
+        assert tkz.pad_token_id is not None
+        self.ds = ds
+        self.inds = inds.copy()
+        self.inp_len = inp_len
+        self.pad_tok_ind = tkz.pad_token_id
+        self.mask_tok_repr = tkz.mask_token
+        self.tkz = tkz
+        self.docs_batch_size = docs_batch_size
+        self.device = device
+        self.preserve_edge_tokens = preserve_edge_tokens
+        self.conseq = conseq
+
+    def mask_tokens(self, toks: np.ndarray) -> np.ndarray:
+        if self.conseq:
+            n_toks = len(toks)
+            assert n_toks > 1, f'n_toks (={n_toks}) must be > 1'
+            max_prob, max_len = 0.2, 15
+            max_len = min(max_len, int(max_prob * len(toks)), n_toks // 2)
+            max_len = max(max_len, 1)
+            mask_len = np.random.randint(1, max_len + 1)
+            mask_off = np.random.randint(n_toks - mask_len + 1)
+            res = toks.copy()
+            res[mask_off:mask_off + mask_len] = self.tkz.mask_token_id
+        else:
+            res = mask_random_tokens(
+                toks, self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq,
+                rem_conseq_max_len=self.rem_conseq_max_len, rem_conseq_max_times=self.rem_conseq_max_times,
+            )
+        return res
+
+    def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        n_docs = len(doc_inds)
+        res_shape = (n_docs, self.inp_len)
+        docs_toks_src = np.full(res_shape, self.pad_tok_ind)
+        docs_toks_aug = np.full(res_shape, self.pad_tok_ind)
+        docs_toks_tgt = np.full(res_shape, self.pad_tok_ind)
+        for i, doc_ind in enumerate(doc_inds):
+            doc = self.ds[int(doc_ind)]
+            title, text = doc['title'], doc['text']
+            # if np.random.rand() < 1 / 4:
+            #     doc_txt: str = title
+            # else:
+            #     doc_txt: str = text
+            # doc_txt = f'{title} {text}'
+            doc_txt = text
+            doc_toks = self.tkz(doc_txt)['input_ids']
+            if len(doc_toks) <= 3:
+                doc_txt = f'{title} {text}'
+                doc_toks = self.tkz(doc_txt)['input_ids']
+            doc_toks = np.array(doc_toks)
+            n_toks = len(doc_toks)
+            if n_toks > self.inp_len:
+                if self.preserve_edge_tokens:
+                    i_off = np.random.randint(1, n_toks - self.inp_len + 1)
+                    doc_toks = np.concatenate([doc_toks[:1], doc_toks[i_off:i_off + self.inp_len - 2], doc_toks[-1:]])
+                else:
+                    i_off = np.random.randint(n_toks - self.inp_len + 1)
+                    doc_toks = doc_toks[i_off:i_off + self.inp_len].copy()
+            docs_toks_src[i, :len(doc_toks)] = doc_toks
+
+            toks_tgt = doc_toks.copy()
+            if self.preserve_edge_tokens:
+                doc_toks[1:-1] = self.mask_tokens(doc_toks[1:-1])
+            else:
+                doc_toks = self.mask_tokens(doc_toks)
+            tgt_mask = doc_toks == self.tkz.mask_token_id
+            doc_toks_tgt = toks_tgt[tgt_mask]
+
+            docs_toks_aug[i, :len(doc_toks)] = doc_toks
+            docs_toks_tgt[i, :len(doc_toks_tgt)] = doc_toks_tgt
+
+        docs_toks_src_t = torch.from_numpy(docs_toks_src).to(self.device)
+        docs_toks_aug_t = torch.from_numpy(docs_toks_aug).to(self.device)
+        docs_toks_tgt_t = torch.from_numpy(docs_toks_tgt).to(self.device)
+        return docs_toks_aug_t, docs_toks_src_t, docs_toks_tgt_t
+
+    def get_batch(self, i_batch: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
+        i1 = i_batch * self.docs_batch_size
+        i2 = i1 + self.docs_batch_size
+        batch_inds = self.inds[i1:i2].copy()
+        rest_batch_size = self.docs_batch_size - len(batch_inds)
+        if rest_batch_size > 0:
+            batch_inds = np.concatenate([batch_inds, self.inds[:rest_batch_size].copy()])
+        if i2 >= len(batch_inds):
+            i_batch = 0
+            np.random.shuffle(self.inds)
+        batch_toks_aug, batch_toks, batch_toks_tgt = self.get_batch_tokens(batch_inds)
+        return batch_toks_aug, batch_toks, batch_toks_tgt, i_batch
+
+    def get_batch_iterator(self) -> ChunkTargetToksGen:
+        i_batch = 0
+        while True:
+            batch_toks_aug, batch_toks, batch_toks_tgt, i_batch = self.get_batch(i_batch)
+            yield batch_toks_aug, batch_toks, batch_toks_tgt, None
+
+
+def get_wiki_ds_batch_iterators2(
+        wiki_ds_name: str, data_path: Path, inp_len: int, docs_batch_size: int, tkz: PreTrainedTokenizer, mask_conseq: bool,
+        device: torch.device, shuffle: bool = False, val_ratio: float = 0.05) -> tuple[ChunkTargetToksGen, ChunkTargetToksGen]:
+    print(f'Loading Wikipedia dataset: {wiki_ds_name}')
+    wiki_ds_subdir = 'wikipedia'
+    # dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
+    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))
+    ds = dss['train']
+    n_docs = len(ds)
+    print(f'Wikipedia {wiki_ds_name} docs: {n_docs}')
+
+    doc_inds = np.arange(n_docs)
+    # np.random.seed(777)
+    np.random.shuffle(doc_inds)
+    n_docs_val = int(n_docs * val_ratio)
+    n_docs_train = n_docs - n_docs_val
+    doc_inds_train, doc_inds_val = doc_inds[:n_docs_train].copy(), doc_inds[n_docs_train:].copy()
+
+    if shuffle:
+        np.random.shuffle(doc_inds_train)
+        np.random.shuffle(doc_inds_val)
+
+    train_batch_it = EedWikiIterator2(
+        ds=ds, inds=doc_inds_train, inp_len=inp_len, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
+        preserve_edge_tokens=True, conseq=mask_conseq,
+    ).get_batch_iterator()
+    val_batch_it = EedWikiIterator2(
         ds=ds, inds=doc_inds_val, inp_len=inp_len, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
         preserve_edge_tokens=True, conseq=mask_conseq,
     ).get_batch_iterator()

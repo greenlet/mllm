@@ -19,8 +19,8 @@ from mllm.data.utils import HfDsIterator
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.model.losses import EncdecMaskPadLoss, EncdecTargenMaskLoss, EncdecMaskPadLossExt
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators
-
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, \
+    get_wiki_ds_batch_iterators2
 
 
 class ArgsEncdecBertTrain(BaseModel):
@@ -188,7 +188,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
         shuffle = True
 
     mask_conseq = args.one_tgt_type == EncdecOneTgtType.MskSeq
-    train_batch_it, val_batch_it = get_wiki_ds_batch_iterators(
+    train_batch_it, val_batch_it = get_wiki_ds_batch_iterators2(
         wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
         tkz=tkz, device=device, shuffle=shuffle, mask_conseq=mask_conseq,
     )
@@ -209,7 +209,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
             reg_weight=1, msk_weight=1, spc_weight=0.1,
         )
     elif args.one_tgt_type == EncdecOneTgtType.MskSeq:
-        loss_fn = EncdecTargenMaskLoss()
+        loss_fn = EncdecTargenMaskLoss(pad_tok_id=tkz.pad_token_id)
     else:
         raise Exception(f'Value {args.one_tgt_type} is not supported')
 

@@ -321,8 +321,15 @@ class EncdecMaskPadLossExt(nn.Module):
 
 
 class EncdecTargenMaskLoss(nn.Module):
-    def __init__(self):
+    pad_tok_id: int
+    weight_reg: float
+    weight_pad: float
+
+    def __init__(self, pad_tok_id: int, weight_reg: float = 1, weight_pad: float = 0.1):
         super().__init__()
+        self.pad_tok_id = pad_tok_id
+        self.weight_reg = weight_reg
+        self.weight_pad = weight_pad
 
     # logits_pred: [batch_size, inp_len, vocab_size]
     # tokens_tgt: [batch_size, tgt_len]
@@ -335,11 +342,19 @@ class EncdecTargenMaskLoss(nn.Module):
         # [batch_size, tgt_len, vocab_size]
         probs_pred = torch.softmax(logits_pred, dim=-1)
         # [batch_size, tgt_len, 1]
-        print(probs_pred.shape, toks_tgt.shape)
         probs_tgt = torch.gather(probs_pred, dim=2, index=toks_tgt)
 
-        # [1,]
-        loss = -torch.mean(torch.log(probs_tgt))
+        # [batch_size, tgt_len]
+        mask_pad = tokens_tgt == self.pad_tok_id
+        # [batch_size, tgt_len]
+        mask_reg = ~mask_pad
+
+        probs_reg = probs_tgt[mask_reg]
+        loss_reg = -torch.mean(torch.log(probs_reg))
+        probs_pad = probs_tgt[mask_pad]
+        loss_pad = -torch.mean(torch.log(probs_pad))
+        loss = self.weight_reg * loss_reg + self.weight_pad * loss_pad
+        loss = loss / (self.weight_reg + self.weight_pad)
         return loss
 
 
