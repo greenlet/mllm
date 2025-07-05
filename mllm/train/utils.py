@@ -455,8 +455,10 @@ class EedWikiIterator2:
     rem_conseq_max_len: int = 30
     rem_conseq_max_times: int = 1
 
-    def __init__(self, ds: Dataset, inds: np.ndarray, inp_len: int, tkz: PreTrainedTokenizer,
-                 docs_batch_size: int, device: torch.device, preserve_edge_tokens: bool = False, conseq: bool = False):
+    def __init__(
+            self, ds: Dataset, inds: np.ndarray, inp_len: int, tkz: PreTrainedTokenizer,
+            docs_batch_size: int, device: torch.device, preserve_edge_tokens: bool = False, conseq: bool = False,
+        ):
         assert tkz.pad_token_id is not None
         self.ds = ds
         self.inds = inds.copy()

@@ -42,7 +42,8 @@ train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=15
 #train_subdir=last
-pretrained_model_path=$train_root_path/encdecbert-20250629_222704-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+#pretrained_model_path=$train_root_path/encdecbert-20250629_222704-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 
 learning_rate=0.0001
 learning_rate=0.00005

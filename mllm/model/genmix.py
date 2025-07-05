@@ -458,13 +458,16 @@ class GenmixBert(nn.Module):
         tgt_len = np.random.randint(1, max_tgt_len + 1)
         n_rest = text_toks.shape[1] - tgt_len
         off = np.random.randint(n_rest)
+        # [1, n_tgt]
+        tgt_toks = masked_text_toks[:, off:off + tgt_len].clone()
         masked_text_toks[:, off:off + tgt_len] = self.tkz.mask_token_id
 
         masked_text = self.tkz.decode(masked_text_toks[0].detach().cpu().numpy())
         masked_toks, emb = self.prompt_to_emb(prompt=masked_text)
 
         # [1, n_sum]
-        cite_toks = text_toks[:1]
+        # cite_toks = text_toks[:1]
+        cite_toks = tgt_toks
 
         if pred_tgt_all:
             # [n_sum]
