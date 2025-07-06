@@ -16,7 +16,7 @@ from mllm.model.encoder_decoder import EncoderDecoderModel
 from mllm.train.utils import WordToks
 
 
-class GenmixBert(nn.Module):
+class GenmixembBert(nn.Module):
     cfg: GenmixBertCfg
     device: torch.device
     enc: BertModel

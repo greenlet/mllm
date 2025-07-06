@@ -360,11 +360,44 @@ class GenmixBertCfg(BaseModel):
     emb_exp_type: GenmixEmbExpType
 
 
-
 class GenmixTrainDsType(str, Enum):
     Qna = 'qna'
     Sum = 'sum'
     Wki = 'wki'
+
+
+
+class TokensAggType(BaseModel):
+    name: str
+
+
+class TokensAggExternal(TokensAggType):
+    bert_model_name: str
+    n_subseq_toks: int
+    train_agg_model: bool
+
+    def __init__(self, bert_model_name: str, n_subseq_toks: int, train_agg_model: bool, **kwargs):
+        super().__init__(name='ext')
+        self.bert_model_name = bert_model_name
+        self.n_subseq_toks = n_subseq_toks
+        self.train_agg_model = train_agg_model
+
+
+class TokensAggInternal(TokensAggType):
+    n_levels: int
+    n_level_layers: int
+
+    def __init__(self, n_levels: int, n_level_layers: int):
+        super().__init__(name='int')
+        self.n_levels = n_levels
+        self.n_level_layers = n_level_layers
+
+
+class GenmixembBertCfg(BaseModel):
+    d_model: int
+    pretrained_model_name: str = ''
+    max_out_toks: int
+    tokens_agg_type: TokensAggType
 
 
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')

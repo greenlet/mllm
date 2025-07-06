@@ -34,8 +34,8 @@ max_tgt_len_freq=0.2
 max_tgt_len=10
 max_inp_chunks=1
 max_out_toks=50
-#pred_tgt_all=false
-pred_tgt_all=true
+pred_tgt_all=false
+#pred_tgt_all=true
 
 #max_inp_chunks=10
 #n_first_embs=5
