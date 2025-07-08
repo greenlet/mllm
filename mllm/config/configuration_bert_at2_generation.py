@@ -24,8 +24,6 @@ import yaml
 from transformers import PretrainedConfig, AutoConfig, BertTokenizer
 
 from mllm.config.model import GenmixTrainDsType
-from mllm.model.at2_decoder import BertGenerationEncoder, BertGenerationAt2Decoder
-from mllm.model.encoder_at2_decoder_bert import EncoderAt2DecoderModel
 from mllm.utils.utils import coalesce, bool_to_str
 
 

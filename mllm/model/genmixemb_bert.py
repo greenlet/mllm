@@ -9,82 +9,59 @@ from torch import nn
 # from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, BatchEncoding
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
-from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType
+from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembBertCfg, TokensAggType, \
+    EncPyrCfg
 from mllm.model.bert import BertModel, BertTokenizer
 from mllm.model.bert_generation import BertGenerationEncoder, BertGenerationDecoder
+from mllm.model.encdec_ranker_hg import EncoderPyramid
 from mllm.model.encoder_decoder import EncoderDecoderModel
 from mllm.train.utils import WordToks
 
 
 class GenmixembBert(nn.Module):
-    cfg: GenmixBertCfg
+    cfg: GenmixembBertCfg
     device: torch.device
-    enc: BertModel
+    agg: nn.Module
     gen: EncoderDecoderModel
-    n_first_embs: int
-    n_second_embs: int
 
-    def __init__(self, cfg: GenmixBertCfg, device: torch.device):
+    def __init__(self, cfg: GenmixembBertCfg, device: torch.device):
         super().__init__()
         self.cfg = cfg
         self.device = device
-        self.tkz = BertTokenizer.from_pretrained(self.cfg.tokenizer_name)
-        self.enc = BertModel.from_pretrained(
-            self.cfg.pretrained_model_name, torch_dtype=torch.float32, device_map=self.device,
-        )
+        self.tkz = BertTokenizer.from_pretrained(self.cfg.bert_model_name)
+        if self.cfg.tokens_agg_type == TokensAggType.Bert:
+            agg = BertModel.from_pretrained(
+                self.cfg.bert_model_name, torch_dtype=torch.float32, device_map=self.device,
+            )
+        # elif self.cfg.tokens_agg_type == TokensAggType.Pyramid:
+        #     d_word_vec = d_model
+        #     d_k = d_v = d_model // n_heads
+        #     n_layers = math.ceil(math.log(inp_len, step))
+        #     cfg_vocab_enc = VocabEncoderCfg(
+        #         n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len,
+        #         dropout_rate=dropout_rate,
+        #         pos_enc_type=pos_enc_type,
+        #     )
+        #     cfg_enc = EncPyrCfg(
+        #         vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v,
+        #         d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
+        #         n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
+        #     )
+        #     agg = EncoderPyramid(cfg_enc)
+        else:
+            raise Exception(f'Tokens aggregation type {self.cfg.tokens_agg_type} is not supported.')
+
+        self.agg = agg
         encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
-            self.cfg.pretrained_model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
+            self.cfg.bert_model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
             device_map=self.device,
         )
         decoder: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
-            self.cfg.pretrained_model_name, add_cross_attention=True, is_decoder=True,
+            self.cfg.bert_model_name, add_cross_attention=True, is_decoder=True,
             bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
         )
         del encoder.embeddings.word_embeddings
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
-
-        if self.cfg.n_first_embs > 0:
-            self.n_first_embs = min(self.cfg.n_first_embs, self.cfg.inp_len)
-        elif self.cfg.emb_agg_type == GenmixEmbAggType.Avg:
-            self.n_first_embs = 1
-        else:
-            self.n_first_embs = self.cfg.inp_len
-
-        if self.cfg.n_second_embs > 0:
-            self.n_second_embs = self.cfg.n_second_embs
-        else:
-            self.n_second_embs = self.cfg.inp_len
-
-        if self.cfg.emb_agg_type == GenmixEmbAggType.Fst:
-            # Leave n_first_embs intact
-            pass
-        elif self.cfg.emb_agg_type == GenmixEmbAggType.Avg:
-            assert self.n_first_embs == 1, f'For embeddings aggregation type {self.cfg.emb_agg_type} n_first_embs (={self.n_first_embs} must be equal to 1)'
-            assert self.cfg.emb_exp_type == GenmixEmbExpType.Mat or self.n_second_embs == 1, \
-                f'For embeddings aggregation type {self.cfg.emb_agg_type} and expansion type {self.cfg.emb_exp_type} n_second_embs (={self.n_second_embs}) must be equal to 1'
-        elif self.cfg.emb_agg_type == GenmixEmbAggType.Mat:
-            in_features = self.cfg.inp_len * self.cfg.d_model
-            out_features = self.n_first_embs * self.cfg.d_model
-            self.emb_agg = nn.Linear(in_features, out_features, bias=False, device=self.device)
-        else:
-            raise Exception(f'Embedding aggregation type {self.cfg.emb_agg_type} is not supported')
-
-        if self.cfg.emb_exp_type == GenmixEmbExpType.Non:
-            pass
-        elif self.cfg.emb_exp_type == GenmixEmbExpType.Mat or self.cfg.emb_exp_type == GenmixEmbExpType.Mtb:
-            in_features = self.n_first_embs * self.cfg.d_model
-            out_features = self.n_second_embs * self.cfg.d_model
-            bias = self.cfg.emb_exp_type == GenmixEmbExpType.Mtb
-            if self.cfg.max_inp_chunks > 0 and False:
-                self.emb_exp = nn.ModuleList([
-                    nn.Linear(in_features, out_features, bias=bias, device=self.device)
-                    for _ in range(self.cfg.max_inp_chunks)
-                ])
-            else:
-                self.emb_exp = nn.Linear(in_features, out_features, bias=bias, device=self.device)
-        else:
-            raise Exception(f'Embedding expansion type {self.cfg.emb_exp_type} is not supported')
-
 
     # input_ids: [src_len]
     # target_ids: [tgt_len]

@@ -1,0 +1,8 @@
+bert_agg_n_subseq_toks: 2
+bert_model_name: bert-base-uncased
+d_model: 768
+max_out_toks: 20
+pyr_agg_n_layers_per_level: 0
+pyr_agg_n_levels: 0
+tokens_agg_type: brt
+train_agg_model: false
