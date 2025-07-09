@@ -17,8 +17,8 @@ from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_
 from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
 from mllm.model.genmix import GenmixBert
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
-    get_billsum_txt_iterators, SumTuple, QnaTuple, get_wiki_iterators, WikiTuple
-
+    get_billsum_txt_iterators, SumTuple, QnaTuple
+from mllm.data.wiki.itwiki import WikiItem, get_wiki_iterators
 
 mask_tgt_ARG = '--mask-tgt', 'Masks textual target'
 pred_tgt_all_ARG = '--pred-tgt-all', 'Predict all target tokens at once'
@@ -271,7 +271,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
                 item: SumTuple = item
                 loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
             elif args.train_ds_type == GenmixTrainDsType.Wki:
-                item: WikiTuple = item
+                item: WikiItem = item
                 loss = model.run_on_wiki_txt_all(
                     title=item.title, text=item.text, mask_tgt=mask_tgt, max_tgt_len_freq=args.max_tgt_len_freq,
                     max_tgt_len=args.max_tgt_len, pred_tgt_all=pred_tgt_all,
@@ -321,7 +321,7 @@ def main(args: ArgsGenmixBertTrain) -> int:
                     item: SumTuple = item
                     loss = model.run_on_sum_txt(text=item.text, summary=item.summary, title=item.title)
                 elif args.train_ds_type == GenmixTrainDsType.Wki:
-                    item: WikiTuple = item
+                    item: WikiItem = item
                     loss = model.run_on_wiki_txt_all(
                         title=item.title, text=item.text, mask_tgt=mask_tgt, max_tgt_len_freq=args.max_tgt_len_freq,
                         max_tgt_len=args.max_tgt_len, pred_tgt_all=pred_tgt_all,

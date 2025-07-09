@@ -16,6 +16,7 @@ from mllm.model.bert_generation import BertGenerationEncoder, BertGenerationDeco
 from mllm.model.encdec_ranker_hg import EncoderPyramid
 from mllm.model.encoder_decoder import EncoderDecoderModel
 from mllm.train.utils import WordToks
+from mllm.data.wiki.itwiki import WikiBatch
 
 
 class GenmixembBert(nn.Module):
@@ -62,6 +63,9 @@ class GenmixembBert(nn.Module):
         )
         del encoder.embeddings.word_embeddings
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
+
+    def run_on_wiki(self, batch: WikiBatch) -> torch.Tensor:
+        pass
 
     # input_ids: [src_len]
     # target_ids: [tgt_len]
