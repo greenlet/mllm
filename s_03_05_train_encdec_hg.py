@@ -19,7 +19,8 @@ from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg
 from mllm.model.losses import EncdecMaskPadLoss
 from mllm.tokenization.chunk_tokenizer import tokenizer_from_config
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats, mask_random_words
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats
+from mllm.train.mask_utils import mask_random_words
 
 
 class ArgsEncdecHgTrain(BaseModel):

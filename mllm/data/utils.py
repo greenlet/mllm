@@ -10,7 +10,7 @@ from mllm.data.dsqrels import DsQrels
 from mllm.data.fever.dsfever import load_dsqrels_fever
 from mllm.data.msmarco.dsmsmarco import load_dsqrels_msmarco
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer
-from mllm.train.utils import mask_random_words, mask_random_tokens
+from mllm.train.mask_utils import mask_random_tokens, mask_random_words
 
 
 def load_qrels_datasets(
