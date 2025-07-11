@@ -137,14 +137,13 @@ class MaskCfg:
         return mask
 
 
-def mask_random_words_v2(toks: np.ndarray, tkz: PreTrainedTokenizer, mcfg: MaskCfg) -> np.ndarray:
-    res = toks.copy()
+def mask_random_words_v2(toks: np.ndarray, tkz: PreTrainedTokenizer, mcfg: MaskCfg) -> tuple[np.ndarray, Optional[np.ndarray]]:
+    masked_toks = toks.copy()
     mask = mcfg.gen_mask(len(toks))
     if mask is not None:
         toks_str = tkz.convert_ids_to_tokens(toks)
         mask = extend_mask_to_words(mask, toks_str)
-        res[mask] = tkz.mask_token_id
-    return res
-
+        masked_toks[mask] = tkz.mask_token_id
+    return masked_toks, mask
 
 
