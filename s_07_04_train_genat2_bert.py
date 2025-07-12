@@ -9,19 +9,16 @@ import torch
 import torch.utils.tensorboard as tb
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
-from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert, \
-    GenmixTrainDsType
-from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME, is_arg_true, create_bool_str_field
+from mllm.config.model import GenmixTrainDsType
+from mllm.exp.args import is_arg_true, create_bool_str_field
 from mllm.model.genat2_bert import Genat2Model
 from mllm.config.configuration_bert_at2_generation import Genat2Cfg, gen_prefpostfix_genat2
-from mllm.model.genmix import GenmixBert
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
     get_billsum_txt_iterators, SumTuple, QnaTuple
-
+from mllm.utils.utils import rethrow
 
 encoder_enc_at2_enabled_ARG = '--encoder-enc-at2-enabled', 'Enables SelfAttention2 in Encoder'
 decoder_enc_at2_enabled_ARG = '--decoder-enc-at2-enabled', 'Enables SelfAttention2 of encoder embeddings in Decoder'
@@ -316,8 +313,6 @@ def main(args: ArgsGenat2BertTrain) -> int:
 
 
 if __name__ == '__main__':
-    def rethrow(e):
-        raise e
     run_and_exit(
         ArgsGenat2BertTrain, main, 'Train Genat2Bert model on summary and qna datasets.',
         exception_handler=rethrow,

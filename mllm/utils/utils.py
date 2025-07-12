@@ -140,3 +140,7 @@ def bool_to_str(val: bool, first: bool = True, cap: bool = True) -> str:
     else:
         res = res.lower()
     return res
+
+
+def rethrow(e):
+    raise e

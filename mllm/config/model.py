@@ -366,7 +366,6 @@ class GenmixTrainDsType(str, Enum):
     Wki = 'wki'
 
 
-
 class TokensAggType(str, Enum):
     Bert = 'brt'
     Pyramid = 'pyr'
@@ -376,7 +375,7 @@ class GenmixembBertCfg(BaseModel):
     bert_model_name: str
     d_model: int
     max_out_toks: int
-    tokens_agg_type: TokensAggType
+    toks_agg_type: TokensAggType
     bert_agg_n_subseq_toks: int
     pyr_agg_n_levels: int
     pyr_agg_n_layers_per_level: int
@@ -898,7 +897,7 @@ def copy_override_genmixemb_bert_cfg(
 ) -> GenmixembBertCfg:
     bert_model_name = bert_model_name or cfg.bert_model_name
     max_out_toks = coalesce(max_out_toks, cfg.max_out_toks)
-    tokens_agg_type = coalesce(tokens_agg_type, cfg.tokens_agg_type)
+    tokens_agg_type = coalesce(tokens_agg_type, cfg.toks_agg_type)
     bert_agg_n_subseq_toks = coalesce(bert_agg_n_subseq_toks, cfg.bert_agg_n_subseq_toks)
     pyr_agg_n_levels = coalesce(pyr_agg_n_levels, cfg.pyr_agg_n_levels)
     pyr_agg_n_layers_per_level = coalesce(pyr_agg_n_layers_per_level, cfg.pyr_agg_n_layers_per_level)
@@ -1105,12 +1104,12 @@ def gen_prefpostfix_genmixemb_bert(
 
     postfix_parts.append(f'mxo{cfg.max_out_toks}')
 
-    agg_type_str = f'agg{cfg.tokens_agg_type.value.capitalize()}'
+    agg_type_str = f'agg{cfg.toks_agg_type.value.capitalize()}'
     postfix_parts.append(agg_type_str)
 
-    if cfg.tokens_agg_type == TokensAggType.Bert:
+    if cfg.toks_agg_type == TokensAggType.Bert:
         postfix_parts.append(f'sub{cfg.bert_agg_n_subseq_toks}')
-    elif cfg.tokens_agg_type == TokensAggType.Pyramid:
+    elif cfg.toks_agg_type == TokensAggType.Pyramid:
         postfix_parts.append(f'lvl{cfg.pyr_agg_n_levels}')
         postfix_parts.append(f'lrs{cfg.pyr_agg_n_layers_per_level}')
 

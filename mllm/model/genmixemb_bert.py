@@ -30,7 +30,7 @@ class GenmixembBert(nn.Module):
         self.cfg = cfg
         self.device = device
         self.tkz = BertTokenizer.from_pretrained(self.cfg.bert_model_name)
-        if self.cfg.tokens_agg_type == TokensAggType.Bert:
+        if self.cfg.toks_agg_type == TokensAggType.Bert:
             agg = BertModel.from_pretrained(
                 self.cfg.bert_model_name, torch_dtype=torch.float32, device_map=self.device,
             )
@@ -50,7 +50,7 @@ class GenmixembBert(nn.Module):
         #     )
         #     agg = EncoderPyramid(cfg_enc)
         else:
-            raise Exception(f'Tokens aggregation type {self.cfg.tokens_agg_type} is not supported.')
+            raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
 
         self.agg = agg
         encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
@@ -64,8 +64,48 @@ class GenmixembBert(nn.Module):
         del encoder.embeddings.word_embeddings
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
 
-    def run_on_wiki(self, batch: WikiBatch) -> torch.Tensor:
+    def prefix_token(self, toks: torch.Tensor, tok_id: int) -> torch.Tensor:
+        if toks.ndim == 1:
+            has_prefix = toks[0] == tok_id
+        elif toks.ndim == 2:
+            mask = toks[:, 0] == tok_id
+            has_any, has_all = mask.any(), mask.all()
+            assert has_any == has_all, (f'Either all starting toks are expected to be equal to {tok_id} or none. '
+                                        f'Got partial match instead: {mask}')
+            has_prefix = has_all
+        else:
+            raise Exception(f'Expected 1 or 2 dimensional tensor, got shape = {toks.shape}.')
+        if not has_prefix:
+            toks = F.pad(toks, (1, 0), tok_id)
+        return toks
+
+    def run_agg(self):
         pass
+
+    def run_on_wiki(self, batch: WikiBatch) -> torch.Tensor:
+        need_run_agg = self.cfg.bert_agg_n_subseq_toks > 0
+        # [n_batch, max_len]
+        toks, masked_toks, mask = batch.get_tensors()
+        # [n_batch, n_tgt]
+        target_ids = toks[:, :self.cfg.max_out_toks]
+        # [n_batch, n_tgt + 1]
+        target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
+        # [n_batch * n_tgt, n_vocab]
+        tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
+
+        if not need_run_agg:
+            gen_out: Seq2SeqLMOutput = self.gen(input_ids=masked_toks, decoder_input_ids=tgt_inp_ids)
+            # [n_batch, n_tgt, n_vocab]
+            gen_logits = gen_out.logits
+            # [n_batch * n_tgt, n_vocab]
+            logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)
+            # [n_batch * n_tgt, n_vocab]
+            labels = tgt_out_ids
+            loss = F.cross_entropy(logits, labels)
+        else:
+            raise Exception(r'Running aggregation model is not supported yet.')
+
+        return loss
 
     # input_ids: [src_len]
     # target_ids: [tgt_len]

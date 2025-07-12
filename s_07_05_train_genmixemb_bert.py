@@ -13,18 +13,19 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import GenmixBertCfg, copy_override_genmix_bert_cfg, gen_prefpostfix_genmix_bert, \
-    GenmixTrainDsType, GenmixEmbAggType, GenmixEmbExpType
+    GenmixTrainDsType, GenmixEmbAggType, GenmixEmbExpType, TokensAggType
 from mllm.exp.args import GENMIX_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
 from mllm.model.genmix import GenmixBert
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_squadv2_txt_iterators, \
     get_billsum_txt_iterators, SumTuple, QnaTuple
 from mllm.data.wiki.itwiki import WikiItem, get_wiki_iterators
+from mllm.utils.utils import rethrow
 
-mask_tgt_ARG = '--mask-tgt', 'Masks textual target'
-pred_tgt_all_ARG = '--pred-tgt-all', 'Predict all target tokens at once'
+train_agg_model_ARG = '--train-agg-model', 'Train aggregation model'
+mask_tokens_ARG = '--mask-tokens', 'Mask input tokens'
 
 
-class ArgsGenmixBertTrain(BaseModel):
+class ArgsGenmixembBertTrain(BaseModel):
     data_path: Path = Field(
         ...,
         description='Root data path. Must contain subpath `wikipedia/WIKI_DS_NAME` with Wikipedia dataset.',
@@ -34,6 +35,11 @@ class ArgsGenmixBertTrain(BaseModel):
         ...,
         description='Path to train root directory. New train subdirectory will be created within each new run.',
         cli=('--train-root-path',),
+    )
+    pretrained_model_path: Optional[Path] = Field(
+        None,
+        description='Path to EncdecHg model train directory.',
+        cli=('--pretrained-model-path',),
     )
     train_subdir: str = Field(
         '',
@@ -46,28 +52,6 @@ class ArgsGenmixBertTrain(BaseModel):
         description=f'Train dataset type, one of: {[t.value for t in GenmixTrainDsType]}',
         cli=('--train-ds-type',),
     )
-
-    mask_tgt_str: str = create_bool_str_field(*mask_tgt_ARG)
-    @property
-    def mask_tgt(self) -> bool:
-        return is_arg_true(mask_tgt_ARG[0], self.mask_tgt_str)
-
-    max_tgt_len_freq: float = Field(
-        ...,
-        description='Max target words ratio to the total number of words. When MAX_TGT_LEN > 0, the minimum of the resulting values will be taken.',
-        cli=('--max-tgt-len-freq',),
-    )
-    max_tgt_len: int = Field(
-        ...,
-        description='Max target words number. When MAX_TGT_LEN_FREQ > 0, the minimum of the resulting values will be taken.',
-        cli=('--max-tgt-len',),
-    )
-
-    pred_tgt_all_str: str = create_bool_str_field(*pred_tgt_all_ARG)
-    @property
-    def pred_tgt_all(self) -> bool:
-        return is_arg_true(pred_tgt_all_ARG[0], self.pred_tgt_all_str)
-
     model_cfg_fpath: Path = Field(
         ...,
         description='Path to EncdecHg model config Yaml file.',
@@ -78,42 +62,82 @@ class ArgsGenmixBertTrain(BaseModel):
         description='Bert pretrained model name (bert-base-uncased, bert-large-uncased).',
         cli=('--bert-model-name',),
     )
-    inp_len: int = Field(
-        ...,
-        description='Input tokens number. Must be a power of 2. INP_LEN = 2^k will produce model with k layers.',
-        cli=('--inp-len',),
-    )
-    n_first_embs: int = Field(
-        ...,
-        description='Number of the first embeddings to be extracted from embedding generating model. If N_FIRST_EMBS > INP_LEN '
-            'then all INP_LEN embeddings will be passed to Generating model.',
-        cli=('--n-first-embs',),
-    )
-    n_second_embs: int = Field(
-        ...,
-        description='Number of embeddings that will be created from N_FIRST_EMBS and serve as an input to Generator.',
-        cli=('--n-second-embs',),
-    )
-    emb_agg_type: GenmixEmbAggType = Field(
-        GenmixEmbAggType.Fst,
-        description=f'Aggregation method for N_FIRST_EMBS: {[t.value for t in GenmixEmbAggType]}',
-        cli=('--emb-agg-type',),
-    )
-    emb_exp_type: GenmixEmbExpType = Field(
-        GenmixEmbExpType.Non,
-        description=f'Embeddings expansion type from N_FIRST_EMBS to N_SECOND_EMBS: {[t.value for t in GenmixEmbExpType]}',
-        cli=('--emb-exp-type',),
-    )
-    max_inp_chunks: int = Field(
-        ...,
-        description='Maximum input chunks. Model input will have dimensions [n, INP_LEN] where n <= MAX_INP_CHUNKS.',
-        cli=('--max-inp-chunks',),
-    )
     max_out_toks: int = Field(
         ...,
-        description='Maximum output tokens to use in training.',
+        description='Maximum number of predicted tokens.',
         cli=('--max-out-toks',),
     )
+    toks_agg_type: TokensAggType = Field(
+        TokensAggType.Bert,
+        description=f'Aggregation method for sequence of tokens {[t.value for t in TokensAggType]}',
+        cli=('--toks-agg-type',),
+    )
+    bert_agg_n_subseq_toks: int = Field(
+        ...,
+        description=f'Number of sequential tokens to aggregate for TOKS_AGG_TYPE={TokensAggType.Bert}.',
+        cli=('--bert-agg-n-subseq-toks',),
+    )
+    pyr_agg_n_levels: int = Field(
+        ...,
+        description=f'Number of hierarchical levels of aggregation for TOKS_AGG_TYPE={TokensAggType.Pyramid}.',
+        cli=('--pyr-agg-n-levels',),
+    )
+    pyr_agg_n_layers_per_level: int = Field(
+        ...,
+        description=f'Number of self attention layers per level of aggregation for TOKS_AGG_TYPE={TokensAggType.Pyramid}.',
+        cli=('--pyr-agg-n-layers-per-level',),
+    )
+
+    train_agg_model_str: str = create_bool_str_field(*train_agg_model_ARG)
+    @property
+    def train_agg_model(self) -> bool:
+        return is_arg_true(train_agg_model_ARG[0], self.train_agg_model_str)
+
+    n_toks_min: int = Field(
+        ...,
+        description='Minimum number of tokens in text data to include it into training. Texts with less number of tokens will be skipped.',
+        cli=('--n-toks-min',),
+    )
+    n_toks_max: int = Field(
+        ...,
+        description='Maximum number of tokens in input to aggregate using TOKS_AGG_TYPE model (and use as a target).',
+        cli=('--n-toks-max',),
+    )
+
+    mask_tokens_str: str = create_bool_str_field(*mask_tokens_ARG)
+    @property
+    def mask_tokens(self) -> bool:
+        return is_arg_true(mask_tokens_ARG[0], self.mask_tokens_str)
+
+    mask_sep_freq: float = Field(
+        ...,
+        description='Sparse mask frequency from 0 to 1. When MASK_SEP_FREQ=0.2 this type of mask will be applied in 20% of cases randomly. '
+                    'Must hold: 0 <= MASK_SEP_FREQ and MASK_SEP_FREQ + MASK_SEQ_FREQ <= 1',
+        cli=('--mask-sep-freq',),
+    )
+    mask_sep_frac: float = Field(
+        ...,
+        description='Fraction of the input to mask using sparse masking.',
+        cli=('--mask-sep-frac',),
+    )
+    mask_seq_freq: float = Field(
+        ...,
+        description='Sequential mask frequency from 0 to 1. When MASK_SEQ_FREQ=0.2 this type of mask will be applied in 20% of cases randomly. '
+                    'Must hold: 0 <= MASK_SEQ_FREQ and MASK_SEP_FREQ + MASK_SEQ_FREQ <= 1',
+        cli=('--mask-seq-freq',),
+    )
+    mask_seq_max_frac: float = Field(
+        ...,
+        description='Fraction of the input to calculate maximum length of tokens sequence to mask. Resulting value is combined '
+                    'with MASK_SEQ_MAX_LEN using min() function.',
+        cli=('--mask-seq-max-frac',),
+    )
+    mask_seq_max_len: int = Field(
+        ...,
+        description='Maximum length of tokens sequence to mask. Combined with value derived from MASK_SEQ_MAX_FRAC using min() function.',
+        cli=('--mask-seq-max-len',),
+    )
+
     batch_size: int = Field(
         3,
         description='Documents batch size. Must be greater or equal than 2.',
@@ -149,16 +173,11 @@ class ArgsGenmixBertTrain(BaseModel):
         description='Random seed.',
         cli=('--random-seed',),
     )
-    pretrained_model_path: Optional[Path] = Field(
-        None,
-        description='Path to EncdecHg model train directory.',
-        cli=('--pretrained-model-path',),
-    )
 
 
-def main(args: ArgsGenmixBertTrain) -> int:
+def main(args: ArgsGenmixembBertTrain) -> int:
     print(args)
-    mask_tgt, pred_tgt_all = args.mask_tgt, args.pred_tgt_all
+    mask_tgt, pred_tgt_all = args.mask_tgt, args.mask_tokens
 
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
@@ -371,7 +390,8 @@ def main(args: ArgsGenmixBertTrain) -> int:
 
 
 if __name__ == '__main__':
-    def rethrow(e):
-        raise e
-    run_and_exit(ArgsGenmixBertTrain, main, 'Train EncmixBert model to predict masked input.', exception_handler=rethrow)
+    run_and_exit(
+        ArgsGenmixembBertTrain, main, 'Train GenmixembBert model to predict masked input.',
+        exception_handler=rethrow,
+    )
 

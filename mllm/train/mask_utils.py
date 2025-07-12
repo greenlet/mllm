@@ -114,23 +114,23 @@ def mask_random_words(
 
 @dataclass
 class MaskCfg:
-    rem_freq: float = 0.33
-    rem_prob: float = 0.15
-    rem_conseq_freq: float = 0.33
-    rem_conseq_prob: float = 0.2
-    rem_conseq_max_len: int = 20
+    sep_freq: float = 0.33
+    sep_frac: float = 0.15
+    seq_freq: float = 0.33
+    seq_max_frac: float = 0.2
+    seq_max_len: int = 20
 
     def gen_mask(self, n_total: int) -> Optional[np.ndarray]:
         rv = np.random.rand()
-        if rv > self.rem_freq + self.rem_conseq_freq or n_total < 2:
+        if rv > self.sep_freq + self.seq_freq or n_total < 2:
             return None
 
-        if rv < self.rem_freq:
-            mask: np.ndarray = np.random.rand(n_total) <= self.rem_prob
+        if rv < self.sep_freq:
+            mask: np.ndarray = np.random.rand(n_total) <= self.sep_frac
         else:
             mask = np.full(n_total, False, dtype=bool)
-            n_seq = int(n_total * self.rem_conseq_prob)
-            n_seq = min(max(n_seq, 1), self.rem_conseq_max_len, int(0.9 * n_total))
+            n_seq = int(n_total * self.seq_max_frac)
+            n_seq = min(max(n_seq, 1), self.seq_max_len, int(0.9 * n_total))
             i_off = np.random.randint(0, n_total - n_seq + 1)
             mask[i_off:i_off + n_seq] = True
 
