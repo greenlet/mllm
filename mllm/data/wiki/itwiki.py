@@ -11,7 +11,7 @@ from transformers import PreTrainedTokenizer
 from mllm.train.mask_utils import MaskCfg, mask_random_words_v2
 
 
-def get_split_wiki_ds(data_path: Path, val_ratio: float = 0.05, shuffle: bool = False, rand_seed: int = 100) -> tuple[Dataset, np.ndarray, np.ndarray]:
+def get_split_wiki_ds(data_path: Path, val_ratio: float = 0.05, shuffle: bool = False, rand_seed: Optional[int] = None) -> tuple[Dataset, np.ndarray, np.ndarray]:
     # wiki_ds_name, wiki_ds_subdir = '20200501.en', 'wikipedia'
     # dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
@@ -21,7 +21,8 @@ def get_split_wiki_ds(data_path: Path, val_ratio: float = 0.05, shuffle: bool = 
     print(f'Wikipedia {wiki_ds_name} docs: {n_docs}')
 
     doc_inds = np.arange(n_docs)
-    np.random.seed(rand_seed)
+    if rand_seed is not None:
+        np.random.seed(rand_seed)
     np.random.shuffle(doc_inds)
     n_docs_val = int(n_docs * val_ratio)
     n_docs_train = n_docs - n_docs_val
@@ -194,10 +195,12 @@ def get_wiki_batch_iterator(
 
 
 def get_wiki_batch_iterators(
-        data_path: Path, tkz: PreTrainedTokenizer, batch_size: int, val_ratio: float = 0.05, shuffle: bool = False, rand_seed: int = 100,
+        data_path: Path, tkz: PreTrainedTokenizer, batch_size: int, val_ratio: float = 0.05, shuffle: bool = False, rand_seed: Optional[int] = None,
         n_toks_min: int = 20, n_toks_max: int = 0, mask_cfg: Optional[MaskCfg] = None,
 ) -> tuple[WikiBatchGen, WikiBatchGen]:
-    ds, doc_inds_train, doc_inds_val = get_split_wiki_ds(data_path, val_ratio, shuffle, rand_seed)
+    ds, doc_inds_train, doc_inds_val = get_split_wiki_ds(
+        data_path=data_path, val_ratio=val_ratio, shuffle=shuffle, rand_seed=rand_seed
+    )
     train_it = get_wiki_batch_iterator(
         ds=ds, tkz=tkz, inds=doc_inds_train, batch_size=batch_size, n_toks_min=n_toks_min, n_toks_max=n_toks_max, mask_cfg=mask_cfg,
     )

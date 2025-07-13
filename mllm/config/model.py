@@ -11,6 +11,7 @@ from jsonschema.validators import create
 from pydantic import BaseModel, Field
 from torchtext.datasets import dataset_module
 
+from mllm.train.mask_utils import MaskCfg
 from mllm.utils.utils import coalesce
 from transformers import BertModel, BertConfig, AutoTokenizer
 
@@ -1094,7 +1095,7 @@ def bool_param_to_str(name: str, val: bool) -> str:
 
 
 def gen_prefpostfix_genmixemb_bert(
-        cfg: GenmixembBertCfg,
+        cfg: GenmixembBertCfg, train_ds_type: GenmixTrainDsType, n_toks_max: int, mask_cfg: Optional[MaskCfg],
 ) -> tuple[str, str]:
     prefix, postfix_parts = f'genmixemb', []
 
@@ -1112,6 +1113,15 @@ def gen_prefpostfix_genmixemb_bert(
     elif cfg.toks_agg_type == TokensAggType.Pyramid:
         postfix_parts.append(f'lvl{cfg.pyr_agg_n_levels}')
         postfix_parts.append(f'lrs{cfg.pyr_agg_n_layers_per_level}')
+
+    postfix_parts.append(f'ds{train_ds_type.value.capitalize()}')
+
+    postfix_parts.append(f'tmax{n_toks_max}')
+
+    if mask_cfg is not None:
+        sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)
+        seq_freq, seq_max_frac = np.round(mask_cfg.seq_freq, 2), np.round(mask_cfg.seq_max_frac, 2)
+        postfix_parts.append(f'msk_sep_{sep_freq}/{sep_frac}_seq_{seq_freq}/{seq_max_frac}/{mask_cfg.seq_max_len}')
 
     postfix_parts.append(bool_param_to_str('trag', cfg.train_agg_model))
 

@@ -32,7 +32,7 @@ mask_sep_freq=0.33
 mask_sep_frac=0.15
 mask_seq_freq=0.33
 mask_seq_max_frac=0.2
-mask_seq_max_len=0.2
+mask_seq_max_len=20
 
 device=cpu
 epochs=5
@@ -50,8 +50,8 @@ batch_size=5
 #train_subdir=last
 
 #learning_rate=0.0001
-#learning_rate=0.00005
-learning_rate=0.00001
+learning_rate=0.00005
+#learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
