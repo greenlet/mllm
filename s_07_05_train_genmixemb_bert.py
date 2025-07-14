@@ -185,7 +185,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
 
     model_cfg = parse_yaml_file_as(GenmixembBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmixemb_bert_cfg(
-        model_cfg, bert_model_name=args.bert_model_name, max_out_toks=args.max_out_toks, tokens_agg_type=args.toks_agg_type,
+        model_cfg, bert_model_name=args.bert_model_name, max_out_toks=args.max_out_toks, toks_agg_type=args.toks_agg_type,
         bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks, pyr_agg_n_levels=args.pyr_agg_n_levels, pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level,
         train_agg_model=args.train_agg_model,
     )
@@ -259,7 +259,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
     if args.train_ds_type == GenmixTrainDsType.Wki:
         train_it, val_it = get_wiki_batch_iterators(
             data_path=args.data_path, tkz=model.tkz, batch_size=args.batch_size, val_ratio=val_ratio, shuffle=False, rand_seed=args.random_seed,
-            n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg,
+            n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg, device=device,
         )
     else:
         raise Exception(f'Dataset type {args.train_ds_type} is not supported.')

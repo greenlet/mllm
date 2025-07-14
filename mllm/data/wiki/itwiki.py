@@ -75,14 +75,14 @@ class WikiItem:
     title: str
     text: str
     max_len: int
-    mask_cfg: MaskCfg
+    mask_cfg: Optional[MaskCfg]
     src_toks: np.ndarray
     toks: np.ndarray
     masked_toks: np.ndarray
     mask: Optional[np.ndarray]
 
     def __init__(
-            self, tkz: PreTrainedTokenizer, ind: int, title: str, text: str, max_len: int, mask_cfg: MaskCfg):
+            self, tkz: PreTrainedTokenizer, ind: int, title: str, text: str, max_len: int, mask_cfg: Optional[MaskCfg]):
         self.tkz = tkz
         self.ind = ind
         self.title = title
@@ -93,12 +93,14 @@ class WikiItem:
 
     def calc_toks(self):
         src_toks = self.tkz(self.text, add_special_tokens=False).input_ids
-        src_toks = np.darray(src_toks)
+        src_toks = np.array(src_toks)
         toks = src_toks
         if self.max_len > 0:
             toks = toks[:self.max_len]
 
-        masked_toks, mask = mask_random_words_v2(toks, self.tkz, self.mask_cfg)
+        masked_toks, mask = toks, None
+        if self.mask_cfg is not None:
+            masked_toks, mask = mask_random_words_v2(toks, self.tkz, self.mask_cfg)
 
         self.src_toks = src_toks
         self.toks = toks
@@ -126,12 +128,13 @@ class WikiBatch:
         self.tkz = items[0].tkz
         self.items = items
         self.device = device if device is not None else torch.device('cpu')
+        self.calc_all()
 
     def calc_all(self):
         n_batch, max_len = len(self.items), self.items[0].max_len
         if max_len == 0:
             max_len = max(len(item.toks) for item in self.items)
-        b_toks = np.array((n_batch, max_len), dtype=int)
+        b_toks = np.full((n_batch, max_len), self.tkz.pad_token_id, dtype=int)
         b_masked_toks = b_toks.copy()
         b_mask = np.zeros_like(b_toks, dtype=bool)
         for i, item in enumerate(self.items):
@@ -159,7 +162,7 @@ WikiBatchGen = Generator[WikiBatch, None, None]
 
 
 def get_wiki_item_iterator(
-        ds: Dataset, tkz: PreTrainedTokenizer, inds: np.ndarray, n_toks_min: int = 20, n_toks_max: int = 0,
+        ds: Dataset, tkz: PreTrainedTokenizer, inds: np.ndarray, n_toks_max: int = 0,
         mask_cfg: Optional[MaskCfg] = None,
 ) -> WikiItemGen:
     n = len(inds)
@@ -181,31 +184,36 @@ def get_wiki_item_iterator(
 
 def get_wiki_batch_iterator(
         ds: Dataset, tkz: PreTrainedTokenizer, inds: np.ndarray, batch_size: int, n_toks_min: int = 20, n_toks_max: int = 0,
-        mask_cfg: Optional[MaskCfg] = None,
+        mask_cfg: Optional[MaskCfg] = None, device: Optional[torch.device] = None,
     ) -> WikiBatchGen:
-    wiki_it = get_wiki_item_iterator(ds, tkz, inds)
+    wiki_it = get_wiki_item_iterator(
+        ds=ds, tkz=tkz, inds=inds, n_toks_max=n_toks_max, mask_cfg=mask_cfg,
+    )
     items = []
     for wiki_item in wiki_it:
         if wiki_item.src_toks_num < n_toks_min:
             continue
         items.append(wiki_item)
         if len(items) == batch_size:
-            batch = WikiBatch(items=items)
+            batch = WikiBatch(items=items, device=device)
             yield batch
+            items = []
 
 
 def get_wiki_batch_iterators(
         data_path: Path, tkz: PreTrainedTokenizer, batch_size: int, val_ratio: float = 0.05, shuffle: bool = False, rand_seed: Optional[int] = None,
-        n_toks_min: int = 20, n_toks_max: int = 0, mask_cfg: Optional[MaskCfg] = None,
+        n_toks_min: int = 20, n_toks_max: int = 0, mask_cfg: Optional[MaskCfg] = None, device: Optional[torch.device] = None,
 ) -> tuple[WikiBatchGen, WikiBatchGen]:
     ds, doc_inds_train, doc_inds_val = get_split_wiki_ds(
         data_path=data_path, val_ratio=val_ratio, shuffle=shuffle, rand_seed=rand_seed
     )
     train_it = get_wiki_batch_iterator(
         ds=ds, tkz=tkz, inds=doc_inds_train, batch_size=batch_size, n_toks_min=n_toks_min, n_toks_max=n_toks_max, mask_cfg=mask_cfg,
+        device=device,
     )
     val_it = get_wiki_batch_iterator(
         ds=ds, tkz=tkz, inds=doc_inds_val, batch_size=batch_size, n_toks_min=n_toks_min, n_toks_max=n_toks_max, mask_cfg=mask_cfg,
+        device=device,
     )
     return train_it, val_it
 

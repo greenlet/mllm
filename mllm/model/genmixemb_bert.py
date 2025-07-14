@@ -61,8 +61,26 @@ class GenmixembBert(nn.Module):
             self.cfg.bert_model_name, add_cross_attention=True, is_decoder=True,
             bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
         )
-        del encoder.embeddings.word_embeddings
+        # del encoder.embeddings.word_embeddings
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
+
+    # logits: [n_batch, n_seq, n_vocab]
+    # labels: [n_batch, n_seq]
+    # mask: [n_batch, n_seq]
+    def calc_loss(self, logits: torch.Tensor, labels: torch.Tensor, mask: Optional[torch.Tensor]) -> torch.Tensor:
+        if mask is None or not mask.any():
+            loss = F.cross_entropy(logits, labels)
+        else:
+            nmask = ~mask
+            mask_logits, mask_labels = logits[mask], labels[mask]
+            toks_logits, toks_labels = logits[nmask], labels[nmask]
+            mask_loss = torch.zeros(size=(1,), device=self.device)
+            if len(mask_logits) > 0:
+                mask_loss = F.cross_entropy(mask_logits, mask_labels)
+            assert len(toks_logits) > 0
+            toks_loss = F.cross_entropy(toks_logits, toks_labels)
+            loss = 0.5 * mask_loss + 0.5 * toks_loss
+        return loss
 
     def prefix_token(self, toks: torch.Tensor, tok_id: int) -> torch.Tensor:
         if toks.ndim == 1:
@@ -71,16 +89,24 @@ class GenmixembBert(nn.Module):
             mask = toks[:, 0] == tok_id
             has_any, has_all = mask.any(), mask.all()
             assert has_any == has_all, (f'Either all starting toks are expected to be equal to {tok_id} or none. '
-                                        f'Got partial match instead: {mask}')
+                                        f'Got partial match instead: {mask}.')
             has_prefix = has_all
         else:
             raise Exception(f'Expected 1 or 2 dimensional tensor, got shape = {toks.shape}.')
         if not has_prefix:
-            toks = F.pad(toks, (1, 0), tok_id)
+            toks = F.pad(toks, (1, 0), value=tok_id)
         return toks
 
-    def run_agg(self):
-        pass
+    # toks: [n_batch, n_seq]
+    def run_agg(self, toks: torch.Tensor):
+        if self.cfg.toks_agg_type == TokensAggType.Bert:
+            n_batch, n_seq = toks.shape
+            n_seq_mod = n_seq % self.cfg.bert_agg_n_subseq_toks
+            if n_seq_mod > 0:
+                toks = F.pad(toks, (0, n_seq_mod), 'constant', self.tkz.pad_token_id)
+                
+        else:
+            raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
 
     def run_on_wiki(self, batch: WikiBatch) -> torch.Tensor:
         need_run_agg = self.cfg.bert_agg_n_subseq_toks > 0
@@ -94,14 +120,24 @@ class GenmixembBert(nn.Module):
         tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
 
         if not need_run_agg:
-            gen_out: Seq2SeqLMOutput = self.gen(input_ids=masked_toks, decoder_input_ids=tgt_inp_ids)
+            att_mask = masked_toks != self.tkz.pad_token_id
+            gen_out: Seq2SeqLMOutput = self.gen(
+                input_ids=masked_toks, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
+            )
+            # # [n_batch, n_tgt, n_vocab]
+            # logits = gen_out.logits
+            # # [n_batch * n_tgt, n_vocab]
+            # logits = logits.view(-1, self.gen.decoder.config.vocab_size)
+            # # [n_batch * n_tgt]
+            # labels = tgt_out_ids.reshape(-1)
+            # loss = F.cross_entropy(logits, labels)
+
             # [n_batch, n_tgt, n_vocab]
-            gen_logits = gen_out.logits
-            # [n_batch * n_tgt, n_vocab]
-            logits = gen_logits.view(-1, self.gen.decoder.config.vocab_size)
-            # [n_batch * n_tgt, n_vocab]
+            logits = gen_out.logits
+            # [n_batch, n_tgt]
             labels = tgt_out_ids
-            loss = F.cross_entropy(logits, labels)
+            label_mask = mask[:, :self.cfg.max_out_toks]
+            loss = self.calc_loss(logits, labels, label_mask)
         else:
             raise Exception(r'Running aggregation model is not supported yet.')
 

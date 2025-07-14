@@ -28,9 +28,10 @@ train_agg_model=false
 n_toks_min=20
 n_toks_max=100
 mask_tokens=false
-mask_sep_freq=0.33
+mask_tokens=true
+mask_sep_freq=0.5
 mask_sep_frac=0.15
-mask_seq_freq=0.33
+mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
 
