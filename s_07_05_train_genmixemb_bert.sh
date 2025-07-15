@@ -20,15 +20,16 @@ bert_model_name=bert-base-uncased
 max_out_toks=50
 toks_agg_type=brt
 #toks_agg_type=pyr
-bert_agg_n_subseq_toks=0
+bert_agg_n_subseq_toks=2
 pyr_agg_n_levels=0
 pyr_agg_n_layers_per_level=0
-train_agg_model=false
+#train_agg_model=false
+train_agg_model=true
 
 n_toks_min=20
 n_toks_max=100
 mask_tokens=false
-mask_tokens=true
+#mask_tokens=true
 mask_sep_freq=0.5
 mask_sep_frac=0.15
 mask_seq_freq=0.5
@@ -51,8 +52,8 @@ batch_size=5
 #train_subdir=last
 
 #learning_rate=0.0001
-learning_rate=0.00005
-#learning_rate=0.00001
+#learning_rate=0.00005
+learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
