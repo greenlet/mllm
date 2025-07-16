@@ -169,6 +169,24 @@ class GenmixembBert(nn.Module):
         loss = self.calc_loss(logits, labels, label_mask)
         return loss
 
+    # toks: [max_len]
+    def gen_on_wiki(self, toks: torch.Tensor) -> torch.Tensor:
+        need_run_agg = self.cfg.toks_agg_type == TokensAggType.Bert and self.cfg.bert_agg_n_subseq_toks > 0 \
+            or self.cfg.toks_agg_type == TokensAggType.Pyramid and self.cfg.pyr_agg_n_levels > 0
+        # [1, max_len]
+        if toks.ndim == 1:
+            toks = toks.unsqueeze(0)
+
+        if not need_run_agg:
+            # [1, max_len]
+            att_mask = toks != self.tkz.pad_token_id
+            out_toks = self.gen.generate(input_ids=toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id)
+        else:
+            # [n_batch, n_chunks, d_model]
+            emb = self.run_agg(toks)
+            out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id)
+        return out_toks
+
 
 def test_train():
     tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
