@@ -213,7 +213,7 @@ class VocabEncoder(nn.Module):
         elif self.pos_enc_type == PosEncType.Emb:
             self.position_enc = nn.Embedding(self.inp_len, self.d_word_vec)
         else:
-            raise Exception(f'Unspoorted position encoding type: {self.pos_enc_type}')
+            raise Exception(f'Position encoding type: {self.pos_enc_type} is not supported.')
         self.dropout = nn.Dropout(p=self.dropout_rate)
         self.layer_norm = nn.LayerNorm(self.d_word_vec, eps=1e-6)
 

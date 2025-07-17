@@ -195,6 +195,7 @@ class ReduceLayer(nn.Module):
         if reduct_type == HgReductType.Sub:
             assert self.step == 2
 
+    # inp: [batch_size, seq_len, d_model]
     def forward(self, inp: Tensor) -> Tensor:
         batch_size, seq_len, d_model = inp.shape
         assert d_model == self.d_model, f'self.d_model = {self.d_model}. inp d_model = {d_model}'
@@ -202,7 +203,7 @@ class ReduceLayer(nn.Module):
         # print_dtype_shape(inp, 'rdc_inp')
         if len_mod > 0:
             n_seq_add = self.step - len_mod
-            inp = F.pad(inp, (0, 0, n_seq_add, 0), value=0)
+            inp = F.pad(inp, (0, 0, 0, n_seq_add), value=0)
             seq_len += n_seq_add
             # print_dtype_shape(inp, 'rdc_inp_pad')
         if self.reduct_type == HgReductType.Matmul:

@@ -1,3 +1,4 @@
+import math
 import os
 from pathlib import Path
 from typing import Optional
@@ -6,12 +7,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.onnx.symbolic_opset12 import dropout
 from transformers import BatchEncoding
 # from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, BatchEncoding
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
 from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembBertCfg, TokensAggType, \
-    EncPyrCfg
+    EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType
 from mllm.model.bert import BertModel, BertTokenizer
 from mllm.model.bert_generation import BertGenerationEncoder, BertGenerationDecoder
 from mllm.model.encdec_ranker_hg import EncoderPyramid
@@ -31,29 +33,6 @@ class GenmixembBert(nn.Module):
         self.cfg = cfg
         self.device = device
         self.tkz = BertTokenizer.from_pretrained(self.cfg.bert_model_name)
-        if self.cfg.toks_agg_type == TokensAggType.Bert:
-            agg = BertModel.from_pretrained(
-                self.cfg.bert_model_name, torch_dtype=torch.float32, device_map=self.device,
-            )
-        # elif self.cfg.tokens_agg_type == TokensAggType.Pyramid:
-        #     d_word_vec = d_model
-        #     d_k = d_v = d_model // n_heads
-        #     n_layers = math.ceil(math.log(inp_len, step))
-        #     cfg_vocab_enc = VocabEncoderCfg(
-        #         n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len,
-        #         dropout_rate=dropout_rate,
-        #         pos_enc_type=pos_enc_type,
-        #     )
-        #     cfg_enc = EncPyrCfg(
-        #         vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v,
-        #         d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
-        #         n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
-        #     )
-        #     agg = EncoderPyramid(cfg_enc)
-        else:
-            raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
-
-        self.agg = agg
         encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
             self.cfg.bert_model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
             device_map=self.device,
@@ -64,6 +43,42 @@ class GenmixembBert(nn.Module):
         )
         # del encoder.embeddings.word_embeddings
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
+
+        if self.cfg.toks_agg_type == TokensAggType.Bert:
+            agg = BertModel.from_pretrained(
+                self.cfg.bert_model_name, torch_dtype=torch.float32, device_map=self.device,
+            )
+        elif self.cfg.toks_agg_type == TokensAggType.Pyramid:
+            d_model = self.cfg.d_model
+            pad_idx = self.tkz.pad_token_id
+            bert_cfg = encoder.config
+            n_vocab = bert_cfg.vocab_size
+            n_heads = bert_cfg.num_attention_heads
+            d_word_vec = d_model
+            d_k = d_v = d_model // n_heads
+            n_layers = self.cfg.pyr_agg_n_levels
+            n_similar_layers = self.cfg.pyr_agg_n_layers_per_level
+            dropout_rate = bert_cfg.hidden_dropout_prob
+            pos_enc_type = PosEncType.Emb
+            inp_len = 0 # ???
+            d_inner = bert_cfg.intermediate_size
+            # step = 2
+            reduct_type = HgReductType.Decim
+            temperature = 0
+            cfg_vocab_enc = VocabEncoderCfg(
+                n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len,
+                dropout_rate=dropout_rate, pos_enc_type=pos_enc_type,
+            )
+            cfg_enc = EncPyrCfg(
+                vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v,
+                d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
+                n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
+            )
+            agg = EncoderPyramid(cfg_enc)
+        else:
+            raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
+
+        self.agg = agg
 
     # logits: [n_batch, n_seq, n_vocab]
     # labels: [n_batch, n_seq]
@@ -180,11 +195,15 @@ class GenmixembBert(nn.Module):
         if not need_run_agg:
             # [1, max_len]
             att_mask = toks != self.tkz.pad_token_id
-            out_toks = self.gen.generate(input_ids=toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id)
+            out_toks = self.gen.generate(
+                input_ids=toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, max_new_tokens=self.cfg.max_out_toks,
+            )
         else:
             # [n_batch, n_chunks, d_model]
             emb = self.run_agg(toks)
-            out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id)
+            out_toks = self.gen.generate(
+                inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, max_new_tokens=self.cfg.max_out_toks,
+            )
         return out_toks
 
 
