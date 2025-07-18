@@ -62,7 +62,7 @@ class GenmixembBert(nn.Module):
             pos_enc_type = PosEncType.Emb
             inp_len = 0 # ???
             d_inner = bert_cfg.intermediate_size
-            # step = 2
+            step = cfg.pyr_agg_step
             reduct_type = HgReductType.Decim
             temperature = 0
             cfg_vocab_enc = VocabEncoderCfg(

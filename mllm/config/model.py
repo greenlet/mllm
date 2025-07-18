@@ -378,6 +378,8 @@ class GenmixembBertCfg(BaseModel):
     max_out_toks: int
     toks_agg_type: TokensAggType
     bert_agg_n_subseq_toks: int
+    pyr_agg_type: HgReductType = HgReductType.Decim
+    pyr_agg_step: int = 0
     pyr_agg_n_levels: int
     pyr_agg_n_layers_per_level: int
     train_agg_model: bool
@@ -720,8 +722,8 @@ def create_genmix_bert_cfg(
 
 def create_genmixemb_bert_cfg(
         bert_model_name: str = 'bert-base-uncased', max_out_toks: int = 0, toks_agg_type: TokensAggType = TokensAggType.Bert,
-        bert_agg_n_subseq_toks: int = 0, pyr_agg_n_levels: int = 0, pyr_agg_n_layers_per_level: int = 0,
-        train_agg_model: bool = False,
+        bert_agg_n_subseq_toks: int = 0, pyr_agg_type: HgReductType = HgReductType.Decim, pyr_agg_step: int = 2, pyr_agg_n_levels: int = 0,
+        pyr_agg_n_layers_per_level: int = 0, train_agg_model: bool = False,
 ) -> GenmixembBertCfg:
     model = BertModel.from_pretrained(bert_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -729,8 +731,8 @@ def create_genmixemb_bert_cfg(
 
     cfg = GenmixembBertCfg(
         bert_model_name=bert_model_name, d_model=d_model, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
-        bert_agg_n_subseq_toks=bert_agg_n_subseq_toks, pyr_agg_n_levels=pyr_agg_n_levels, pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level,
-        train_agg_model=train_agg_model,
+        bert_agg_n_subseq_toks=bert_agg_n_subseq_toks, pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels,
+        pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level, train_agg_model=train_agg_model,
     )
     return cfg
 
@@ -893,8 +895,8 @@ def copy_override_genmix_bert_cfg(
 
 def copy_override_genmixemb_bert_cfg(
         cfg: GenmixembBertCfg, bert_model_name: str = '', max_out_toks: Optional[int] = None, toks_agg_type: Optional[TokensAggType] = None,
-        bert_agg_n_subseq_toks: Optional[int] = None, pyr_agg_n_levels: Optional[int] = None, pyr_agg_n_layers_per_level: Optional[int] = None,
-        train_agg_model: Optional[bool] = None,
+        bert_agg_n_subseq_toks: Optional[int] = None, pyr_agg_type: Optional[HgReductType] = None, pyr_agg_step: Optional[int] = None,
+        pyr_agg_n_levels: Optional[int] = None, pyr_agg_n_layers_per_level: Optional[int] = None, train_agg_model: Optional[bool] = None,
 ) -> GenmixembBertCfg:
     bert_model_name = bert_model_name or cfg.bert_model_name
     max_out_toks = coalesce(max_out_toks, cfg.max_out_toks)
@@ -903,10 +905,13 @@ def copy_override_genmixemb_bert_cfg(
     pyr_agg_n_levels = coalesce(pyr_agg_n_levels, cfg.pyr_agg_n_levels)
     pyr_agg_n_layers_per_level = coalesce(pyr_agg_n_layers_per_level, cfg.pyr_agg_n_layers_per_level)
     train_agg_model = coalesce(train_agg_model, cfg.train_agg_model)
+    pyr_agg_type = coalesce(pyr_agg_type, cfg.pyr_agg_type)
+    pyr_agg_step = coalesce(pyr_agg_step, cfg.pyr_agg_step)
 
     return create_genmixemb_bert_cfg(
         bert_model_name=bert_model_name, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type, bert_agg_n_subseq_toks=bert_agg_n_subseq_toks,
-        pyr_agg_n_levels=pyr_agg_n_levels, pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level, train_agg_model=train_agg_model,
+        pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels, pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level,
+        train_agg_model=train_agg_model,
     )
 
 
@@ -1111,6 +1116,8 @@ def gen_prefpostfix_genmixemb_bert(
     if cfg.toks_agg_type == TokensAggType.Bert:
         postfix_parts.append(f'sub{cfg.bert_agg_n_subseq_toks}')
     elif cfg.toks_agg_type == TokensAggType.Pyramid:
+        postfix_parts.append(f'agt{cfg.pyr_agg_type.value.capitalize()}')
+        postfix_parts.append(f'stp{cfg.pyr_agg_step}')
         postfix_parts.append(f'lvl{cfg.pyr_agg_n_levels}')
         postfix_parts.append(f'lrs{cfg.pyr_agg_n_layers_per_level}')
 

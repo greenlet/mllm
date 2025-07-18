@@ -227,18 +227,23 @@ def main(args: ArgsGenmixembBertTrain) -> int:
         pretrained_checkpoint = torch.load(pretrained_model_path, map_location=device)
         # model.load_state_dict(pretrained_checkpoint['model'], strict=False)
         print(list(pretrained_checkpoint['model'].keys()))
-        prefix = 'enc_bert.bert_model.'
-        prefix_len = len(prefix)
-        model_chkpt = {}
-        for k, v in pretrained_checkpoint['model'].items():
-            if k.startswith(prefix):
-                k = k[prefix_len:]
-            if k.startswith('dec_pyr.'):
-                continue
-            model_chkpt[k] = v
-        model.enc.load_state_dict(model_chkpt, strict=True)
+        if args.pretrained_model_path.name.startswith('encdecbert-'):
+            prefix = 'enc_bert.bert_model.'
+            prefix_len = len(prefix)
+            model_chkpt = {}
+            for k, v in pretrained_checkpoint['model'].items():
+                if k.startswith(prefix):
+                    k = k[prefix_len:]
+                if k.startswith('dec_pyr.'):
+                    continue
+                model_chkpt[k] = v
+            model.agg.load_state_dict(model_chkpt, strict=True)
+            del model_chkpt
+        elif args.pretrained_model_path.name.startswith('genmixemb-'):
+            model.load_state_dict(pretrained_checkpoint['model'], strict=True)
+        else:
+            raise Exception(f'Model checkpoint {args.pretrained_model_path.name} is not supported')
         del pretrained_checkpoint
-        del model_chkpt
 
     if model_cfg.train_agg_model:
         params = model.parameters()
@@ -265,7 +270,8 @@ def main(args: ArgsGenmixembBertTrain) -> int:
         raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
 
     sched_wait_steps = 0
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=12, threshold=1e-6, min_lr=1e-8)
+    # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=12, threshold=1e-6, min_lr=1e-8)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
     # lr = scheduler.get_last_lr()[0]
     lr = optimizer.param_groups[0]['lr']
     print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
