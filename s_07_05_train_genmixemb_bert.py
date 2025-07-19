@@ -13,7 +13,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembBertCfg, copy_override_genmixemb_bert_cfg, \
-    gen_prefpostfix_genmixemb_bert
+    gen_prefpostfix_genmixemb_bert, HgReductType
 from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
 from mllm.model.genmixemb_bert import GenmixembBert
 from mllm.train.mask_utils import MaskCfg
@@ -69,13 +69,25 @@ class ArgsGenmixembBertTrain(BaseModel):
     )
     toks_agg_type: TokensAggType = Field(
         TokensAggType.Bert,
-        description=f'Aggregation method for sequence of tokens {[t.value for t in TokensAggType]}',
+        description=f'Aggregation method for sequence of tokens. Values {[t.value for t in TokensAggType]}',
         cli=('--toks-agg-type',),
     )
     bert_agg_n_subseq_toks: int = Field(
         ...,
         description=f'Number of sequential tokens to aggregate for TOKS_AGG_TYPE={TokensAggType.Bert}.',
         cli=('--bert-agg-n-subseq-toks',),
+    )
+    pyr_agg_type: HgReductType = Field(
+        HgReductType.Decim,
+        description=f'Pyramid aggregation type. Values: {[t.value for t in HgReductType]}',
+        cli=('--pyr-agg-type',),
+    )
+    pyr_agg_step: int = Field(
+        ...,
+        description=
+        f'Aggregation step for each Pyramid level. One level will reduce the number of tokens by factor PYR_AGG_STEP. '
+        f'k levels will reduce by factor PYR_AGG_STEP^k',
+        cli=('--pyr-agg-step',),
     )
     pyr_agg_n_levels: int = Field(
         ...,
@@ -186,8 +198,8 @@ def main(args: ArgsGenmixembBertTrain) -> int:
     model_cfg = parse_yaml_file_as(GenmixembBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmixemb_bert_cfg(
         model_cfg, bert_model_name=args.bert_model_name, max_out_toks=args.max_out_toks, toks_agg_type=args.toks_agg_type,
-        bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks, pyr_agg_n_levels=args.pyr_agg_n_levels, pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level,
-        train_agg_model=args.train_agg_model,
+        bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks, pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step,
+        pyr_agg_n_levels=args.pyr_agg_n_levels, pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, train_agg_model=args.train_agg_model,
     )
 
     mask_cfg = None

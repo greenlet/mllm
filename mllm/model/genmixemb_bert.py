@@ -60,7 +60,7 @@ class GenmixembBert(nn.Module):
             n_similar_layers = self.cfg.pyr_agg_n_layers_per_level
             dropout_rate = bert_cfg.hidden_dropout_prob
             pos_enc_type = PosEncType.Emb
-            inp_len = 0 # ???
+            inp_len = 0
             d_inner = bert_cfg.intermediate_size
             step = cfg.pyr_agg_step
             reduct_type = HgReductType.Decim
@@ -117,6 +117,7 @@ class GenmixembBert(nn.Module):
 
     # toks: [n_batch, n_seq] -> [n_batch, n_chunks, d_model]
     def run_agg(self, toks: torch.Tensor):
+        inp_shape = toks.shape
         if self.cfg.toks_agg_type == TokensAggType.Bert:
             n_subseq = self.cfg.bert_agg_n_subseq_toks
             n_batch, n_seq = toks.shape
@@ -142,6 +143,7 @@ class GenmixembBert(nn.Module):
             emb = emb.reshape((n_batch, n_chunks, self.cfg.d_model))
         else:
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
+        # print(f'Agg {self.cfg.toks_agg_type.value}. toks {inp_shape} --> emb {emb.shape}')
         return emb
 
     def run_on_wiki(self, batch: WikiBatch) -> torch.Tensor:

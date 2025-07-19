@@ -22,8 +22,13 @@ toks_agg_type=brt
 #toks_agg_type=pyr
 #bert_agg_n_subseq_toks=0
 bert_agg_n_subseq_toks=2
-pyr_agg_n_levels=0
-pyr_agg_n_layers_per_level=0
+pyr_agg_type=decim
+#pyr_agg_type=matmul
+#pyr_agg_type=avg
+#pyr_agg_type=sub
+pyr_agg_step=2
+pyr_agg_n_levels=1
+pyr_agg_n_layers_per_level=1
 #train_agg_model=false
 train_agg_model=true
 
@@ -51,7 +56,7 @@ train_epoch_steps=500
 val_epoch_steps=50
 batch_size=15
 #batch_size=5
-#train_subdir=last
+train_subdir=last
 
 #learning_rate=0.0001
 #learning_rate=0.00005

@@ -4,5 +4,7 @@ d_model: 768
 max_out_toks: 20
 pyr_agg_n_layers_per_level: 0
 pyr_agg_n_levels: 0
+pyr_agg_step: 2
+pyr_agg_type: decim
 toks_agg_type: brt
 train_agg_model: false
