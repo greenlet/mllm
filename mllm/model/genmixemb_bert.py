@@ -41,8 +41,6 @@ class GenmixembBert(nn.Module):
             self.cfg.bert_model_name, add_cross_attention=True, is_decoder=True,
             bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
         )
-        # del encoder.embeddings.word_embeddings
-        self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
 
         if self.cfg.toks_agg_type == TokensAggType.Bert:
             agg = BertModel.from_pretrained(
@@ -74,11 +72,13 @@ class GenmixembBert(nn.Module):
                 d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
                 n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
             )
-            agg = EncoderPyramid(cfg_enc)
+            agg = EncoderPyramid(cfg_enc, bert_encoder=encoder.embeddings).to(self.device)
         else:
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
 
         self.agg = agg
+        # del encoder.embeddings.word_embeddings
+        self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
 
     # logits: [n_batch, n_seq, n_vocab]
     # labels: [n_batch, n_seq]
@@ -141,6 +141,8 @@ class GenmixembBert(nn.Module):
             n_chunks = n_seq // n_subseq
             # [n_batch, n_chunks, d_model]
             emb = emb.reshape((n_batch, n_chunks, self.cfg.d_model))
+        elif self.cfg.toks_agg_type == TokensAggType.Pyramid:
+            emb = self.agg(toks)
         else:
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
         # print(f'Agg {self.cfg.toks_agg_type.value}. toks {inp_shape} --> emb {emb.shape}')

@@ -1,7 +1,8 @@
 import re
 import sys
-from typing import Optional
+from typing import Optional, Union
 
+from mllm.model.bert_generation.modeling_bert_generation import BertGenerationEmbeddings
 from mllm.train.utils import get_activation_module
 from transformers import BertModel, PreTrainedModel, BertTokenizerFast
 
@@ -226,15 +227,18 @@ class ReduceLayer(nn.Module):
 
 class EncoderPyramid(nn.Module):
     cfg: EncPyrCfg
-    vocab_encoder: VocabEncoder
+    # vocab_encoder: Union[VocabEncoder, BertGenerationEmbeddings]
     enc_layers: nn.ModuleList
     rdc_layers: nn.ModuleList
     inp_chunk_len: int
 
-    def __init__(self, cfg: EncPyrCfg):
+    def __init__(self, cfg: EncPyrCfg, bert_encoder: Optional[BertGenerationEmbeddings] = None):
         super().__init__()
         self.cfg = cfg
-        self.vocab_encoder = VocabEncoder(**cfg.vocab_encoder.dict())
+        if bert_encoder is None:
+            self.vocab_encoder = VocabEncoder(**cfg.vocab_encoder.dict())
+        else:
+            self.vocab_encoder = bert_encoder
         self.enc_layers = nn.ModuleList([
             EncoderLayer(
                 n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner, d_k=cfg.d_k, d_v=cfg.d_v,
@@ -252,8 +256,12 @@ class EncoderPyramid(nn.Module):
         # mask = torch.matmul(mask.unsqueeze(-1), mask.unsqueeze(-2)).to(torch.int32)
         mask = None
         assert self.cfg.inp_len == 0 or seq_len == self.cfg.inp_len, f'seq_len = {seq_len}. inp_len = {self.cfg.inp_len}'
-        # [batch_size, seq_len, d_model]
-        out = self.vocab_encoder(inp)
+        if isinstance(self.vocab_encoder, BertGenerationEmbeddings):
+            # [batch_size, seq_len, d_model]
+            out = self.vocab_encoder(inp, do_not_transform_embeds=True)
+        else:
+            # [batch_size, seq_len, d_model]
+            out = self.vocab_encoder(inp)
         # print_dtype_shape(out, 'vocab_enc')
         enc_layers_it = iter(self.enc_layers)
         for rdc_layer in self.rdc_layers:

@@ -18,8 +18,8 @@ train_ds_type=wki
 bert_model_name=bert-base-uncased
 #bert_model_name=bert-large-uncased
 max_out_toks=50
-toks_agg_type=brt
-#toks_agg_type=pyr
+#toks_agg_type=brt
+toks_agg_type=pyr
 #bert_agg_n_subseq_toks=0
 bert_agg_n_subseq_toks=2
 pyr_agg_type=decim
@@ -56,7 +56,7 @@ train_epoch_steps=500
 val_epoch_steps=50
 batch_size=15
 #batch_size=5
-train_subdir=last
+#train_subdir=last
 
 #learning_rate=0.0001
 #learning_rate=0.00005
@@ -78,6 +78,8 @@ python s_07_05_train_genmixemb_bert.py \
   --max-out-toks $max_out_toks \
   --toks-agg-type $toks_agg_type \
   --bert-agg-n-subseq-toks $bert_agg_n_subseq_toks \
+  --pyr-agg-type $pyr_agg_type \
+  --pyr-agg-step $pyr_agg_step \
   --pyr-agg-n-levels $pyr_agg_n_levels \
   --pyr-agg-n-layers-per-level $pyr_agg_n_layers_per_level \
   --train-agg-model $train_agg_model \

@@ -252,7 +252,9 @@ def main(args: ArgsGenmixembBertTrain) -> int:
             model.agg.load_state_dict(model_chkpt, strict=True)
             del model_chkpt
         elif args.pretrained_model_path.name.startswith('genmixemb-'):
-            model.load_state_dict(pretrained_checkpoint['model'], strict=True)
+            # strict = True
+            strict = False
+            model.load_state_dict(pretrained_checkpoint['model'], strict=strict)
         else:
             raise Exception(f'Model checkpoint {args.pretrained_model_path.name} is not supported')
         del pretrained_checkpoint
