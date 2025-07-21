@@ -9,6 +9,7 @@ jupyter
 matplotlib
 #mteb
 mwparserfromhell
+nltk
 numpy
 openai
 pandas

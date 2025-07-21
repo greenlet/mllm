@@ -26,14 +26,16 @@ pyr_agg_type=decim
 #pyr_agg_type=matmul
 #pyr_agg_type=avg
 #pyr_agg_type=sub
-pyr_agg_step=2
+pyr_agg_step=0
 pyr_agg_n_levels=1
-pyr_agg_n_layers_per_level=1
-#train_agg_model=false
-train_agg_model=true
+pyr_agg_n_layers_per_level=2
+train_agg_model=false
+#train_agg_model=true
+pred_next_sent=true
 
 n_toks_min=20
 n_toks_max=100
+n_toks_max=256
 mask_tokens=false
 #mask_tokens=true
 mask_sep_freq=0.5
@@ -41,6 +43,7 @@ mask_sep_frac=0.15
 mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
+
 
 device=cpu
 epochs=5
@@ -54,13 +57,14 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-batch_size=15
+batch_size=20
+#batch_size=10
 #batch_size=5
 #train_subdir=last
 
 #learning_rate=0.0001
-#learning_rate=0.00005
-learning_rate=0.00001
+learning_rate=0.00005
+#learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
@@ -83,6 +87,7 @@ python s_07_05_train_genmixemb_bert.py \
   --pyr-agg-n-levels $pyr_agg_n_levels \
   --pyr-agg-n-layers-per-level $pyr_agg_n_layers_per_level \
   --train-agg-model $train_agg_model \
+  --pred-next-sent $pred_next_sent \
   --n-toks-min $n_toks_min \
   --n-toks-max $n_toks_max \
   --mask-tokens $mask_tokens \

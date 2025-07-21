@@ -150,39 +150,52 @@ class GenmixembBert(nn.Module):
 
     def run_on_wiki(self, batch: WikiBatch) -> torch.Tensor:
         need_run_agg = self.cfg.toks_agg_type == TokensAggType.Bert and self.cfg.bert_agg_n_subseq_toks > 0 \
-            or self.cfg.toks_agg_type == TokensAggType.Pyramid and self.cfg.pyr_agg_n_levels > 0
-        # [n_batch, max_len]
-        toks, masked_toks, mask = batch.get_tensors()
-        # [n_batch, n_tgt]
-        target_ids = toks[:, :self.cfg.max_out_toks]
-        # [n_batch, n_tgt + 1]
+            or self.cfg.toks_agg_type == TokensAggType.Pyramid and self.cfg.pyr_agg_step > 0 and self.cfg.pyr_agg_n_levels > 0
+        # toks: [n_batch, max_len]
+        # masked_toks: [n_batch, max_len]
+        # mask: [n_batch, max_len]
+        # tgt_toks: [n_batch, tgt_len]
+        toks, masked_toks, mask, tgt_toks = batch.get_tensors()
+        if tgt_toks is not None:
+            # [n_batch, tgt_len]
+            target_ids = tgt_toks
+        else:
+            # [n_batch, tgt_len]
+            target_ids = toks[:, :self.cfg.max_out_toks]
+        # [n_batch, tgt_len + 1]
         target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
-        # [n_batch * n_tgt, n_vocab]
+        # [n_batch * tgt_len, n_vocab]
         tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
 
         if not need_run_agg:
             att_mask = masked_toks != self.tkz.pad_token_id
+            # print(f'input_ids: {masked_toks.shape}. attention_mask: {att_mask.shape}. decoder_input_ids: {tgt_inp_ids.shape}')
             gen_out: Seq2SeqLMOutput = self.gen(
                 input_ids=masked_toks, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
             )
         else:
-            # [n_batch, n_chunks, d_model]
-            emb = self.run_agg(toks)
+            if self.training and not self.cfg.train_agg_model:
+                with torch.no_grad():
+                    # [n_batch, n_chunks, d_model]
+                    emb = self.run_agg(toks)
+            else:
+                # [n_batch, n_chunks, d_model]
+                emb = self.run_agg(toks)
             gen_out: Seq2SeqLMOutput = self.gen(
                 inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
             )
 
-        # # [n_batch, n_tgt, n_vocab]
+        # # [n_batch, tgt_len, n_vocab]
         # logits = gen_out.logits
-        # # [n_batch * n_tgt, n_vocab]
+        # # [n_batch * tgt_len, n_vocab]
         # logits = logits.view(-1, self.gen.decoder.config.vocab_size)
-        # # [n_batch * n_tgt]
+        # # [n_batch * tgt_len]
         # labels = tgt_out_ids.reshape(-1)
         # loss = F.cross_entropy(logits, labels)
 
-        # [n_batch, n_tgt, n_vocab]
+        # [n_batch, tgt_len, n_vocab]
         logits = gen_out.logits
-        # [n_batch, n_tgt]
+        # [n_batch, tgt_len]
         labels = tgt_out_ids
         label_mask = mask[:, :self.cfg.max_out_toks]
         loss = self.calc_loss(logits, labels, label_mask)

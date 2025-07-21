@@ -22,6 +22,7 @@ from mllm.data.wiki.itwiki import WikiItem, get_wiki_batch_iterators, WikiBatch
 from mllm.utils.utils import rethrow
 
 train_agg_model_ARG = '--train-agg-model', 'Train aggregation model'
+pred_next_sent_ARG = '--pred-next-sent', 'Predict next sentence'
 mask_tokens_ARG = '--mask-tokens', 'Mask input tokens'
 
 
@@ -104,6 +105,11 @@ class ArgsGenmixembBertTrain(BaseModel):
     @property
     def train_agg_model(self) -> bool:
         return is_arg_true(train_agg_model_ARG[0], self.train_agg_model_STR)
+
+    pred_next_sent_STR: str = create_bool_str_field(*pred_next_sent_ARG)
+    @property
+    def pred_next_sent(self) -> bool:
+        return is_arg_true(pred_next_sent_ARG[0], self.pred_next_sent_STR)
 
     n_toks_min: int = Field(
         ...,
@@ -278,7 +284,8 @@ def main(args: ArgsGenmixembBertTrain) -> int:
     if args.train_ds_type == GenmixTrainDsType.Wki:
         train_it, val_it = get_wiki_batch_iterators(
             data_path=args.data_path, tkz=model.tkz, batch_size=args.batch_size, val_ratio=val_ratio, shuffle=False, rand_seed=args.random_seed,
-            n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg, device=device,
+            n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg, device=device, pred_next_sent=args.pred_next_sent,
+            n_toks_pred_max=args.max_out_toks,
         )
     else:
         raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
@@ -299,7 +306,11 @@ def main(args: ArgsGenmixembBertTrain) -> int:
         grad_log_step = (prev_train_steps - 1) // grad_log_interval + 1
         grad_log_ind = prev_train_steps
     for epoch in range(last_epoch + 1, args.epochs):
-        model.train()
+        if model_cfg.train_agg_model:
+            model.train()
+        else:
+            model.agg.eval()
+            model.gen.train()
         train_loss = 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
