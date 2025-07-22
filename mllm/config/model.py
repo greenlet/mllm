@@ -1100,7 +1100,7 @@ def bool_param_to_str(name: str, val: bool) -> str:
 
 
 def gen_prefpostfix_genmixemb_bert(
-        cfg: GenmixembBertCfg, train_ds_type: GenmixTrainDsType, n_toks_max: int, mask_cfg: Optional[MaskCfg],
+        cfg: GenmixembBertCfg, train_ds_type: GenmixTrainDsType, n_toks_max: int, mask_cfg: Optional[MaskCfg], pred_next_sent: bool,
 ) -> tuple[str, str]:
     prefix, postfix_parts = f'genmixemb', []
 
@@ -1128,9 +1128,12 @@ def gen_prefpostfix_genmixemb_bert(
     if mask_cfg is not None:
         sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)
         seq_freq, seq_max_frac = np.round(mask_cfg.seq_freq, 2), np.round(mask_cfg.seq_max_frac, 2)
-        postfix_parts.append(f'msk_sep_{sep_freq}/{sep_frac}_seq_{seq_freq}/{seq_max_frac}/{mask_cfg.seq_max_len}')
+        postfix_parts.append(f'msk_sep_{sep_freq}|{sep_frac}_seq_{seq_freq}|{seq_max_frac}|{mask_cfg.seq_max_len}')
 
     postfix_parts.append(bool_param_to_str('trag', cfg.train_agg_model))
+
+    if pred_next_sent:
+        postfix_parts.append('nxtsnt')
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix

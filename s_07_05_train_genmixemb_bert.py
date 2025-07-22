@@ -215,7 +215,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
             seq_max_len=args.mask_seq_max_len,
         )
     prefix, suffix = gen_prefpostfix_genmixemb_bert(
-        model_cfg, train_ds_type=args.train_ds_type, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg,
+        model_cfg, train_ds_type=args.train_ds_type, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg, pred_next_sent=args.pred_next_sent,
     )
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')

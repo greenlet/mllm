@@ -204,7 +204,7 @@ class GenmixembBert(nn.Module):
     # toks: [max_len]
     def gen_on_wiki(self, toks: torch.Tensor) -> torch.Tensor:
         need_run_agg = self.cfg.toks_agg_type == TokensAggType.Bert and self.cfg.bert_agg_n_subseq_toks > 0 \
-            or self.cfg.toks_agg_type == TokensAggType.Pyramid and self.cfg.pyr_agg_n_levels > 0
+            or self.cfg.toks_agg_type == TokensAggType.Pyramid and self.cfg.pyr_agg_step > 0 and self.cfg.pyr_agg_n_levels > 0
         # [1, max_len]
         if toks.ndim == 1:
             toks = toks.unsqueeze(0)

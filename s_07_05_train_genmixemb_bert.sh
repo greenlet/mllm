@@ -26,16 +26,18 @@ pyr_agg_type=decim
 #pyr_agg_type=matmul
 #pyr_agg_type=avg
 #pyr_agg_type=sub
-pyr_agg_step=0
-pyr_agg_n_levels=1
+pyr_agg_step=2
+pyr_agg_n_levels=3
 pyr_agg_n_layers_per_level=2
-train_agg_model=false
-#train_agg_model=true
+#pyr_agg_n_layers_per_level=3
+#train_agg_model=false
+train_agg_model=true
 pred_next_sent=true
 
 n_toks_min=20
 n_toks_max=100
 n_toks_max=256
+n_toks_max=512
 mask_tokens=false
 #mask_tokens=true
 mask_sep_freq=0.5
@@ -44,7 +46,6 @@ mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
 
-
 device=cpu
 epochs=5
 train_epoch_steps=20
@@ -52,19 +53,21 @@ val_epoch_steps=20
 batch_size=5
 
 #pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
-pretrained_model_path=$train_root_path/genmixemb-20250713_202718-bertbaseuncased-d768-mxo50-aggBrt-sub0-dsWki-tmax100-tragF
+#pretrained_model_path=$train_root_path/genmixemb-20250713_202718-bertbaseuncased-d768-mxo50-aggBrt-sub0-dsWki-tmax100-tragF
+pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
 device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
 batch_size=20
+#batch_size=15
 #batch_size=10
 #batch_size=5
 #train_subdir=last
 
 #learning_rate=0.0001
 learning_rate=0.00005
-#learning_rate=0.00001
+learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
