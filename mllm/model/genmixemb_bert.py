@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.onnx.symbolic_opset12 import dropout
-from transformers import BatchEncoding
+from transformers import BatchEncoding, GenerationConfig
 # from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, BatchEncoding
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
@@ -123,8 +123,9 @@ class GenmixembBert(nn.Module):
             n_batch, n_seq = toks.shape
             n_seq_mod = n_seq % n_subseq
             if n_seq_mod > 0:
-                toks = F.pad(toks, (0, n_seq_mod), 'constant', self.tkz.pad_token_id)
-                n_seq += n_seq_mod
+                pad_size = n_subseq - n_seq_mod
+                toks = F.pad(toks, (0, pad_size), 'constant', self.tkz.pad_token_id)
+                n_seq += pad_size
             # [n_batch, n_chunks, n_subseq]
             toks = toks.reshape((n_batch, -1, n_subseq))
             # [n_batch, n_chunks, 1 + n_subseq]
@@ -209,17 +210,28 @@ class GenmixembBert(nn.Module):
         if toks.ndim == 1:
             toks = toks.unsqueeze(0)
 
+        # gen_cfg = GenerationConfig(
+        #     max_new_tokens=self.cfg.max_out_toks, early_stopping=True, num_beams=5, no_repeat_ngram_size=4,
+        # )
+        gen_cfg = GenerationConfig(
+            max_new_tokens=self.cfg.max_out_toks,
+            do_sample=True,
+            top_p=0.95,
+            top_k=50,
+            # temperature=0.6,
+        )
+
         if not need_run_agg:
             # [1, max_len]
             att_mask = toks != self.tkz.pad_token_id
             out_toks = self.gen.generate(
-                input_ids=toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, max_new_tokens=self.cfg.max_out_toks,
+                input_ids=toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
             )
         else:
             # [n_batch, n_chunks, d_model]
             emb = self.run_agg(toks)
             out_toks = self.gen.generate(
-                inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, max_new_tokens=self.cfg.max_out_toks,
+                inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
             )
         return out_toks
 

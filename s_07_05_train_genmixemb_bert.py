@@ -232,7 +232,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
         chkpt_model_cfg = parse_yaml_file_as(GenmixembBertCfg, train_path / GENMIXEMB_BERT_MODEL_CFG_FNAME)
-        assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
+        assert model_cfg == chkpt_model_cfg, f'{model_cfg} != {chkpt_model_cfg}'
     else:
         to_yaml_file(train_path / GENMIXEMB_BERT_MODEL_CFG_FNAME, model_cfg)
 
