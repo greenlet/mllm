@@ -16,6 +16,7 @@ from torch.nn.modules import activation
 from transformers import PreTrainedTokenizer, AutoTokenizer
 
 from mllm.data.common import DsView, TDs, TBatch
+from mllm.data.utils import get_squadv2_df, split_df
 from mllm.data.wiki.itwiki import get_wiki_iterators
 from mllm.train.mask_utils import mask_random_tokens, mask_random_words
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
@@ -653,26 +654,6 @@ class QnaBatch:
             return self.ctx_toks_t, (self.qa_toks_t, self.qa_att_mask_t, self.qa_tgt_mask_t)
 
         raise Exception(f'Question input type {self.ques_inp} is not supported')
-
-
-def get_squadv2_df(exclude_empty_answers: bool = False) -> pd.DataFrame:
-    ds_name = 'squad_v2'
-    ds_sq = load_dataset(ds_name)
-    df_sq = pd.concat([ds_sq['train'].to_pandas(), ds_sq['validation'].to_pandas()], axis=0)
-    n_total = len(df_sq)
-    df_sq = df_sq.sample(n_total)
-    if exclude_empty_answers:
-        mask = df_sq['answers'].apply(lambda ans: len(ans['text']) > 0)
-        df_sq = df_sq[mask]
-        print(f'Remove empty answers from dataset {ds_name}. Size: {n_total} --> {len(df_sq)}')
-    return df_sq
-
-
-def split_df(df: pd.DataFrame, val_ratio: float) -> tuple[pd.DataFrame, pd.DataFrame]:
-    n_total = len(df)
-    n_val = int(n_total * val_ratio)
-    n_train = n_total - n_val
-    return df.iloc[:n_train], df.iloc[n_train:]
 
 
 # df_sq: ['id', 'title', 'context', 'question', 'answers']

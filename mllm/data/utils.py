@@ -2,8 +2,9 @@ from pathlib import Path
 from typing import Optional, BinaryIO, Union, Generator
 
 import numpy as np
+import pandas as pd
 import torch
-from datasets import Dataset
+from datasets import Dataset, load_dataset
 from transformers import PreTrainedTokenizer
 
 from mllm.data.dsqrels import DsQrels
@@ -148,3 +149,21 @@ class HfDsIterator:
             yield batch_toks, batch_toks_aug
 
 
+def get_squadv2_df(exclude_empty_answers: bool = False) -> pd.DataFrame:
+    ds_name = 'squad_v2'
+    ds_sq = load_dataset(ds_name)
+    df_sq = pd.concat([ds_sq['train'].to_pandas(), ds_sq['validation'].to_pandas()], axis=0)
+    n_total = len(df_sq)
+    df_sq = df_sq.sample(n_total)
+    if exclude_empty_answers:
+        mask = df_sq['answers'].apply(lambda ans: len(ans['text']) > 0)
+        df_sq = df_sq[mask]
+        print(f'Remove empty answers from dataset {ds_name}. Size: {n_total} --> {len(df_sq)}')
+    return df_sq
+
+
+def split_df(df: pd.DataFrame, val_ratio: float) -> tuple[pd.DataFrame, pd.DataFrame]:
+    n_total = len(df)
+    n_val = int(n_total * val_ratio)
+    n_train = n_total - n_val
+    return df.iloc[:n_train], df.iloc[n_train:]

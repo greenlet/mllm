@@ -21,8 +21,9 @@ from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, is_arg_true, ARG_TRUE_VAL
 from mllm.model.embgen_bert import EncoderEmbDecoderModel, EncEmbExpansionType, EncoderEmbDecoderConfig
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.train.embgen_bert import run_eed_model_on_batch, get_eed_bert_model
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats, QnaQuesInp, QnaBatch, get_squadv2_df, \
-    split_df, get_squadv2_batch_iterator
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, QnaQuesInp, QnaBatch, \
+    get_squadv2_batch_iterator
+from mllm.data.utils import get_squadv2_df, split_df
 from mllm.utils.utils import reraise
 
 
