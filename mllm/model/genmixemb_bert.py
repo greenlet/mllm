@@ -14,6 +14,7 @@ from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPo
 
 from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembBertCfg, TokensAggType, \
     EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType
+from mllm.data.itsquadv2 import QnaBatchV2
 from mllm.model.bert import BertModel, BertTokenizer
 from mllm.model.bert_generation import BertGenerationEncoder, BertGenerationDecoder
 from mllm.model.encdec_ranker_hg import EncoderPyramid
@@ -83,7 +84,7 @@ class GenmixembBert(nn.Module):
     # logits: [n_batch, n_seq, n_vocab]
     # labels: [n_batch, n_seq]
     # mask: [n_batch, n_seq]
-    def calc_loss(self, logits: torch.Tensor, labels: torch.Tensor, mask: Optional[torch.Tensor]) -> torch.Tensor:
+    def calc_loss(self, logits: torch.Tensor, labels: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         if mask is None or not mask.any():
             logits = logits.view(-1, self.gen.decoder.config.vocab_size)
             labels = labels.reshape(-1)
@@ -149,9 +150,12 @@ class GenmixembBert(nn.Module):
         # print(f'Agg {self.cfg.toks_agg_type.value}. toks {inp_shape} --> emb {emb.shape}')
         return emb
 
-    def run_on_wiki(self, batch: WikiBatch) -> torch.Tensor:
-        need_run_agg = self.cfg.toks_agg_type == TokensAggType.Bert and self.cfg.bert_agg_n_subseq_toks > 0 \
+    @property
+    def need_run_agg(self) -> bool:
+        return self.cfg.toks_agg_type == TokensAggType.Bert and self.cfg.bert_agg_n_subseq_toks > 0 \
             or self.cfg.toks_agg_type == TokensAggType.Pyramid and self.cfg.pyr_agg_step > 0 and self.cfg.pyr_agg_n_levels > 0
+
+    def run_on_wiki(self, batch: WikiBatch) -> torch.Tensor:
         # toks: [n_batch, max_len]
         # masked_toks: [n_batch, max_len]
         # mask: [n_batch, max_len]
@@ -168,7 +172,7 @@ class GenmixembBert(nn.Module):
         # [n_batch * tgt_len, n_vocab]
         tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
 
-        if not need_run_agg:
+        if not self.need_run_agg:
             att_mask = masked_toks != self.tkz.pad_token_id
             # print(f'input_ids: {masked_toks.shape}. attention_mask: {att_mask.shape}. decoder_input_ids: {tgt_inp_ids.shape}')
             gen_out: Seq2SeqLMOutput = self.gen(
@@ -200,6 +204,45 @@ class GenmixembBert(nn.Module):
         labels = tgt_out_ids
         label_mask = mask[:, :self.cfg.max_out_toks]
         loss = self.calc_loss(logits, labels, label_mask)
+        return loss
+
+    def run_on_qna(self, batch: QnaBatchV2) -> torch.Tensor:
+        # ctx_toks: [n_batch, ctx_len]
+        # que_toks: [n_batch, que_len]
+        # ans_toks: [n_batch, ans_len]
+        # cq_toks: [n_batch, cq_len]
+        ctx_toks, que_toks, ans_toks, cq_toks = batch.get_tensors()
+
+        # [n_batch, tgt_len]
+        target_ids = ans_toks
+        # [n_batch, tgt_len + 1]
+        target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
+        # [n_batch * tgt_len, n_vocab]
+        tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
+
+        if not self.need_run_agg:
+            # cq_toks: [n_batch, cq_len]
+            att_mask = cq_toks != self.tkz.pad_token_id
+            gen_out: Seq2SeqLMOutput = self.gen(
+                input_ids=cq_toks, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
+            )
+        else:
+            if self.training and not self.cfg.train_agg_model:
+                with torch.no_grad():
+                    # [n_batch, n_chunks, d_model]
+                    emb = self.run_agg(toks)
+            else:
+                # [n_batch, n_chunks, d_model]
+                emb = self.run_agg(toks)
+            gen_out: Seq2SeqLMOutput = self.gen(
+                inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
+            )
+
+        # [n_batch, tgt_len, n_vocab]
+        logits = gen_out.logits
+        # [n_batch, tgt_len]
+        labels = tgt_out_ids
+        loss = self.calc_loss(logits, labels)
         return loss
 
     # toks: [max_len]

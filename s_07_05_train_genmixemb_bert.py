@@ -14,6 +14,7 @@ from tqdm import trange
 
 from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembBertCfg, copy_override_genmixemb_bert_cfg, \
     gen_prefpostfix_genmixemb_bert, HgReductType
+from mllm.data.itsquadv2 import get_squadv2_batch_iterators_v2, QnaBatchV2
 from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
 from mllm.model.genmixemb_bert import GenmixembBert
 from mllm.train.mask_utils import MaskCfg
@@ -287,6 +288,11 @@ def main(args: ArgsGenmixembBertTrain) -> int:
             n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg, device=device, pred_next_sent=args.pred_next_sent,
             n_toks_pred_max=args.max_out_toks,
         )
+    elif args.train_ds_type == GenmixTrainDsType.Qna:
+        train_it, val_it = get_squadv2_batch_iterators_v2(
+            batch_size=args.batch_size, exclude_empty_answers=True, tkz=model.tkz, max_inp_len=args.n_toks_max, max_out_len=args.max_out_toks,
+            device=device,
+        )
     else:
         raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
 
@@ -320,6 +326,9 @@ def main(args: ArgsGenmixembBertTrain) -> int:
             if args.train_ds_type == GenmixTrainDsType.Wki:
                 batch: WikiBatch = item
                 loss = model.run_on_wiki(batch=batch)
+            elif args.train_ds_type == GenmixTrainDsType.Qna:
+                batch: QnaBatchV2 = item
+                loss = model.run_on_qna(batch=batch)
             else:
                 raise
             if loss.isnan():
@@ -335,10 +344,6 @@ def main(args: ArgsGenmixembBertTrain) -> int:
 
             optimizer.step()
             train_loss += loss.item()
-
-            # if i_train == 2:
-            #     import sys
-            #     sys.exit()
 
             s = f'Train. loss: {loss.item():.6f}'
             pbar.set_postfix_str(s)
@@ -359,6 +364,9 @@ def main(args: ArgsGenmixembBertTrain) -> int:
                 if args.train_ds_type == GenmixTrainDsType.Wki:
                     batch: WikiBatch = item
                     loss = model.run_on_wiki(batch=batch)
+                elif args.train_ds_type == GenmixTrainDsType.Qna:
+                    batch: QnaBatchV2 = item
+                    loss = model.run_on_qna(batch=batch)
                 else:
                     raise
                 if loss.isnan():

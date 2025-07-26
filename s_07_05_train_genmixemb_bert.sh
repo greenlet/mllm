@@ -9,11 +9,12 @@ model_cfg_fname=genmixemb_bert_cfg_01_base.yaml
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_genmixemb_bert
+train_root_path=$data_path/train_mllm_genmixembbert_qna
 train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
-#train_ds_type=qna
+#train_ds_type=wki
+train_ds_type=qna
 #train_ds_type=sum
-train_ds_type=wki
 
 bert_model_name=bert-base-uncased
 #bert_model_name=bert-large-uncased
@@ -31,14 +32,16 @@ pyr_agg_step=2
 pyr_agg_n_levels=3
 pyr_agg_n_layers_per_level=2
 #pyr_agg_n_layers_per_level=3
-#train_agg_model=false
-train_agg_model=true
+pyr_agg_step=0
+train_agg_model=false
+#train_agg_model=true
 pred_next_sent=true
 
 n_toks_min=20
 n_toks_max=100
 n_toks_max=256
-n_toks_max=512
+n_toks_max=384
+#n_toks_max=512
 mask_tokens=false
 #mask_tokens=true
 mask_sep_freq=0.5
@@ -55,8 +58,9 @@ batch_size=5
 
 #pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 #pretrained_model_path=$train_root_path/genmixemb-20250713_202718-bertbaseuncased-d768-mxo50-aggBrt-sub0-dsWki-tmax100-tragF
-pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
-pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
+#pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
+#pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
+
 device=cuda
 epochs=700
 train_epoch_steps=500
@@ -65,11 +69,11 @@ val_epoch_steps=50
 #batch_size=15
 batch_size=10
 #batch_size=5
-train_subdir=last
+#train_subdir=last
 
 #learning_rate=0.0001
 learning_rate=0.00005
-learning_rate=0.00001
+#learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path

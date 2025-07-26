@@ -1132,7 +1132,7 @@ def gen_prefpostfix_genmixemb_bert(
 
     postfix_parts.append(bool_param_to_str('trag', cfg.train_agg_model))
 
-    if pred_next_sent:
+    if train_ds_type == GenmixTrainDsType.Wki and pred_next_sent:
         postfix_parts.append('nxtsnt')
 
     postfix = '-'.join(postfix_parts)

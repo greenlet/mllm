@@ -49,9 +49,11 @@ class QnaBatchV2:
     ctx_toks: np.ndarray
     que_toks: np.ndarray
     ans_toks: np.ndarray
+    cq_toks: np.ndarray
     ctx_toks_t: Optional[torch.Tensor] = None
     que_toks_t: Optional[torch.Tensor] = None
     ans_toks_t: Optional[torch.Tensor] = None
+    cq_toks_t: Optional[torch.Tensor] = None
 
     def __init__(self, items: list[QnaItemV2], max_inp_len: int, max_out_len: int, device: Optional[torch.device] = None):
         self.tkz = items[0].tkz
@@ -76,24 +78,43 @@ class QnaBatchV2:
         b_que_toks = np.full((n_batch, max_que_len), self.tkz.pad_token_id)
         b_ans_toks = np.full((n_batch, max_ans_len), self.tkz.pad_token_id)
 
+        b_c_toks, b_q_toks = [], []
+        max_cq_len = 0
         for i, item in enumerate(self.items):
             n_ctx = min(max_ctx_len, len(item.ctx_toks))
-            b_ctx_toks[i, :n_ctx] = item.ctx_toks[:n_ctx]
-            n_que = min(max_que_len, len(item.que_toks))
+            ctx_toks = item.ctx_toks[:n_ctx]
+            b_ctx_toks[i, :n_ctx] = ctx_toks
+            que_toks = item.que_toks
+            n_que = min(max_que_len, len(que_toks))
             b_que_toks[i, :n_que] = item.que_toks[:n_que]
             n_ans = min(max_ans_len, len(item.ans_toks))
             b_ans_toks[i, :n_ans] = item.ans_toks[:n_ans]
+            b_c_toks.append(ctx_toks)
+            b_q_toks.append(que_toks)
+            max_cq_len = max(max_cq_len, len(ctx_toks) + len(que_toks))
+
+        b_cq_toks = np.full((n_batch, max_cq_len + 3), self.tkz.pad_token_id)
+        for i in range(len(self.items)):
+            c_toks, q_toks = b_c_toks[i], b_q_toks[i]
+            nc, nq = len(c_toks), len(q_toks)
+            b_cq_toks[i, 0] = self.tkz.cls_token_id
+            b_cq_toks[i, 1:nc + 1] = c_toks
+            b_cq_toks[i, nc + 1] = self.tkz.sep_token_id
+            b_cq_toks[i, nc + 2:nc + 2 + nq] = q_toks
+            b_cq_toks[i, nc + 2 + nq] = self.tkz.sep_token_id
 
         self.ctx_toks = b_ctx_toks
         self.que_toks = b_que_toks
         self.ans_toks = b_ans_toks
+        self.cq_toks = b_cq_toks
 
-    def get_tensors(self) -> [torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    def get_tensors(self) -> [torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.ctx_toks_t is None:
             self.ctx_toks_t = torch.from_numpy(self.ctx_toks).to(self.device)
             self.que_toks_t = torch.from_numpy(self.que_toks).to(self.device)
             self.ans_toks_t = torch.from_numpy(self.ans_toks).to(self.device)
-        return self.ctx_toks_t, self.que_toks_t, self.ans_toks_t
+            self.cq_toks_t = torch.from_numpy(self.cq_toks).to(self.device)
+        return self.ctx_toks_t, self.que_toks_t, self.ans_toks_t, self.cq_toks_t
 
 
 BatchV2It = Generator[QnaBatchV2, None, None]
@@ -106,7 +127,7 @@ def get_squadv2_batch_iterator_v2(
     items = []
     for ind in inds:
         row = df_sq.iloc[ind]
-        answers = row.answers['text'] or ['-']
+        answers = set(row.answers['text']) or {'-'}
         for answer in answers:
             item = QnaItemV2(tkz=tkz, ind=ind, context=row.context, question=row.question, answer=answer)
             items.append(item)
@@ -116,7 +137,7 @@ def get_squadv2_batch_iterator_v2(
                 items = []
 
 
-def get_squadv2_tensor_iterators_v2(
+def get_squadv2_batch_iterators_v2(
         batch_size: int, exclude_empty_answers: bool, tkz: PreTrainedTokenizer, max_inp_len: int, max_out_len: int,
         device: torch.device, val_ratio: float = 0.05,
 ) -> tuple[BatchV2It, BatchV2It]:
