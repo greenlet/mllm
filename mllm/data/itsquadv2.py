@@ -123,9 +123,12 @@ BatchV2It = Generator[QnaBatchV2, None, None]
 def get_squadv2_batch_iterator_v2(
         df_sq: pd.DataFrame, tkz: PreTrainedTokenizer, batch_size: int, max_inp_len: int, max_out_len: int, device: torch.device,
 ) -> BatchV2It:
-    inds = np.arange(len(df_sq))
+    n = len(df_sq)
+    inds = np.arange(n)
     items = []
-    for ind in inds:
+    i = 0
+    while True:
+        ind = inds[i].item()
         row = df_sq.iloc[ind]
         answers = set(row.answers['text']) or {'-'}
         for answer in answers:
@@ -135,6 +138,10 @@ def get_squadv2_batch_iterator_v2(
                 batch = QnaBatchV2(items=items, max_inp_len=max_inp_len, max_out_len=max_out_len, device=device)
                 yield batch
                 items = []
+        i += 1
+        if i == n:
+            np.random.shuffle(inds)
+            i = 0
 
 
 def get_squadv2_batch_iterators_v2(

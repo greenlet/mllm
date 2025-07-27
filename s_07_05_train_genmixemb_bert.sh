@@ -61,6 +61,8 @@ batch_size=5
 #pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
 #pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
 
+#pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl3-lrs2-dsQna-tmax384-tragF
+
 device=cuda
 epochs=700
 train_epoch_steps=500
@@ -69,7 +71,7 @@ val_epoch_steps=50
 #batch_size=15
 batch_size=10
 #batch_size=5
-#train_subdir=last
+train_subdir=last
 
 #learning_rate=0.0001
 learning_rate=0.00005

@@ -229,11 +229,15 @@ class GenmixembBert(nn.Module):
         else:
             if self.training and not self.cfg.train_agg_model:
                 with torch.no_grad():
-                    # [n_batch, n_chunks, d_model]
-                    emb = self.run_agg(toks)
+                    # [n_batch, n_ctx_chunks, d_model]
+                    ctx_emb = self.run_agg(ctx_toks)
             else:
-                # [n_batch, n_chunks, d_model]
-                emb = self.run_agg(toks)
+                # [n_batch, n_ctx_chunks, d_model]
+                ctx_emb = self.run_agg(ctx_toks)
+            # [n_batch, que_len, d_model]
+            que_emb = self.gen.encoder.embeddings(que_toks)
+            # [n_batch, n_ctx_chunks + nque_len, d_model]
+            emb = torch.cat((ctx_emb, que_emb), dim=-2)
             gen_out: Seq2SeqLMOutput = self.gen(
                 inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
             )
