@@ -190,7 +190,7 @@ class ReduceLayer(nn.Module):
         self.step = step
         self.reduct_type = reduct_type
         if reduct_type == HgReductType.Matmul:
-            self.reducer = nn.Linear(in_features=d_model * step, out_features=d_model, bias=False)
+            self.reducer = nn.Linear(in_features=d_model * step, out_features=d_model, bias=True)
         else:
             self.reducer = None
         if reduct_type == HgReductType.Sub:
@@ -258,7 +258,8 @@ class EncoderPyramid(nn.Module):
         assert self.cfg.inp_len == 0 or seq_len == self.cfg.inp_len, f'seq_len = {seq_len}. inp_len = {self.cfg.inp_len}'
         if isinstance(self.vocab_encoder, BertGenerationEmbeddings):
             # [batch_size, seq_len, d_model]
-            out = self.vocab_encoder(inp, do_not_transform_embeds=True)
+            # out = self.vocab_encoder(inp, do_not_transform_embeds=True)
+            out = self.vocab_encoder(inp, do_not_transform_embeds=False)
         else:
             # [batch_size, seq_len, d_model]
             out = self.vocab_encoder(inp)

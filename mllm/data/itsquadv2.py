@@ -149,6 +149,7 @@ def get_squadv2_batch_iterators_v2(
         device: torch.device, val_ratio: float = 0.05,
 ) -> tuple[BatchV2It, BatchV2It]:
     df_sq = get_squadv2_df(exclude_empty_answers=exclude_empty_answers)
+    df_sq = df_sq.sample(len(df_sq), random_state=100).reset_index(drop=True)
     df_sq_t, df_sq_v = split_df(df_sq, val_ratio=val_ratio)
     print(f'Squad v2 n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
 

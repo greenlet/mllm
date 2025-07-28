@@ -84,7 +84,9 @@ class GenmixembBert(nn.Module):
     # logits: [n_batch, n_seq, n_vocab]
     # labels: [n_batch, n_seq]
     # mask: [n_batch, n_seq]
-    def calc_loss(self, logits: torch.Tensor, labels: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def calc_loss(
+            self, logits: torch.Tensor, labels: torch.Tensor, mask: Optional[torch.Tensor] = None, mask_weight: float = 0.5,
+    ) -> torch.Tensor:
         if mask is None or not mask.any():
             logits = logits.view(-1, self.gen.decoder.config.vocab_size)
             labels = labels.reshape(-1)
@@ -98,7 +100,8 @@ class GenmixembBert(nn.Module):
                 mask_loss = F.cross_entropy(mask_logits, mask_labels)
             assert len(toks_logits) > 0
             toks_loss = F.cross_entropy(toks_logits, toks_labels)
-            loss = 0.5 * mask_loss + 0.5 * toks_loss
+            nmask_weight = 1 - mask_weight
+            loss = mask_weight * mask_loss + nmask_weight * toks_loss
         return loss
 
     def prefix_token(self, toks: torch.Tensor, tok_id: int) -> torch.Tensor:
@@ -206,6 +209,31 @@ class GenmixembBert(nn.Module):
         loss = self.calc_loss(logits, labels, label_mask)
         return loss
 
+    # logits [n_batch, tgt_len, n_vocab]
+    # labels [n_batch, tgt_len]
+    def calc_gen_loss(self, b_logits: torch.Tensor, b_labels: torch.Tensor) -> torch.Tensor:
+        n_batch = len(b_logits)
+        b_mask = b_labels != self.tkz.pad_token_id
+        b_nmask = ~b_mask
+        b_loss = torch.zeros(size=(1,), device=self.device)
+        for i in range(n_batch):
+            # logits: [tgt_len, n_vocab]
+            # labels, mask, nmask: [tgt_len]
+            logits, labels, mask, nmask = b_logits[i], b_labels[i], b_mask[i], b_nmask[i]
+            mask_logits, mask_labels = logits[mask], labels[mask]
+            mask_loss = F.cross_entropy(mask_logits, mask_labels)
+            nmask_logits, nmask_labels = logits[nmask], labels[nmask]
+            # print(f'{i}. mask_loss: {mask_loss}')
+            if len(nmask_logits) > 0:
+                nmask_loss = F.cross_entropy(nmask_logits, nmask_labels)
+                # print(f'{i}. nmask_loss: {nmask_loss}')
+                loss = 0.95 * mask_loss + 0.05 * nmask_loss
+            else:
+                loss = mask_loss
+            b_loss = b_loss + loss
+        b_loss = b_loss / n_batch
+        return b_loss
+
     def run_on_qna(self, batch: QnaBatchV2) -> torch.Tensor:
         # ctx_toks: [n_batch, ctx_len]
         # que_toks: [n_batch, que_len]
@@ -217,7 +245,7 @@ class GenmixembBert(nn.Module):
         target_ids = ans_toks
         # [n_batch, tgt_len + 1]
         target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
-        # [n_batch * tgt_len, n_vocab]
+        # [n_batch, tgt_len]
         tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
 
         if not self.need_run_agg:
@@ -234,6 +262,7 @@ class GenmixembBert(nn.Module):
             else:
                 # [n_batch, n_ctx_chunks, d_model]
                 ctx_emb = self.run_agg(ctx_toks)
+            que_toks = self.prefix_token(que_toks, self.tkz.sep_token_id)
             # [n_batch, que_len, d_model]
             que_emb = self.gen.encoder.embeddings(que_toks)
             # [n_batch, n_ctx_chunks + nque_len, d_model]
@@ -241,18 +270,26 @@ class GenmixembBert(nn.Module):
             gen_out: Seq2SeqLMOutput = self.gen(
                 inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
             )
+            # if self.training and not self.cfg.train_agg_model:
+            #     with torch.no_grad():
+            #         # [n_batch, n_ctx_chunks, d_model]
+            #         emb = self.run_agg(cq_toks)
+            # else:
+            #     # [n_batch, n_ctx_chunks, d_model]
+            #     emb = self.run_agg(cq_toks)
+            # gen_out: Seq2SeqLMOutput = self.gen(
+            #     inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
+            # )
 
         # [n_batch, tgt_len, n_vocab]
         logits = gen_out.logits
         # [n_batch, tgt_len]
         labels = tgt_out_ids
-        loss = self.calc_loss(logits, labels)
+        loss = self.calc_gen_loss(logits, labels)
         return loss
 
     # toks: [max_len]
     def gen_on_wiki(self, toks: torch.Tensor) -> torch.Tensor:
-        need_run_agg = self.cfg.toks_agg_type == TokensAggType.Bert and self.cfg.bert_agg_n_subseq_toks > 0 \
-            or self.cfg.toks_agg_type == TokensAggType.Pyramid and self.cfg.pyr_agg_step > 0 and self.cfg.pyr_agg_n_levels > 0
         # [1, max_len]
         if toks.ndim == 1:
             toks = toks.unsqueeze(0)
@@ -268,7 +305,7 @@ class GenmixembBert(nn.Module):
             # temperature=0.6,
         )
 
-        if not need_run_agg:
+        if not self.need_run_agg:
             # [1, max_len]
             att_mask = toks != self.tkz.pad_token_id
             out_toks = self.gen.generate(
@@ -280,6 +317,54 @@ class GenmixembBert(nn.Module):
             out_toks = self.gen.generate(
                 inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
             )
+        return out_toks
+
+    # toks: [max_len]
+    def gen_on_qna(self, ctx_toks: torch.Tensor, que_toks: torch.Tensor, cq_toks: Optional[torch.Tensor] = None) -> torch.Tensor:
+        # [1, max_len]
+        if ctx_toks.ndim == 1:
+            ctx_toks = ctx_toks.unsqueeze(0)
+        if que_toks.ndim == 1:
+            que_toks = que_toks.unsqueeze(0)
+
+        gen_cfg = GenerationConfig(
+            max_new_tokens=self.cfg.max_out_toks,
+            do_sample=True,
+            top_p=0.95,
+            top_k=50,
+            # temperature=0.6,
+        )
+
+        if not self.need_run_agg:
+            if cq_toks is None:
+                cq_toks = []
+                if ctx_toks[0, 0] != self.tkz.cls_token_id:
+                    cq_toks.append([[self.tkz.cls_token_id]])
+                cq_toks.append(ctx_toks)
+                if ctx_toks[0, -1] != self.tkz.sep_token_id and que_toks[0, 0] != self.tkz.sep_token_id:
+                    cq_toks.append([[self.tkz.sep_token_id]])
+                cq_toks.append(que_toks)
+                if que_toks[0, -1] != self.tkz.sep_token_id:
+                    cq_toks.append([[self.tkz.sep_token_id]])
+                cq_toks = torch.concatenate(cq_toks, dim=1)
+            elif cq_toks.ndim == 1:
+                cq_toks = cq_toks.unsqueeze(0)
+            att_mask = cq_toks != self.tkz.pad_token_id
+            out_toks = self.gen.generate(
+                input_ids=cq_toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+            )
+        else:
+            # [n_batch, n_ctx_chunks, d_model]
+            ctx_emb = self.run_agg(ctx_toks)
+            que_toks = self.prefix_token(que_toks, self.tkz.sep_token_id)
+            # [n_batch, que_len, d_model]
+            que_emb = self.gen.encoder.embeddings(que_toks)
+            # [n_batch, n_ctx_chunks + nque_len, d_model]
+            emb = torch.cat((ctx_emb, que_emb), dim=-2)
+            out_toks = self.gen.generate(
+                inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+            )
+
         return out_toks
 
 
