@@ -146,10 +146,10 @@ def get_squadv2_batch_iterator_v2(
 
 def get_squadv2_batch_iterators_v2(
         batch_size: int, exclude_empty_answers: bool, tkz: PreTrainedTokenizer, max_inp_len: int, max_out_len: int,
-        device: torch.device, val_ratio: float = 0.05,
+        device: torch.device, val_ratio: float = 0.05, random_state: int = 100,
 ) -> tuple[BatchV2It, BatchV2It]:
     df_sq = get_squadv2_df(exclude_empty_answers=exclude_empty_answers)
-    df_sq = df_sq.sample(len(df_sq), random_state=100).reset_index(drop=True)
+    df_sq = df_sq.sample(len(df_sq), random_state=random_state).reset_index(drop=True)
     df_sq_t, df_sq_v = split_df(df_sq, val_ratio=val_ratio)
     print(f'Squad v2 n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
 

@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from transformers import GenerationConfig
 # from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, BatchEncoding
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
@@ -275,7 +276,7 @@ class GenmixBert(nn.Module):
 
     def text_title_to_emb(self, text: str, title: str) -> torch.Tensor:
         prompt = f'Summarize following text. Title: {title}. Text: {text}'
-        emb = self.prompt_to_emb(prompt)
+        _, emb = self.prompt_to_emb(prompt)
         return emb
 
     def run_on_qna_txt(self, context: str, question: str, answer: str) -> torch.Tensor:
@@ -312,8 +313,16 @@ class GenmixBert(nn.Module):
 
     def gen_on_qna_txt(self, context: str, question: str) -> torch.Tensor:
         emb = self.context_question_to_emb(context=context, question=question)
-
-        out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id)
+        gen_cfg = GenerationConfig(
+            max_new_tokens=50,
+            do_sample=True,
+            top_p=0.95,
+            top_k=50,
+            # temperature=0.6,
+        )
+        out_toks = self.gen.generate(
+            inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+        )
         return out_toks
 
     def run_on_sum_txt(self, text: str, summary: str, title: str) -> torch.Tensor:
@@ -355,8 +364,16 @@ class GenmixBert(nn.Module):
 
     def gen_on_sum_txt(self, text: str, title: str, max_len: int = 100) -> torch.Tensor:
         emb = self.text_title_to_emb(text=text, title=title)
-
-        out_toks = self.gen.generate(inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, max_length=max_len)
+        gen_cfg = GenerationConfig(
+            max_new_tokens=50,
+            do_sample=True,
+            top_p=0.95,
+            top_k=50,
+            # temperature=0.6,
+        )
+        out_toks = self.gen.generate(
+            inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+        )
         return out_toks
 
     def run_on_wiki_txt(

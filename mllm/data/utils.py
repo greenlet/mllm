@@ -154,7 +154,7 @@ def get_squadv2_df(exclude_empty_answers: bool = False) -> pd.DataFrame:
     ds_sq = load_dataset(ds_name)
     df_sq = pd.concat([ds_sq['train'].to_pandas(), ds_sq['validation'].to_pandas()], axis=0)
     n_total = len(df_sq)
-    df_sq = df_sq.sample(n_total)
+    # df_sq = df_sq.sample(n_total, random_state=random_state)
     if exclude_empty_answers:
         mask = df_sq['answers'].apply(lambda ans: len(ans['text']) > 0)
         df_sq = df_sq[mask]

@@ -28,14 +28,14 @@ pyr_agg_type=decim
 #pyr_agg_type=matmul
 #pyr_agg_type=avg
 #pyr_agg_type=sub
-#pyr_agg_step=2
-pyr_agg_step=0
-pyr_agg_n_levels=4
+pyr_agg_step=2
+#pyr_agg_step=0
+pyr_agg_n_levels=1
 pyr_agg_n_layers_per_level=1
 #pyr_agg_n_layers_per_level=2
 #pyr_agg_n_layers_per_level=3
-train_agg_model=false
-#train_agg_model=true
+#train_agg_model=false
+train_agg_model=true
 pred_next_sent=true
 
 n_toks_min=20
@@ -70,14 +70,14 @@ train_epoch_steps=500
 val_epoch_steps=50
 #batch_size=30
 #batch_size=25
-batch_size=20
-#batch_size=15
+#batch_size=20
+batch_size=15
 #batch_size=10
 #batch_size=5
 #train_subdir=last
 
 #learning_rate=0.0001
-learning_rate=0.00005
+#learning_rate=0.00005
 learning_rate=0.00001
 random_seed=200
 
