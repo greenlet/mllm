@@ -14,18 +14,30 @@ class QnaItemV2:
     context: str
     question: str
     answer: str
+    max_ctx_toks: int
+    max_que_toks: int
+    max_ans_toks: int
     ctx_toks: list[int]
     que_toks: list[int]
     ans_toks: list[int]
+    device: torch.device
+    ctx_toks_t: Optional[torch.Tensor] = None
+    que_toks_t: Optional[torch.Tensor] = None
+    ans_toks_t: Optional[torch.Tensor] = None
 
     def __init__(
-            self, tkz: PreTrainedTokenizer, ind: int, context: str, question: str, answer: str,
+            self, tkz: PreTrainedTokenizer, ind: int, context: str, question: str, answer: str, max_ctx_toks: int = 0, max_que_toks: int = 0,
+            max_ans_toks: int = 0, device: Optional[torch.device] = None,
     ):
         self.tkz = tkz
         self.ind = ind
         self.context = context
         self.question = question
         self.answer = answer
+        self.max_ctx_toks = max_ctx_toks
+        self.max_que_toks = max_que_toks
+        self.max_ans_toks = max_ans_toks
+        self.device = device if device is not None else torch.device('cpu')
         self.calc_toks()
 
     def _tokenize(self, s: str, to_numpy: bool = False) -> Union[list, np.ndarray]:
@@ -38,6 +50,17 @@ class QnaItemV2:
         self.ctx_toks = self._tokenize(self.context)
         self.que_toks = self._tokenize(self.question)
         self.ans_toks = self._tokenize(self.answer)
+
+    def get_tensors(self) -> [torch.Tensor, torch.Tensor, torch.Tensor]:
+        if self.ctx_toks_t is None:
+            ctx_toks = self.ctx_toks if self.max_ctx_toks <= 0 else self.ctx_toks[:self.max_ctx_toks]
+            que_toks = self.que_toks if self.max_que_toks <= 0 else self.que_toks[:self.max_que_toks]
+            ans_toks = self.ans_toks if self.max_ans_toks <= 0 else self.ans_toks[:self.max_ans_toks]
+            self.ctx_toks_t = torch.from_numpy(ctx_toks).to(self.device)
+            self.que_toks_t = torch.from_numpy(que_toks).to(self.device)
+            self.ans_toks_t = torch.from_numpy(ans_toks).to(self.device)
+
+        return self.ctx_toks_t, self.que_toks_t, self.ans_toks_t
 
 
 class QnaBatchV2:
@@ -132,10 +155,15 @@ def get_squadv2_batch_iterator_v2(
         row = df_sq.iloc[ind]
         answers = set(row.answers['text']) or {'-'}
         for answer in answers:
-            item = QnaItemV2(tkz=tkz, ind=ind, context=row.context, question=row.question, answer=answer)
+            item = QnaItemV2(
+                tkz=tkz, ind=ind, context=row.context, question=row.question, answer=answer, max_ctx_toks=max_inp_len,
+                max_ans_toks=max_out_len, device=device,
+            )
             items.append(item)
             if len(items) == batch_size:
-                batch = QnaBatchV2(items=items, max_inp_len=max_inp_len, max_out_len=max_out_len, device=device)
+                batch = QnaBatchV2(
+                    items=items, max_inp_len=max_inp_len, max_out_len=max_out_len, device=device,
+                )
                 yield batch
                 items = []
         i += 1

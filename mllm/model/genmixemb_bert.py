@@ -288,6 +288,76 @@ class GenmixembBert(nn.Module):
         loss = self.calc_gen_loss(logits, labels)
         return loss
 
+    def run_on_qna_v2(self, batch: QnaBatchV2) -> torch.Tensor:
+        if not self.need_run_agg:
+            # ctx_toks: [n_batch, ctx_len]
+            # que_toks: [n_batch, que_len]
+            # ans_toks: [n_batch, ans_len]
+            # cq_toks: [n_batch, cq_len]
+            ctx_toks, que_toks, ans_toks, cq_toks = batch.get_tensors()
+
+            # [n_batch, tgt_len]
+            target_ids = ans_toks
+            # [n_batch, tgt_len + 1]
+            target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
+            # [n_batch, tgt_len]
+            tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
+
+            # cq_toks: [n_batch, cq_len]
+            att_mask = cq_toks != self.tkz.pad_token_id
+            gen_out: Seq2SeqLMOutput = self.gen(
+                input_ids=cq_toks, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
+            )
+            # [n_batch, tgt_len, n_vocab]
+            logits = gen_out.logits
+            # [n_batch, tgt_len]
+            labels = tgt_out_ids
+            loss = self.calc_gen_loss(logits, labels)
+            return loss
+
+        batch_loss = torch.zeros(size=(1,), device=self.device)
+        for item in batch.items:
+            # [ctx_len], [que_len], [ans_len]
+            ctx_toks, que_toks, ans_toks = item.get_tensors()
+            # [1, ctx_len], [1, que_len], [1, ans_len]
+            ctx_toks, que_toks, ans_toks = ctx_toks.unsqueeze(0), que_toks.unsqueeze(0), ans_toks.unsqueeze(0)
+
+            # [1, tgt_len]
+            target_ids = ans_toks
+            # [1, tgt_len + 1]
+            target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
+            # [n_batch, tgt_len]
+            tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
+
+            if self.training and not self.cfg.train_agg_model:
+                with torch.no_grad():
+                    # [1, n_ctx_chunks, d_model]
+                    ctx_emb = self.run_agg(ctx_toks)
+            else:
+                # [1, n_ctx_chunks, d_model]
+                ctx_emb = self.run_agg(ctx_toks)
+            # [1, que_len]
+            que_toks = self.prefix_token(que_toks, self.tkz.sep_token_id)
+            # [1, que_len, d_model]
+            que_emb = self.gen.encoder.embeddings(que_toks)
+            # [1, n_ctx_chunks + nque_len, d_model]
+            emb = torch.cat((ctx_emb, que_emb), dim=-2)
+            gen_out: Seq2SeqLMOutput = self.gen(
+                inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
+            )
+
+            # [1, tgt_len, n_vocab]
+            logits = gen_out.logits
+            # [1, tgt_len]
+            labels = tgt_out_ids
+            loss = self.calc_gen_loss(logits, labels)
+
+            batch_loss = batch_loss + loss
+
+        batch_loss = batch_loss / len(batch.items)
+        return batch_loss
+
+
     # toks: [max_len]
     def gen_on_wiki(self, toks: torch.Tensor) -> torch.Tensor:
         # [1, max_len]
