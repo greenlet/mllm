@@ -56,9 +56,9 @@ class QnaItemV2:
             ctx_toks = self.ctx_toks if self.max_ctx_toks <= 0 else self.ctx_toks[:self.max_ctx_toks]
             que_toks = self.que_toks if self.max_que_toks <= 0 else self.que_toks[:self.max_que_toks]
             ans_toks = self.ans_toks if self.max_ans_toks <= 0 else self.ans_toks[:self.max_ans_toks]
-            self.ctx_toks_t = torch.from_numpy(ctx_toks).to(self.device)
-            self.que_toks_t = torch.from_numpy(que_toks).to(self.device)
-            self.ans_toks_t = torch.from_numpy(ans_toks).to(self.device)
+            self.ctx_toks_t = torch.tensor(ctx_toks, dtype=torch.long, device=self.device)
+            self.que_toks_t = torch.tensor(que_toks, dtype=torch.long, device=self.device)
+            self.ans_toks_t = torch.tensor(ans_toks, dtype=torch.long, device=self.device)
 
         return self.ctx_toks_t, self.que_toks_t, self.ans_toks_t
 

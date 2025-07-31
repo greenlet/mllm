@@ -77,6 +77,11 @@ class GenmixembBert(nn.Module):
         else:
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
 
+        tt_embs_0 = torch.randn((1, 512, self.cfg.d_model), device=self.device)
+        tt_embs_1 = tt_embs_0.clone()
+        self.tt_embs_0 = nn.Parameter(tt_embs_0)
+        self.tt_embs_1 = nn.Parameter(tt_embs_1)
+
         self.agg = agg
         # del encoder.embeddings.word_embeddings
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
@@ -356,6 +361,56 @@ class GenmixembBert(nn.Module):
 
         batch_loss = batch_loss / len(batch.items)
         return batch_loss
+
+    def run_on_qna_v3(self, batch: QnaBatchV2) -> torch.Tensor:
+        # ctx_toks: [n_batch, ctx_len]
+        # que_toks: [n_batch, que_len]
+        # ans_toks: [n_batch, ans_len]
+        # cq_toks: [n_batch, cq_len]
+        ctx_toks, que_toks, ans_toks, cq_toks = batch.get_tensors()
+
+        # [n_batch, tgt_len]
+        target_ids = ans_toks
+        # [n_batch, tgt_len + 1]
+        target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
+        # [n_batch, tgt_len]
+        tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
+
+        if not self.need_run_agg:
+            # cq_toks: [n_batch, cq_len]
+            att_mask = cq_toks != self.tkz.pad_token_id
+            gen_out: Seq2SeqLMOutput = self.gen(
+                input_ids=cq_toks, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
+            )
+        else:
+            if self.training and not self.cfg.train_agg_model:
+                with torch.no_grad():
+                    # [n_batch, n_ctx_chunks, d_model]
+                    ctx_emb = self.run_agg(ctx_toks)
+            else:
+                # [n_batch, n_ctx_chunks, d_model]
+                ctx_emb = self.run_agg(ctx_toks)
+            # que_toks: [n_batch, que_len]
+            que_toks = self.prefix_token(que_toks, self.tkz.sep_token_id)
+            # [n_batch, que_len, d_model]
+            que_emb = self.gen.encoder.embeddings(que_toks)
+
+            ctx_emb = ctx_emb + self.tt_embs_0[:, :ctx_emb.shape[1]]
+            que_emb = que_emb + self.tt_embs_1[:, :que_emb.shape[1]]
+
+            # [n_batch, n_ctx_chunks + nque_len, d_model]
+            emb = torch.cat((ctx_emb, que_emb), dim=-2)
+            att_mask = que_toks != self.tk.pad_token_id
+            gen_out: Seq2SeqLMOutput = self.gen(
+                inputs_embeds=emb, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
+            )
+
+        # [n_batch, tgt_len, n_vocab]
+        logits = gen_out.logits
+        # [n_batch, tgt_len]
+        labels = tgt_out_ids
+        loss = self.calc_gen_loss(logits, labels)
+        return loss
 
 
     # toks: [max_len]

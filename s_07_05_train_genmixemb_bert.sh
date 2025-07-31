@@ -71,8 +71,8 @@ val_epoch_steps=50
 #batch_size=30
 #batch_size=25
 #batch_size=20
-batch_size=15
-#batch_size=10
+#batch_size=15
+batch_size=10
 #batch_size=5
 #train_subdir=last
 

@@ -328,7 +328,9 @@ def main(args: ArgsGenmixembBertTrain) -> int:
                 loss = model.run_on_wiki(batch=batch)
             elif args.train_ds_type == GenmixTrainDsType.Qna:
                 batch: QnaBatchV2 = item
-                loss = model.run_on_qna(batch=batch)
+                # loss = model.run_on_qna(batch=batch)
+                # loss = model.run_on_qna_v2(batch=batch)
+                loss = model.run_on_qna_v3(batch=batch)
             else:
                 raise
             if loss.isnan():
@@ -366,7 +368,9 @@ def main(args: ArgsGenmixembBertTrain) -> int:
                     loss = model.run_on_wiki(batch=batch)
                 elif args.train_ds_type == GenmixTrainDsType.Qna:
                     batch: QnaBatchV2 = item
-                    loss = model.run_on_qna(batch=batch)
+                    # loss = model.run_on_qna(batch=batch)
+                    # loss = model.run_on_qna_v2(batch=batch)
+                    loss = model.run_on_qna_v3(batch=batch)
                 else:
                     raise
                 if loss.isnan():
