@@ -25,6 +25,9 @@ from mllm.utils.utils import rethrow
 train_agg_model_ARG = '--train-agg-model', 'Train aggregation model'
 pred_next_sent_ARG = '--pred-next-sent', 'Predict next sentence'
 mask_tokens_ARG = '--mask-tokens', 'Mask input tokens'
+share_agg_enc_token_embeds_ARG = '--share-agg-enc-token-embeds', 'Share token embeddings between aggregator model and encoder'
+add_token_type_ids_ARG = '--add-token-type-ids', 'Add token type ids to input tokens'
+join_ctx_que_agg_ARG = '--join-ctx-que-agg', 'Join context and question for aggregation'
 
 
 class ArgsGenmixembBertTrain(BaseModel):
@@ -111,6 +114,21 @@ class ArgsGenmixembBertTrain(BaseModel):
     @property
     def pred_next_sent(self) -> bool:
         return is_arg_true(pred_next_sent_ARG[0], self.pred_next_sent_STR)
+
+    share_agg_enc_token_embs_STR: str = create_bool_str_field(*share_agg_enc_token_embeds_ARG)
+    @property
+    def share_agg_enc_token_embs(self) -> bool:
+        return is_arg_true(share_agg_enc_token_embeds_ARG[0], self.share_agg_enc_token_embs_STR)
+
+    add_token_type_ids_STR: str = create_bool_str_field(*add_token_type_ids_ARG)
+    @property
+    def add_token_type_ids(self) -> bool:
+        return is_arg_true(add_token_type_ids_ARG[0], self.add_token_type_ids_STR)
+
+    join_ctx_que_agg_STR: str = create_bool_str_field(*join_ctx_que_agg_ARG)
+    @property
+    def join_ctx_que_agg(self) -> bool:
+        return is_arg_true(join_ctx_que_agg_ARG[0], self.join_ctx_que_agg_STR)
 
     n_toks_min: int = Field(
         ...,
@@ -207,6 +225,8 @@ def main(args: ArgsGenmixembBertTrain) -> int:
         model_cfg, bert_model_name=args.bert_model_name, max_out_toks=args.max_out_toks, toks_agg_type=args.toks_agg_type,
         bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks, pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step,
         pyr_agg_n_levels=args.pyr_agg_n_levels, pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, train_agg_model=args.train_agg_model,
+        share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
+        join_ctx_que_agg=args.join_ctx_que_agg,
     )
 
     mask_cfg = None

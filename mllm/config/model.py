@@ -383,6 +383,9 @@ class GenmixembBertCfg(BaseModel):
     pyr_agg_n_levels: int
     pyr_agg_n_layers_per_level: int
     train_agg_model: bool
+    share_agg_enc_token_embeds: bool = False
+    add_token_type_ids: bool = False
+    join_ctx_que_agg: bool = False
 
 
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
@@ -723,7 +726,8 @@ def create_genmix_bert_cfg(
 def create_genmixemb_bert_cfg(
         bert_model_name: str = 'bert-base-uncased', max_out_toks: int = 0, toks_agg_type: TokensAggType = TokensAggType.Bert,
         bert_agg_n_subseq_toks: int = 0, pyr_agg_type: HgReductType = HgReductType.Decim, pyr_agg_step: int = 2, pyr_agg_n_levels: int = 0,
-        pyr_agg_n_layers_per_level: int = 0, train_agg_model: bool = False,
+        pyr_agg_n_layers_per_level: int = 0, train_agg_model: bool = False, add_token_type_ids: bool = False, share_agg_enc_token_embeds: bool = False,
+        join_ctx_que_agg: bool = False,
 ) -> GenmixembBertCfg:
     model = BertModel.from_pretrained(bert_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -732,7 +736,8 @@ def create_genmixemb_bert_cfg(
     cfg = GenmixembBertCfg(
         bert_model_name=bert_model_name, d_model=d_model, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
         bert_agg_n_subseq_toks=bert_agg_n_subseq_toks, pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels,
-        pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level, train_agg_model=train_agg_model,
+        pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level, train_agg_model=train_agg_model, share_agg_enc_token_embeds=share_agg_enc_token_embeds,
+        add_token_type_ids=add_token_type_ids, join_ctx_que_agg=join_ctx_que_agg,
     )
     return cfg
 
@@ -897,6 +902,7 @@ def copy_override_genmixemb_bert_cfg(
         cfg: GenmixembBertCfg, bert_model_name: str = '', max_out_toks: Optional[int] = None, toks_agg_type: Optional[TokensAggType] = None,
         bert_agg_n_subseq_toks: Optional[int] = None, pyr_agg_type: Optional[HgReductType] = None, pyr_agg_step: Optional[int] = None,
         pyr_agg_n_levels: Optional[int] = None, pyr_agg_n_layers_per_level: Optional[int] = None, train_agg_model: Optional[bool] = None,
+        share_agg_enc_token_embeds: Optional[bool] = None, add_token_type_ids: Optional[bool] = None, join_ctx_que_agg: Optional[bool] = None,
 ) -> GenmixembBertCfg:
     bert_model_name = bert_model_name or cfg.bert_model_name
     max_out_toks = coalesce(max_out_toks, cfg.max_out_toks)
@@ -907,11 +913,15 @@ def copy_override_genmixemb_bert_cfg(
     train_agg_model = coalesce(train_agg_model, cfg.train_agg_model)
     pyr_agg_type = coalesce(pyr_agg_type, cfg.pyr_agg_type)
     pyr_agg_step = coalesce(pyr_agg_step, cfg.pyr_agg_step)
+    share_agg_enc_token_embeds = coalesce(share_agg_enc_token_embeds, cfg.share_agg_enc_token_embeds)
+    add_token_type_ids = coalesce(add_token_type_ids, cfg.add_token_type_ids)
+    join_ctx_que_agg = coalesce(join_ctx_que_agg, cfg.join_ctx_que_agg)
 
     return create_genmixemb_bert_cfg(
         bert_model_name=bert_model_name, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type, bert_agg_n_subseq_toks=bert_agg_n_subseq_toks,
         pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels, pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level,
-        train_agg_model=train_agg_model,
+        train_agg_model=train_agg_model, share_agg_enc_token_embeds=share_agg_enc_token_embeds, add_token_type_ids=add_token_type_ids,
+        join_ctx_que_agg=join_ctx_que_agg,
     )
 
 
@@ -1132,8 +1142,17 @@ def gen_prefpostfix_genmixemb_bert(
 
     postfix_parts.append(bool_param_to_str('trag', cfg.train_agg_model))
 
-    if train_ds_type == GenmixTrainDsType.Wki and pred_next_sent:
-        postfix_parts.append('nxtsnt')
+    postfix_parts.append(f'shem{bool_to_char(cfg.share_agg_enc_token_embeds)}')
+
+    if train_ds_type == GenmixTrainDsType.Wki:
+        if pred_next_sent:
+            postfix_parts.append('nxtsnt')
+    elif train_ds_type == GenmixTrainDsType.Qna:
+        postfix_parts.append(f'ttid{bool_to_char(cfg.add_token_type_ids)}')
+        postfix_parts.append(f'jcq{bool_to_char(cfg.join_ctx_que_agg)}')
+    else:
+        raise ValueError(f'Dataset type {train_ds_type} is not supported.')
+
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix

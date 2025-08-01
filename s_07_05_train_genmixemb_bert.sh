@@ -19,8 +19,8 @@ train_ds_type=qna
 bert_model_name=bert-base-uncased
 #bert_model_name=bert-large-uncased
 max_out_toks=50
-toks_agg_type=brt
-#toks_agg_type=pyr
+#toks_agg_type=brt
+toks_agg_type=pyr
 #bert_agg_n_subseq_toks=0
 bert_agg_n_subseq_toks=2
 #bert_agg_n_subseq_toks=8
@@ -31,12 +31,16 @@ pyr_agg_type=decim
 pyr_agg_step=2
 #pyr_agg_step=0
 pyr_agg_n_levels=1
-pyr_agg_n_layers_per_level=1
-#pyr_agg_n_layers_per_level=2
+#pyr_agg_n_layers_per_level=1
+pyr_agg_n_layers_per_level=2
 #pyr_agg_n_layers_per_level=3
 #train_agg_model=false
 train_agg_model=true
 pred_next_sent=true
+share_agg_enc_token_embeds=false
+add_token_type_ids=false
+join_ctx_que_agg=false,
+
 
 n_toks_min=20
 n_toks_max=100
@@ -71,9 +75,9 @@ val_epoch_steps=50
 #batch_size=30
 #batch_size=25
 #batch_size=20
-#batch_size=15
-batch_size=10
-#batch_size=5
+batch_size=15
+#batch_size=10
+batch_size=5
 #train_subdir=last
 
 #learning_rate=0.0001
@@ -102,6 +106,9 @@ python s_07_05_train_genmixemb_bert.py \
   --pyr-agg-n-layers-per-level $pyr_agg_n_layers_per_level \
   --train-agg-model $train_agg_model \
   --pred-next-sent $pred_next_sent \
+  --share-agg-enc-token-embeds $share_agg_enc_token_embeds \
+  --add-token-type-ids $add_token_type_ids \
+  --join-ctx-que-agg $join_ctx_que_agg \
   --n-toks-min $n_toks_min \
   --n-toks-max $n_toks_max \
   --mask-tokens $mask_tokens \
