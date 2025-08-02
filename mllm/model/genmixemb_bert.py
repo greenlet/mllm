@@ -15,6 +15,7 @@ from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPo
 from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembBertCfg, TokensAggType, \
     EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType
 from mllm.data.itsquadv2 import QnaBatchV2
+from mllm.model.at2_decoder import BertGenerationEmbeddings
 from mllm.model.bert import BertModel, BertTokenizer
 from mllm.model.bert_generation import BertGenerationEncoder, BertGenerationDecoder
 from mllm.model.encdec_ranker_hg import EncoderPyramid
@@ -43,6 +44,24 @@ class GenmixembBert(nn.Module):
             bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
         )
 
+        if self.cfg.add_token_type_ids:
+            tt_embs_0 = torch.randn((1, 1, self.cfg.d_model), device=self.device)
+            tt_embs_1 = tt_embs_0.clone()
+            nn.init.xavier_uniform(tt_embs_0)
+            nn.init.xavier_uniform(tt_embs_1)
+            self.tt_embs_0 = nn.Parameter(tt_embs_0)
+            self.tt_embs_1 = nn.Parameter(tt_embs_1)
+        else:
+            self.tt_embs_0 = None
+            self.tt_embs_1 = None
+
+        self.agg = self.create_agg_model(encoder)
+        self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
+
+
+    def create_agg_model(self, encoder: BertGenerationEncoder) -> Optional[nn.Module]:
+        if not self.need_run_agg:
+            return
         if self.cfg.toks_agg_type == TokensAggType.Bert:
             agg = BertModel.from_pretrained(
                 self.cfg.bert_model_name, torch_dtype=torch.float32, device_map=self.device,
@@ -59,9 +78,9 @@ class GenmixembBert(nn.Module):
             n_similar_layers = self.cfg.pyr_agg_n_layers_per_level
             dropout_rate = bert_cfg.hidden_dropout_prob
             pos_enc_type = PosEncType.Emb
-            inp_len = 0
+            inp_len = 512
             d_inner = bert_cfg.intermediate_size
-            step = cfg.pyr_agg_step
+            step = self.cfg.pyr_agg_step
             reduct_type = HgReductType.Decim
             temperature = 0
             cfg_vocab_enc = VocabEncoderCfg(
@@ -73,20 +92,16 @@ class GenmixembBert(nn.Module):
                 d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
                 n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
             )
-            agg = EncoderPyramid(cfg_enc, bert_encoder=encoder.embeddings).to(self.device)
+            if self.cfg.share_agg_enc_token_embeds:
+                encoder_embeddings = encoder.embeddings
+            else:
+                encoder_embeddings = BertGenerationEmbeddings(encoder.config).to(self.device)
+                encoder_embeddings.load_state_dict(encoder.embeddings.state_dict())
+            agg = EncoderPyramid(cfg_enc, bert_encoder=encoder_embeddings).to(self.device)
         else:
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
 
-        tt_embs_0 = torch.randn((1, 1, self.cfg.d_model), device=self.device)
-        tt_embs_1 = tt_embs_0.clone()
-        nn.init.xavier_uniform(tt_embs_0)
-        nn.init.xavier_uniform(tt_embs_1)
-        self.tt_embs_0 = nn.Parameter(tt_embs_0)
-        self.tt_embs_1 = nn.Parameter(tt_embs_1)
-
-        self.agg = agg
-        # del encoder.embeddings.word_embeddings
-        self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
+        return agg
 
     # logits: [n_batch, n_seq, n_vocab]
     # labels: [n_batch, n_seq]
@@ -269,24 +284,27 @@ class GenmixembBert(nn.Module):
             else:
                 # [n_batch, n_ctx_chunks, d_model]
                 ctx_emb = self.run_agg(ctx_toks)
+            # que_toks: [n_batch, que_len]
             que_toks = self.prefix_token(que_toks, self.tkz.sep_token_id)
             # [n_batch, que_len, d_model]
             que_emb = self.gen.encoder.embeddings(que_toks)
+
+            if self.cfg.add_token_type_ids:
+                ctx_emb = ctx_emb + self.tt_embs_0[:, :ctx_emb.shape[1]]
+                que_emb = que_emb + self.tt_embs_1[:, :que_emb.shape[1]]
+
             # [n_batch, n_ctx_chunks + nque_len, d_model]
             emb = torch.cat((ctx_emb, que_emb), dim=-2)
+
+            # [n_batch, ctx_len]
+            ctx_att_mask = torch.full((ctx_emb.shape[0], ctx_emb.shape[1]), True, device=self.device)
+            # [n_batch, que_len]
+            que_att_mask = que_toks != self.tkz.pad_token_id
+            att_mask = torch.cat((ctx_att_mask, que_att_mask), dim=-1)
+
             gen_out: Seq2SeqLMOutput = self.gen(
-                inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
+                inputs_embeds=emb, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
             )
-            # if self.training and not self.cfg.train_agg_model:
-            #     with torch.no_grad():
-            #         # [n_batch, n_ctx_chunks, d_model]
-            #         emb = self.run_agg(cq_toks)
-            # else:
-            #     # [n_batch, n_ctx_chunks, d_model]
-            #     emb = self.run_agg(cq_toks)
-            # gen_out: Seq2SeqLMOutput = self.gen(
-            #     inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
-            # )
 
         # [n_batch, tgt_len, n_vocab]
         logits = gen_out.logits
@@ -363,63 +381,6 @@ class GenmixembBert(nn.Module):
 
         batch_loss = batch_loss / len(batch.items)
         return batch_loss
-
-    def run_on_qna_v3(self, batch: QnaBatchV2) -> torch.Tensor:
-        # ctx_toks: [n_batch, ctx_len]
-        # que_toks: [n_batch, que_len]
-        # ans_toks: [n_batch, ans_len]
-        # cq_toks: [n_batch, cq_len]
-        ctx_toks, que_toks, ans_toks, cq_toks = batch.get_tensors()
-
-        # [n_batch, tgt_len]
-        target_ids = ans_toks
-        # [n_batch, tgt_len + 1]
-        target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
-        # [n_batch, tgt_len]
-        tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
-
-        if not self.need_run_agg:
-            # cq_toks: [n_batch, cq_len]
-            att_mask = cq_toks != self.tkz.pad_token_id
-            gen_out: Seq2SeqLMOutput = self.gen(
-                input_ids=cq_toks, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
-            )
-        else:
-            if self.training and not self.cfg.train_agg_model:
-                with torch.no_grad():
-                    # [n_batch, n_ctx_chunks, d_model]
-                    ctx_emb = self.run_agg(ctx_toks)
-            else:
-                # [n_batch, n_ctx_chunks, d_model]
-                ctx_emb = self.run_agg(ctx_toks)
-            # que_toks: [n_batch, que_len]
-            que_toks = self.prefix_token(que_toks, self.tkz.sep_token_id)
-            # [n_batch, que_len, d_model]
-            que_emb = self.gen.encoder.embeddings(que_toks)
-
-            ctx_emb = ctx_emb + self.tt_embs_0[:, :ctx_emb.shape[1]]
-            que_emb = que_emb + self.tt_embs_1[:, :que_emb.shape[1]]
-
-            # [n_batch, n_ctx_chunks + nque_len, d_model]
-            emb = torch.cat((ctx_emb, que_emb), dim=-2)
-
-            # [n_batch, ctx_len]
-            ctx_att_mask = torch.full((ctx_emb.shape[0], ctx_emb.shape[1]), True, device=self.device)
-            # [n_batch, que_len]
-            que_att_mask = que_toks != self.tkz.pad_token_id
-            att_mask = torch.cat((ctx_att_mask, que_att_mask), dim=-1)
-
-            gen_out: Seq2SeqLMOutput = self.gen(
-                inputs_embeds=emb, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
-            )
-
-        # [n_batch, tgt_len, n_vocab]
-        logits = gen_out.logits
-        # [n_batch, tgt_len]
-        labels = tgt_out_ids
-        loss = self.calc_gen_loss(logits, labels)
-        return loss
-
 
     # toks: [max_len]
     def gen_on_wiki(self, toks: torch.Tensor) -> torch.Tensor:

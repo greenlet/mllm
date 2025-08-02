@@ -255,7 +255,7 @@ class EncoderPyramid(nn.Module):
         # mask = (inp == self.cfg.pad_idx).to(torch.float32).to(inp.device)
         # mask = torch.matmul(mask.unsqueeze(-1), mask.unsqueeze(-2)).to(torch.int32)
         mask = None
-        assert self.cfg.inp_len == 0 or seq_len == self.cfg.inp_len, f'seq_len = {seq_len}. inp_len = {self.cfg.inp_len}'
+        # assert self.cfg.inp_len == 0 or seq_len == self.cfg.inp_len, f'seq_len = {seq_len}. inp_len = {self.cfg.inp_len}'
         if isinstance(self.vocab_encoder, BertGenerationEmbeddings):
             # [batch_size, seq_len, d_model]
             # out = self.vocab_encoder(inp, do_not_transform_embeds=True)

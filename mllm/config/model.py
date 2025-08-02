@@ -375,6 +375,7 @@ class TokensAggType(str, Enum):
 class GenmixembBertCfg(BaseModel):
     bert_model_name: str
     d_model: int
+    max_inp_toks: int
     max_out_toks: int
     toks_agg_type: TokensAggType
     bert_agg_n_subseq_toks: int
@@ -724,7 +725,7 @@ def create_genmix_bert_cfg(
 
 
 def create_genmixemb_bert_cfg(
-        bert_model_name: str = 'bert-base-uncased', max_out_toks: int = 0, toks_agg_type: TokensAggType = TokensAggType.Bert,
+        bert_model_name: str = 'bert-base-uncased', max_inp_toks: int = 0, max_out_toks: int = 0, toks_agg_type: TokensAggType = TokensAggType.Bert,
         bert_agg_n_subseq_toks: int = 0, pyr_agg_type: HgReductType = HgReductType.Decim, pyr_agg_step: int = 2, pyr_agg_n_levels: int = 0,
         pyr_agg_n_layers_per_level: int = 0, train_agg_model: bool = False, add_token_type_ids: bool = False, share_agg_enc_token_embeds: bool = False,
         join_ctx_que_agg: bool = False,
@@ -734,7 +735,7 @@ def create_genmixemb_bert_cfg(
     d_model = bert_cfg.hidden_size
 
     cfg = GenmixembBertCfg(
-        bert_model_name=bert_model_name, d_model=d_model, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
+        bert_model_name=bert_model_name, d_model=d_model, max_inp_toks=max_inp_toks, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
         bert_agg_n_subseq_toks=bert_agg_n_subseq_toks, pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels,
         pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level, train_agg_model=train_agg_model, share_agg_enc_token_embeds=share_agg_enc_token_embeds,
         add_token_type_ids=add_token_type_ids, join_ctx_que_agg=join_ctx_que_agg,
@@ -899,12 +900,13 @@ def copy_override_genmix_bert_cfg(
 
 
 def copy_override_genmixemb_bert_cfg(
-        cfg: GenmixembBertCfg, bert_model_name: str = '', max_out_toks: Optional[int] = None, toks_agg_type: Optional[TokensAggType] = None,
+        cfg: GenmixembBertCfg, bert_model_name: str = '', max_inp_toks: Optional[int] = None, max_out_toks: Optional[int] = None, toks_agg_type: Optional[TokensAggType] = None,
         bert_agg_n_subseq_toks: Optional[int] = None, pyr_agg_type: Optional[HgReductType] = None, pyr_agg_step: Optional[int] = None,
         pyr_agg_n_levels: Optional[int] = None, pyr_agg_n_layers_per_level: Optional[int] = None, train_agg_model: Optional[bool] = None,
         share_agg_enc_token_embeds: Optional[bool] = None, add_token_type_ids: Optional[bool] = None, join_ctx_que_agg: Optional[bool] = None,
 ) -> GenmixembBertCfg:
     bert_model_name = bert_model_name or cfg.bert_model_name
+    max_inp_toks = coalesce(max_inp_toks, cfg.max_inp_toks)
     max_out_toks = coalesce(max_out_toks, cfg.max_out_toks)
     toks_agg_type = coalesce(toks_agg_type, cfg.toks_agg_type)
     bert_agg_n_subseq_toks = coalesce(bert_agg_n_subseq_toks, cfg.bert_agg_n_subseq_toks)
@@ -918,7 +920,7 @@ def copy_override_genmixemb_bert_cfg(
     join_ctx_que_agg = coalesce(join_ctx_que_agg, cfg.join_ctx_que_agg)
 
     return create_genmixemb_bert_cfg(
-        bert_model_name=bert_model_name, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type, bert_agg_n_subseq_toks=bert_agg_n_subseq_toks,
+        bert_model_name=bert_model_name, max_inp_toks=max_inp_toks, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type, bert_agg_n_subseq_toks=bert_agg_n_subseq_toks,
         pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels, pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level,
         train_agg_model=train_agg_model, share_agg_enc_token_embeds=share_agg_enc_token_embeds, add_token_type_ids=add_token_type_ids,
         join_ctx_que_agg=join_ctx_que_agg,
@@ -1109,47 +1111,67 @@ def bool_param_to_str(name: str, val: bool) -> str:
     return f'{name}{str(val)[0]}'
 
 
+checkpoint_fname_pat = re.compile(r'^(\w+)-(\d{8})_(\d{6})-.*$')
+
+
 def gen_prefpostfix_genmixemb_bert(
-        cfg: GenmixembBertCfg, train_ds_type: GenmixTrainDsType, n_toks_max: int, mask_cfg: Optional[MaskCfg], pred_next_sent: bool,
+        cfg: GenmixembBertCfg, train_ds_type: GenmixTrainDsType, mask_cfg: Optional[MaskCfg], pred_next_sent: bool,
+        pretrained_model_path: Optional[Path] = None,
 ) -> tuple[str, str]:
     prefix, postfix_parts = f'genmixemb', []
+
+    if pretrained_model_path is not None:
+        dname = pretrained_model_path.parent.name
+        m = checkpoint_fname_pat.match(dname)
+        assert m is not None, f'Cannot parse checkpoint filename {dname}. Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
+        postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
 
     postfix_parts.append(cfg.bert_model_name.replace('-', ''))
 
     postfix_parts.append(f'd{cfg.d_model}')
 
+    postfix_parts.append(f'mxi{cfg.max_inp_toks}')
     postfix_parts.append(f'mxo{cfg.max_out_toks}')
 
     agg_type_str = f'agg{cfg.toks_agg_type.value.capitalize()}'
-    postfix_parts.append(agg_type_str)
 
+    agg_enabled = False
     if cfg.toks_agg_type == TokensAggType.Bert:
-        postfix_parts.append(f'sub{cfg.bert_agg_n_subseq_toks}')
+        if cfg.bert_agg_n_subseq_toks > 0:
+            postfix_parts.append(agg_type_str)
+            postfix_parts.append(f'sub{cfg.bert_agg_n_subseq_toks}')
+            agg_enabled = True
     elif cfg.toks_agg_type == TokensAggType.Pyramid:
-        postfix_parts.append(f'agt{cfg.pyr_agg_type.value.capitalize()}')
-        postfix_parts.append(f'stp{cfg.pyr_agg_step}')
-        postfix_parts.append(f'lvl{cfg.pyr_agg_n_levels}')
-        postfix_parts.append(f'lrs{cfg.pyr_agg_n_layers_per_level}')
+        if cfg.pyr_agg_step > 0 and cfg.pyr_agg_n_levels > 0:
+            postfix_parts.append(agg_type_str)
+            postfix_parts.append(f'agt{cfg.pyr_agg_type.value.capitalize()}')
+            postfix_parts.append(f'stp{cfg.pyr_agg_step}')
+            postfix_parts.append(f'lvl{cfg.pyr_agg_n_levels}')
+            postfix_parts.append(f'lrs{cfg.pyr_agg_n_layers_per_level}')
+            agg_enabled = True
+    else:
+        raise Exception(f'Tokens aggregation type {cfg.toks_agg_type} is not supported')
 
     postfix_parts.append(f'ds{train_ds_type.value.capitalize()}')
-
-    postfix_parts.append(f'tmax{n_toks_max}')
 
     if mask_cfg is not None:
         sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)
         seq_freq, seq_max_frac = np.round(mask_cfg.seq_freq, 2), np.round(mask_cfg.seq_max_frac, 2)
         postfix_parts.append(f'msk_sep_{sep_freq}|{sep_frac}_seq_{seq_freq}|{seq_max_frac}|{mask_cfg.seq_max_len}')
 
-    postfix_parts.append(bool_param_to_str('trag', cfg.train_agg_model))
+    if agg_enabled:
+        postfix_parts.append(bool_param_to_str('trag', cfg.train_agg_model))
 
-    postfix_parts.append(f'shem{bool_to_char(cfg.share_agg_enc_token_embeds)}')
+    if agg_enabled:
+        postfix_parts.append(bool_param_to_str('shem', cfg.share_agg_enc_token_embeds))
 
     if train_ds_type == GenmixTrainDsType.Wki:
         if pred_next_sent:
             postfix_parts.append('nxtsnt')
     elif train_ds_type == GenmixTrainDsType.Qna:
-        postfix_parts.append(f'ttid{bool_to_char(cfg.add_token_type_ids)}')
-        postfix_parts.append(f'jcq{bool_to_char(cfg.join_ctx_que_agg)}')
+        postfix_parts.append(bool_param_to_str('ttid', cfg.add_token_type_ids))
+        if agg_enabled:
+            postfix_parts.append(bool_param_to_str('jcq', cfg.join_ctx_que_agg))
     else:
         raise ValueError(f'Dataset type {train_ds_type} is not supported.')
 

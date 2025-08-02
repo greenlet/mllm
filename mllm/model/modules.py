@@ -209,7 +209,7 @@ class VocabEncoder(nn.Module):
         self.src_word_emb = nn.Embedding(self.n_vocab, self.d_word_vec, padding_idx=self.pad_idx)
         self.pos_enc_type = pos_enc_type
         if self.pos_enc_type == PosEncType.Num:
-            self.position_enc = PositionalEncoding(self.d_word_vec, n_position=self.inp_len * 10)
+            self.position_enc = PositionalEncoding(self.d_word_vec, n_position=self.inp_len)
         elif self.pos_enc_type == PosEncType.Emb:
             self.position_enc = nn.Embedding(self.inp_len, self.d_word_vec)
         else:
@@ -225,8 +225,11 @@ class VocabEncoder(nn.Module):
         elif self.pos_enc_type == PosEncType.Emb:
             # inds = torch.arange(self.inp_len).expand(len(src_seq), self.inp_len)
             # pos_embs = self.position_enc(inds)
-            pos_embs = self.position_enc.weight.expand(len(src_seq), self.inp_len, self.d_word_vec)
-            enc_out = enc_out + pos_embs
+            # pos_embs = self.position_enc.weight.expand(len(src_seq), self.inp_len, self.d_word_vec)
+            pos_embs = self.position_enc.weight.unsqueeze(0)
+            # print(f'pos_embs shape: {pos_embs.shape}')
+            # print(f'enc_out shape: {enc_out.shape}')
+            enc_out = enc_out + pos_embs[:, :enc_out.shape[1]]
         enc_out = self.dropout(enc_out)
         enc_out = self.layer_norm(enc_out)
         return enc_out

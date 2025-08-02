@@ -67,6 +67,11 @@ class ArgsGenmixembBertTrain(BaseModel):
         description='Bert pretrained model name (bert-base-uncased, bert-large-uncased).',
         cli=('--bert-model-name',),
     )
+    max_inp_toks: int = Field(
+        ...,
+        description='Maximum number of tokens in input to aggregate using TOKS_AGG_TYPE model.',
+        cli=('--max-inp-toks',),
+    )
     max_out_toks: int = Field(
         ...,
         description='Maximum number of predicted tokens.',
@@ -134,11 +139,6 @@ class ArgsGenmixembBertTrain(BaseModel):
         ...,
         description='Minimum number of tokens in text data to include it into training. Texts with less number of tokens will be skipped.',
         cli=('--n-toks-min',),
-    )
-    n_toks_max: int = Field(
-        ...,
-        description='Maximum number of tokens in input to aggregate using TOKS_AGG_TYPE model (and use as a target).',
-        cli=('--n-toks-max',),
     )
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
@@ -214,6 +214,7 @@ class ArgsGenmixembBertTrain(BaseModel):
 
 def main(args: ArgsGenmixembBertTrain) -> int:
     print(args)
+    pretrained_model_path = args.pretrained_model_path if args.pretrained_model_path and args.pretrained_model_path.name else None
 
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
@@ -222,7 +223,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
 
     model_cfg = parse_yaml_file_as(GenmixembBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmixemb_bert_cfg(
-        model_cfg, bert_model_name=args.bert_model_name, max_out_toks=args.max_out_toks, toks_agg_type=args.toks_agg_type,
+        model_cfg, bert_model_name=args.bert_model_name, max_inp_toks=args.max_inp_toks, max_out_toks=args.max_out_toks, toks_agg_type=args.toks_agg_type,
         bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks, pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step,
         pyr_agg_n_levels=args.pyr_agg_n_levels, pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, train_agg_model=args.train_agg_model,
         share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
@@ -236,7 +237,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
             seq_max_len=args.mask_seq_max_len,
         )
     prefix, suffix = gen_prefpostfix_genmixemb_bert(
-        model_cfg, train_ds_type=args.train_ds_type, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg, pred_next_sent=args.pred_next_sent,
+        model_cfg, train_ds_type=args.train_ds_type, mask_cfg=mask_cfg, pred_next_sent=args.pred_next_sent, pretrained_model_path=pretrained_model_path,
     )
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
@@ -260,13 +261,13 @@ def main(args: ArgsGenmixembBertTrain) -> int:
     print(model_cfg)
     model = GenmixembBert(model_cfg, device=device)
 
-    if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
-        pretrained_model_path = args.pretrained_model_path / 'best.pth'
-        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
-        pretrained_checkpoint = torch.load(pretrained_model_path, map_location=device)
+    if pretrained_model_path and checkpoint is None:
+        dname = pretrained_model_path.parent.name
+        print(f'Loading checkpoint with pretrained model from {args.pretrained_model_path}')
+        pretrained_checkpoint = torch.load(args.pretrained_model_path, map_location=device)
         # model.load_state_dict(pretrained_checkpoint['model'], strict=False)
         print(list(pretrained_checkpoint['model'].keys()))
-        if args.pretrained_model_path.name.startswith('encdecbert-'):
+        if dname.startswith('encdecbert-'):
             prefix = 'enc_bert.bert_model.'
             prefix_len = len(prefix)
             model_chkpt = {}
@@ -278,7 +279,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
                 model_chkpt[k] = v
             model.agg.load_state_dict(model_chkpt, strict=True)
             del model_chkpt
-        elif args.pretrained_model_path.name.startswith('genmixemb-'):
+        elif dname.startswith('genmixemb-'):
             # strict = True
             strict = False
             model.load_state_dict(pretrained_checkpoint['model'], strict=strict)
@@ -305,12 +306,12 @@ def main(args: ArgsGenmixembBertTrain) -> int:
     if args.train_ds_type == GenmixTrainDsType.Wki:
         train_it, val_it = get_wiki_batch_iterators(
             data_path=args.data_path, tkz=model.tkz, batch_size=args.batch_size, val_ratio=val_ratio, shuffle=False, rand_seed=args.random_seed,
-            n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg, device=device, pred_next_sent=args.pred_next_sent,
+            n_toks_min=args.n_toks_min, n_toks_max=args.max_inp_toks, mask_cfg=mask_cfg, device=device, pred_next_sent=args.pred_next_sent,
             n_toks_pred_max=args.max_out_toks,
         )
     elif args.train_ds_type == GenmixTrainDsType.Qna:
         train_it, val_it = get_squadv2_batch_iterators_v2(
-            batch_size=args.batch_size, exclude_empty_answers=True, tkz=model.tkz, max_inp_len=args.n_toks_max, max_out_len=args.max_out_toks,
+            batch_size=args.batch_size, exclude_empty_answers=True, tkz=model.tkz, max_inp_len=args.max_inp_toks, max_out_len=args.max_out_toks,
             device=device,
         )
     else:
@@ -348,9 +349,8 @@ def main(args: ArgsGenmixembBertTrain) -> int:
                 loss = model.run_on_wiki(batch=batch)
             elif args.train_ds_type == GenmixTrainDsType.Qna:
                 batch: QnaBatchV2 = item
-                # loss = model.run_on_qna(batch=batch)
+                loss = model.run_on_qna(batch=batch)
                 # loss = model.run_on_qna_v2(batch=batch)
-                loss = model.run_on_qna_v3(batch=batch)
             else:
                 raise
             if loss.isnan():
@@ -388,9 +388,8 @@ def main(args: ArgsGenmixembBertTrain) -> int:
                     loss = model.run_on_wiki(batch=batch)
                 elif args.train_ds_type == GenmixTrainDsType.Qna:
                     batch: QnaBatchV2 = item
-                    # loss = model.run_on_qna(batch=batch)
+                    loss = model.run_on_qna(batch=batch)
                     # loss = model.run_on_qna_v2(batch=batch)
-                    loss = model.run_on_qna_v3(batch=batch)
                 else:
                     raise
                 if loss.isnan():
