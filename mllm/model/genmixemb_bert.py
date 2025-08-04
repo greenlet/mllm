@@ -81,7 +81,7 @@ class GenmixembBert(nn.Module):
             inp_len = 512
             d_inner = bert_cfg.intermediate_size
             step = self.cfg.pyr_agg_step
-            reduct_type = HgReductType.Decim
+            reduct_type = self.cfg.pyr_agg_type
             temperature = 0
             cfg_vocab_enc = VocabEncoderCfg(
                 n_vocab=n_vocab, d_word_vec=d_word_vec, d_model=d_model, pad_idx=pad_idx, inp_len=inp_len,
@@ -98,6 +98,11 @@ class GenmixembBert(nn.Module):
                 encoder_embeddings = BertGenerationEmbeddings(encoder.config).to(self.device)
                 encoder_embeddings.load_state_dict(encoder.embeddings.state_dict())
             agg = EncoderPyramid(cfg_enc, bert_encoder=encoder_embeddings).to(self.device)
+            for n, p in agg.named_parameters():
+                if p.dim() > 1:
+                    nn.init.xavier_uniform_(p)
+                else:
+                    nn.init.uniform_(p, -0.1, 0.1)
         else:
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
 

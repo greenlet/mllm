@@ -178,6 +178,32 @@ class EncoderLayer(nn.Module):
         return enc_output, enc_slf_attn
 
 
+# t: [batch_size, seq_len, d_model]
+def get_top_cos(t: torch.Tensor, n: int) -> torch.Tensor:
+    # [batch_size, seq_len, d_model]
+    t1 = t
+    # [batch_size, seq_len, 1]
+    tn = torch.linalg.norm(t1, dim=2, keepdim=True)
+    # [batch_size, seq_len, d_model]
+    t1 = t1 / tn
+    # [batch_size, d_model, seq_len]
+    t2 = t.transpose(1, 2)
+    # [batch_size, seq_len, seq_len]
+    cos_dists = torch.matmul(t1, t2)
+    # [batch_size, seq_len, seq_len]
+    probs = torch.softmax(cos_dists, dim=2)
+    # [batch_size, seq_len]
+    probs_sum = torch.sum(probs, dim=1)
+    # [batch_size, n]
+    _, inds = torch.topk(probs_sum, n, dim=1)
+    batch = []
+    for ib in range(t.shape[0]):
+        batch.append(t[ib, inds[ib]])
+    # [batch_size, n, d_model]
+    res = torch.stack(batch, dim=0)
+    return res
+
+
 class ReduceLayer(nn.Module):
     d_model: int
     step: int
@@ -202,7 +228,7 @@ class ReduceLayer(nn.Module):
         assert d_model == self.d_model, f'self.d_model = {self.d_model}. inp d_model = {d_model}'
         len_mod = seq_len % self.step
         # print_dtype_shape(inp, 'rdc_inp')
-        if len_mod > 0:
+        if len_mod > 0 and self.reduct_type != HgReductType.Top:
             n_seq_add = self.step - len_mod
             inp = F.pad(inp, (0, 0, 0, n_seq_add), value=0)
             seq_len += n_seq_add
@@ -220,6 +246,8 @@ class ReduceLayer(nn.Module):
         elif self.reduct_type == HgReductType.Sub:
             out = inp.reshape((batch_size, seq_len // self.step, self.step, d_model))
             out = out[:, :, 1, :] - out[:, :, 0, :]
+        elif self.reduct_type == HgReductType.Top:
+            out = get_top_cos(inp, n=seq_len // self.step)
         else:
             raise Exception(f'Reduction type {self.reduct_type} is not supported')
         return out
