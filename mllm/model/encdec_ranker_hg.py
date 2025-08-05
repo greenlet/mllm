@@ -179,13 +179,14 @@ class EncoderLayer(nn.Module):
 
 
 # t: [batch_size, seq_len, d_model]
-def get_top_cos(t: torch.Tensor, n: int) -> torch.Tensor:
+def get_top_vects(t: torch.Tensor, n: int, calc_cos: bool) -> torch.Tensor:
     # [batch_size, seq_len, d_model]
     t1 = t
-    # [batch_size, seq_len, 1]
-    tn = torch.linalg.norm(t1, dim=2, keepdim=True)
-    # [batch_size, seq_len, d_model]
-    t1 = t1 / tn
+    if calc_cos:
+        # [batch_size, seq_len, 1]
+        tn = torch.linalg.norm(t1, dim=2, keepdim=True)
+        # [batch_size, seq_len, d_model]
+        t1 = t1 / tn
     # [batch_size, d_model, seq_len]
     t2 = t.transpose(1, 2)
     # [batch_size, seq_len, seq_len]
@@ -228,7 +229,8 @@ class ReduceLayer(nn.Module):
         assert d_model == self.d_model, f'self.d_model = {self.d_model}. inp d_model = {d_model}'
         len_mod = seq_len % self.step
         # print_dtype_shape(inp, 'rdc_inp')
-        if len_mod > 0 and self.reduct_type != HgReductType.Top:
+        is_top = self.reduct_type in (HgReductType.TopCos, HgReductType.TopDot)
+        if len_mod > 0 and not is_top:
             n_seq_add = self.step - len_mod
             inp = F.pad(inp, (0, 0, 0, n_seq_add), value=0)
             seq_len += n_seq_add
@@ -246,8 +248,10 @@ class ReduceLayer(nn.Module):
         elif self.reduct_type == HgReductType.Sub:
             out = inp.reshape((batch_size, seq_len // self.step, self.step, d_model))
             out = out[:, :, 1, :] - out[:, :, 0, :]
-        elif self.reduct_type == HgReductType.Top:
-            out = get_top_cos(inp, n=seq_len // self.step)
+        elif is_top:
+            n = seq_len // self.step
+            calc_cos = self.reduct_type == HgReductType.TopCos
+            out = get_top_vects(inp, n=n, calc_cos=calc_cos)
         else:
             raise Exception(f'Reduction type {self.reduct_type} is not supported')
         return out

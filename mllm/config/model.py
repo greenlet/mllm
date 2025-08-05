@@ -204,7 +204,8 @@ class HgReductType(str, Enum):
     Decim = 'decim'
     Avg = 'avg'
     Sub = 'sub'
-    Top = 'top'
+    TopCos = 'topcos'
+    TopDot = 'topdot'
 
 
 class HgEnhanceType(str, Enum):
