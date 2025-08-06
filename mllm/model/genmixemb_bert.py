@@ -76,6 +76,7 @@ class GenmixembBert(nn.Module):
             d_k = d_v = d_model // n_heads
             n_layers = self.cfg.pyr_agg_n_levels
             n_similar_layers = self.cfg.pyr_agg_n_layers_per_level
+            share_layer_weights = self.cfg.pyr_share_layer_weights
             dropout_rate = bert_cfg.hidden_dropout_prob
             pos_enc_type = PosEncType.Emb
             inp_len = 512
@@ -90,7 +91,7 @@ class GenmixembBert(nn.Module):
             cfg_enc = EncPyrCfg(
                 vocab_encoder=cfg_vocab_enc, pad_idx=pad_idx, d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v,
                 d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
-                n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature,
+                n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature, share_layer_weights=share_layer_weights,
             )
             if self.cfg.share_agg_enc_token_embeds:
                 encoder_embeddings = encoder.embeddings

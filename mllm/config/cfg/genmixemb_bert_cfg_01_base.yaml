@@ -9,6 +9,7 @@ pyr_agg_n_layers_per_level: 0
 pyr_agg_n_levels: 0
 pyr_agg_step: 2
 pyr_agg_type: decim
+pyr_share_layer_weights: false
 share_agg_enc_token_embeds: false
 toks_agg_type: brt
 train_agg_model: false

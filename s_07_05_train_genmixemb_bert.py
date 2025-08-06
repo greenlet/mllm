@@ -28,6 +28,7 @@ mask_tokens_ARG = '--mask-tokens', 'Mask input tokens'
 share_agg_enc_token_embeds_ARG = '--share-agg-enc-token-embeds', 'Share token embeddings between aggregator model and encoder'
 add_token_type_ids_ARG = '--add-token-type-ids', 'Add token type ids to input tokens'
 join_ctx_que_agg_ARG = '--join-ctx-que-agg', 'Join context and question for aggregation'
+pyr_share_layer_weights_ARG = '--pyr-share-layer-weights', 'Share Pyramid layers weights between levels'
 
 
 class ArgsGenmixembBertTrain(BaseModel):
@@ -109,6 +110,10 @@ class ArgsGenmixembBertTrain(BaseModel):
         description=f'Number of self attention layers per level of aggregation for TOKS_AGG_TYPE={TokensAggType.Pyramid}.',
         cli=('--pyr-agg-n-layers-per-level',),
     )
+    pyr_share_layer_weights_STR: str = create_bool_str_field(*pyr_share_layer_weights_ARG)
+    @property
+    def pyr_share_layer_weights(self) -> bool:
+        return is_arg_true(pyr_share_layer_weights_ARG[0], self.pyr_share_layer_weights_STR)
 
     train_agg_model_STR: str = create_bool_str_field(*train_agg_model_ARG)
     @property
@@ -225,8 +230,8 @@ def main(args: ArgsGenmixembBertTrain) -> int:
     model_cfg = copy_override_genmixemb_bert_cfg(
         model_cfg, bert_model_name=args.bert_model_name, max_inp_toks=args.max_inp_toks, max_out_toks=args.max_out_toks, toks_agg_type=args.toks_agg_type,
         bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks, pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step,
-        pyr_agg_n_levels=args.pyr_agg_n_levels, pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, train_agg_model=args.train_agg_model,
-        share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
+        pyr_agg_n_levels=args.pyr_agg_n_levels, pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, pyr_share_layer_weights=args.pyr_share_layer_weights,
+        train_agg_model=args.train_agg_model, share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
         join_ctx_que_agg=args.join_ctx_que_agg,
     )
 

@@ -271,14 +271,16 @@ class EncoderPyramid(nn.Module):
             self.vocab_encoder = VocabEncoder(**cfg.vocab_encoder.dict())
         else:
             self.vocab_encoder = bert_encoder
+        n_enc_layers = cfg.n_similar_layers if cfg.share_layer_weights else cfg.n_layers * cfg.n_similar_layers
         self.enc_layers = nn.ModuleList([
             EncoderLayer(
                 n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner, d_k=cfg.d_k, d_v=cfg.d_v,
                 dropout_rate=cfg.dropout_rate, temperature=cfg.temperature,
-            ) for _ in range(cfg.n_layers * cfg.n_similar_layers)
+            ) for _ in range(n_enc_layers)
         ])
+        n_rdc_layers = 1 if cfg.share_layer_weights else cfg.n_layers
         self.rdc_layers = nn.ModuleList([
-            ReduceLayer(d_model=cfg.d_model, step=cfg.step, reduct_type=cfg.reduct_type) for _ in range(cfg.n_layers)
+            ReduceLayer(d_model=cfg.d_model, step=cfg.step, reduct_type=cfg.reduct_type) for _ in range(n_rdc_layers)
         ])
 
     # Tensor of integer tokens: [batch_size, seq_len]
@@ -296,16 +298,27 @@ class EncoderPyramid(nn.Module):
             # [batch_size, seq_len, d_model]
             out = self.vocab_encoder(inp)
         # print_dtype_shape(out, 'vocab_enc')
-        enc_layers_it = iter(self.enc_layers)
-        for rdc_layer in self.rdc_layers:
-            for _ in range(self.cfg.n_similar_layers):
-                enc_layer = next(enc_layers_it)
+
+        # enc_layers_it = iter(self.enc_layers)
+        # for rdc_layer in self.rdc_layers:
+        #     for _ in range(self.cfg.n_similar_layers):
+        #         enc_layer = next(enc_layers_it)
+        #         out, _ = enc_layer(out, slf_attn_mask=mask)
+        #     # inds = slice(0, out.shape[1], 2)
+        #     # print_dtype_shape(mask, 'mask 1')
+        #     # mask = mask[:, inds, inds]
+        #     # print_dtype_shape(mask, 'mask 2')
+        #     out = rdc_layer(out)
+
+        for i_lv in range(self.cfg.n_layers):
+            for i_lr in range(self.cfg.n_similar_layers):
+                i = i_lv * self.cfg.n_similar_layers + i_lr
+                i %= len(self.enc_layers)
+                enc_layer = self.enc_layers[i]
                 out, _ = enc_layer(out, slf_attn_mask=mask)
-            # inds = slice(0, out.shape[1], 2)
-            # print_dtype_shape(mask, 'mask 1')
-            # mask = mask[:, inds, inds]
-            # print_dtype_shape(mask, 'mask 2')
-            out = rdc_layer(out)
+            j = i_lv % len(self.rdc_layers)
+            out = self.rdc_layers[j](out)
+
         return out
 
 
