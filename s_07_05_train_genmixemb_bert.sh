@@ -20,6 +20,9 @@ bert_model_name=bert-base-uncased
 #bert_model_name=bert-large-uncased
 #toks_agg_type=brt
 toks_agg_type=pyr
+bert_agg_type=sep
+bert_agg_type=topcos
+bert_agg_type=topdot
 #bert_agg_n_subseq_toks=0
 bert_agg_n_subseq_toks=2
 #bert_agg_n_subseq_toks=8
@@ -29,21 +32,22 @@ bert_agg_n_subseq_toks=2
 #pyr_agg_type=sub
 pyr_agg_type=topcos
 pyr_agg_type=topdot
-#pyr_agg_step=2
 pyr_agg_step=2
-#pyr_agg_n_levels=1
-pyr_agg_n_levels=2
+#pyr_agg_step=4
+pyr_agg_n_levels=1
+#pyr_agg_n_levels=2
 pyr_agg_n_layers_per_level=2
 #pyr_agg_n_layers_per_level=2
 #pyr_agg_n_layers_per_level=3
-#pyr_share_layer_weights=false
-pyr_share_layer_weights=true
+pyr_share_layer_weights=false
+#pyr_share_layer_weights=true
 #train_agg_model=false
 train_agg_model=true
 pred_next_sent=true
 #share_agg_enc_token_embeds=false
 share_agg_enc_token_embeds=true
-add_token_type_ids=false
+#add_token_type_ids=false
+add_token_type_ids=true
 join_ctx_que_agg=false
 
 
@@ -86,13 +90,14 @@ val_epoch_steps=50
 #batch_size=25
 #batch_size=20
 #batch_size=15
-#batch_size=10
-batch_size=5
+batch_size=10
+#batch_size=5
 #train_subdir=last
 
 #learning_rate=0.0001
 #learning_rate=0.00005
 learning_rate=0.00001
+learning_rate=0.000005
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
@@ -110,6 +115,7 @@ python s_07_05_train_genmixemb_bert.py \
   --max-inp-toks $max_inp_toks \
   --max-out-toks $max_out_toks \
   --toks-agg-type $toks_agg_type \
+  --bert-agg-type $bert_agg_type \
   --bert-agg-n-subseq-toks $bert_agg_n_subseq_toks \
   --pyr-agg-type $pyr_agg_type \
   --pyr-agg-step $pyr_agg_step \

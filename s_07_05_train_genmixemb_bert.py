@@ -13,7 +13,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembBertCfg, copy_override_genmixemb_bert_cfg, \
-    gen_prefpostfix_genmixemb_bert, HgReductType
+    gen_prefpostfix_genmixemb_bert, HgReductType, BertAggType
 from mllm.data.itsquadv2 import get_squadv2_batch_iterators_v2, QnaBatchV2
 from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
 from mllm.model.genmixemb_bert import GenmixembBert
@@ -83,9 +83,14 @@ class ArgsGenmixembBertTrain(BaseModel):
         description=f'Aggregation method for sequence of tokens. Values {[t.value for t in TokensAggType]}',
         cli=('--toks-agg-type',),
     )
+    bert_agg_type: BertAggType = Field(
+        BertAggType.Sep,
+        description=f'Bert aggregation type. Values: {[t.value for t in BertAggType]}',
+        cli=('--bert-agg-type',),
+    )
     bert_agg_n_subseq_toks: int = Field(
         ...,
-        description=f'Number of sequential tokens to aggregate for TOKS_AGG_TYPE={TokensAggType.Bert}.',
+        description=f'Number of sequential tokens to aggregate for Bert.',
         cli=('--bert-agg-n-subseq-toks',),
     )
     pyr_agg_type: HgReductType = Field(
@@ -229,7 +234,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
     model_cfg = parse_yaml_file_as(GenmixembBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmixemb_bert_cfg(
         model_cfg, bert_model_name=args.bert_model_name, max_inp_toks=args.max_inp_toks, max_out_toks=args.max_out_toks, toks_agg_type=args.toks_agg_type,
-        bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks, pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step,
+        bert_agg_type=args.bert_agg_type, bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks, pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step,
         pyr_agg_n_levels=args.pyr_agg_n_levels, pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, pyr_share_layer_weights=args.pyr_share_layer_weights,
         train_agg_model=args.train_agg_model, share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
         join_ctx_que_agg=args.join_ctx_que_agg,
