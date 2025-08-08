@@ -13,13 +13,14 @@ from transformers import BatchEncoding, GenerationConfig
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
 from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembBertCfg, TokensAggType, \
-    EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType
+    EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType, BertAggType
 from mllm.data.itsquadv2 import QnaBatchV2
 from mllm.model.at2_decoder import BertGenerationEmbeddings
 from mllm.model.bert import BertModel, BertTokenizer
 from mllm.model.bert_generation import BertGenerationEncoder, BertGenerationDecoder
 from mllm.model.encdec_ranker_hg import EncoderPyramid
 from mllm.model.encoder_decoder import EncoderDecoderModel
+from mllm.model.utils import get_top_vects
 from mllm.train.utils import WordToks
 from mllm.data.wiki.itwiki import WikiBatch
 
@@ -151,29 +152,45 @@ class GenmixembBert(nn.Module):
     def run_agg(self, toks: torch.Tensor):
         inp_shape = toks.shape
         if self.cfg.toks_agg_type == TokensAggType.Bert:
-            n_subseq = self.cfg.bert_agg_n_subseq_toks
-            n_batch, n_seq = toks.shape
-            n_seq_mod = n_seq % n_subseq
-            if n_seq_mod > 0:
-                pad_size = n_subseq - n_seq_mod
-                toks = F.pad(toks, (0, pad_size), 'constant', self.tkz.pad_token_id)
-                n_seq += pad_size
-            # [n_batch, n_chunks, n_subseq]
-            toks = toks.reshape((n_batch, -1, n_subseq))
-            # [n_batch, n_chunks, 1 + n_subseq]
-            toks = F.pad(toks, (1, 0), 'constant', self.tkz.cls_token_id)
-            # [n_batch * n_chunks, 1 + n_subseq]
-            toks = toks.reshape((-1, n_subseq + 1))
-            # [n_batch * n_chunks, 1 + n_subseq]
-            mask = toks != self.tkz.pad_token_id
-            out = self.agg(input_ids=toks, attention_mask=mask)
-            # [n_batch * n_chunks, 1 + n_subseq, d_model]
-            emb = out.last_hidden_state
-            # [n_batch * n_chunks, 1, d_model]
-            emb = emb[:, :1, :]
-            n_chunks = n_seq // n_subseq
-            # [n_batch, n_chunks, d_model]
-            emb = emb.reshape((n_batch, n_chunks, self.cfg.d_model))
+            if self.cfg.bert_agg_type == BertAggType.Sep:
+                n_subseq = self.cfg.bert_agg_n_subseq_toks
+                n_batch, n_seq = toks.shape
+                n_seq_mod = n_seq % n_subseq
+                if n_seq_mod > 0:
+                    pad_size = n_subseq - n_seq_mod
+                    toks = F.pad(toks, (0, pad_size), 'constant', self.tkz.pad_token_id)
+                    n_seq += pad_size
+                # [n_batch, n_chunks, n_subseq]
+                toks = toks.reshape((n_batch, -1, n_subseq))
+                # [n_batch, n_chunks, 1 + n_subseq]
+                toks = self.prefix_token(toks, self.tkz.cls_token_id)
+                # [n_batch * n_chunks, 1 + n_subseq]
+                toks = toks.reshape((-1, n_subseq + 1))
+                # [n_batch * n_chunks, 1 + n_subseq]
+                mask = toks != self.tkz.pad_token_id
+                out = self.agg(input_ids=toks, attention_mask=mask)
+                # [n_batch * n_chunks, 1 + n_subseq, d_model]
+                emb = out.last_hidden_state
+                # [n_batch * n_chunks, 1, d_model]
+                emb = emb[:, :1, :]
+                n_chunks = n_seq // n_subseq
+                # [n_batch, n_chunks, d_model]
+                emb = emb.reshape((n_batch, n_chunks, self.cfg.d_model))
+            elif self.cfg.bert_agg_type in (BertAggType.Topcos, BertAggType.Topdot):
+                n_subseq = self.cfg.bert_agg_n_subseq_toks
+                # [n_batch, n_seq]
+                toks = self.prefix_token(toks, self.tkz.cls_token_id)
+                n_batch, n_seq = toks.shape
+                n_chunks = n_seq // n_subseq
+                # [n_batch, n_seq]
+                mask = toks != self.tkz.pad_token_id
+                out = self.agg(input_ids=toks, attention_mask=mask)
+                # [n_batch, n_seq, d_model]
+                emb = out.last_hidden_state
+                # [n_batch, n_chunks, d_model]
+                emb = get_top_vects(emb, n_chunks, calc_cos=self.cfg.bert_agg_type == BertAggType.Topcos)
+            else:
+                raise Exception(f'Bert aggregation type {self.cfg.bert_agg_type} is not supported.')
         elif self.cfg.toks_agg_type == TokensAggType.Pyramid:
             emb = self.agg(toks)
         else:
