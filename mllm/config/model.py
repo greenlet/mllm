@@ -393,7 +393,7 @@ class GenmixembBertCfg(BaseModel):
     pyr_agg_step: int = 0
     pyr_agg_n_levels: int
     pyr_agg_n_layers_per_level: int
-    pyr_share_layer_weights: bool
+    pyr_share_layer_weights: bool = False
     train_agg_model: bool
     share_agg_enc_token_embeds: bool = False
     add_token_type_ids: bool = False

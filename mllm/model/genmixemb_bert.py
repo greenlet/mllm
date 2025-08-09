@@ -67,6 +67,13 @@ class GenmixembBert(nn.Module):
             agg = BertModel.from_pretrained(
                 self.cfg.bert_model_name, torch_dtype=torch.float32, device_map=self.device,
             )
+            if self.cfg.share_agg_enc_token_embeds:
+                agg.embeddings.word_embeddings = encoder.embeddings.word_embeddings
+                agg.embeddings.position_embeddings = encoder.embeddings.position_embeddings
+                agg.embeddings.LayerNorm = encoder.embeddings.LayerNorm
+                agg.embeddings.dropout = encoder.embeddings.dropout
+            else:
+                agg.embeddings.load_state_dict(encoder.embeddings.state_dict(), strict=False)
         elif self.cfg.toks_agg_type == TokensAggType.Pyramid:
             d_model = self.cfg.d_model
             pad_idx = self.tkz.pad_token_id
@@ -476,10 +483,22 @@ class GenmixembBert(nn.Module):
             que_toks = self.prefix_token(que_toks, self.tkz.sep_token_id)
             # [n_batch, que_len, d_model]
             que_emb = self.gen.encoder.embeddings(que_toks)
+
+            if self.cfg.add_token_type_ids:
+                ctx_emb = ctx_emb + self.tt_embs_0[:, :ctx_emb.shape[1]]
+                que_emb = que_emb + self.tt_embs_1[:, :que_emb.shape[1]]
+
             # [n_batch, n_ctx_chunks + nque_len, d_model]
             emb = torch.cat((ctx_emb, que_emb), dim=-2)
+
+            # [n_batch, ctx_len]
+            ctx_att_mask = torch.full((ctx_emb.shape[0], ctx_emb.shape[1]), True, device=self.device)
+            # [n_batch, que_len]
+            que_att_mask = que_toks != self.tkz.pad_token_id
+            att_mask = torch.cat((ctx_att_mask, que_att_mask), dim=-1)
+
             out_toks = self.gen.generate(
-                inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+                inputs_embeds=emb, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
             )
 
         return out_toks
