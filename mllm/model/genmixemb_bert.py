@@ -167,12 +167,10 @@ class GenmixembBert(nn.Module):
                     pad_size = n_subseq - n_seq_mod
                     toks = F.pad(toks, (0, pad_size), 'constant', self.tkz.pad_token_id)
                     n_seq += pad_size
-                # [n_batch, n_chunks, n_subseq]
-                toks = toks.reshape((n_batch, -1, n_subseq))
-                # [n_batch, n_chunks, 1 + n_subseq]
-                toks = self.prefix_token(toks, self.tkz.cls_token_id)
+                # [n_batch * n_chunks, n_subseq]
+                toks = toks.reshape((-1, n_subseq))
                 # [n_batch * n_chunks, 1 + n_subseq]
-                toks = toks.reshape((-1, n_subseq + 1))
+                toks = torch.pad(toks, (1, 0), 'constant', self.tkz.cls_token_id)
                 # [n_batch * n_chunks, 1 + n_subseq]
                 mask = toks != self.tkz.pad_token_id
                 out = self.agg(input_ids=toks, attention_mask=mask)
@@ -265,7 +263,7 @@ class GenmixembBert(nn.Module):
     # labels [n_batch, tgt_len]
     def calc_gen_loss(self, b_logits: torch.Tensor, b_labels: torch.Tensor) -> torch.Tensor:
         n_batch = len(b_logits)
-        b_mask = b_labels != self.tkz.pad_token_id
+        b_mask = (b_labels != self.tkz.pad_token_id) & (b_labels != self.tkz.sep_token_id)
         b_nmask = ~b_mask
         b_loss = torch.zeros(size=(1,), device=self.device)
         for i in range(n_batch):
@@ -295,9 +293,9 @@ class GenmixembBert(nn.Module):
 
         # [n_batch, tgt_len]
         target_ids = ans_toks
-        # [n_batch, tgt_len + 1]
-        target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
-        # [n_batch, tgt_len]
+        # # [n_batch, tgt_len + 1]
+        # target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
+        # [n_batch, tgt_len']
         tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
 
         if not self.need_run_agg:
@@ -317,7 +315,7 @@ class GenmixembBert(nn.Module):
             # que_toks: [n_batch, que_len]
             que_toks = self.prefix_token(que_toks, self.tkz.sep_token_id)
             # [n_batch, que_len, d_model]
-            que_emb = self.gen.encoder.embeddings(que_toks)
+            que_emb = self.gen.encoder.embeddings.word_embeddings(que_toks)
 
             if self.cfg.add_token_type_ids:
                 ctx_emb = ctx_emb + self.tt_embs_0[:, :ctx_emb.shape[1]]
@@ -343,6 +341,7 @@ class GenmixembBert(nn.Module):
         loss = self.calc_gen_loss(logits, labels)
         return loss
 
+    # TODO: renovate before use
     def run_on_qna_v2(self, batch: QnaBatchV2) -> torch.Tensor:
         if not self.need_run_agg:
             # ctx_toks: [n_batch, ctx_len]
@@ -482,7 +481,7 @@ class GenmixembBert(nn.Module):
             ctx_emb = self.run_agg(ctx_toks)
             que_toks = self.prefix_token(que_toks, self.tkz.sep_token_id)
             # [n_batch, que_len, d_model]
-            que_emb = self.gen.encoder.embeddings(que_toks)
+            que_emb = self.gen.encoder.embeddings.word_embeddings(que_toks)
 
             if self.cfg.add_token_type_ids:
                 ctx_emb = ctx_emb + self.tt_embs_0[:, :ctx_emb.shape[1]]

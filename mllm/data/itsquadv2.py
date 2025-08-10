@@ -40,8 +40,8 @@ class QnaItemV2:
         self.device = device if device is not None else torch.device('cpu')
         self.calc_toks()
 
-    def _tokenize(self, s: str, to_numpy: bool = False) -> Union[list, np.ndarray]:
-        toks = self.tkz(s, add_special_tokens=False).input_ids
+    def _tokenize(self, s: str, to_numpy: bool = False, add_special_tokens: bool = False) -> Union[list, np.ndarray]:
+        toks = self.tkz(s, add_special_tokens=add_special_tokens).input_ids
         if to_numpy:
             toks = np.array(toks)
         return toks
@@ -49,7 +49,7 @@ class QnaItemV2:
     def calc_toks(self):
         self.ctx_toks = self._tokenize(self.context)
         self.que_toks = self._tokenize(self.question)
-        self.ans_toks = self._tokenize(self.answer)
+        self.ans_toks = self._tokenize(self.answer, add_special_tokens=True)
 
     def get_tensors(self) -> [torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.ctx_toks_t is None:
