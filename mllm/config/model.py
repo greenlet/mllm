@@ -381,6 +381,13 @@ class BertAggType(str, Enum):
     Topdot = 'topdot'
 
 
+class CtxQuePromptType(str, Enum):
+    Tok = 'tok'
+    Cq = 'cq'
+    Qc = 'qc'
+    Cqqc = 'cqqc'
+
+
 class GenmixembBertCfg(BaseModel):
     bert_model_name: str
     d_model: int
@@ -398,6 +405,7 @@ class GenmixembBertCfg(BaseModel):
     share_agg_enc_token_embeds: bool = False
     add_token_type_ids: bool = False
     join_ctx_que_agg: bool = False
+    ctx_que_prompt_type: CtxQuePromptType = CtxQuePromptType.Tok
 
 
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
@@ -739,7 +747,7 @@ def create_genmixemb_bert_cfg(
         bert_model_name: str = 'bert-base-uncased', max_inp_toks: int = 0, max_out_toks: int = 0, toks_agg_type: TokensAggType = TokensAggType.Bert,
         bert_agg_n_subseq_toks: int = 0, bert_agg_type: BertAggType = BertAggType.Sep, pyr_agg_type: HgReductType = HgReductType.Decim, pyr_agg_step: int = 2, pyr_agg_n_levels: int = 0,
         pyr_agg_n_layers_per_level: int = 0, pyr_share_layer_weights: bool = False, train_agg_model: bool = False, add_token_type_ids: bool = False,
-        share_agg_enc_token_embeds: bool = False, join_ctx_que_agg: bool = False,
+        share_agg_enc_token_embeds: bool = False, join_ctx_que_agg: bool = False, ctx_que_prompt_type: CtxQuePromptType = CtxQuePromptType.Tok
 ) -> GenmixembBertCfg:
     model = BertModel.from_pretrained(bert_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -750,6 +758,7 @@ def create_genmixemb_bert_cfg(
         bert_agg_n_subseq_toks=bert_agg_n_subseq_toks, bert_agg_type=bert_agg_type, pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels,
         pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level, pyr_share_layer_weights=pyr_share_layer_weights, train_agg_model=train_agg_model,
         share_agg_enc_token_embeds=share_agg_enc_token_embeds, add_token_type_ids=add_token_type_ids, join_ctx_que_agg=join_ctx_que_agg,
+        ctx_que_prompt_type=ctx_que_prompt_type,
     )
     return cfg
 
@@ -915,6 +924,8 @@ def copy_override_genmixemb_bert_cfg(
         bert_agg_n_subseq_toks: Optional[int] = None, bert_agg_type: Optional[BertAggType] = None, pyr_agg_type: Optional[HgReductType] = None, pyr_agg_step: Optional[int] = None,
         pyr_agg_n_levels: Optional[int] = None, pyr_agg_n_layers_per_level: Optional[int] = None, pyr_share_layer_weights: Optional[bool] = None,
         train_agg_model: Optional[bool] = None, share_agg_enc_token_embeds: Optional[bool] = None, add_token_type_ids: Optional[bool] = None, join_ctx_que_agg: Optional[bool] = None,
+        ctx_que_prompt_type: Optional[CtxQuePromptType] = None,
+        
 ) -> GenmixembBertCfg:
     bert_model_name = bert_model_name or cfg.bert_model_name
     max_inp_toks = coalesce(max_inp_toks, cfg.max_inp_toks)
@@ -931,12 +942,13 @@ def copy_override_genmixemb_bert_cfg(
     share_agg_enc_token_embeds = coalesce(share_agg_enc_token_embeds, cfg.share_agg_enc_token_embeds)
     add_token_type_ids = coalesce(add_token_type_ids, cfg.add_token_type_ids)
     join_ctx_que_agg = coalesce(join_ctx_que_agg, cfg.join_ctx_que_agg)
+    ctx_que_prompt_type = coalesce(ctx_que_prompt_type, cfg.ctx_que_prompt_type)
 
     return create_genmixemb_bert_cfg(
         bert_model_name=bert_model_name, max_inp_toks=max_inp_toks, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type, bert_agg_n_subseq_toks=bert_agg_n_subseq_toks,
         bert_agg_type=bert_agg_type, pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels, pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level,
         pyr_share_layer_weights=pyr_share_layer_weights, train_agg_model=train_agg_model, share_agg_enc_token_embeds=share_agg_enc_token_embeds,
-        add_token_type_ids=add_token_type_ids, join_ctx_que_agg=join_ctx_que_agg,
+        add_token_type_ids=add_token_type_ids, join_ctx_que_agg=join_ctx_que_agg, ctx_que_prompt_type=ctx_que_prompt_type,
     )
 
 
@@ -1188,6 +1200,7 @@ def gen_prefpostfix_genmixemb_bert(
         postfix_parts.append(bool_param_to_str('ttid', cfg.add_token_type_ids))
         if agg_enabled:
             postfix_parts.append(bool_param_to_str('jcq', cfg.join_ctx_que_agg))
+            postfix_parts.append(f'cqpr{cfg.ctx_que_prompt_type.value.capitalize()}')
     else:
         raise ValueError(f'Dataset type {train_ds_type} is not supported.')
 

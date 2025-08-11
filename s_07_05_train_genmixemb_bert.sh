@@ -46,8 +46,8 @@ train_agg_model=true
 pred_next_sent=true
 #share_agg_enc_token_embeds=false
 share_agg_enc_token_embeds=true
-add_token_type_ids=false
-#add_token_type_ids=true
+#add_token_type_ids=false
+add_token_type_ids=true
 join_ctx_que_agg=false
 
 n_toks_min=20
@@ -76,8 +76,9 @@ batch_size=5
 #pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
 #pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
 
-pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
+#pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
 #pretrained_model_path=$train_root_path/genmixemb-20250809_234548-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtTopdot-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-jcqF
+pretrained_model_path=$train_root_path/genmixemb-20250810_125920-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggBrt-sub2-agtTopdot-dsQna-tragT-shemT-ttidF-jcqF
 
 pretrained_model_path=$pretrained_model_path/best.pth
 
@@ -94,8 +95,8 @@ batch_size=10
 #train_subdir=last
 
 #learning_rate=0.0001
-learning_rate=0.00005
-#learning_rate=0.00001
+#learning_rate=0.00005
+learning_rate=0.00001
 #learning_rate=0.000005
 random_seed=200
 

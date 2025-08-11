@@ -452,6 +452,7 @@ class GenmixembBert(nn.Module):
 
         gen_cfg = GenerationConfig(
             max_new_tokens=self.cfg.max_out_toks,
+            eos_token_id=self.tkz.sep_token_id,
             do_sample=True,
             top_p=0.95,
             top_k=50,
