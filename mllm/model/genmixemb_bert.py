@@ -1,7 +1,8 @@
 import math
 import os
+from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -13,7 +14,7 @@ from transformers import BatchEncoding, GenerationConfig
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
 from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembBertCfg, TokensAggType, \
-    EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType, BertAggType
+    EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType, BertAggType, CtxQuePromptType
 from mllm.data.itsquadv2 import QnaBatchV2
 from mllm.model.at2_decoder import BertGenerationEmbeddings
 from mllm.model.bert import BertModel, BertTokenizer
@@ -25,11 +26,22 @@ from mllm.train.utils import WordToks
 from mllm.data.wiki.itwiki import WikiBatch
 
 
+class CtxQuePlaceholder(str, Enum):
+    Ctx = 'ctx'
+    Que = 'que'
+
+
+CtxQuePromptTemplateType = list[list[Union[torch.Tensor, CtxQuePromptType]]]
+CtxQuePromptEmbsTemplateType = list[list[Union[torch.Tensor, CtxQuePromptType]]]
+
+
 class GenmixembBert(nn.Module):
     cfg: GenmixembBertCfg
     device: torch.device
     agg: nn.Module
     gen: EncoderDecoderModel
+    ctx_que_prompt_template: CtxQuePromptTemplateType
+    ctx_que_prompt_embs_template: CtxQuePromptEmbsTemplateType
 
     def __init__(self, cfg: GenmixembBertCfg, device: torch.device):
         super().__init__()
@@ -56,9 +68,39 @@ class GenmixembBert(nn.Module):
             self.tt_embs_0 = None
             self.tt_embs_1 = None
 
+        # str -> [1, n_toks]
+        def tokenize(s: str) -> torch.Tensor:
+            toks = self.tkz(s, add_special_tokens=False, return_tensors='pt').input_ids
+            return toks.to(self.device)
+
+        tok_pat = [CtxQuePlaceholder.Ctx, tokenize('[SEP]'), CtxQuePlaceholder.Que]
+        cq_pat = [tokenize('Context:'), CtxQuePlaceholder.Ctx, tokenize('Question:'), CtxQuePlaceholder.Que]
+        qc_pat = [tokenize('Question:'), CtxQuePlaceholder.Ctx, tokenize('Context:'), CtxQuePlaceholder.Que]
+
+        if self.cfg.ctx_que_prompt_type == CtxQuePromptType.Tok:
+            self.ctx_que_prompt_template = [tok_pat]
+        elif self.cfg.ctx_que_prompt_type == CtxQuePromptType.Cq:
+            self.ctx_que_prompt_template = [cq_pat]
+        elif self.cfg.ctx_que_prompt_type == CtxQuePromptType.Qc:
+            self.ctx_que_prompt_template = [qc_pat]
+        elif self.cfg.ctx_que_prompt_type == CtxQuePromptType.Cqqc:
+            self.ctx_que_prompt_template = [cq_pat, qc_pat]
+        else:
+            raise Exception(f'Context-Query prompt type {self.cfg.ctx_que_prompt_type} is not supported.')
+
+
+
         self.agg = self.create_agg_model(encoder)
         self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
 
+    # ctx_toks: [n_batch, n_ctx]
+    # que_toks: [n_batch, n_que]
+    def toks_template_to_tensor_template(self, prompt_template: CtxQuePromptTemplateType, ctx_toks: list[int], que_toks: list[int]) -> CtxQuePromptEmbsTemplateType:
+        for pat in prompt_template:
+            if isinstance(pat, list):
+                pass
+            elif pat == CtxQuePlaceholder.Ctx:
+                pass
 
     def create_agg_model(self, encoder: BertGenerationEncoder) -> Optional[nn.Module]:
         if not self.need_run_agg:
@@ -283,6 +325,13 @@ class GenmixembBert(nn.Module):
             b_loss = b_loss + loss
         b_loss = b_loss / n_batch
         return b_loss
+
+    # ctx_emb: [n_batch, n_ctx, d_model]
+    # que_emb: [n_batch, n_que, d_model]
+    def join_ctx_que_embs(self, ctx_emb: torch.Tensor, que_emb: torch.Tensor) -> torch.Tensor:
+        embs = [
+
+        ]
 
     def run_on_qna(self, batch: QnaBatchV2) -> torch.Tensor:
         # ctx_toks: [n_batch, ctx_len]
