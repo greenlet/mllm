@@ -3,8 +3,6 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from debian import c
-
 import numpy as np
 import torch
 import torch.utils.tensorboard as tb
@@ -245,7 +243,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
         bert_agg_type=args.bert_agg_type, bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks, pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step,
         pyr_agg_n_levels=args.pyr_agg_n_levels, pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, pyr_share_layer_weights=args.pyr_share_layer_weights,
         train_agg_model=args.train_agg_model, share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
-        join_ctx_que_agg=args.join_ctx_que_agg, ctx_que_prompt_type=args.ctx_que_prompt_type, n_toks_min=args.n_toks_min,
+        join_ctx_que_agg=args.join_ctx_que_agg, ctx_que_prompt_type=args.ctx_que_prompt_type,
     )
 
     mask_cfg = None

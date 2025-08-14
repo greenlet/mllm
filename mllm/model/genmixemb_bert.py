@@ -107,13 +107,19 @@ class GenmixembBert(nn.Module):
                 # [1, n_toks, d_model]
                 emb = self.gen.encoder.embeddings.word_embeddings(toks)
                 # [n_batch, n_toks, d_model]
-                emb = emb.repeat((n_batch, 1))
+                emb = emb.repeat((n_batch, 1, 1))
+                if self.cfg.add_token_type_ids:
+                    emb = emb + self.tt_embs_1
             elif pat == CtxQuePlaceholder.Ctx:
                 # [n_batch, n_ctx, d_model]
                 emb = self.run_agg(ctx_toks)
+                if self.cfg.add_token_type_ids:
+                    emb = emb + self.tt_embs_0
             elif pat == CtxQuePlaceholder.Que:
                 # [n_batch, n_que, d_model]
                 emb = self.gen.encoder.embeddings.word_embeddings(que_toks)
+                if self.cfg.add_token_type_ids:
+                    emb = emb + self.tt_embs_1
             else:
                 raise Exception(f'Prompt must consist of either tokens or placeholders, got {prompt_template}.')
             embs.append(emb)
@@ -123,8 +129,8 @@ class GenmixembBert(nn.Module):
 
     # ctx_toks: [n_batch, n_ctx]
     # que_toks: [n_batch, n_que]
-    def toks_template_to_emb_tensor_multi(self, prompt_templates: list[CtxQuePromptTemplateType], ctx_toks: torch.Tensor, que_toks: torch.Tensor) -> torch.Tensor:
-        prompt_template = random.choice(prompt_templates)
+    def prompt_emb(self, ctx_toks: torch.Tensor, que_toks: torch.Tensor) -> torch.Tensor:
+        prompt_template = random.choice(self.ctx_que_prompt_templates)
         emb = self.toks_template_to_emb_tensor(prompt_template, ctx_toks, que_toks)
         return emb
 
@@ -376,10 +382,10 @@ class GenmixembBert(nn.Module):
             if self.training and not self.cfg.train_agg_model:
                 with torch.no_grad():
                     # [n_batch, n_toks, d_model]
-                    emb = self.toks_template_to_emb_tensor_multi(self.ctx_que_prompt_templates, ctx_toks, que_toks)
+                    emb = self.prompt_emb(ctx_toks, que_toks)
             else:
                 # [n_batch, n_toks, d_model]
-                emb = self.toks_template_to_emb_tensor_multi(self.ctx_que_prompt_templates, ctx_toks, que_toks)
+                emb = self.prompt_emb(ctx_toks, que_toks)
 
             gen_out: Seq2SeqLMOutput = self.gen(
                 inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
@@ -529,27 +535,11 @@ class GenmixembBert(nn.Module):
                 input_ids=cq_toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
             )
         else:
-            # [n_batch, n_ctx_chunks, d_model]
-            ctx_emb = self.run_agg(ctx_toks)
-            que_toks = self.prefix_token(que_toks, self.tkz.sep_token_id)
-            # [n_batch, que_len, d_model]
-            que_emb = self.gen.encoder.embeddings.word_embeddings(que_toks)
-
-            if self.cfg.add_token_type_ids:
-                ctx_emb = ctx_emb + self.tt_embs_0[:, :ctx_emb.shape[1]]
-                que_emb = que_emb + self.tt_embs_1[:, :que_emb.shape[1]]
-
-            # [n_batch, n_ctx_chunks + nque_len, d_model]
-            emb = torch.cat((ctx_emb, que_emb), dim=-2)
-
-            # [n_batch, ctx_len]
-            ctx_att_mask = torch.full((ctx_emb.shape[0], ctx_emb.shape[1]), True, device=self.device)
-            # [n_batch, que_len]
-            que_att_mask = que_toks != self.tkz.pad_token_id
-            att_mask = torch.cat((ctx_att_mask, que_att_mask), dim=-1)
+            # [n_batch, n_toks, d_model]
+            emb = self.prompt_emb(ctx_toks, que_toks)
 
             out_toks = self.gen.generate(
-                inputs_embeds=emb, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+                inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
             )
 
         return out_toks

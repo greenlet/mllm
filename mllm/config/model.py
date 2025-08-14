@@ -1199,7 +1199,7 @@ def gen_prefpostfix_genmixemb_bert(
     elif train_ds_type == GenmixTrainDsType.Qna:
         postfix_parts.append(bool_param_to_str('ttid', cfg.add_token_type_ids))
         if agg_enabled:
-            postfix_parts.append(bool_param_to_str('jcq', cfg.join_ctx_que_agg))
+            # postfix_parts.append(bool_param_to_str('jcq', cfg.join_ctx_que_agg))
             postfix_parts.append(f'cqpr{cfg.ctx_que_prompt_type.value.capitalize()}')
     else:
         raise ValueError(f'Dataset type {train_ds_type} is not supported.')

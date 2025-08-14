@@ -18,8 +18,8 @@ train_ds_type=qna
 
 bert_model_name=bert-base-uncased
 #bert_model_name=bert-large-uncased
-toks_agg_type=brt
-#toks_agg_type=pyr
+#toks_agg_type=brt
+toks_agg_type=pyr
 #bert_agg_type=sep
 #bert_agg_type=topcos
 bert_agg_type=topdot
@@ -46,9 +46,13 @@ train_agg_model=true
 pred_next_sent=true
 #share_agg_enc_token_embeds=false
 share_agg_enc_token_embeds=true
-#add_token_type_ids=false
-add_token_type_ids=true
+add_token_type_ids=false
+#add_token_type_ids=true
 join_ctx_que_agg=false
+#ctx_que_prompt_type=tok
+ctx_que_prompt_type=cq
+#ctx_que_prompt_type=qc
+#ctx_que_prompt_type=cqqc
 
 n_toks_min=20
 max_inp_toks=100
@@ -76,9 +80,9 @@ batch_size=5
 #pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
 #pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
 
-#pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
+pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
 #pretrained_model_path=$train_root_path/genmixemb-20250809_234548-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtTopdot-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-jcqF
-pretrained_model_path=$train_root_path/genmixemb-20250810_125920-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggBrt-sub2-agtTopdot-dsQna-tragT-shemT-ttidF-jcqF
+#pretrained_model_path=$train_root_path/genmixemb-20250810_125920-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggBrt-sub2-agtTopdot-dsQna-tragT-shemT-ttidF-jcqF
 
 pretrained_model_path=$pretrained_model_path/best.pth
 
@@ -127,6 +131,7 @@ python s_07_05_train_genmixemb_bert.py \
   --share-agg-enc-token-embeds $share_agg_enc_token_embeds \
   --add-token-type-ids $add_token_type_ids \
   --join-ctx-que-agg $join_ctx_que_agg \
+  --ctx-que-prompt-type $ctx_que_prompt_type \
   --n-toks-min $n_toks_min \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
