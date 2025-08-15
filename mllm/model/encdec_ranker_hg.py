@@ -192,6 +192,8 @@ class ReduceLayer(nn.Module):
         self.reduct_type = reduct_type
         if reduct_type == HgReductType.Matmul:
             self.reducer = nn.Linear(in_features=d_model * step, out_features=d_model, bias=True)
+        elif reduct_type == HgReductType.MaxPool:
+            self.reducer = nn.MaxPool1d(self.step)
         else:
             self.reducer = None
         if reduct_type == HgReductType.Sub:
@@ -226,6 +228,13 @@ class ReduceLayer(nn.Module):
             n = seq_len // self.step
             calc_cos = self.reduct_type == HgReductType.TopCos
             out = get_top_vects(inp, n=n, calc_cos=calc_cos)
+        elif self.reduct_type == HgReductType.MaxPool:
+            # [batch_size, d_model, seq_len]
+            x = inp.transpose(1, 2)
+            # [batch_size, d_model, seq_len // step]
+            x = self.reducer(x)
+            # [batch_size, seq_len // step, d_model]
+            out = x.transpose(1, 2)
         else:
             raise Exception(f'Reduction type {self.reduct_type} is not supported')
         return out

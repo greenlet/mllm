@@ -206,6 +206,7 @@ class HgReductType(str, Enum):
     Sub = 'sub'
     TopCos = 'topcos'
     TopDot = 'topdot'
+    MaxPool = 'mxpl'
 
 
 class HgEnhanceType(str, Enum):
