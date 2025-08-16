@@ -374,6 +374,7 @@ class GenmixTrainDsType(str, Enum):
 class TokensAggType(str, Enum):
     Bert = 'brt'
     Pyramid = 'pyr'
+    Conv = 'cnv'
 
 
 class BertAggType(str, Enum):
@@ -389,6 +390,18 @@ class CtxQuePromptType(str, Enum):
     Cqqc = 'cqqc'
 
 
+class EncoderConvCfg(BaseModel):
+    n_levels: int
+    n_layers_per_level: int
+    d_model: int
+    conv_kernel_size: int
+    pool_kernel_size: int
+    pool_stride: int
+    dropout_rate: float
+    n_similar_layers: int = 1
+    share_layer_weights: bool = False
+
+
 class GenmixembBertCfg(BaseModel):
     bert_model_name: str
     d_model: int
@@ -402,6 +415,14 @@ class GenmixembBertCfg(BaseModel):
     pyr_agg_n_levels: int
     pyr_agg_n_layers_per_level: int
     pyr_share_layer_weights: bool = False
+
+    cnv_n_levels: int
+    cnv_n_layers_per_level: int
+    cnv_conv_kernel_size: int
+    cnv_pool_kernel_size: int
+    cnv_pool_stride: int
+    cnv_share_layer_weights: bool
+
     train_agg_model: bool
     share_agg_enc_token_embeds: bool = False
     add_token_type_ids: bool = False

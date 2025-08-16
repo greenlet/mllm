@@ -35,14 +35,14 @@ bert_agg_n_subseq_toks=8
 pyr_agg_type=mxpl
 pyr_agg_step=2
 #pyr_agg_step=4
-pyr_agg_n_levels=1
-#pyr_agg_n_levels=2
+#pyr_agg_n_levels=1
+pyr_agg_n_levels=2
 #pyr_agg_n_levels=3
 #pyr_agg_n_layers_per_level=2
 #pyr_agg_n_layers_per_level=4
 pyr_agg_n_layers_per_level=2
-pyr_share_layer_weights=false
-#pyr_share_layer_weights=true
+#pyr_share_layer_weights=false
+pyr_share_layer_weights=true
 #train_agg_model=false
 train_agg_model=true
 pred_next_sent=true
@@ -82,9 +82,9 @@ batch_size=5
 #pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
 #pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
 
-pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
+#pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
 #pretrained_model_path=$train_root_path/genmixemb-20250810_125920-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggBrt-sub2-agtTopdot-dsQna-tragT-shemT-ttidF-jcqF
-#pretrained_model_path=$train_root_path/genmixemb-20250813_234929-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtTopdot-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-cqprCq
+pretrained_model_path=$train_root_path/genmixemb-20250815_220237-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtMxpl-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-cqprCq
 
 pretrained_model_path=$pretrained_model_path/best.pth
 
