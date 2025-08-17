@@ -1,17 +1,28 @@
-import re
-import sys
-from typing import Optional, Union
+from torch import nn, Tensor
 
 from mllm.config.model import EncoderConvCfg
-from mllm.model.bert_generation.modeling_bert_generation import BertGenerationEmbeddings
-from mllm.model.utils import get_top_vects
-from mllm.train.utils import get_activation_module
-from transformers import BertModel, PreTrainedModel, BertTokenizerFast
 
-import numpy as np
-import torch
-from torch import nn, Tensor
-import torch.nn.functional as F
+
+
+class ConvLayer(nn.Module):
+    cfg: EncoderConvCfg
+    conv: nn.Conv1d
+    glu: nn.GLU
+    dropout: nn.Dropout
+
+    def __init__(self, cfg: EncoderConvCfg):
+        super().__init__()
+        self.cfg = cfg
+        self.conv = nn.Conv1d(in_channels=cfg.d_model, out_channels=cfg.d_model * 2, kernel_size=cfg.conv_kernel_size)
+        self.glu = nn.GLU(dim=-1)
+        self.dropout = nn.Dropout(cfg.dropout_rate)
+
+    def forward(self, inp: Tensor) -> Tensor:
+        out = self.conv(inp)
+        out = self.glu(out)
+        out = self.dropout(out)
+        out += inp
+        return out
 
 
 class EncoderConv(nn.Module):
@@ -22,7 +33,25 @@ class EncoderConv(nn.Module):
         super().__init__()
         self.cfg = cfg
 
-    # Tensor of integer tokens: [batch_size, seq_len]
+        layers = []
+        if cfg.share_layer_weights:
+            n_levels = 1
+        else:
+            n_levels = cfg.n_levels
+        for i_level in range(n_levels):
+            for i_layer in range(cfg.n_layers_per_level):
+                conv = ConvLayer(cfg)
+                layers.append(conv)
+            pool = nn.MaxPool1d(kernel_size=cfg.pool_kernel_size, stride=cfg.pool_stride)
+            layers.append(pool)
+        self.layers = nn.ModuleList(layers)
+
+    # [batch_size, seq_len, d_model]
     def forward(self, inp: Tensor) -> Tensor:
-        batch_size, seq_len = inp.shape
+        out = inp
+        n = self.cfg.n_levels if self.cfg.share_layer_weights else 1
+        for i in range(n):
+            out = self.layers(out)
+
+        return out
 

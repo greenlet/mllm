@@ -398,7 +398,6 @@ class EncoderConvCfg(BaseModel):
     pool_kernel_size: int
     pool_stride: int
     dropout_rate: float
-    n_similar_layers: int = 1
     share_layer_weights: bool = False
 
 
