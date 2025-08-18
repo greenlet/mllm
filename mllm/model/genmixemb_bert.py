@@ -15,12 +15,13 @@ from transformers import BatchEncoding, GenerationConfig
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
 from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembBertCfg, TokensAggType, \
-    EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType, BertAggType, CtxQuePromptType
+    EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType, BertAggType, CtxQuePromptType, EncoderConvCfg
 from mllm.data.itsquadv2 import QnaBatchV2
 from mllm.model.at2_decoder import BertGenerationEmbeddings
 from mllm.model.bert import BertModel, BertTokenizer
 from mllm.model.bert_generation import BertGenerationEncoder, BertGenerationDecoder
 from mllm.model.encdec_ranker_hg import EncoderPyramid
+from mllm.model.encoder_conv import EncoderConv
 from mllm.model.encoder_decoder import EncoderDecoderModel
 from mllm.model.utils import get_top_vects
 from mllm.train.utils import WordToks
@@ -181,11 +182,13 @@ class GenmixembBert(nn.Module):
                 encoder_embeddings = BertGenerationEmbeddings(encoder.config).to(self.device)
                 encoder_embeddings.load_state_dict(encoder.embeddings.state_dict())
             agg = EncoderPyramid(cfg_enc, bert_encoder=encoder_embeddings).to(self.device)
-            for n, p in agg.named_parameters():
-                if p.dim() > 1:
-                    nn.init.xavier_uniform_(p)
-                else:
-                    nn.init.uniform_(p, -0.1, 0.1)
+        elif self.cfg.toks_agg_type == TokensAggType.Conv:
+            conv_cfg = EncoderConvCfg(
+                n_levels=self.cfg.cnv_n_levels, n_layers_per_level=self.cfg.cnv_n_layers_per_level, d_model=self.cfg.d_model,
+                conv_kernel_size=self.cfg.cnv_conv_kernel_size, pool_kernel_size=self.cfg.cnv_pool_kernel_size, pool_stride=self.cfg.cnv_pool_stride,
+                dropout_rate=encoder.config.hidden_dropout_prob, share_layer_weights=self.cfg.cnv_share_layer_weights,
+            )
+            agg = EncoderConv(conv_cfg).to(self.device)
         else:
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
 
@@ -271,7 +274,13 @@ class GenmixembBert(nn.Module):
             else:
                 raise Exception(f'Bert aggregation type {self.cfg.bert_agg_type} is not supported.')
         elif self.cfg.toks_agg_type == TokensAggType.Pyramid:
+            # [n_batch, n_seq_new, d_model]
             emb = self.agg(toks)
+        elif self.cfg.toks_agg_type == TokensAggType.Conv:
+            # [n_batch, n_seq, d_model]
+            emb = self.gen.encoder.embeddings(toks)
+            # [n_batch, n_seq_new, d_model]
+            emb = self.agg(emb)
         else:
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
         # print(f'Agg {self.cfg.toks_agg_type.value}. toks {inp_shape} --> emb {emb.shape}')

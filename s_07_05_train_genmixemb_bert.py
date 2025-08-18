@@ -29,6 +29,7 @@ share_agg_enc_token_embeds_ARG = '--share-agg-enc-token-embeds', 'Share token em
 add_token_type_ids_ARG = '--add-token-type-ids', 'Add token type ids to input tokens'
 join_ctx_que_agg_ARG = '--join-ctx-que-agg', 'Join context and question for aggregation'
 pyr_share_layer_weights_ARG = '--pyr-share-layer-weights', 'Share Pyramid layers weights between levels'
+cnv_share_layer_weights_ARG = '--cnv-share-layer-weights', 'Share Convolutional layers weights between levels'
 
 
 class ArgsGenmixembBertTrain(BaseModel):
@@ -119,6 +120,37 @@ class ArgsGenmixembBertTrain(BaseModel):
     @property
     def pyr_share_layer_weights(self) -> bool:
         return is_arg_true(pyr_share_layer_weights_ARG[0], self.pyr_share_layer_weights_STR)
+
+    cnv_n_layers: int = Field(
+        ...,
+        description=f'Number of hierarchical levels in convolutional aggregation. TOKS_AGG_TYPE={TokensAggType.Conv}.',
+        cli=('--cnv-n-layers',),
+    )
+    cnv_n_layers_per_level: int = Field(
+        ...,
+        description=f'Number of layers per level in convolutional aggregation. TOKS_AGG_TYPE={TokensAggType.Conv}.',
+        cli=('--cnv-n-layers-per-level',),
+    )
+    cnv_conv_kernel_size: int = Field(
+        3,
+        description=f'Convolutional kernel size in convolutional aggregation. TOKS_AGG_TYPE={TokensAggType.Conv}.',
+        cli=('--cnv-conv-kernel-size',),
+    )
+    cnv_pool_kernel_size: int = Field(
+        2,
+        description=f'Pooling kernel size in convolutional aggregation. TOKS_AGG_TYPE={TokensAggType.Conv}.',
+        cli=('--cnv-pool-kernel-size',),
+    )
+    cnv_pool_stride: int = Field(
+        2,
+        description=f'Pooling stride in convolutional aggregation. TOKS_AGG_TYPE={TokensAggType.Conv}.',
+        cli=('--cnv-pool-stride',),
+    )
+
+    cnv_share_layer_weights_STR: str = create_bool_str_field(*cnv_share_layer_weights_ARG)
+    @property
+    def cnv_share_layer_weights(self) -> bool:
+        return is_arg_true(cnv_share_layer_weights_ARG[0], self.cnv_share_layer_weights_STR)
 
     train_agg_model_STR: str = create_bool_str_field(*train_agg_model_ARG)
     @property
@@ -239,9 +271,12 @@ def main(args: ArgsGenmixembBertTrain) -> int:
 
     model_cfg = parse_yaml_file_as(GenmixembBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmixemb_bert_cfg(
-        model_cfg, bert_model_name=args.bert_model_name, max_inp_toks=args.max_inp_toks, max_out_toks=args.max_out_toks, toks_agg_type=args.toks_agg_type,
-        bert_agg_type=args.bert_agg_type, bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks, pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step,
-        pyr_agg_n_levels=args.pyr_agg_n_levels, pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, pyr_share_layer_weights=args.pyr_share_layer_weights,
+        model_cfg, bert_model_name=args.bert_model_name, max_inp_toks=args.max_inp_toks, max_out_toks=args.max_out_toks,
+        toks_agg_type=args.toks_agg_type, bert_agg_type=args.bert_agg_type, bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks,
+        pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step, pyr_agg_n_levels=args.pyr_agg_n_levels,
+        pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, pyr_share_layer_weights=args.pyr_share_layer_weights,
+        cnv_n_levels=args.cnv_n_levels, cnv_n_layers_per_level=args.cnv_n_layers_per_level, cnv_conv_kernel_size=args.cnv_conv_kernel_size,
+        cnv_pool_kernel_size=args.cnv_pool_kernel_size, cnv_pool_stride=args.cnv_pool_stride, cnv_share_layer_weights=args.cnv_share_layer_weights,
         train_agg_model=args.train_agg_model, share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
         join_ctx_que_agg=args.join_ctx_que_agg, ctx_que_prompt_type=args.ctx_que_prompt_type,
     )

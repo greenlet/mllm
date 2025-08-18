@@ -265,6 +265,14 @@ class EncoderPyramid(nn.Module):
         self.rdc_layers = nn.ModuleList([
             ReduceLayer(d_model=cfg.d_model, step=cfg.step, reduct_type=cfg.reduct_type) for _ in range(n_rdc_layers)
         ])
+        self.init_weights()
+
+    def init_weights(self):
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
 
     # Tensor of integer tokens: [batch_size, seq_len]
     def forward(self, inp: Tensor) -> Tensor:

@@ -46,6 +46,15 @@ class EncoderConv(nn.Module):
             layers.append(pool)
         self.layers = nn.ModuleList(layers)
 
+        self.init_weights()
+
+    def init_weights(self):
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
+
     # [batch_size, seq_len, d_model]
     def forward(self, inp: Tensor) -> Tensor:
         out = inp

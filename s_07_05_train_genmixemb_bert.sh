@@ -19,7 +19,8 @@ train_ds_type=qna
 bert_model_name=bert-base-uncased
 #bert_model_name=bert-large-uncased
 #toks_agg_type=brt
-toks_agg_type=pyr
+#toks_agg_type=pyr
+toks_agg_type=conv
 #bert_agg_type=sep
 #bert_agg_type=topcos
 bert_agg_type=topdot
@@ -56,6 +57,13 @@ ctx_que_prompt_type=cq
 #ctx_que_prompt_type=qc
 #ctx_que_prompt_type=cqqc
 
+cnv_n_levels=1
+cnv_n_layers_per_level=1
+cnv_conv_kernel_size=3
+cnv_pool_kernel_size=2
+cnv_pool_stride=2
+cnv_share_layer_weights=false
+
 n_toks_min=20
 max_inp_toks=100
 max_inp_toks=256
@@ -82,9 +90,9 @@ batch_size=5
 #pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
 #pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
 
-#pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
+pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
 #pretrained_model_path=$train_root_path/genmixemb-20250810_125920-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggBrt-sub2-agtTopdot-dsQna-tragT-shemT-ttidF-jcqF
-pretrained_model_path=$train_root_path/genmixemb-20250815_220237-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtMxpl-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-cqprCq
+#pretrained_model_path=$train_root_path/genmixemb-20250815_220237-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtMxpl-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-cqprCq
 
 pretrained_model_path=$pretrained_model_path/best.pth
 
@@ -128,6 +136,12 @@ python s_07_05_train_genmixemb_bert.py \
   --pyr-agg-n-levels $pyr_agg_n_levels \
   --pyr-agg-n-layers-per-level $pyr_agg_n_layers_per_level \
   --pyr-share-layer-weights $pyr_share_layer_weights \
+  --cnv-n-levels $cnv_n_levels \
+  --cnv-n-layers-per-level $cnv_n_layers_per_level \
+  --cnv-conv-kernel-size $cnv_conv_kernel_size \
+  --cnv-pool-kernel-size $cnv_pool_kernel_size \
+  --cnv-pool-stride $cnv_pool_stride \
+  --cnv-share-layer-weights $cnv_share_layer_weights \
   --train-agg-model $train_agg_model \
   --pred-next-sent $pred_next_sent \
   --share-agg-enc-token-embeds $share_agg_enc_token_embeds \
