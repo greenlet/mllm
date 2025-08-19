@@ -13,8 +13,10 @@ class ConvLayer(nn.Module):
     def __init__(self, cfg: EncoderConvCfg):
         super().__init__()
         self.cfg = cfg
-        self.conv = nn.Conv1d(in_channels=cfg.d_model, out_channels=cfg.d_model * 2, kernel_size=cfg.conv_kernel_size)
-        self.glu = nn.GLU(dim=-1)
+        self.conv = nn.Conv1d(
+            in_channels=cfg.d_model, out_channels=cfg.d_model * 2, kernel_size=cfg.conv_kernel_size, padding='same',
+        )
+        self.glu = nn.GLU(dim=-2)
         self.dropout = nn.Dropout(cfg.dropout_rate)
 
     def forward(self, inp: Tensor) -> Tensor:
@@ -57,10 +59,13 @@ class EncoderConv(nn.Module):
 
     # [batch_size, seq_len, d_model]
     def forward(self, inp: Tensor) -> Tensor:
-        out = inp
+        # [batch_size, d_model, seq_len]
+        out = inp.transpose(1, 2)
         n = self.cfg.n_levels if self.cfg.share_layer_weights else 1
         for i in range(n):
-            out = self.layers(out)
-
+            for layer in self.layers:
+                out = layer(out)
+        # [batch_size, seq_len // steps_sum, d_model]
+        out = out.transpose(1, 2)
         return out
 

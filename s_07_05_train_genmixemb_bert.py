@@ -121,10 +121,10 @@ class ArgsGenmixembBertTrain(BaseModel):
     def pyr_share_layer_weights(self) -> bool:
         return is_arg_true(pyr_share_layer_weights_ARG[0], self.pyr_share_layer_weights_STR)
 
-    cnv_n_layers: int = Field(
+    cnv_n_levels: int = Field(
         ...,
         description=f'Number of hierarchical levels in convolutional aggregation. TOKS_AGG_TYPE={TokensAggType.Conv}.',
-        cli=('--cnv-n-layers',),
+        cli=('--cnv-n-levels',),
     )
     cnv_n_layers_per_level: int = Field(
         ...,

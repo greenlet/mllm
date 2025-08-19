@@ -20,7 +20,7 @@ bert_model_name=bert-base-uncased
 #bert_model_name=bert-large-uncased
 #toks_agg_type=brt
 #toks_agg_type=pyr
-toks_agg_type=conv
+toks_agg_type=cnv
 #bert_agg_type=sep
 #bert_agg_type=topcos
 bert_agg_type=topdot
@@ -57,12 +57,14 @@ ctx_que_prompt_type=cq
 #ctx_que_prompt_type=qc
 #ctx_que_prompt_type=cqqc
 
-cnv_n_levels=1
+#cnv_n_levels=1
+cnv_n_levels=2
 cnv_n_layers_per_level=1
 cnv_conv_kernel_size=3
 cnv_pool_kernel_size=2
 cnv_pool_stride=2
-cnv_share_layer_weights=false
+#cnv_share_layer_weights=false
+cnv_share_layer_weights=true
 
 n_toks_min=20
 max_inp_toks=100
@@ -93,6 +95,7 @@ batch_size=5
 pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
 #pretrained_model_path=$train_root_path/genmixemb-20250810_125920-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggBrt-sub2-agtTopdot-dsQna-tragT-shemT-ttidF-jcqF
 #pretrained_model_path=$train_root_path/genmixemb-20250815_220237-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtMxpl-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-cqprCq
+pretrained_model_path=$train_root_path/genmixemb-20250817_201509-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggCnv-lvl1-lrs1-cksz3-pksz2-pst2-dsQna-tragT-ttidF-cqprCq
 
 pretrained_model_path=$pretrained_model_path/best.pth
 

@@ -1223,6 +1223,7 @@ def gen_prefpostfix_genmixemb_bert(
             postfix_parts.append(f'pst{cfg.cnv_pool_stride}')
             if cfg.cnv_n_levels > 1:
                 postfix_parts.append(bool_param_to_str('shl', cfg.cnv_share_layer_weights))
+            agg_enabled = True
     else:
         raise Exception(f'Tokens aggregation type {cfg.toks_agg_type} is not supported')
 

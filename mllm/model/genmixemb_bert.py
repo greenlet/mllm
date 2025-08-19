@@ -211,6 +211,8 @@ class GenmixembBert(nn.Module):
             mask_loss = torch.zeros(size=(1,), device=self.device)
             if len(mask_logits) > 0:
                 mask_loss = F.cross_entropy(mask_logits, mask_labels)
+            else:
+                mask_weight = 0.0
             assert len(toks_logits) > 0
             toks_loss = F.cross_entropy(toks_logits, toks_labels)
             nmask_weight = 1 - mask_weight
@@ -279,7 +281,7 @@ class GenmixembBert(nn.Module):
         elif self.cfg.toks_agg_type == TokensAggType.Conv:
             # [n_batch, n_seq, d_model]
             emb = self.gen.encoder.embeddings(toks)
-            # [n_batch, n_seq_new, d_model]
+            # [n_batch, n_seq // steps_sum, d_model]
             emb = self.agg(emb)
         else:
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
@@ -289,7 +291,8 @@ class GenmixembBert(nn.Module):
     @property
     def need_run_agg(self) -> bool:
         return self.cfg.toks_agg_type == TokensAggType.Bert and self.cfg.bert_agg_n_subseq_toks > 0 \
-            or self.cfg.toks_agg_type == TokensAggType.Pyramid and self.cfg.pyr_agg_step > 0 and self.cfg.pyr_agg_n_levels > 0
+            or self.cfg.toks_agg_type == TokensAggType.Pyramid and self.cfg.pyr_agg_step > 0 and self.cfg.pyr_agg_n_levels > 0 \
+            or self.cfg.toks_agg_type == TokensAggType.Conv and self.cfg.cnv_n_levels > 0 and self.cfg.cnv_pool_stride > 0
 
     def run_on_wiki(self, batch: WikiBatch) -> torch.Tensor:
         # toks: [n_batch, max_len]
