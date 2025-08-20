@@ -81,6 +81,23 @@ mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
 
+
+train_root_path=$data_path/train_mllm_genmixembbert_wki
+train_ds_type=wki
+train_agg_model=true
+pred_next_sent=true
+toks_agg_type=cnv
+ctx_que_prompt_type=cq
+cnv_n_levels=0
+cnv_n_layers_per_level=1
+cnv_conv_kernel_size=3
+cnv_pool_kernel_size=2
+cnv_pool_stride=2
+cnv_share_layer_weights=false
+#cnv_share_layer_weights=true
+
+
+
 device=cpu
 epochs=5
 train_epoch_steps=20
@@ -92,12 +109,12 @@ batch_size=5
 #pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
 #pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
 
-pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
+#pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
 #pretrained_model_path=$train_root_path/genmixemb-20250810_125920-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggBrt-sub2-agtTopdot-dsQna-tragT-shemT-ttidF-jcqF
 #pretrained_model_path=$train_root_path/genmixemb-20250815_220237-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtMxpl-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-cqprCq
-pretrained_model_path=$train_root_path/genmixemb-20250817_201509-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggCnv-lvl1-lrs1-cksz3-pksz2-pst2-dsQna-tragT-ttidF-cqprCq
+#pretrained_model_path=$train_root_path/genmixemb-20250817_201509-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggCnv-lvl1-lrs1-cksz3-pksz2-pst2-dsQna-tragT-ttidF-cqprCq
 
-pretrained_model_path=$pretrained_model_path/best.pth
+#pretrained_model_path=$pretrained_model_path/best.pth
 
 device=cuda
 epochs=700
@@ -112,8 +129,8 @@ batch_size=10
 #train_subdir=last
 
 #learning_rate=0.0001
-#learning_rate=0.00005
-learning_rate=0.00001
+learning_rate=0.00005
+#learning_rate=0.00001
 #learning_rate=0.000005
 random_seed=200
 

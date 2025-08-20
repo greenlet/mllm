@@ -1184,7 +1184,7 @@ def gen_prefpostfix_genmixemb_bert(
     if pretrained_model_path is not None:
         dname = pretrained_model_path.parent.name
         m = checkpoint_fname_pat.match(dname)
-        assert m is not None, f'Cannot parse checkpoint filename {dname}. Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
+        assert m is not None, f'Cannot parse checkpoint filename "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
         postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
 
     postfix_parts.append(cfg.bert_model_name.replace('-', ''))

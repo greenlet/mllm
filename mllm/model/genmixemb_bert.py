@@ -486,11 +486,9 @@ class GenmixembBert(nn.Module):
         if toks.ndim == 1:
             toks = toks.unsqueeze(0)
 
-        # gen_cfg = GenerationConfig(
-        #     max_new_tokens=self.cfg.max_out_toks, early_stopping=True, num_beams=5, no_repeat_ngram_size=4,
-        # )
         gen_cfg = GenerationConfig(
             max_new_tokens=self.cfg.max_out_toks,
+            eos_token_id=self.tkz.sep_token_id,
             do_sample=True,
             top_p=0.95,
             top_k=50,
