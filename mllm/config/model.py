@@ -390,6 +390,12 @@ class CtxQuePromptType(str, Enum):
     Cqqc = 'cqqc'
 
 
+class SelfSuperviseType(str, Enum):
+    Input = 'inp'
+    NextSent = 'nxtsnt'
+    NextTok = 'nxttok'
+
+
 class EncoderConvCfg(BaseModel):
     n_levels: int
     n_layers_per_level: int
@@ -1176,7 +1182,7 @@ checkpoint_fname_pat = re.compile(r'^(\w+)-(\d{8})_(\d{6})-.*$')
 
 
 def gen_prefpostfix_genmixemb_bert(
-        cfg: GenmixembBertCfg, train_ds_type: GenmixTrainDsType, mask_cfg: Optional[MaskCfg], pred_next_sent: bool,
+        cfg: GenmixembBertCfg, train_ds_type: GenmixTrainDsType, mask_cfg: Optional[MaskCfg], self_supervise_type: Optional[SelfSuperviseType] = None,
         pretrained_model_path: Optional[Path] = None,
 ) -> tuple[str, str]:
     prefix, postfix_parts = f'genmixemb', []
@@ -1242,8 +1248,8 @@ def gen_prefpostfix_genmixemb_bert(
         postfix_parts.append(bool_param_to_str('shem', cfg.share_agg_enc_token_embeds))
 
     if train_ds_type == GenmixTrainDsType.Wki:
-        if pred_next_sent:
-            postfix_parts.append('nxtsnt')
+        assert self_supervise_type is not None
+        postfix_parts.append(f'sst{self_supervise_type.value.capitalize()}')
     elif train_ds_type == GenmixTrainDsType.Qna:
         postfix_parts.append(bool_param_to_str('ttid', cfg.add_token_type_ids))
         if agg_enabled:

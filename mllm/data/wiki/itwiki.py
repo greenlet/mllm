@@ -8,6 +8,7 @@ from datasets import Dataset, load_dataset
 
 from transformers import PreTrainedTokenizer
 
+from mllm.config.model import SelfSuperviseType
 from mllm.train.mask_utils import MaskCfg, mask_random_words_v2
 from nltk.tokenize import sent_tokenize
 
@@ -77,7 +78,7 @@ class WikiItem:
     text: str
     max_len: int
     mask_cfg: Optional[MaskCfg]
-    pred_next_sent: bool
+    self_supervise_type: SelfSuperviseType
     max_pred_len: int
     src_toks: np.ndarray
     toks: np.ndarray
@@ -87,7 +88,7 @@ class WikiItem:
 
     def __init__(
             self, tkz: PreTrainedTokenizer, ind: int, title: str, text: str, max_len: int, mask_cfg: Optional[MaskCfg],
-            pred_next_sent: bool, max_pred_len: int,
+            self_supervise_type: SelfSuperviseType, max_pred_len: int,
     ):
         self.tkz = tkz
         self.ind = ind
@@ -95,7 +96,7 @@ class WikiItem:
         self.text = text
         self.max_len = max_len
         self.mask_cfg = mask_cfg
-        self.pred_next_sent = pred_next_sent
+        self.self_supervise_type = self_supervise_type
         self.max_pred_len = max_pred_len
         self.calc_toks()
 
@@ -157,15 +158,28 @@ class WikiItem:
         return toks_inp, toks_tgt
 
     def calc_toks(self):
-        if self.pred_next_sent:
-            toks, tgt_toks = self.calc_toks_sents()
-            src_toks = toks
-        else:
+        if self.self_supervise_type == SelfSuperviseType.Input:
             src_toks = self._tokenize(self.text)
             toks = src_toks
             if self.max_len > 0:
                 toks = toks[:self.max_len]
             tgt_toks = None
+        elif self.self_supervise_type == SelfSuperviseType.NextSent:
+            toks, tgt_toks = self.calc_toks_sents()
+            src_toks = toks
+        elif self.self_supervise_type == SelfSuperviseType.NextTok:
+            src_toks = self._tokenize(self.text)
+            n_src_toks = len(src_toks)
+            # TODO: Implement
+            if n_src_toks >= self.max_len + self.max_pred_len:
+                pass
+            elif n_src_toks > self.max_len // 2 + self.max_pred_len // 2:
+                pass
+            else:
+                toks = src_toks
+                tgt_toks = None
+        else:
+            raise ValueError(f'Self supervised type {self.self_supervise_type} is not supported.')
 
         masked_toks, mask = toks, None
         if self.mask_cfg is not None:
@@ -246,8 +260,8 @@ WikiBatchGen = Generator[WikiBatch, None, None]
 
 
 def get_wiki_item_iterator(
-        ds: Dataset, tkz: PreTrainedTokenizer, inds: np.ndarray, n_toks_max: int = 0,
-        mask_cfg: Optional[MaskCfg] = None, pred_next_sent: bool = False, n_toks_pred_max: int = 0,
+        ds: Dataset, tkz: PreTrainedTokenizer, inds: np.ndarray, n_toks_max: int = 0, mask_cfg: Optional[MaskCfg] = None,
+        self_supervise_type: SelfSuperviseType = SelfSuperviseType.Input, n_toks_pred_max: int = 0,
 ) -> WikiItemGen:
     n = len(inds)
     i_off = 0
@@ -256,7 +270,7 @@ def get_wiki_item_iterator(
         row = ds[ind]
 
         wiki_item = WikiItem(
-            tkz=tkz, ind=ind, title=row['title'], text=row['text'], max_len=n_toks_max, mask_cfg=mask_cfg, pred_next_sent=pred_next_sent,
+            tkz=tkz, ind=ind, title=row['title'], text=row['text'], max_len=n_toks_max, mask_cfg=mask_cfg, self_supervise_type=self_supervise_type,
             max_pred_len=n_toks_pred_max,
         )
         yield wiki_item
@@ -269,16 +283,17 @@ def get_wiki_item_iterator(
 
 def get_wiki_batch_iterator(
         ds: Dataset, tkz: PreTrainedTokenizer, inds: np.ndarray, batch_size: int, n_toks_min: int = 20, n_toks_max: int = 0,
-        mask_cfg: Optional[MaskCfg] = None, device: Optional[torch.device] = None, pred_next_sent: bool = False, n_toks_pred_max: int = 0,
+        mask_cfg: Optional[MaskCfg] = None, device: Optional[torch.device] = None, self_supervise_type: SelfSuperviseType = SelfSuperviseType.Input,
+        n_toks_pred_max: int = 0,
     ) -> WikiBatchGen:
     wiki_it = get_wiki_item_iterator(
-        ds=ds, tkz=tkz, inds=inds, n_toks_max=n_toks_max, mask_cfg=mask_cfg, pred_next_sent=pred_next_sent, n_toks_pred_max=n_toks_pred_max,
+        ds=ds, tkz=tkz, inds=inds, n_toks_max=n_toks_max, mask_cfg=mask_cfg, self_supervise_type=self_supervise_type, n_toks_pred_max=n_toks_pred_max,
     )
     items = []
     for wiki_item in wiki_it:
         if wiki_item.src_toks_num < n_toks_min:
             continue
-        if pred_next_sent and wiki_item.tgt_toks is None:
+        if self_supervise_type in (SelfSuperviseType.NextSent, SelfSuperviseType.NextTok) and wiki_item.tgt_toks is None:
             continue
         items.append(wiki_item)
         if len(items) == batch_size:
@@ -290,18 +305,18 @@ def get_wiki_batch_iterator(
 def get_wiki_batch_iterators(
         data_path: Path, tkz: PreTrainedTokenizer, batch_size: int, val_ratio: float = 0.05, shuffle: bool = False, rand_seed: Optional[int] = None,
         n_toks_min: int = 20, n_toks_max: int = 0, mask_cfg: Optional[MaskCfg] = None, device: Optional[torch.device] = None,
-        pred_next_sent: bool = False, n_toks_pred_max: int = 0,
+        self_supervise_type: SelfSuperviseType = SelfSuperviseType.Input, n_toks_pred_max: int = 0,
 ) -> tuple[WikiBatchGen, WikiBatchGen]:
     ds, doc_inds_train, doc_inds_val = get_split_wiki_ds(
         data_path=data_path, val_ratio=val_ratio, shuffle=shuffle, rand_seed=rand_seed
     )
     train_it = get_wiki_batch_iterator(
         ds=ds, tkz=tkz, inds=doc_inds_train, batch_size=batch_size, n_toks_min=n_toks_min, n_toks_max=n_toks_max, mask_cfg=mask_cfg,
-        device=device, pred_next_sent=pred_next_sent, n_toks_pred_max=n_toks_pred_max,
+        device=device, self_supervise_type=self_supervise_type, n_toks_pred_max=n_toks_pred_max,
     )
     val_it = get_wiki_batch_iterator(
         ds=ds, tkz=tkz, inds=doc_inds_val, batch_size=batch_size, n_toks_min=n_toks_min, n_toks_max=n_toks_max, mask_cfg=mask_cfg,
-        device=device, pred_next_sent=pred_next_sent, n_toks_pred_max=n_toks_pred_max,
+        device=device, self_supervise_type=self_supervise_type, n_toks_pred_max=n_toks_pred_max,
     )
     return train_it, val_it
 

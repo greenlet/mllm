@@ -46,7 +46,6 @@ pyr_agg_n_layers_per_level=2
 pyr_share_layer_weights=true
 #train_agg_model=false
 train_agg_model=true
-pred_next_sent=true
 #share_agg_enc_token_embeds=false
 share_agg_enc_token_embeds=true
 add_token_type_ids=false
@@ -57,21 +56,6 @@ ctx_que_prompt_type=cq
 #ctx_que_prompt_type=qc
 #ctx_que_prompt_type=cqqc
 
-#cnv_n_levels=1
-cnv_n_levels=2
-cnv_n_layers_per_level=1
-cnv_conv_kernel_size=3
-cnv_pool_kernel_size=2
-cnv_pool_stride=2
-#cnv_share_layer_weights=false
-cnv_share_layer_weights=true
-
-n_toks_min=20
-max_inp_toks=100
-max_inp_toks=256
-max_inp_toks=384
-#max_inp_toks=512
-max_out_toks=50
 
 mask_tokens=false
 #mask_tokens=true
@@ -80,6 +64,47 @@ mask_sep_frac=0.15
 mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
+
+
+train_ds_type=qna
+#bert_model_name=bert-base-uncased
+#toks_agg_type=cnv
+##cnv_n_levels=1
+#cnv_n_levels=2
+#cnv_n_layers_per_level=1
+#cnv_conv_kernel_size=3
+#cnv_pool_kernel_size=2
+#cnv_pool_stride=2
+##cnv_share_layer_weights=false
+#cnv_share_layer_weights=true
+#train_agg_model=true
+#add_token_type_ids=false
+#share_agg_enc_token_embeds=true
+#join_ctx_que_agg=false
+#ctx_que_prompt_type=cq
+
+
+train_ds_type=wki
+bert_model_name=bert-base-uncased
+toks_agg_type=brt
+bert_agg_n_subseq_toks=0
+train_agg_model=true
+add_token_type_ids=false
+share_agg_enc_token_embeds=true
+join_ctx_que_agg=false
+ctx_que_prompt_type=cq
+mask_tokens=false
+self_supervise_type=nxttok
+
+
+
+n_toks_min=20
+max_inp_toks=100
+max_inp_toks=256
+max_inp_toks=384
+#max_inp_toks=512
+max_out_toks=50
+
 
 
 train_root_path=$data_path/train_mllm_genmixembbert_wki
@@ -163,7 +188,7 @@ python s_07_05_train_genmixemb_bert.py \
   --cnv-pool-stride $cnv_pool_stride \
   --cnv-share-layer-weights $cnv_share_layer_weights \
   --train-agg-model $train_agg_model \
-  --pred-next-sent $pred_next_sent \
+  --self-supervise-type $self_supervise_type \
   --share-agg-enc-token-embeds $share_agg_enc_token_embeds \
   --add-token-type-ids $add_token_type_ids \
   --join-ctx-que-agg $join_ctx_que_agg \

@@ -13,7 +13,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembBertCfg, copy_override_genmixemb_bert_cfg, \
-    gen_prefpostfix_genmixemb_bert, HgReductType, BertAggType, CtxQuePromptType
+    gen_prefpostfix_genmixemb_bert, HgReductType, BertAggType, CtxQuePromptType, SelfSuperviseType
 from mllm.data.itsquadv2 import get_squadv2_batch_iterators_v2, QnaBatchV2
 from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
 from mllm.model.genmixemb_bert import GenmixembBert
@@ -157,10 +157,11 @@ class ArgsGenmixembBertTrain(BaseModel):
     def train_agg_model(self) -> bool:
         return is_arg_true(train_agg_model_ARG[0], self.train_agg_model_STR)
 
-    pred_next_sent_STR: str = create_bool_str_field(*pred_next_sent_ARG)
-    @property
-    def pred_next_sent(self) -> bool:
-        return is_arg_true(pred_next_sent_ARG[0], self.pred_next_sent_STR)
+    self_supervise_type: SelfSuperviseType = Field(
+        None,
+        description=f'Self supervised learning type for textual datasets without target (like Wiki). Values {[t.value for t in SelfSuperviseType]}',
+        cli=('--self-supervise-type',),
+    )
 
     share_agg_enc_token_embs_STR: str = create_bool_str_field(*share_agg_enc_token_embeds_ARG)
     @property
@@ -288,7 +289,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
             seq_max_len=args.mask_seq_max_len,
         )
     prefix, suffix = gen_prefpostfix_genmixemb_bert(
-        model_cfg, train_ds_type=args.train_ds_type, mask_cfg=mask_cfg, pred_next_sent=args.pred_next_sent, pretrained_model_path=pretrained_model_path,
+        model_cfg, train_ds_type=args.train_ds_type, mask_cfg=mask_cfg, self_supervise_type=args.self_supervise_type, pretrained_model_path=pretrained_model_path,
     )
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
@@ -355,9 +356,10 @@ def main(args: ArgsGenmixembBertTrain) -> int:
 
     val_ratio = 0.05
     if args.train_ds_type == GenmixTrainDsType.Wki:
+        assert args.self_supervise_type is not None, 'For Wiki dataset self supervised learning type must be specified.'
         train_it, val_it = get_wiki_batch_iterators(
             data_path=args.data_path, tkz=model.tkz, batch_size=args.batch_size, val_ratio=val_ratio, shuffle=False, rand_seed=args.random_seed,
-            n_toks_min=args.n_toks_min, n_toks_max=args.max_inp_toks, mask_cfg=mask_cfg, device=device, pred_next_sent=args.pred_next_sent,
+            n_toks_min=args.n_toks_min, n_toks_max=args.max_inp_toks, mask_cfg=mask_cfg, device=device, self_supervise_type=args.self_supervise_type,
             n_toks_pred_max=args.max_out_toks,
         )
     elif args.train_ds_type == GenmixTrainDsType.Qna:
