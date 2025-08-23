@@ -66,6 +66,16 @@ mask_seq_max_frac=0.2
 mask_seq_max_len=20
 
 
+
+n_toks_min=20
+max_inp_toks=100
+max_inp_toks=256
+max_inp_toks=384
+#max_inp_toks=512
+max_out_toks=50
+
+
+
 train_ds_type=qna
 #bert_model_name=bert-base-uncased
 #toks_agg_type=cnv
@@ -95,16 +105,9 @@ join_ctx_que_agg=false
 ctx_que_prompt_type=cq
 mask_tokens=false
 self_supervise_type=nxttok
-
-
-
-n_toks_min=20
-max_inp_toks=100
-max_inp_toks=256
-max_inp_toks=384
-#max_inp_toks=512
-max_out_toks=50
-
+n_toks_min=50
+max_inp_toks=448
+max_out_toks=36
 
 
 train_root_path=$data_path/train_mllm_genmixembbert_wki
@@ -120,8 +123,6 @@ cnv_pool_kernel_size=2
 cnv_pool_stride=2
 cnv_share_layer_weights=false
 #cnv_share_layer_weights=true
-
-
 
 device=cpu
 epochs=5

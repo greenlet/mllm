@@ -170,11 +170,20 @@ class WikiItem:
         elif self.self_supervise_type == SelfSuperviseType.NextTok:
             src_toks = self._tokenize(self.text)
             n_src_toks = len(src_toks)
-            # TODO: Implement
             if n_src_toks >= self.max_len + self.max_pred_len:
-                pass
-            elif n_src_toks > self.max_len // 2 + self.max_pred_len // 2:
-                pass
+                max_len, max_pred_len = self.max_len, self.max_pred_len
+            elif n_src_toks >= self.max_len // 2 + self.max_pred_len // 2:
+                max_len, max_pred_len = self.max_len // 2, self.max_pred_len // 2
+            else:
+                max_len, max_pred_len = 0, 0
+            if max_len > 0:
+                n1 = np.random.randint(2, max_len + 1)
+                n2 = np.random.randint(1, min(n1 // 2, max_pred_len) + 1)
+                n_total = n1 + n2
+                n_rest = n_src_toks - n_total
+                i_off = np.random.randint(n_rest + 1)
+                toks = src_toks[i_off:i_off + n1]
+                tgt_toks = src_toks[i_off + n1:i_off + n1 + n2]
             else:
                 toks = src_toks
                 tgt_toks = None
