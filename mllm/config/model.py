@@ -13,7 +13,7 @@ from torchtext.datasets import dataset_module
 
 from mllm.train.mask_utils import MaskCfg
 from mllm.utils.utils import coalesce
-from transformers import BertModel, BertConfig, AutoTokenizer
+from transformers import BertModel, BertConfig, AutoTokenizer, GPT2LMHeadModel, GPT2Config
 
 T = TypeVar('T')
 MS = Union[T, tuple[T, ...]]
@@ -407,8 +407,8 @@ class EncoderConvCfg(BaseModel):
     share_layer_weights: bool = False
 
 
-class GenmixembBertCfg(BaseModel):
-    bert_model_name: str
+class GenmixembCfg(BaseModel):
+    model_name: str
     d_model: int
     max_inp_toks: int
     max_out_toks: int
@@ -433,6 +433,14 @@ class GenmixembBertCfg(BaseModel):
     add_token_type_ids: bool = False
     join_ctx_que_agg: bool = False
     ctx_que_prompt_type: CtxQuePromptType = CtxQuePromptType.Tok
+
+    @property
+    def is_bert(self) -> bool:
+        return self.model_name.startswith('bert-')
+
+    @property
+    def is_gpt2(self) -> bool:
+        return self.model_name.startswith('gpt2-')
 
 
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
@@ -737,6 +745,7 @@ def create_encmix_bert_cfg(
     #     "use_cache": true,
     #     "vocab_size": 30522
     # }
+
     d_model = bert_cfg.hidden_size
     n_heads = bert_cfg.num_attention_heads
     n_vocab = bert_cfg.vocab_size
@@ -770,20 +779,95 @@ def create_genmix_bert_cfg(
     return cfg_gen_mix_bert
 
 
-def create_genmixemb_bert_cfg(
-        bert_model_name: str = 'bert-base-uncased', max_inp_toks: int = 0, max_out_toks: int = 0, toks_agg_type: TokensAggType = TokensAggType.Bert,
+def create_genmixemb_cfg(
+        model_name: str = 'bert-base-uncased', max_inp_toks: int = 0, max_out_toks: int = 0, toks_agg_type: TokensAggType = TokensAggType.Bert,
         bert_agg_n_subseq_toks: int = 0, bert_agg_type: BertAggType = BertAggType.Sep, pyr_agg_type: HgReductType = HgReductType.Decim,
         pyr_agg_step: int = 2, pyr_agg_n_levels: int = 0, pyr_agg_n_layers_per_level: int = 0, pyr_share_layer_weights: bool = False,
         cnv_n_levels: int = 0, cnv_n_layers_per_level: int = 0, cnv_conv_kernel_size: int = 0, cnv_pool_kernel_size: int = 0,
         cnv_pool_stride: int = 0, cnv_share_layer_weights: bool = False, train_agg_model: bool = False, add_token_type_ids: bool = False,
         share_agg_enc_token_embeds: bool = False, join_ctx_que_agg: bool = False, ctx_que_prompt_type: CtxQuePromptType = CtxQuePromptType.Tok,
-) -> GenmixembBertCfg:
-    model = BertModel.from_pretrained(bert_model_name, torch_dtype=torch.float32)
-    bert_cfg: BertConfig = model.config
-    d_model = bert_cfg.hidden_size
+) -> GenmixembCfg:
+    if model_name.startswith('bert-'):
+        # BertConfig
+        # {
+        #     "_name_or_path": "bert-base-uncased",
+        #     "architectures": [
+        #         "BertForMaskedLM"
+        #     ],
+        #     "attention_probs_dropout_prob": 0.1,
+        #     "classifier_dropout": null,
+        #     "gradient_checkpointing": false,
+        #     "hidden_act": "gelu",
+        #     "hidden_dropout_prob": 0.1,
+        #     "hidden_size": 768,
+        #     "initializer_range": 0.02,
+        #     "intermediate_size": 3072,
+        #     "layer_norm_eps": 1e-12,
+        #     "max_position_embeddings": 512,
+        #     "model_type": "bert",
+        #     "num_attention_heads": 12,
+        #     "num_hidden_layers": 12,
+        #     "pad_token_id": 0,
+        #     "position_embedding_type": "absolute",
+        #     "transformers_version": "4.42.4",
+        #     "type_vocab_size": 2,
+        #     "use_cache": true,
+        #     "vocab_size": 30522
+        # }
 
-    cfg = GenmixembBertCfg(
-        bert_model_name=bert_model_name, d_model=d_model, max_inp_toks=max_inp_toks, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
+        model = BertModel.from_pretrained(model_name, torch_dtype=torch.float32)
+        bert_cfg: BertConfig = model.config
+        d_model = bert_cfg.hidden_size
+    elif model_name.startswith('gpt2-'):
+        # GPT2Config
+        # {
+        #     "_attn_implementation_autoset": true,
+        #     "activation_function": "gelu_new",
+        #     "architectures": [
+        #         "GPT2LMHeadModel"
+        #     ],
+        #     "attn_pdrop": 0.1,
+        #     "bos_token_id": 50256,
+        #     "embd_pdrop": 0.1,
+        #     "eos_token_id": 50256,
+        #     "initializer_range": 0.02,
+        #     "layer_norm_epsilon": 1e-05,
+        #     "model_type": "gpt2",
+        #     "n_ctx": 1024,
+        #     "n_embd": 768,
+        #     "n_head": 12,
+        #     "n_inner": null,
+        #     "n_layer": 12,
+        #     "n_positions": 1024,
+        #     "reorder_and_upcast_attn": false,
+        #     "resid_pdrop": 0.1,
+        #     "scale_attn_by_inverse_layer_idx": false,
+        #     "scale_attn_weights": true,
+        #     "summary_activation": null,
+        #     "summary_first_dropout": 0.1,
+        #     "summary_proj_to_labels": true,
+        #     "summary_type": "cls_index",
+        #     "summary_use_proj": true,
+        #     "task_specific_params": {
+        #         "text-generation": {
+        #             "do_sample": true,
+        #             "max_length": 50
+        #         }
+        #     },
+        #     "torch_dtype": "float32",
+        #     "transformers_version": "4.51.3",
+        #     "use_cache": true,
+        #     "vocab_size": 50257
+        # }
+
+        model = GPT2LMHeadModel.from_pretrained(model_name)
+        gpt2_cfg: GPT2Config = model.config
+        d_model = gpt2_cfg.n_embd
+    else:
+        raise Exception(f'Model name {model_name} is not supported. Supported models are bert-* and gpt2-*')
+
+    cfg = GenmixembCfg(
+        model_name=model_name, d_model=d_model, max_inp_toks=max_inp_toks, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
         bert_agg_n_subseq_toks=bert_agg_n_subseq_toks, bert_agg_type=bert_agg_type, pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels,
         pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level, pyr_share_layer_weights=pyr_share_layer_weights, cnv_n_levels=cnv_n_levels,
         cnv_n_layers_per_level=cnv_n_layers_per_level, cnv_conv_kernel_size=cnv_conv_kernel_size, cnv_pool_kernel_size=cnv_pool_kernel_size,
@@ -950,8 +1034,8 @@ def copy_override_genmix_bert_cfg(
     )
 
 
-def copy_override_genmixemb_bert_cfg(
-        cfg: GenmixembBertCfg, bert_model_name: str = '', max_inp_toks: Optional[int] = None, max_out_toks: Optional[int] = None,
+def copy_override_genmixemb_cfg(
+        cfg: GenmixembCfg, model_name: str = '', max_inp_toks: Optional[int] = None, max_out_toks: Optional[int] = None,
         toks_agg_type: Optional[TokensAggType] = None, bert_agg_n_subseq_toks: Optional[int] = None, bert_agg_type: Optional[BertAggType] = None,
         pyr_agg_type: Optional[HgReductType] = None, pyr_agg_step: Optional[int] = None, pyr_agg_n_levels: Optional[int] = None,
         pyr_agg_n_layers_per_level: Optional[int] = None, pyr_share_layer_weights: Optional[bool] = None, cnv_n_levels: Optional[int] = None,
@@ -959,8 +1043,8 @@ def copy_override_genmixemb_bert_cfg(
         cnv_pool_stride: Optional[int] = None, cnv_share_layer_weights: Optional[bool] = None, train_agg_model: Optional[bool] = None,
         share_agg_enc_token_embeds: Optional[bool] = None, add_token_type_ids: Optional[bool] = None, join_ctx_que_agg: Optional[bool] = None,
         ctx_que_prompt_type: Optional[CtxQuePromptType] = None,
-) -> GenmixembBertCfg:
-    bert_model_name = bert_model_name or cfg.bert_model_name
+) -> GenmixembCfg:
+    model_name = model_name or cfg.model_name
     max_inp_toks = coalesce(max_inp_toks, cfg.max_inp_toks)
     max_out_toks = coalesce(max_out_toks, cfg.max_out_toks)
     toks_agg_type = coalesce(toks_agg_type, cfg.toks_agg_type)
@@ -983,8 +1067,8 @@ def copy_override_genmixemb_bert_cfg(
     cnv_pool_stride = coalesce(cnv_pool_stride, cfg.cnv_pool_stride)
     cnv_share_layer_weights = coalesce(cnv_share_layer_weights, cfg.cnv_share_layer_weights)
 
-    return create_genmixemb_bert_cfg(
-        bert_model_name=bert_model_name, max_inp_toks=max_inp_toks, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
+    return create_genmixemb_cfg(
+        model_name=model_name, max_inp_toks=max_inp_toks, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
         bert_agg_n_subseq_toks=bert_agg_n_subseq_toks, bert_agg_type=bert_agg_type, pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step,
         pyr_agg_n_levels=pyr_agg_n_levels, pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level, pyr_share_layer_weights=pyr_share_layer_weights,
         cnv_n_levels=cnv_n_levels, cnv_n_layers_per_level=cnv_n_layers_per_level, cnv_conv_kernel_size=cnv_conv_kernel_size,
@@ -1181,8 +1265,8 @@ def bool_param_to_str(name: str, val: bool) -> str:
 checkpoint_fname_pat = re.compile(r'^(\w+)-(\d{8})_(\d{6})-.*$')
 
 
-def gen_prefpostfix_genmixemb_bert(
-        cfg: GenmixembBertCfg, train_ds_type: GenmixTrainDsType, mask_cfg: Optional[MaskCfg], self_supervise_type: Optional[SelfSuperviseType] = None,
+def gen_prefpostfix_genmixemb(
+        cfg: GenmixembCfg, train_ds_type: GenmixTrainDsType, mask_cfg: Optional[MaskCfg], self_supervise_type: Optional[SelfSuperviseType] = None,
         pretrained_model_path: Optional[Path] = None,
 ) -> tuple[str, str]:
     prefix, postfix_parts = f'genmixemb', []
@@ -1193,7 +1277,7 @@ def gen_prefpostfix_genmixemb_bert(
         assert m is not None, f'Cannot parse checkpoint filename "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
         postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
 
-    postfix_parts.append(cfg.bert_model_name.replace('-', ''))
+    postfix_parts.append(cfg.model_name.replace('-', ''))
 
     postfix_parts.append(f'd{cfg.d_model}')
 

@@ -4,20 +4,20 @@ data_path=$HOME/data
 
 mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
-model_cfg_fname=genmixemb_bert_cfg_01_base.yaml
+model_cfg_fname=genmixemb_cfg_01_base.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
-train_root_path=$data_path/train_mllm_genmixemb_bert
-train_root_path=$data_path/train_mllm_genmixembbert_qna
+train_root_path=$data_path/train_mllm_genmixemb
+train_root_path=$data_path/train_mllm_genmixemb_qna
 train_encdec_root_path=$data_path/train_mllm_encdec_bert
 
 #train_ds_type=wki
 train_ds_type=qna
 #train_ds_type=sum
 
-bert_model_name=bert-base-uncased
-#bert_model_name=bert-large-uncased
+model_name=bert-base-uncased
+#model_name=bert-large-uncased
 #toks_agg_type=brt
 #toks_agg_type=pyr
 toks_agg_type=cnv
@@ -77,7 +77,7 @@ max_out_toks=50
 
 
 train_ds_type=qna
-#bert_model_name=bert-base-uncased
+#model_name=bert-base-uncased
 #toks_agg_type=cnv
 ##cnv_n_levels=1
 #cnv_n_levels=2
@@ -95,7 +95,7 @@ train_ds_type=qna
 
 
 train_ds_type=wki
-bert_model_name=bert-base-uncased
+model_name=bert-base-uncased
 toks_agg_type=brt
 bert_agg_n_subseq_toks=0
 train_agg_model=true
@@ -110,7 +110,7 @@ max_inp_toks=448
 max_out_toks=36
 
 
-train_root_path=$data_path/train_mllm_genmixembbert_wki
+train_root_path=$data_path/train_mllm_genmixemb_wki
 train_ds_type=wki
 train_agg_model=true
 pred_next_sent=true
@@ -142,6 +142,7 @@ batch_size=5
 
 #pretrained_model_path=$pretrained_model_path/best.pth
 
+
 device=cuda
 epochs=700
 train_epoch_steps=500
@@ -164,14 +165,14 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_07_05_train_genmixemb_bert.py \
+python s_07_05_train_genmixemb.py \
   --data-path $data_path \
   --train-root-path $train_root_path \
   --pretrained-model-path "$pretrained_model_path" \
   --train-subdir "$train_subdir" \
   --train-ds-type "$train_ds_type" \
   --model-cfg-fpath $model_cfg_fpath \
-  --bert-model-name $bert_model_name \
+  --model-name $model_name \
   --max-inp-toks $max_inp_toks \
   --max-out-toks $max_out_toks \
   --toks-agg-type $toks_agg_type \

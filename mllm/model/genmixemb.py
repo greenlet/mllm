@@ -14,7 +14,7 @@ from transformers import BatchEncoding, GenerationConfig
 # from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, BatchEncoding
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
 
-from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembBertCfg, TokensAggType, \
+from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembCfg, TokensAggType, \
     EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType, BertAggType, CtxQuePromptType, EncoderConvCfg
 from mllm.data.itsquadv2 import QnaBatchV2
 from mllm.model.at2_decoder import BertGenerationEmbeddings
@@ -36,24 +36,24 @@ class CtxQuePlaceholder(str, Enum):
 CtxQuePromptTemplateType = list[Union[torch.Tensor, CtxQuePromptType]]
 
 
-class GenmixembBert(nn.Module):
-    cfg: GenmixembBertCfg
+class Genmixemb(nn.Module):
+    cfg: GenmixembCfg
     device: torch.device
     agg: nn.Module
     gen: EncoderDecoderModel
     ctx_que_prompt_templates: list[CtxQuePromptTemplateType]
 
-    def __init__(self, cfg: GenmixembBertCfg, device: torch.device):
+    def __init__(self, cfg: GenmixembCfg, device: torch.device):
         super().__init__()
         self.cfg = cfg
         self.device = device
-        self.tkz = BertTokenizer.from_pretrained(self.cfg.bert_model_name)
+        self.tkz = BertTokenizer.from_pretrained(self.cfg.model_name)
         encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
-            self.cfg.bert_model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
+            self.cfg.model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
             device_map=self.device,
         )
         decoder: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
-            self.cfg.bert_model_name, add_cross_attention=True, is_decoder=True,
+            self.cfg.model_name, add_cross_attention=True, is_decoder=True,
             bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
         )
 
@@ -140,7 +140,7 @@ class GenmixembBert(nn.Module):
             return
         if self.cfg.toks_agg_type == TokensAggType.Bert:
             agg = BertModel.from_pretrained(
-                self.cfg.bert_model_name, torch_dtype=torch.float32, device_map=self.device,
+                self.cfg.model_name, torch_dtype=torch.float32, device_map=self.device,
             )
             if self.cfg.share_agg_enc_token_embeds:
                 agg.embeddings.word_embeddings = encoder.embeddings.word_embeddings

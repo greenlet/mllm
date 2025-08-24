@@ -12,11 +12,11 @@ from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
-from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembBertCfg, copy_override_genmixemb_bert_cfg, \
-    gen_prefpostfix_genmixemb_bert, HgReductType, BertAggType, CtxQuePromptType, SelfSuperviseType
+from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembCfg, copy_override_genmixemb_cfg, \
+    gen_prefpostfix_genmixemb, HgReductType, BertAggType, CtxQuePromptType, SelfSuperviseType
 from mllm.data.itsquadv2 import get_squadv2_batch_iterators_v2, QnaBatchV2
 from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
-from mllm.model.genmixemb_bert import GenmixembBert
+from mllm.model.genmixemb import Genmixemb
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, SumTuple, QnaTuple
 from mllm.data.wiki.itwiki import WikiItem, get_wiki_batch_iterators, WikiBatch
@@ -32,7 +32,7 @@ pyr_share_layer_weights_ARG = '--pyr-share-layer-weights', 'Share Pyramid layers
 cnv_share_layer_weights_ARG = '--cnv-share-layer-weights', 'Share Convolutional layers weights between levels'
 
 
-class ArgsGenmixembBertTrain(BaseModel):
+class ArgsGenmixembTrain(BaseModel):
     data_path: Path = Field(
         ...,
         description='Root data path. Must contain subpath `wikipedia/WIKI_DS_NAME` with Wikipedia dataset.',
@@ -64,10 +64,10 @@ class ArgsGenmixembBertTrain(BaseModel):
         description='Path to EncdecHg model config Yaml file.',
         cli=('--model-cfg-fpath',),
     )
-    bert_model_name: str = Field(
+    model_name: str = Field(
         'bert-base-uncased',
-        description='Bert pretrained model name (bert-base-uncased, bert-large-uncased).',
-        cli=('--bert-model-name',),
+        description='Pretrained model name (bert-base-uncased, bert-large-uncased, gpt2, gpt2-large).',
+        cli=('--model-name',),
     )
     max_inp_toks: int = Field(
         ...,
@@ -261,7 +261,7 @@ class ArgsGenmixembBertTrain(BaseModel):
     )
 
 
-def main(args: ArgsGenmixembBertTrain) -> int:
+def main(args: ArgsGenmixembTrain) -> int:
     print(args)
     pretrained_model_path = args.pretrained_model_path if args.pretrained_model_path and args.pretrained_model_path.name else None
 
@@ -270,9 +270,9 @@ def main(args: ArgsGenmixembBertTrain) -> int:
 
     device = torch.device(args.device)
 
-    model_cfg = parse_yaml_file_as(GenmixembBertCfg, args.model_cfg_fpath)
-    model_cfg = copy_override_genmixemb_bert_cfg(
-        model_cfg, bert_model_name=args.bert_model_name, max_inp_toks=args.max_inp_toks, max_out_toks=args.max_out_toks,
+    model_cfg = parse_yaml_file_as(GenmixembCfg, args.model_cfg_fpath)
+    model_cfg = copy_override_genmixemb_cfg(
+        model_cfg, model_name=args.model_name, max_inp_toks=args.max_inp_toks, max_out_toks=args.max_out_toks,
         toks_agg_type=args.toks_agg_type, bert_agg_type=args.bert_agg_type, bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks,
         pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step, pyr_agg_n_levels=args.pyr_agg_n_levels,
         pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, pyr_share_layer_weights=args.pyr_share_layer_weights,
@@ -288,7 +288,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
             sep_freq=args.mask_sep_freq, sep_frac=args.mask_sep_frac, seq_freq=args.mask_seq_freq, seq_max_frac=args.mask_seq_max_frac,
             seq_max_len=args.mask_seq_max_len,
         )
-    prefix, suffix = gen_prefpostfix_genmixemb_bert(
+    prefix, suffix = gen_prefpostfix_genmixemb(
         model_cfg, train_ds_type=args.train_ds_type, mask_cfg=mask_cfg, self_supervise_type=args.self_supervise_type, pretrained_model_path=pretrained_model_path,
     )
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
@@ -305,13 +305,13 @@ def main(args: ArgsGenmixembBertTrain) -> int:
         print(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        chkpt_model_cfg = parse_yaml_file_as(GenmixembBertCfg, train_path / GENMIXEMB_BERT_MODEL_CFG_FNAME)
+        chkpt_model_cfg = parse_yaml_file_as(GenmixembCfg, train_path / GENMIXEMB_BERT_MODEL_CFG_FNAME)
         assert model_cfg == chkpt_model_cfg, f'{model_cfg} != {chkpt_model_cfg}'
     else:
         to_yaml_file(train_path / GENMIXEMB_BERT_MODEL_CFG_FNAME, model_cfg)
 
     print(model_cfg)
-    model = GenmixembBert(model_cfg, device=device)
+    model = Genmixemb(model_cfg, device=device)
 
     if pretrained_model_path and checkpoint is None:
         dname = pretrained_model_path.parent.name
@@ -489,7 +489,7 @@ def main(args: ArgsGenmixembBertTrain) -> int:
 
 if __name__ == '__main__':
     run_and_exit(
-        ArgsGenmixembBertTrain, main, 'Train GenmixembBert model to predict masked input.',
+        ArgsGenmixembTrain, main, 'Train Genmixemb model to predict masked input.',
         exception_handler=rethrow,
     )
 
