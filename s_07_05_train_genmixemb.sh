@@ -112,6 +112,7 @@ max_out_toks=36
 
 train_root_path=$data_path/train_mllm_genmixemb_wki
 train_ds_type=wki
+model_name=gpt2
 train_agg_model=true
 pred_next_sent=true
 toks_agg_type=cnv

@@ -226,11 +226,12 @@ class WikiBatch:
         self.calc_all()
 
     def calc_all(self):
+        pad_token_id = self.tkz.pad_token_id
         n_batch, max_len = len(self.items), self.items[0].max_len
         next_sent_pred = self.items[0].tgt_toks is not None
         if max_len == 0 or next_sent_pred:
             max_len = max(len(item.toks) for item in self.items)
-        b_toks = np.full((n_batch, max_len), self.tkz.pad_token_id, dtype=int)
+        b_toks = np.full((n_batch, max_len), pad_token_id, dtype=int)
         b_masked_toks = b_toks.copy()
         b_mask = np.zeros_like(b_toks, dtype=bool)
         for i, item in enumerate(self.items):
@@ -243,7 +244,7 @@ class WikiBatch:
         b_tgt_toks = None
         if next_sent_pred:
             max_tgt_len = max(len(item.tgt_toks) for item in self.items)
-            b_tgt_toks = np.full((n_batch, max_tgt_len), self.tkz.pad_token_id, dtype=int)
+            b_tgt_toks = np.full((n_batch, max_tgt_len), pad_token_id, dtype=int)
             for i, item in enumerate(self.items):
                 n_tgt_toks = len(item.tgt_toks)
                 b_tgt_toks[i, :n_tgt_toks] = item.tgt_toks

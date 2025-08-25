@@ -8,11 +8,13 @@ from typing import Optional, Union
 import numpy as np
 import torch
 import torch.nn.functional as F
+from click.termui import hidden_prompt_func
 from torch import nn
 from torch.onnx.symbolic_opset12 import dropout
-from transformers import BatchEncoding, GenerationConfig
+from transformers import BatchEncoding, GenerationConfig, GPT2LMHeadModel, GPT2Tokenizer
 # from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, BatchEncoding
-from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions
+from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions, \
+    CausalLMOutputWithCrossAttentions
 
 from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembCfg, TokensAggType, \
     EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType, BertAggType, CtxQuePromptType, EncoderConvCfg
@@ -36,6 +38,12 @@ class CtxQuePlaceholder(str, Enum):
 CtxQuePromptTemplateType = list[Union[torch.Tensor, CtxQuePromptType]]
 
 
+class AttributeDict(dict):
+    __slots__ = ()
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+
+
 class Genmixemb(nn.Module):
     cfg: GenmixembCfg
     device: torch.device
@@ -47,15 +55,13 @@ class Genmixemb(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.device = device
-        self.tkz = BertTokenizer.from_pretrained(self.cfg.model_name)
-        encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
-            self.cfg.model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
-            device_map=self.device,
-        )
-        decoder: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
-            self.cfg.model_name, add_cross_attention=True, is_decoder=True,
-            bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
-        )
+        if self.cfg.is_bert:
+            self.tkz = BertTokenizer.from_pretrained(self.cfg.model_name)
+        else:
+            self.tkz = GPT2Tokenizer.from_pretrained(self.cfg.model_name)
+            # self.tkz.pad_token_id = -100
+            self.tkz.cls_token_id = self.tkz.eos_token_id
+            self.tkz.pad_token_id = self.tkz.eos_token_id
 
         if self.cfg.add_token_type_ids:
             tt_embs_0 = torch.randn((1, 1, self.cfg.d_model), device=self.device)
@@ -88,8 +94,23 @@ class Genmixemb(nn.Module):
         else:
             raise Exception(f'Context-Query prompt type {self.cfg.ctx_que_prompt_type} is not supported.')
 
-        self.agg = self.create_agg_model(encoder)
-        self.gen = EncoderDecoderModel(encoder=encoder, decoder=decoder)
+        if self.cfg.is_bert:
+            encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
+                self.cfg.model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
+                device_map=self.device,
+            )
+            decoder: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
+                self.cfg.model_name, add_cross_attention=True, is_decoder=True,
+                bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
+            )
+            gen_model = EncoderDecoderModel(encoder=encoder, decoder=decoder)
+        elif self.cfg.is_gpt2:
+            gen_model = GPT2LMHeadModel.from_pretrained(self.cfg.model_name, device_map=self.device)
+        else:
+            raise Exception(f'Model type {self.cfg.model_name} is not supported.')
+
+        self.agg = self.create_agg_model(gen_model)
+        self.gen = gen_model
 
     # ctx_toks: [n_batch, n_ctx]
     # que_toks: [n_batch, n_que]
@@ -135,35 +156,53 @@ class Genmixemb(nn.Module):
         emb = self.toks_template_to_emb_tensor(prompt_template, ctx_toks, que_toks)
         return emb
 
-    def create_agg_model(self, encoder: BertGenerationEncoder) -> Optional[nn.Module]:
+    def create_agg_model(self, gen_model: Union[EncoderDecoderModel, GPT2LMHeadModel]) -> Optional[nn.Module]:
         if not self.need_run_agg:
             return
+
+        if self.cfg.is_bert:
+            gen_model: BertGenerationEncoder = gen_model.encoder
+            n_vocab = gen_model.config.vocab_size
+            n_heads = gen_model.config.num_attention_heads
+            dropout_rate = gen_model.config.hidden_dropout_prob
+            d_inner = gen_model.config.intermediate_size
+            hidden_dropout_prob = gen_model.config.hidden_dropout_prob
+            word_embeddings = gen_model.embeddings.word_embeddings
+            position_embeddings = gen_model.embeddings.position_embeddings
+        elif self.cfg.is_gpt2:
+            gen_model: GPT2LMHeadModel = gen_model
+            n_vocab = gen_model.config.vocab_size
+            n_heads = gen_model.config.n_head
+            dropout_rate = gen_model.config.resid_pdrop
+            d_inner = gen_model.transformer.h[0].mlp.c_proj.out_features
+            hidden_dropout_prob = gen_model.config.embd_pdrop
+            word_embeddings = gen_model.transformer.wte
+            position_embeddings = gen_model.transformer.wpe
+        else:
+            raise
+
         if self.cfg.toks_agg_type == TokensAggType.Bert:
             agg = BertModel.from_pretrained(
                 self.cfg.model_name, torch_dtype=torch.float32, device_map=self.device,
             )
             if self.cfg.share_agg_enc_token_embeds:
-                agg.embeddings.word_embeddings = encoder.embeddings.word_embeddings
-                agg.embeddings.position_embeddings = encoder.embeddings.position_embeddings
-                agg.embeddings.LayerNorm = encoder.embeddings.LayerNorm
-                agg.embeddings.dropout = encoder.embeddings.dropout
+                agg.embeddings.word_embeddings = word_embeddings
+                agg.embeddings.position_embeddings = position_embeddings
             else:
-                agg.embeddings.load_state_dict(encoder.embeddings.state_dict(), strict=False)
+                # agg.embeddings.word_embeddings.load_state_dict(word_embeddings.state_dict(), strict=False)
+                # agg.embeddings.position_embeddings.load_state_dict(position_embeddings.state_dict(), strict=False)
+                agg.embeddings.word_embeddings = word_embeddings.clone()
+                agg.embeddings.position_embeddings = position_embeddings.clone()
         elif self.cfg.toks_agg_type == TokensAggType.Pyramid:
             d_model = self.cfg.d_model
             pad_idx = self.tkz.pad_token_id
-            bert_cfg = encoder.config
-            n_vocab = bert_cfg.vocab_size
-            n_heads = bert_cfg.num_attention_heads
             d_word_vec = d_model
             d_k = d_v = d_model // n_heads
             n_layers = self.cfg.pyr_agg_n_levels
             n_similar_layers = self.cfg.pyr_agg_n_layers_per_level
             share_layer_weights = self.cfg.pyr_share_layer_weights
-            dropout_rate = bert_cfg.hidden_dropout_prob
             pos_enc_type = PosEncType.Emb
             inp_len = 512
-            d_inner = bert_cfg.intermediate_size
             step = self.cfg.pyr_agg_step
             reduct_type = self.cfg.pyr_agg_type
             temperature = 0
@@ -176,17 +215,23 @@ class Genmixemb(nn.Module):
                 d_inner=d_inner, inp_len=inp_len, step=step, n_layers=n_layers, dropout_rate=dropout_rate,
                 n_similar_layers=n_similar_layers, reduct_type=reduct_type, temperature=temperature, share_layer_weights=share_layer_weights,
             )
+            emb_cfg = AttributeDict(
+                vocab_size=n_vocab, hidden_size=d_model, pad_token_id=pad_idx, max_position_embeddings=position_embeddings.num_embeddings,
+                layer_norm_eps=1e-12, hidden_dropout_prob=dropout_rate,
+            )
+            encoder_embeddings = BertGenerationEmbeddings(config=emb_cfg).to(self.device)
             if self.cfg.share_agg_enc_token_embeds:
-                encoder_embeddings = encoder.embeddings
+                encoder_embeddings.word_embeddings = word_embeddings
+                encoder_embeddings.position_embeddings = position_embeddings
             else:
-                encoder_embeddings = BertGenerationEmbeddings(encoder.config).to(self.device)
-                encoder_embeddings.load_state_dict(encoder.embeddings.state_dict())
+                encoder_embeddings.word_embeddings = word_embeddings.clone()
+                encoder_embeddings.position_embeddings = position_embeddings.clone()
             agg = EncoderPyramid(cfg_enc, bert_encoder=encoder_embeddings).to(self.device)
         elif self.cfg.toks_agg_type == TokensAggType.Conv:
             conv_cfg = EncoderConvCfg(
                 n_levels=self.cfg.cnv_n_levels, n_layers_per_level=self.cfg.cnv_n_layers_per_level, d_model=self.cfg.d_model,
                 conv_kernel_size=self.cfg.cnv_conv_kernel_size, pool_kernel_size=self.cfg.cnv_pool_kernel_size, pool_stride=self.cfg.cnv_pool_stride,
-                dropout_rate=encoder.config.hidden_dropout_prob, share_layer_weights=self.cfg.cnv_share_layer_weights,
+                dropout_rate=hidden_dropout_prob, share_layer_weights=self.cfg.cnv_share_layer_weights,
             )
             agg = EncoderConv(conv_cfg).to(self.device)
         else:
@@ -300,23 +345,40 @@ class Genmixemb(nn.Module):
         # mask: [n_batch, max_len]
         # tgt_toks: [n_batch, tgt_len]
         toks, masked_toks, mask, tgt_toks = batch.get_tensors()
-        if tgt_toks is not None:
-            # [n_batch, tgt_len]
-            target_ids = tgt_toks
-        else:
-            # [n_batch, tgt_len]
-            target_ids = toks[:, :self.cfg.max_out_toks]
-        # [n_batch, tgt_len + 1]
-        target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
-        # [n_batch * tgt_len, n_vocab]
-        tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
 
         if not self.need_run_agg:
-            att_mask = masked_toks != self.tkz.pad_token_id
-            # print(f'input_ids: {masked_toks.shape}. attention_mask: {att_mask.shape}. decoder_input_ids: {tgt_inp_ids.shape}')
-            gen_out: Seq2SeqLMOutput = self.gen(
-                input_ids=masked_toks, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
-            )
+            if self.cfg.is_gpt2:
+                max_len = 0
+                for item in batch.items:
+                    cur_len = len(item.toks) + len(item.tgt_toks)
+                    max_len = max(max_len, cur_len)
+                n_batch = len(batch.items)
+                input_toks = np.full((n_batch, max_len), self.tkz.pad_token_id, dtype=int)
+                for ib, item in enumerate(batch.items):
+                    n_toks, n_tgt = len(item.toks), len(item.tgt_toks)
+                    input_toks[ib, :n_toks] = item.toks
+                    input_toks[ib, n_toks:n_toks + n_tgt] = item.tgt_toks
+                input_toks = torch.from_numpy(input_toks).to(self.device)
+                att_mask = None
+                gen_out = self.gen(
+                    input_ids=input_toks, attention_mask=att_mask, use_cache=False,
+                )
+            else:
+                if tgt_toks is not None:
+                    # [n_batch, tgt_len]
+                    target_ids = tgt_toks
+                else:
+                    # [n_batch, tgt_len]
+                    target_ids = toks[:, :self.cfg.max_out_toks]
+                # [n_batch, tgt_len + 1]
+                target_ids = self.prefix_token(target_ids, self.tkz.cls_token_id)
+                # [n_batch * tgt_len, n_vocab]
+                tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
+                input_toks = masked_toks
+                att_mask = input_toks != self.tkz.pad_token_id
+                gen_out = self.gen(
+                    input_ids=input_toks, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
+                )
         else:
             if self.training and not self.cfg.train_agg_model:
                 with torch.no_grad():
@@ -325,17 +387,19 @@ class Genmixemb(nn.Module):
             else:
                 # [n_batch, n_chunks, d_model]
                 emb = self.run_agg(toks)
-            gen_out: Seq2SeqLMOutput = self.gen(
+            gen_out = self.gen(
                 inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
             )
 
         # # [n_batch, tgt_len, n_vocab]
-        # logits = gen_out.logits
-        # # [n_batch * tgt_len, n_vocab]
-        # logits = logits.view(-1, self.gen.decoder.config.vocab_size)
-        # # [n_batch * tgt_len]
-        # labels = tgt_out_ids.reshape(-1)
-        # loss = F.cross_entropy(logits, labels)
+        # if self.cfg.is_bert:
+        #     gen_out: Seq2SeqLMOutput = gen_out
+        #     logits = gen_out.logits
+        # elif self.cfg.is_gpt2:
+        #     gen_out: CausalLMOutputWithCrossAttentions = gen_out
+        #     logits = gen_out.logits
+        # else:
+        #     raise
 
         # [n_batch, tgt_len, n_vocab]
         logits = gen_out.logits

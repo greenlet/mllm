@@ -436,11 +436,11 @@ class GenmixembCfg(BaseModel):
 
     @property
     def is_bert(self) -> bool:
-        return self.model_name.startswith('bert-')
+        return self.model_name.startswith('bert')
 
     @property
     def is_gpt2(self) -> bool:
-        return self.model_name.startswith('gpt2-')
+        return self.model_name.startswith('gpt2')
 
 
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
@@ -787,7 +787,7 @@ def create_genmixemb_cfg(
         cnv_pool_stride: int = 0, cnv_share_layer_weights: bool = False, train_agg_model: bool = False, add_token_type_ids: bool = False,
         share_agg_enc_token_embeds: bool = False, join_ctx_que_agg: bool = False, ctx_que_prompt_type: CtxQuePromptType = CtxQuePromptType.Tok,
 ) -> GenmixembCfg:
-    if model_name.startswith('bert-'):
+    if model_name.startswith('bert'):
         # BertConfig
         # {
         #     "_name_or_path": "bert-base-uncased",
@@ -818,7 +818,7 @@ def create_genmixemb_cfg(
         model = BertModel.from_pretrained(model_name, torch_dtype=torch.float32)
         bert_cfg: BertConfig = model.config
         d_model = bert_cfg.hidden_size
-    elif model_name.startswith('gpt2-'):
+    elif model_name.startswith('gpt2'):
         # GPT2Config
         # {
         #     "_attn_implementation_autoset": true,
