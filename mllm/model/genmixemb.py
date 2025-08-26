@@ -359,9 +359,9 @@ class Genmixemb(nn.Module):
                     input_toks[ib, :n_toks] = item.toks
                     input_toks[ib, n_toks:n_toks + n_tgt] = item.tgt_toks
                 input_toks = torch.from_numpy(input_toks).to(self.device)
-                att_mask = None
+                att_mask = input_toks != self.tkz.pad_token_id
                 gen_out = self.gen(
-                    input_ids=input_toks, attention_mask=att_mask, use_cache=False,
+                    input_ids=input_toks, attention_mask=att_mask,
                 )
             else:
                 if tgt_toks is not None:
@@ -401,12 +401,26 @@ class Genmixemb(nn.Module):
         # else:
         #     raise
 
-        # [n_batch, tgt_len, n_vocab]
-        logits = gen_out.logits
-        # [n_batch, tgt_len]
-        labels = tgt_out_ids
-        label_mask = mask[:, :self.cfg.max_out_toks]
-        loss = self.calc_loss(logits, labels, label_mask)
+        if self.cfg.is_bert:
+            # [n_batch, tgt_len, n_vocab]
+            logits = gen_out.logits
+            # [n_batch, tgt_len]
+            labels = tgt_out_ids
+            label_mask = mask[:, :self.cfg.max_out_toks]
+            loss = self.calc_loss(logits, labels, label_mask)
+        elif self.cfg.is_gpt2:
+            loss = torch.zeros(size=(1,), device=self.device)
+            for ib, item in enumerate(batch.items):
+                n_toks = len(item.toks)
+                # [n_tgt, n_vocab]
+                logits = gen_out.logits[ib][n_toks - 1: n_toks - 1 + len(item.tgt_toks)]
+                # [n_tgt]
+                labels = torch.tensor(item.tgt_toks, device=self.device)
+                item_loss = F.cross_entropy(logits, labels)
+                loss = loss + item_loss
+            loss = loss / len(batch.items)
+        else:
+            raise
         return loss
 
     # logits [n_batch, tgt_len, n_vocab]
@@ -619,7 +633,7 @@ class Genmixemb(nn.Module):
         return out_toks
 
 
-def test_train():
+def run_encdec_bert_train():
     tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased")
     model = EncoderDecoderModel.from_encoder_decoder_pretrained("google-bert/bert-base-uncased",
                                                                 "google-bert/bert-base-uncased")
@@ -649,7 +663,7 @@ def test_train():
     print('loss:', out.loss)
 
 
-def test_generate():
+def run_generate():
     from transformers import AutoTokenizer
 
     # load a fine-tuned seq2seq model and corresponding tokenizer
@@ -670,7 +684,78 @@ def test_generate():
     print(generated_text)
 
 
+def run_gpt2_train():
+    import os
+    from pathlib import Path
+
+    from datasets import load_dataset
+    from regex import T
+    import torch
+    from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
+
+    DATA_PATH = Path(os.path.expandvars('$HOME')) / 'data'
+
+    gpt2_train_path = DATA_PATH / 'gpt2_train'
+
+    # Check if GPU is available
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    # Load dataset
+    wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
+    # dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(DATA_PATH))
+    dataset = load_dataset('wikitext', 'wikitext-2-raw-v1', cache_dir=str(DATA_PATH))
+
+    # Load tokenizer and model
+    tokenizer = AutoTokenizer.from_pretrained('gpt2')
+    model = AutoModelForCausalLM.from_pretrained('gpt2').to(device)
+
+    # Set the EOS token as the padding token
+    tokenizer.pad_token = tokenizer.eos_token
+
+    # Tokenize the dataset
+    def tokenize_function(examples):
+        inputs =  tokenizer(examples['text'], truncation=True, padding='max_length', max_length=128)
+        inputs['labels'] = inputs['input_ids'].copy()
+        return inputs
+
+    tokenized_datasets = dataset.map(tokenize_function, batched=True)
+
+    # Define training arguments
+    training_args = TrainingArguments(
+        output_dir=str(gpt2_train_path),
+        # evaluation_strategy='epoch',
+        num_train_epochs=1,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
+        warmup_steps=500,
+        weight_decay=0.01,
+        logging_dir=str(gpt2_train_path),
+    )
+
+    # Initialize Trainer
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=tokenized_datasets['train'],
+        eval_dataset=tokenized_datasets['validation'],
+    )
+
+    # Train the model
+    # trainer.train(resume_from_checkpoint=str(gpt2_train_path))
+    trainer.train()
+
+    # save the model and tokenizer explicitly
+    model_output_dir = str(gpt2_train_path)
+
+    model.save_pretrained(model_output_dir)
+    tokenizer.save_pretrained(model_output_dir)
+
+
+
+
 if __name__ == '__main__':
-    # test_train()
-    test_generate()
+    # run_encdec_bert_train()
+    # run_generate()
+    run_gpt2_train()
 

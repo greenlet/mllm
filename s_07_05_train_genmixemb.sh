@@ -153,8 +153,9 @@ val_epoch_steps=50
 #batch_size=20
 #batch_size=15
 batch_size=10
+batch_size=7
 #batch_size=5
-#train_subdir=last
+train_subdir=last
 
 #learning_rate=0.0001
 learning_rate=0.00005

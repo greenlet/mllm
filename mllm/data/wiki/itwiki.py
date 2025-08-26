@@ -39,7 +39,7 @@ def get_split_wiki_ds(data_path: Path, val_ratio: float = 0.05, shuffle: bool = 
 
 @dataclass
 class WikiTuple:
-    int: int
+    ind: int
     title: str
     text: str
 
