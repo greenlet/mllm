@@ -583,11 +583,22 @@ class Genmixemb(nn.Module):
         )
 
         if not self.need_run_agg:
+            gen_cfg = GenerationConfig(
+                max_new_tokens=self.cfg.max_out_toks,
+                eos_token_id=self.tkz.eos_token_id,
+                do_sample=True,
+                top_p=0.98,
+                top_k=5,
+                # temperature=0.6,
+            )
+
             # [1, max_len]
             att_mask = toks != self.tkz.pad_token_id
+            gen_cfg.max_new_tokens += len(toks)
             out_toks = self.gen.generate(
                 input_ids=toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
             )
+            # out_toks = out_toks[:, len(toks):]
         else:
             # [n_batch, n_chunks, d_model]
             emb = self.run_agg(toks)
