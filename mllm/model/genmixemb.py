@@ -1,4 +1,5 @@
 import math
+from operator import is_
 import os
 from enum import Enum
 from pathlib import Path
@@ -394,9 +395,17 @@ class Genmixemb(nn.Module):
             else:
                 # [n_batch, n_chunks, d_model]
                 emb = self.run_agg(toks)
-            gen_out = self.gen(
-                inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
-            )
+            if self.cfg.is_gpt2:
+                # [n_batch, tgt_len, d_model]
+                toks_emb = self.gen.transformer.wte(tgt_toks[:-1])
+                inp_emb = torch.concat([emb, toks_emb], dim=1)
+                gen_out = self.gen(
+                    inputs_embeds=inp_emb,
+                )
+            else:
+                gen_out = self.gen(
+                    inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
+                )
 
         # # [n_batch, tgt_len, n_vocab]
         # if self.cfg.is_bert:
@@ -416,18 +425,33 @@ class Genmixemb(nn.Module):
             label_mask = mask[:, :self.cfg.max_out_toks]
             loss = self.calc_loss(logits, labels, label_mask)
         elif self.cfg.is_gpt2:
-            loss = torch.zeros(size=(1,), device=self.device)
-            for ib, item in enumerate(batch.items):
-                tgt_toks = target_toks[ib]
-                # [n_tgt]
-                n_toks = len(tgt_toks)
+            if not self.need_run_agg:
+                loss = torch.zeros(size=(1,), device=self.device)
+                for ib, item in enumerate(batch.items):
+                    tgt_toks = target_toks[ib]
+                    # [n_tgt]
+                    n_toks = len(tgt_toks)
+                    # [n_tgt, n_vocab]
+                    logits = gen_out.logits[ib][:n_toks]
+                    # [n_tgt]
+                    labels = tgt_toks
+                    item_loss = F.cross_entropy(logits, labels)
+                    loss = loss + item_loss
+                loss = loss / len(batch.items)
+            else:
+                # [n_batch, n_tgt, d_model]
+                logits_b = gen_out.logits[:, emb.shape[1] - 1:]
                 # [n_tgt, n_vocab]
-                logits = gen_out.logits[ib][:n_toks]
-                # [n_tgt]
-                labels = tgt_toks
-                item_loss = F.cross_entropy(logits, labels)
-                loss = loss + item_loss
-            loss = loss / len(batch.items)
+                labels_b = tgt_toks
+                loss = torch.zeros(size=(1,), device=self.device)
+                for ib, item in enumerate(batch.items):
+                    # [n_tgt, n_vocab]
+                    logits = logits_b[ib]
+                    # [n_tgt]
+                    labels = labels_b[ib]
+                    item_loss = F.cross_entropy(logits, labels)
+                    loss = loss + item_loss
+                loss = loss / len(batch.items)
         else:
             raise
         return loss
@@ -579,7 +603,7 @@ class Genmixemb(nn.Module):
             do_sample=True,
             top_p=0.95,
             top_k=50,
-            # temperature=0.6,
+            temperature=0.2,
         )
 
         if not self.need_run_agg:
@@ -587,16 +611,16 @@ class Genmixemb(nn.Module):
                 max_new_tokens=self.cfg.max_out_toks,
                 eos_token_id=self.tkz.eos_token_id,
                 do_sample=True,
-                top_p=0.98,
+                top_p=0.95,
                 top_k=5,
-                # temperature=0.6,
+                temperature=0.2,
             )
 
             # [1, max_len]
             att_mask = toks != self.tkz.pad_token_id
-            gen_cfg.max_new_tokens += len(toks)
             out_toks = self.gen.generate(
-                input_ids=toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+                input_ids=toks, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+                use_cache=True,
             )
             # out_toks = out_toks[:, len(toks):]
         else:

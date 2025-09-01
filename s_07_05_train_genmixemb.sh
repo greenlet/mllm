@@ -95,7 +95,7 @@ train_ds_type=qna
 
 
 train_ds_type=wki
-model_name=bert-base-uncased
+model_name=bert-base-large
 toks_agg_type=brt
 bert_agg_n_subseq_toks=0
 train_agg_model=true
@@ -115,7 +115,6 @@ train_ds_type=wki
 model_name=gpt2
 # model_name=gpt2-large
 train_agg_model=true
-pred_next_sent=true
 toks_agg_type=cnv
 ctx_que_prompt_type=cq
 cnv_n_levels=0
@@ -125,9 +124,10 @@ cnv_pool_kernel_size=2
 cnv_pool_stride=2
 cnv_share_layer_weights=false
 #cnv_share_layer_weights=true
-n_toks_min=50
-max_inp_toks=448
-max_out_toks=36
+n_toks_min=20
+max_inp_toks=512
+# max_inp_toks=448
+max_out_toks=50
 #max_inp_toks=48
 #max_out_toks=16
 
@@ -158,9 +158,9 @@ val_epoch_steps=50
 #batch_size=25
 #batch_size=20
 #batch_size=15
-#batch_size=10
+# batch_size=10
 batch_size=7
-# batch_size=4
+# batch_size=5
 #train_subdir=last
 
 #learning_rate=0.0001
