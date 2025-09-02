@@ -175,7 +175,7 @@ class Genmixemb(nn.Module):
             n_vocab = gen_model.config.vocab_size
             n_heads = gen_model.config.n_head
             dropout_rate = gen_model.config.resid_pdrop
-            d_inner = gen_model.transformer.h[0].mlp.c_proj.out_features
+            d_inner = gen_model.transformer.h[0].mlp.c_proj.nx
             hidden_dropout_prob = gen_model.config.embd_pdrop
             word_embeddings = gen_model.transformer.wte
             position_embeddings = gen_model.transformer.wpe
@@ -325,8 +325,21 @@ class Genmixemb(nn.Module):
             # [n_batch, n_seq_new, d_model]
             emb = self.agg(toks)
         elif self.cfg.toks_agg_type == TokensAggType.Conv:
-            # [n_batch, n_seq, d_model]
-            emb = self.gen.encoder.embeddings(toks)
+            if not self.cfg.is_gpt2:
+                # [n_batch, n_seq, d_model]
+                emb = self.gen.encoder.embeddings(toks)
+            else:
+                word_embeddings = self.gen.transformer.wte
+                position_embeddings = self.gen.transformer.wpe
+                # [n_batch, n_seq, d_model]
+                emb = word_embeddings(toks)
+                # [1, n_seq]
+                position_ids = torch.arange(
+                    emb.shape[1], device=emb.device,
+                ).unsqueeze(0)
+                position_embeds = position_embeddings(position_ids)
+                emb = emb + position_embeds.to(emb.device)
+
             # [n_batch, n_seq // steps_sum, d_model]
             emb = self.agg(emb)
         else:
@@ -397,10 +410,12 @@ class Genmixemb(nn.Module):
                 emb = self.run_agg(toks)
             if self.cfg.is_gpt2:
                 # [n_batch, tgt_len, d_model]
-                toks_emb = self.gen.transformer.wte(tgt_toks[:-1])
+                toks_emb = self.gen.transformer.wte(tgt_toks[:, :-1])
                 inp_emb = torch.concat([emb, toks_emb], dim=1)
+                tgt_att_mask = tgt_toks[:, :-1] != self.tkz.pad_token_id
+                att_mask = torch.concat([torch.ones(emb.shape, dtype=tgt_att_mask.dtype, device=tgt_att_mask.device), tgt_att_mask], dim=1)
                 gen_out = self.gen(
-                    inputs_embeds=inp_emb,
+                    inputs_embeds=inp_emb, attention_mask=att_mask
                 )
             else:
                 gen_out = self.gen(
@@ -597,38 +612,60 @@ class Genmixemb(nn.Module):
         if toks.ndim == 1:
             toks = toks.unsqueeze(0)
 
-        gen_cfg = GenerationConfig(
-            max_new_tokens=self.cfg.max_out_toks,
-            eos_token_id=self.tkz.sep_token_id,
-            do_sample=True,
-            top_p=0.95,
-            top_k=50,
-            temperature=0.2,
-        )
 
         if not self.need_run_agg:
-            gen_cfg = GenerationConfig(
-                max_new_tokens=self.cfg.max_out_toks,
-                eos_token_id=self.tkz.eos_token_id,
-                do_sample=True,
-                top_p=0.95,
-                top_k=5,
-                temperature=0.2,
-            )
-
             # [1, max_len]
             att_mask = toks != self.tkz.pad_token_id
-            out_toks = self.gen.generate(
-                input_ids=toks, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
-                use_cache=True,
-            )
+            if not self.cfg.is_gpt2:
+                gen_cfg = GenerationConfig(
+                    max_new_tokens=self.cfg.max_out_toks,
+                    eos_token_id=self.tkz.eos_token_id,
+                    do_sample=True,
+                    top_p=0.95,
+                    top_k=5,
+                    temperature=0.2,
+                )
+                out_toks = self.gen.generate(
+                    input_ids=toks, generation_config=gen_cfg, use_cache=True, decoder_start_token_id=self.tkz.cls_token_id,
+                )
+            else:
+                gen_cfg = GenerationConfig(
+                    max_new_tokens=self.cfg.max_out_toks,
+                    do_sample=True,
+                    top_p=0.95,
+                    top_k=5,
+                    temperature=0.2,
+                )
+                out_toks = self.gen.generate(
+                    input_ids=toks, generation_config=gen_cfg, use_cache=True,
+                )
             # out_toks = out_toks[:, len(toks):]
         else:
             # [n_batch, n_chunks, d_model]
             emb = self.run_agg(toks)
-            out_toks = self.gen.generate(
-                inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
-            )
+            if not self.cfg.is_gpt2:
+                gen_cfg = GenerationConfig(
+                    max_new_tokens=self.cfg.max_out_toks,
+                    eos_token_id=self.tkz.eos_token_id,
+                    do_sample=True,
+                    top_p=0.95,
+                    top_k=5,
+                    temperature=0.2,
+                )
+                out_toks = self.gen.generate(
+                    inputs_embeds=emb, generation_config=gen_cfg, use_cache=True, decoder_start_token_id=self.tkz.cls_token_id,
+                )
+            else:
+                gen_cfg = GenerationConfig(
+                    max_new_tokens=self.cfg.max_out_toks,
+                    do_sample=True,
+                    top_p=0.95,
+                    top_k=5,
+                    temperature=0.2,
+                )
+                out_toks = self.gen.generate(
+                    inputs_embeds=emb, generation_config=gen_cfg, use_cache=True,
+                )
         return out_toks
 
     # toks: [max_len]
