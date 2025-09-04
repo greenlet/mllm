@@ -411,6 +411,11 @@ class Genmixemb(nn.Module):
             if self.cfg.is_gpt2:
                 # [n_batch, tgt_len, d_model]
                 toks_emb = self.gen.transformer.wte(tgt_toks[:, :-1])
+
+                if self.cfg.add_token_type_ids:
+                    emb = emb + self.tt_embs_0
+                    toks_emb = toks_emb + self.tt_embs_1
+
                 inp_emb = torch.concat([emb, toks_emb], dim=1)
                 tgt_att_mask = tgt_toks[:, :-1] != self.tkz.pad_token_id
                 att_mask = torch.concat([torch.ones(toks.shape, dtype=tgt_att_mask.dtype, device=tgt_att_mask.device), tgt_att_mask], dim=1)

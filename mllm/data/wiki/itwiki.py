@@ -177,8 +177,11 @@ class WikiItem:
             else:
                 max_len, max_pred_len = 0, 0
             if max_len > 0:
-                n1 = np.random.randint(2, max_len + 1)
-                n2 = np.random.randint(1, min(n1 // 2, max_pred_len) + 1)
+                # n1 = np.random.randint(2, max_len + 1)
+                # n2 = np.random.randint(1, min(n1 // 2, max_pred_len) + 1)
+                n1 = max_len
+                n2 = max_pred_len
+
                 n_total = n1 + n2
                 n_rest = n_src_toks - n_total
                 i_off = np.random.randint(n_rest + 1)
