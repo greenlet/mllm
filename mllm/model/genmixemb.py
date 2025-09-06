@@ -308,8 +308,8 @@ class Genmixemb(nn.Module):
                 emb = emb.reshape((n_batch, n_chunks, self.cfg.d_model))
             elif self.cfg.bert_agg_type in (BertAggType.Topcos, BertAggType.Topdot):
                 n_subseq = self.cfg.bert_agg_n_subseq_toks
-                # [n_batch, n_seq]
-                toks = self.prefix_token(toks, self.tkz.cls_token_id)
+                # # [n_batch, n_seq]
+                # toks = self.prefix_token(toks, self.tkz.cls_token_id)
                 n_batch, n_seq = toks.shape
                 n_chunks = n_seq // n_subseq
                 # [n_batch, n_seq]

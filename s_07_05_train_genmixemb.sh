@@ -134,6 +134,22 @@ max_inp_toks=1024
 max_out_toks=128
 #max_out_toks=16
 
+train_root_path=$data_path/train_mllm_genmixemb_wki
+train_ds_type=wki
+model_name=gpt2
+train_agg_model=true
+toks_agg_type=brt
+#bert_agg_type=sep
+#bert_agg_type=topcos
+bert_agg_type=topdot
+#bert_agg_n_subseq_toks=2
+bert_agg_n_subseq_toks=8
+ctx_que_prompt_type=cq
+n_toks_min=20
+#max_inp_toks=1024
+max_inp_toks=512
+max_out_toks=128
+
 device=cpu
 epochs=5
 train_epoch_steps=20
@@ -160,16 +176,16 @@ val_epoch_steps=50
 #batch_size=30
 #batch_size=25
 #batch_size=20
-batch_size=15
-#batch_size=10
+#batch_size=15
+batch_size=10
 #batch_size=5
 #batch_size=1
 #train_subdir=last
 
 #learning_rate=0.0001
-learning_rate=0.00005
+#learning_rate=0.00005
 #learning_rate=0.00001
-#learning_rate=0.000005
+learning_rate=0.000005
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
