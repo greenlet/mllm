@@ -122,9 +122,9 @@ class QnaBatchV2:
             nc, nq = len(c_toks), len(q_toks)
             b_cq_toks[i, 0] = self.tkz.cls_token_id
             b_cq_toks[i, 1:nc + 1] = c_toks
-            b_cq_toks[i, nc + 1] = self.tkz.sep_token_id
+            b_cq_toks[i, nc + 1] = self.tkz.sep_token_id if self.tkz.sep_token_id is not None else self.tkz.pad_token_id
             b_cq_toks[i, nc + 2:nc + 2 + nq] = q_toks
-            b_cq_toks[i, nc + 2 + nq] = self.tkz.sep_token_id
+            b_cq_toks[i, nc + 2 + nq] = self.tkz.sep_token_id if self.tkz.sep_token_id is not None else self.tkz.pad_token_id
 
         self.ctx_toks = b_ctx_toks
         self.que_toks = b_que_toks

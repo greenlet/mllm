@@ -123,12 +123,13 @@ class Genmixemb(nn.Module):
 
         embs = []
         n_batch = ctx_toks.shape[0]
+        word_embeddings = self.gen.transformer.wte if self.cfg.is_gpt2 else self.gen.encoder.embeddings.word_embeddings
         for pat in prompt_template:
             if isinstance(pat, torch.Tensor):
                 # [1, n_toks]
                 toks = pat
                 # [1, n_toks, d_model]
-                emb = self.gen.encoder.embeddings.word_embeddings(toks)
+                emb = word_embeddings(toks)
                 # [n_batch, n_toks, d_model]
                 emb = emb.repeat((n_batch, 1, 1))
                 if self.cfg.add_token_type_ids:
@@ -140,7 +141,7 @@ class Genmixemb(nn.Module):
                     emb = emb + self.tt_embs_0
             elif pat == CtxQuePlaceholder.Que:
                 # [n_batch, n_que, d_model]
-                emb = self.gen.encoder.embeddings.word_embeddings(que_toks)
+                emb = word_embeddings(que_toks)
                 if self.cfg.add_token_type_ids:
                     emb = emb + self.tt_embs_1
             else:
@@ -418,9 +419,10 @@ class Genmixemb(nn.Module):
 
                 inp_emb = torch.concat([emb, toks_emb], dim=1)
                 tgt_att_mask = tgt_toks[:, :-1] != self.tkz.pad_token_id
-                att_mask = torch.concat([torch.ones(toks.shape, dtype=tgt_att_mask.dtype, device=tgt_att_mask.device), tgt_att_mask], dim=1)
+                att_mask = torch.ones(inp_emb.shape[:-1], dtype=torch.long, device=self.device)
+                att_mask[:, emb.shape[1]:] = tgt_att_mask
                 gen_out = self.gen(
-                    inputs_embeds=inp_emb, attention_mask=att_mask
+                    inputs_embeds=inp_emb, attention_mask=att_mask,
                 )
             else:
                 gen_out = self.gen(
@@ -532,14 +534,29 @@ class Genmixemb(nn.Module):
                 # [n_batch, n_toks, d_model]
                 emb = self.prompt_emb(ctx_toks, que_toks)
 
-            gen_out: Seq2SeqLMOutput = self.gen(
-                inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
-            )
+            if not self.cfg.is_gpt2:
+                gen_out: Seq2SeqLMOutput = self.gen(
+                    inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
+                )
+            else:
+                # [n_batch, tgt_len', d_model]
+                emb_tgt_inp = self.gen.transformer.wte(tgt_inp_ids)
+                # [n_batch, n_toks + tgt_len', d_model]
+                emb_inp = torch.concat([emb, emb_tgt_inp], dim=1)
+                gen_out: Seq2SeqLMOutput = self.gen(
+                    inputs_embeds=emb_inp,
+                )
 
         # [n_batch, tgt_len, n_vocab]
         logits = gen_out.logits
         # [n_batch, tgt_len]
         labels = tgt_out_ids
+
+        if self.cfg.is_gpt2:
+            assert logits.shape[1] == emb.shape[1] + tgt_out_ids.shape[1], f'{logits.shape} {emb.shape} {tgt_out_ids.shape}'
+            logits = logits[:, emb.shape[1] - 1:]
+            labels = target_ids
+
         loss = self.calc_gen_loss(logits, labels)
         return loss
 
