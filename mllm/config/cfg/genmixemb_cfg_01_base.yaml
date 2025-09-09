@@ -9,10 +9,12 @@ cnv_pool_stride: 2
 cnv_share_layer_weights: false
 ctx_que_prompt_type: tok
 d_model: 768
+dec_expert_type: non
 join_ctx_que_agg: false
 max_inp_toks: 384
 max_out_toks: 50
 model_name: bert-base-uncased
+moe_num_of_exps: 0
 pyr_agg_n_layers_per_level: 0
 pyr_agg_n_levels: 0
 pyr_agg_step: 2

@@ -407,6 +407,12 @@ class EncoderConvCfg(BaseModel):
     share_layer_weights: bool = False
 
 
+class DecExpertType(str, Enum):
+    Non = 'non'
+    Ttid = 'ttid'
+    Moe = 'moe'
+
+
 class GenmixembCfg(BaseModel):
     model_name: str
     d_model: int
@@ -433,6 +439,9 @@ class GenmixembCfg(BaseModel):
     add_token_type_ids: bool = False
     join_ctx_que_agg: bool = False
     ctx_que_prompt_type: CtxQuePromptType = CtxQuePromptType.Tok
+
+    dec_expert_type: DecExpertType = DecExpertType.Non
+    moe_num_of_exps: int = 0
 
     @property
     def is_bert(self) -> bool:
@@ -786,6 +795,7 @@ def create_genmixemb_cfg(
         cnv_n_levels: int = 0, cnv_n_layers_per_level: int = 0, cnv_conv_kernel_size: int = 0, cnv_pool_kernel_size: int = 0,
         cnv_pool_stride: int = 0, cnv_share_layer_weights: bool = False, train_agg_model: bool = False, add_token_type_ids: bool = False,
         share_agg_enc_token_embeds: bool = False, join_ctx_que_agg: bool = False, ctx_que_prompt_type: CtxQuePromptType = CtxQuePromptType.Tok,
+        dec_expert_type: DecExpertType = DecExpertType.Non, moe_num_of_exps: int = 0,
 ) -> GenmixembCfg:
     if model_name.startswith('bert'):
         # BertConfig
@@ -873,7 +883,7 @@ def create_genmixemb_cfg(
         cnv_n_layers_per_level=cnv_n_layers_per_level, cnv_conv_kernel_size=cnv_conv_kernel_size, cnv_pool_kernel_size=cnv_pool_kernel_size,
         cnv_pool_stride=cnv_pool_stride, cnv_share_layer_weights=cnv_share_layer_weights, train_agg_model=train_agg_model,
         share_agg_enc_token_embeds=share_agg_enc_token_embeds, add_token_type_ids=add_token_type_ids, join_ctx_que_agg=join_ctx_que_agg,
-        ctx_que_prompt_type=ctx_que_prompt_type,
+        ctx_que_prompt_type=ctx_que_prompt_type, dec_expert_type=dec_expert_type, moe_num_of_exps=moe_num_of_exps,
     )
     return cfg
 
@@ -1042,7 +1052,7 @@ def copy_override_genmixemb_cfg(
         cnv_n_layers_per_level: Optional[int] = None, cnv_conv_kernel_size: Optional[int] = None, cnv_pool_kernel_size: Optional[int] = None,
         cnv_pool_stride: Optional[int] = None, cnv_share_layer_weights: Optional[bool] = None, train_agg_model: Optional[bool] = None,
         share_agg_enc_token_embeds: Optional[bool] = None, add_token_type_ids: Optional[bool] = None, join_ctx_que_agg: Optional[bool] = None,
-        ctx_que_prompt_type: Optional[CtxQuePromptType] = None,
+        ctx_que_prompt_type: Optional[CtxQuePromptType] = None, dec_expert_type: Optional[DecExpertType] = None, moe_num_of_exps: Optional[int] = None,
 ) -> GenmixembCfg:
     model_name = model_name or cfg.model_name
     max_inp_toks = coalesce(max_inp_toks, cfg.max_inp_toks)
@@ -1066,6 +1076,8 @@ def copy_override_genmixemb_cfg(
     cnv_pool_kernel_size = coalesce(cnv_pool_kernel_size, cfg.cnv_pool_kernel_size)
     cnv_pool_stride = coalesce(cnv_pool_stride, cfg.cnv_pool_stride)
     cnv_share_layer_weights = coalesce(cnv_share_layer_weights, cfg.cnv_share_layer_weights)
+    dec_expert_type = coalesce(dec_expert_type, cfg.dec_expert_type)
+    moe_num_of_exps = coalesce(moe_num_of_exps, cfg.moe_num_of_exps)
 
     return create_genmixemb_cfg(
         model_name=model_name, max_inp_toks=max_inp_toks, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
@@ -1074,7 +1086,7 @@ def copy_override_genmixemb_cfg(
         cnv_n_levels=cnv_n_levels, cnv_n_layers_per_level=cnv_n_layers_per_level, cnv_conv_kernel_size=cnv_conv_kernel_size,
         cnv_pool_kernel_size=cnv_pool_kernel_size, cnv_pool_stride=cnv_pool_stride, cnv_share_layer_weights=cnv_share_layer_weights,
         train_agg_model=train_agg_model, share_agg_enc_token_embeds=share_agg_enc_token_embeds, add_token_type_ids=add_token_type_ids,
-        join_ctx_que_agg=join_ctx_que_agg, ctx_que_prompt_type=ctx_que_prompt_type,
+        join_ctx_que_agg=join_ctx_que_agg, ctx_que_prompt_type=ctx_que_prompt_type, dec_expert_type=dec_expert_type, moe_num_of_exps=moe_num_of_exps,
     )
 
 
@@ -1341,6 +1353,17 @@ def gen_prefpostfix_genmixemb(
             postfix_parts.append(f'cqpr{cfg.ctx_que_prompt_type.value.capitalize()}')
     else:
         raise ValueError(f'Dataset type {train_ds_type} is not supported.')
+
+    if cfg.dec_expert_type == DecExpertType.Non:
+        pass
+    else:
+        postfix_parts.append(f'expr{cfg.dec_expert_type.value.capitalize()}')
+        if cfg.dec_expert_type == DecExpertType.Ttid:
+            pass
+        elif cfg.dec_expert_type == DecExpertType.Moe:
+            postfix_parts.append(f'exn{cfg.moe_num_of_exps}')
+        else:
+            raise ValueError(f'Expert type {cfg.dec_expert_type} is not supported.')
 
 
     postfix = '-'.join(postfix_parts)
