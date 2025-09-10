@@ -96,6 +96,7 @@ class QnaBatchV2:
             max_ans_len = max(max_ans_len, len(item.ans_toks))
         max_ctx_len = min(max_ctx_len, self.max_inp_len)
         max_ans_len = min(max_ans_len, self.max_out_len)
+        max_que_len = min(max_que_len, 100)
 
         b_ctx_toks = np.full((n_batch, max_ctx_len), self.tkz.pad_token_id)
         b_que_toks = np.full((n_batch, max_que_len), self.tkz.pad_token_id)

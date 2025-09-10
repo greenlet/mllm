@@ -13,7 +13,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembCfg, copy_override_genmixemb_cfg, \
-    gen_prefpostfix_genmixemb, HgReductType, BertAggType, CtxQuePromptType, SelfSuperviseType
+    gen_prefpostfix_genmixemb, HgReductType, BertAggType, CtxQuePromptType, SelfSuperviseType, DecExpertType
 from mllm.data.itsquadv2 import get_squadv2_batch_iterators_v2, QnaBatchV2
 from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
 from mllm.model.genmixemb import Genmixemb
@@ -184,6 +184,17 @@ class ArgsGenmixembTrain(BaseModel):
         cli=('--ctx-que-prompt-type',),
     )
 
+    dec_expert_type: DecExpertType = Field(
+        DecExpertType.Non,
+        description=f'Decoder expert type. Values: {[t.value for t in DecExpertType]}',
+        cli=('--dec-expert-type',),
+    )
+    moe_experts_num: int = Field(
+        ...,
+        description=f'Number of experts in Mixture of Experts decoder implementation (DEC_EXPERT_TYP = {DecExpertType.Moe}.',
+        cli=('--moe-experts-num',),
+    )
+
     n_toks_min: int = Field(
         ...,
         description='Minimum number of tokens in text data to include it into training. Texts with less number of tokens will be skipped.',
@@ -279,7 +290,8 @@ def main(args: ArgsGenmixembTrain) -> int:
         cnv_n_levels=args.cnv_n_levels, cnv_n_layers_per_level=args.cnv_n_layers_per_level, cnv_conv_kernel_size=args.cnv_conv_kernel_size,
         cnv_pool_kernel_size=args.cnv_pool_kernel_size, cnv_pool_stride=args.cnv_pool_stride, cnv_share_layer_weights=args.cnv_share_layer_weights,
         train_agg_model=args.train_agg_model, share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
-        join_ctx_que_agg=args.join_ctx_que_agg, ctx_que_prompt_type=args.ctx_que_prompt_type,
+        join_ctx_que_agg=args.join_ctx_que_agg, ctx_que_prompt_type=args.ctx_que_prompt_type, dec_expert_type=args.dec_expert_type,
+        moe_experts_num=args.moe_experts_num,
     )
 
     mask_cfg = None

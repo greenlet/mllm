@@ -55,7 +55,8 @@ join_ctx_que_agg=false
 ctx_que_prompt_type=cq
 #ctx_que_prompt_type=qc
 #ctx_que_prompt_type=cqqc
-
+dec_expert_type=non
+moe_experts_num=0
 
 mask_tokens=false
 #mask_tokens=true
@@ -66,14 +67,12 @@ mask_seq_max_frac=0.2
 mask_seq_max_len=20
 
 
-
 n_toks_min=20
 max_inp_toks=100
 max_inp_toks=256
 max_inp_toks=384
 #max_inp_toks=512
 max_out_toks=50
-
 
 
 train_ds_type=qna
@@ -167,7 +166,7 @@ cnv_pool_stride=2
 cnv_share_layer_weights=false
 #cnv_share_layer_weights=true
 n_toks_min=20
-max_inp_toks=1024
+max_inp_toks=768
 # max_inp_toks=448
 #max_inp_toks=128
 #max_inp_toks=64
@@ -247,6 +246,8 @@ python s_07_05_train_genmixemb.py \
   --add-token-type-ids $add_token_type_ids \
   --join-ctx-que-agg $join_ctx_que_agg \
   --ctx-que-prompt-type $ctx_que_prompt_type \
+  --dec-expert-type $dec_expert_type \
+  --moe-experts-num $moe_experts_num \
   --n-toks-min $n_toks_min \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \

@@ -1,34 +1,28 @@
-import math
-from operator import is_
-import os
 from enum import Enum
-from pathlib import Path
 import random
+import random
+from enum import Enum
 from typing import Optional, Union
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-from click.termui import hidden_prompt_func
 from torch import nn
-from torch.onnx.symbolic_opset12 import dropout
-from transformers import BatchEncoding, GenerationConfig, GPT2LMHeadModel, GPT2Tokenizer
-# from transformers import BertModel, EncoderDecoderModel, BertGenerationEncoder, BertGenerationDecoder, BertTokenizer, BatchEncoding
-from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPoolingAndCrossAttentions, \
-    CausalLMOutputWithCrossAttentions
+from transformers import BatchEncoding, GenerationConfig
+from transformers.modeling_outputs import Seq2SeqLMOutput
 
-from mllm.config.model import GenmixBertCfg, GenmixEmbExpType, GenmixEmbAggType, GenmixembCfg, TokensAggType, \
-    EncPyrCfg, VocabEncoderCfg, PosEncType, HgReductType, BertAggType, CtxQuePromptType, EncoderConvCfg
+from mllm.config.model import GenmixembCfg, TokensAggType, \
+    EncPyrCfg, VocabEncoderCfg, PosEncType, BertAggType, CtxQuePromptType, EncoderConvCfg
 from mllm.data.itsquadv2 import QnaBatchV2
+from mllm.data.wiki.itwiki import WikiBatch
 from mllm.model.at2_decoder import BertGenerationEmbeddings
 from mllm.model.bert import BertModel, BertTokenizer
 from mllm.model.bert_generation import BertGenerationEncoder, BertGenerationDecoder
 from mllm.model.encdec_ranker_hg import EncoderPyramid
 from mllm.model.encoder_conv import EncoderConv
 from mllm.model.encoder_decoder import EncoderDecoderModel
+from mllm.model.gpt2 import GPT2LMHeadModel, GPT2Tokenizer
 from mllm.model.utils import get_top_vects
-from mllm.train.utils import WordToks
-from mllm.data.wiki.itwiki import WikiBatch
 
 
 class CtxQuePlaceholder(str, Enum):
@@ -723,7 +717,6 @@ def run_gpt2_train():
     from pathlib import Path
 
     from datasets import load_dataset
-    from regex import T
     import torch
     from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
 

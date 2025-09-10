@@ -50,7 +50,7 @@ from transformers.utils import (
 from transformers.utils.deprecation import deprecate_kwarg
 from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
 from .configuration_gpt2 import GPT2Config
-
+from ...config.model import DecExpertType
 
 logger = logging.get_logger(__name__)
 
@@ -366,8 +366,16 @@ class GPT2MLP(nn.Module):
     def __init__(self, intermediate_size, config):
         super().__init__()
         embed_dim = config.hidden_size
-        self.c_fc = Conv1D(intermediate_size, embed_dim)
-        self.c_proj = Conv1D(embed_dim, intermediate_size)
+        expert_type: DecExpertType = config.expert_type
+        if expert_type == DecExpertType.Non:
+            self.c_fc = nn.ModuleList([Conv1D(intermediate_size, embed_dim)])
+            self.c_proj = nn.ModuleList([Conv1D(embed_dim, intermediate_size)])
+        elif expert_type == DecExpertType.Ttid:
+            self.c_fc = nn.ModuleList([Conv1D(intermediate_size, embed_dim) for _ in range(2)])
+            self.c_proj = nn.ModuleList([Conv1D(embed_dim, intermediate_size) for _ in range(2)])
+        else:
+            raise Exception(f'Expert type {expert_type} is not supported.')
+
         self.act = ACT2FN[config.activation_function]
         self.dropout = nn.Dropout(config.resid_pdrop)
 
