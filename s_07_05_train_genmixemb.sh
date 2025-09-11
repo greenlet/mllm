@@ -215,7 +215,7 @@ random_seed=200
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-#echo "
+echo "
 python s_07_05_train_genmixemb.py \
   --data-path $data_path \
   --train-root-path $train_root_path \
@@ -262,5 +262,5 @@ python s_07_05_train_genmixemb.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed
-#"
+"
 

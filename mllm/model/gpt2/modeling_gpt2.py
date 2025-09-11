@@ -368,8 +368,8 @@ class GPT2MLP(nn.Module):
         embed_dim = config.hidden_size
         expert_type: DecExpertType = config.expert_type
         if expert_type == DecExpertType.Non:
-            self.c_fc = nn.ModuleList([Conv1D(intermediate_size, embed_dim)])
-            self.c_proj = nn.ModuleList([Conv1D(embed_dim, intermediate_size)])
+            self.c_fc = Conv1D(intermediate_size, embed_dim)
+            self.c_proj = Conv1D(embed_dim, intermediate_size)
         elif expert_type == DecExpertType.Ttid:
             self.c_fc = nn.ModuleList([Conv1D(intermediate_size, embed_dim) for _ in range(2)])
             self.c_proj = nn.ModuleList([Conv1D(embed_dim, intermediate_size) for _ in range(2)])
