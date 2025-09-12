@@ -92,15 +92,21 @@ class Genmixemb(nn.Module):
         if self.cfg.is_bert:
             encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
                 self.cfg.model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
-                device_map=self.device,
+                device_map=self.device, attention_prob_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
+                hidden_dropout_prob=self.cfg.bert_hidden_dropout_prob,
             )
             decoder: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
                 self.cfg.model_name, add_cross_attention=True, is_decoder=True,
                 bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
+                attention_prob_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
+                hidden_dropout_prob=self.cfg.bert_hidden_dropout_prob,
             )
             gen_model = EncoderDecoderModel(encoder=encoder, decoder=decoder)
         elif self.cfg.is_gpt2:
-            gen_model = GPT2LMHeadModel.from_pretrained(self.cfg.model_name, device_map=self.device)
+            gen_model = GPT2LMHeadModel.from_pretrained(
+                self.cfg.model_name, device_map=self.device, embd_pdrop=self.cfg.gpt2_embd_pdrop,
+                attn_pdrop=self.cfg.gpt2_attn_pdrop, resid_pdrop=self.cfg.gpt2_resid_pdrop,
+            )
         else:
             raise Exception(f'Model type {self.cfg.model_name} is not supported.')
 

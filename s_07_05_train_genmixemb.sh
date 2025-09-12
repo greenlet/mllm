@@ -57,6 +57,11 @@ ctx_que_prompt_type=cq
 #ctx_que_prompt_type=cqqc
 dec_expert_type=non
 moe_experts_num=0
+bert_attention_prob_dropout_prob=0.1
+bert_hidden_dropout_prob=0.1
+gpt2_embd_pdrop=0.1
+gpt2_attn_pdrop=0.1
+gpt2_resid_pdrop=0.1
 
 mask_tokens=false
 #mask_tokens=true
@@ -173,6 +178,10 @@ max_inp_toks=768
 #max_out_toks=256
 max_out_toks=128
 #max_out_toks=16
+gpt2_embd_pdrop=0.2
+gpt2_attn_pdrop=0.2
+gpt2_resid_pdrop=0.2
+
 
 device=cpu
 epochs=5
@@ -215,7 +224,7 @@ random_seed=200
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-echo "
+# echo "
 python s_07_05_train_genmixemb.py \
   --data-path $data_path \
   --train-root-path $train_root_path \
@@ -224,6 +233,11 @@ python s_07_05_train_genmixemb.py \
   --train-ds-type "$train_ds_type" \
   --model-cfg-fpath $model_cfg_fpath \
   --model-name $model_name \
+  --bert-attention-probs-dropout-prob $bert_attention_prob_dropout_prob \
+  --bert-hidden-dropout-prob $bert_hidden_dropout_prob \
+  --gpt2-embd-pdrop $gpt2_embd_pdrop \
+  --gpt2-attn-pdrop $gpt2_attn_pdrop \
+  --gpt2-resid-pdrop $gpt2_resid_pdrop \
   --max-inp-toks $max_inp_toks \
   --max-out-toks $max_out_toks \
   --toks-agg-type $toks_agg_type \
@@ -262,5 +276,5 @@ python s_07_05_train_genmixemb.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed
-"
+# "
 

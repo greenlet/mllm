@@ -16,6 +16,7 @@ from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembCfg, co
     gen_prefpostfix_genmixemb, HgReductType, BertAggType, CtxQuePromptType, SelfSuperviseType, DecExpertType
 from mllm.data.itsquadv2 import get_squadv2_batch_iterators_v2, QnaBatchV2
 from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
+from mllm.model import bert, gpt2
 from mllm.model.genmixemb import Genmixemb
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, SumTuple, QnaTuple
@@ -68,6 +69,31 @@ class ArgsGenmixembTrain(BaseModel):
         'bert-base-uncased',
         description='Pretrained model name (bert-base-uncased, bert-large-uncased, gpt2, gpt2-large).',
         cli=('--model-name',),
+    )
+    bert_attention_prob_dropout_prob: float = Field(
+        0.1,
+        description='Dropout probability for Bert attention layers.',
+        cli=('--bert-attention-probs-dropout-prob',),
+    )
+    bert_hidden_dropout_prob: float = Field(
+        0.1,
+        description='Dropout probability for Bert MLP hidden layers.',
+        cli=('--bert-hidden-dropout-prob',),
+    )
+    gpt2_embd_pdrop: float = Field(
+        0.1,
+        description='Dropout probability for GPT2 token embeddings.',
+        cli=('--gpt2-embd-pdrop',),
+    )
+    gpt2_attn_pdrop: float = Field(
+        0.1,
+        description='Dropout probability for GPT2 attention layers.',
+        cli=('--gpt2-attn-pdrop',),
+    )
+    gpt2_resid_pdrop: float = Field(
+        0.1,
+        description='Dropout probability for GPT2 MLP hidden layers.',
+        cli=('--gpt2-resid-pdrop',),
     )
     max_inp_toks: int = Field(
         ...,
@@ -291,7 +317,9 @@ def main(args: ArgsGenmixembTrain) -> int:
         cnv_pool_kernel_size=args.cnv_pool_kernel_size, cnv_pool_stride=args.cnv_pool_stride, cnv_share_layer_weights=args.cnv_share_layer_weights,
         train_agg_model=args.train_agg_model, share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
         join_ctx_que_agg=args.join_ctx_que_agg, ctx_que_prompt_type=args.ctx_que_prompt_type, dec_expert_type=args.dec_expert_type,
-        moe_experts_num=args.moe_experts_num,
+        moe_experts_num=args.moe_experts_num, bert_attention_prob_dropout_prob=args.bert_attention_prob_dropout_prob,
+        bert_hidden_dropout_prob=args.bert_hidden_dropout_prob, gpt2_embd_pdrop=args.gpt2_embd_pdrop,
+        gpt2_attn_pdrop=args.gpt2_attn_pdrop, gpt2_resid_pdrop=args.gpt2_resid_pdrop,
     )
 
     mask_cfg = None
