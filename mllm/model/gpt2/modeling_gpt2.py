@@ -379,7 +379,9 @@ class GPT2MLP(nn.Module):
         self.act = ACT2FN[config.activation_function]
         self.dropout = nn.Dropout(config.resid_pdrop)
 
-    def forward(self, hidden_states: Optional[tuple[torch.FloatTensor]]) -> torch.FloatTensor:
+    # hidden_states: [batch_size, seq_length, embed_dim]
+    # token_type_ids: [batch_size, seq_length]
+    def forward(self, hidden_states: Optional[tuple[torch.FloatTensor]], token_type_ids: Optional[torch.LongTensor]) -> torch.FloatTensor:
         hidden_states = self.c_fc(hidden_states)
         hidden_states = self.act(hidden_states)
         hidden_states = self.c_proj(hidden_states)

@@ -520,11 +520,35 @@ class Genmixemb(nn.Module):
         tgt_inp_ids, tgt_out_ids = target_ids[:, :-1], target_ids[:, 1:]
 
         if not self.need_run_agg:
-            # cq_toks: [n_batch, cq_len]
-            att_mask = cq_toks != self.tkz.pad_token_id
-            gen_out: Seq2SeqLMOutput = self.gen(
-                input_ids=cq_toks, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
-            )
+            if not self.cfg.is_gpt2:
+                # cq_toks: [n_batch, cq_len]
+                att_mask = cq_toks != self.tkz.pad_token_id
+                gen_out: Seq2SeqLMOutput = self.gen(
+                    input_ids=cq_toks, attention_mask=att_mask, decoder_input_ids=tgt_inp_ids, use_cache=False,
+                )
+            else:
+                inp_ids, tgt_ids, tgt_offs = [], [], []
+                max_len = 0
+                for item in batch.items:
+                    prompt = f'Context: {item.context}\nQuestion: {item.question}\nAnswer:'
+                    prompt_toks = self.tkz(prompt, add_special_tokens=False).input_ids
+                    tgt_offs.append(len(prompt_toks) - 1)
+                    n_prompt, n_ans = len(prompt_toks), len(item.ans_toks) - 1
+                    if n_prompt > self.cfg.max_inp_toks:
+                        prompt_toks = prompt_toks[:self.cfg.max_inp_toks]
+                        n_prompt = len(prompt_toks)
+                    ans_toks = item.ans_toks
+                    if n_ans - 1 > self.cfg.max_out_toks:
+                        ans_toks = ans_toks[:self.cfg.max_out_toks + 1]
+                    prompt_toks.extend(ans_toks[:-1])
+                    inp_ids.append(prompt_toks)
+                    max_len = max(max_len, len(prompt_toks))
+                    tgt_ids.append(ans_toks)
+                inp_ids_t = torch.full((len(batch.items), max_len), self.tkz.pad_token_id, dtype=torch.long, device=self.device)
+                tgt_ids_t = []
+                for i in range(len(batch.items)):
+                    inp_ids_t[i, :len(inp_ids[i])] = inp_ids[i]
+                    tgt_ids_t.append(torch.tensor(tgt_ids[i], dtype=torch.long, device=self.device))
         else:
             if self.training and not self.cfg.train_agg_model:
                 with torch.no_grad():
@@ -553,9 +577,14 @@ class Genmixemb(nn.Module):
         labels = tgt_out_ids
 
         if self.cfg.is_gpt2:
-            assert logits.shape[1] == emb.shape[1] + tgt_out_ids.shape[1], f'{logits.shape} {emb.shape} {tgt_out_ids.shape}'
-            logits = logits[:, emb.shape[1] - 1:]
-            labels = target_ids
+            if self.need_run_agg:
+                assert logits.shape[1] == emb.shape[1] + tgt_out_ids.shape[1], f'{logits.shape} {emb.shape} {tgt_out_ids.shape}'
+                logits = logits[:, emb.shape[1] - 1:]
+                labels = target_ids
+            else:
+                assert logits.shape[1] == emb.shape[1] + tgt_out_ids.shape[1], f'{logits.shape} {emb.shape} {tgt_out_ids.shape}'
+                logits = logits[:, emb.shape[1] - 1:]
+                labels = target_ids
 
         loss = self.calc_gen_loss(logits, labels)
         return loss

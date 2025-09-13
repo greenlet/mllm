@@ -183,6 +183,33 @@ gpt2_attn_pdrop=0.2
 gpt2_resid_pdrop=0.2
 
 
+train_root_path=$data_path/train_mllm_genmixemb_qna
+train_ds_type=qna
+model_name=gpt2
+#model_name=gpt2-large
+train_agg_model=true
+toks_agg_type=cnv
+ctx_que_prompt_type=cq
+cnv_n_levels=0
+cnv_n_layers_per_level=1
+cnv_conv_kernel_size=3
+cnv_pool_kernel_size=2
+cnv_pool_stride=2
+cnv_share_layer_weights=false
+#cnv_share_layer_weights=true
+n_toks_min=20
+max_inp_toks=768
+# max_inp_toks=448
+#max_inp_toks=128
+#max_inp_toks=64
+#max_out_toks=256
+max_out_toks=128
+#max_out_toks=16
+gpt2_embd_pdrop=0.1
+gpt2_attn_pdrop=0.1
+gpt2_resid_pdrop=0.1
+
+
 device=cpu
 epochs=5
 train_epoch_steps=20
