@@ -178,36 +178,39 @@ max_inp_toks=768
 #max_out_toks=256
 max_out_toks=128
 #max_out_toks=16
-gpt2_embd_pdrop=0.2
-gpt2_attn_pdrop=0.2
-gpt2_resid_pdrop=0.2
-
-
-train_root_path=$data_path/train_mllm_genmixemb_qna
-train_ds_type=qna
-model_name=gpt2
-#model_name=gpt2-large
-train_agg_model=true
-toks_agg_type=cnv
-ctx_que_prompt_type=cq
-cnv_n_levels=0
-cnv_n_layers_per_level=1
-cnv_conv_kernel_size=3
-cnv_pool_kernel_size=2
-cnv_pool_stride=2
-cnv_share_layer_weights=false
-#cnv_share_layer_weights=true
-n_toks_min=20
-max_inp_toks=768
-# max_inp_toks=448
-#max_inp_toks=128
-#max_inp_toks=64
-#max_out_toks=256
-max_out_toks=128
-#max_out_toks=16
 gpt2_embd_pdrop=0.1
 gpt2_attn_pdrop=0.1
 gpt2_resid_pdrop=0.1
+#gpt2_embd_pdrop=0.2
+#gpt2_attn_pdrop=0.2
+#gpt2_resid_pdrop=0.2
+
+
+#train_root_path=$data_path/train_mllm_genmixemb_qna
+#train_ds_type=qna
+#model_name=gpt2
+##model_name=gpt2-large
+#train_agg_model=true
+#toks_agg_type=cnv
+#ctx_que_prompt_type=cq
+#cnv_n_levels=0
+#cnv_n_layers_per_level=1
+#cnv_conv_kernel_size=3
+#cnv_pool_kernel_size=2
+#cnv_pool_stride=2
+#cnv_share_layer_weights=false
+##cnv_share_layer_weights=true
+#n_toks_min=20
+## max_inp_toks=768
+#max_inp_toks=512
+##max_inp_toks=128
+##max_inp_toks=64
+##max_out_toks=256
+#max_out_toks=128
+##max_out_toks=16
+#gpt2_embd_pdrop=0.1
+#gpt2_attn_pdrop=0.1
+#gpt2_resid_pdrop=0.1
 
 
 device=cpu
@@ -229,18 +232,18 @@ batch_size=5
 #pretrained_model_path=$pretrained_model_path/best.pth
 
 
-device=cuda
-epochs=700
-train_epoch_steps=500
-val_epoch_steps=50
-#batch_size=30
-#batch_size=25
-#batch_size=20
-#batch_size=15
-batch_size=10
+#device=cuda
+#epochs=700
+#train_epoch_steps=500
+#val_epoch_steps=50
+##batch_size=30
+##batch_size=25
+##batch_size=20
+##batch_size=15
+## batch_size=10
 #batch_size=5
-#batch_size=1
-#train_subdir=last
+##batch_size=1
+##train_subdir=last
 
 #learning_rate=0.0001
 learning_rate=0.00005
@@ -251,7 +254,7 @@ random_seed=200
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-# echo "
+echo "
 python s_07_05_train_genmixemb.py \
   --data-path $data_path \
   --train-root-path $train_root_path \
@@ -303,5 +306,5 @@ python s_07_05_train_genmixemb.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed
-# "
+"
 

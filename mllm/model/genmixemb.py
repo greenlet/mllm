@@ -532,11 +532,11 @@ class Genmixemb(nn.Module):
                 for item in batch.items:
                     prompt = f'Context: {item.context}\nQuestion: {item.question}\nAnswer:'
                     prompt_toks = self.tkz(prompt, add_special_tokens=False).input_ids
-                    tgt_offs.append(len(prompt_toks) - 1)
                     n_prompt, n_ans = len(prompt_toks), len(item.ans_toks) - 1
                     if n_prompt > self.cfg.max_inp_toks:
                         prompt_toks = prompt_toks[:self.cfg.max_inp_toks]
                         n_prompt = len(prompt_toks)
+                    tgt_offs.append(n_prompt - 1)
                     ans_toks = item.ans_toks
                     if n_ans - 1 > self.cfg.max_out_toks:
                         ans_toks = ans_toks[:self.cfg.max_out_toks + 1]
@@ -544,27 +544,59 @@ class Genmixemb(nn.Module):
                     inp_ids.append(prompt_toks)
                     max_len = max(max_len, len(prompt_toks))
                     tgt_ids.append(ans_toks)
-                inp_ids_t = torch.full((len(batch.items), max_len), self.tkz.pad_token_id, dtype=torch.long, device=self.device)
+                inp_ids_t = np.full((len(batch.items), max_len), self.tkz.pad_token_id, dtype=int)
                 tgt_ids_t = []
                 for i in range(len(batch.items)):
                     inp_ids_t[i, :len(inp_ids[i])] = inp_ids[i]
                     tgt_ids_t.append(torch.tensor(tgt_ids[i], dtype=torch.long, device=self.device))
+                inp_ids_t = torch.from_numpy(inp_ids_t).to(self.device)
+                att_mask = inp_ids_t != self.tkz.pad_token_id
+                gen_out: Seq2SeqLMOutput = self.gen(
+                    input_ids=inp_ids_t, attention_mask=att_mask, use_cache=True,
+                )
         else:
-            if self.training and not self.cfg.train_agg_model:
-                with torch.no_grad():
+            if not self.cfg.is_gpt2:
+                if self.training and not self.cfg.train_agg_model:
+                    with torch.no_grad():
+                        # [n_batch, n_toks, d_model]
+                        emb = self.prompt_emb(ctx_toks, que_toks)
+                else:
                     # [n_batch, n_toks, d_model]
                     emb = self.prompt_emb(ctx_toks, que_toks)
-            else:
-                # [n_batch, n_toks, d_model]
-                emb = self.prompt_emb(ctx_toks, que_toks)
 
-            if not self.cfg.is_gpt2:
                 gen_out: Seq2SeqLMOutput = self.gen(
                     inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
                 )
             else:
+                inp_ids, tgt_ids, tgt_lens = [], [], []
+                max_inp_len, max_tgt_len = 0, 0
+                for item in batch.items:
+                    prompt = f'Context: {item.context}\nQuestion: {item.question}\nAnswer:'
+                    prompt_toks = self.tkz(prompt, add_special_tokens=False).input_ids
+                    n_prompt, n_ans = len(prompt_toks), len(item.ans_toks) - 1
+                    if n_prompt > self.cfg.max_inp_toks:
+                        prompt_toks = prompt_toks[:self.cfg.max_inp_toks]
+                        n_prompt = len(prompt_toks)
+                    ans_toks = item.ans_toks
+                    if n_ans - 1 > self.cfg.max_out_toks:
+                        ans_toks = ans_toks[:self.cfg.max_out_toks + 1]
+                    inp_ids.append(prompt_toks)
+                    tgt_ids.append(ans_toks)
+                    tgt_lens.append(len(ans_toks))
+                    max_inp_len = max(max_inp_len, len(prompt_toks))
+                    max_tgt_len = max(max_tgt_len, len(ans_toks) - 1)
+                inp_ids_t = np.full((len(batch.items), max_inp_len), self.tkz.pad_token_id, dtype=int)
+                tgt_ids_t = np.full((len(batch.items), max_tgt_len), self.tkz.pad_token_id, dtype=int)
+
+                for i in range(len(batch.items)):
+                    inp_ids_t[i, :len(inp_ids[i])] = inp_ids[i]
+                    tgt_ids_t[i, :len(tgt_ids[i])] = tgt_ids[i]
+                inp_ids_t = torch.from_numpy(inp_ids_t).to(self.device)
+                tgt_ids_t = torch.from_numpy(tgt_ids_t).to(self.device)
+                emb = self.run_agg(inp_ids_t)
+
                 # [n_batch, tgt_len', d_model]
-                emb_tgt_inp = self.gen.transformer.wte(tgt_inp_ids)
+                emb_tgt_inp = self.gen.transformer.wte(tgt_ids_t)
                 # [n_batch, n_toks + tgt_len', d_model]
                 emb_inp = torch.concat([emb, emb_tgt_inp], dim=1)
                 gen_out: Seq2SeqLMOutput = self.gen(
@@ -578,15 +610,37 @@ class Genmixemb(nn.Module):
 
         if self.cfg.is_gpt2:
             if self.need_run_agg:
-                assert logits.shape[1] == emb.shape[1] + tgt_out_ids.shape[1], f'{logits.shape} {emb.shape} {tgt_out_ids.shape}'
-                logits = logits[:, emb.shape[1] - 1:]
-                labels = target_ids
+                loss = torch.zeros(size=(1,), device=self.device)
+                for ib in range(len(batch.items)):
+                    tgt_toks = tgt_ids_t[ib]
+                    tgt_off = emb.shape[1] - 1
+                    # [n_tgt]
+                    n_tgt_toks = tgt_lens[ib]
+                    # [n_tgt, n_vocab]
+                    logits = gen_out.logits[ib][tgt_off:tgt_off + n_tgt_toks]
+                    # [n_tgt]
+                    labels = tgt_toks[:n_tgt_toks]
+                    item_loss = F.cross_entropy(logits, labels)
+                    loss = loss + item_loss
+                loss = loss / len(batch.items)
             else:
-                assert logits.shape[1] == emb.shape[1] + tgt_out_ids.shape[1], f'{logits.shape} {emb.shape} {tgt_out_ids.shape}'
-                logits = logits[:, emb.shape[1] - 1:]
-                labels = target_ids
+                loss = torch.zeros(size=(1,), device=self.device)
+                for ib, item in enumerate(batch.items):
+                    tgt_toks = tgt_ids_t[ib]
+                    tgt_off = tgt_offs[ib]
+                    # [n_tgt]
+                    n_tgt_toks = len(tgt_toks)
+                    # [n_tgt, n_vocab]
+                    logits = gen_out.logits[ib][tgt_off:tgt_off + n_tgt_toks]
+                    # [n_tgt]
+                    labels = tgt_toks
+                    item_loss = F.cross_entropy(logits, labels)
+                    loss = loss + item_loss
+                loss = loss / len(batch.items)
+        else:
+            loss = self.calc_gen_loss(logits, labels)
 
-        loss = self.calc_gen_loss(logits, labels)
+
         return loss
 
     # toks: [max_len]
