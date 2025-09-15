@@ -584,7 +584,7 @@ class Genmixemb(nn.Module):
                     tgt_ids.append(ans_toks)
                     tgt_lens.append(len(ans_toks))
                     max_inp_len = max(max_inp_len, len(prompt_toks))
-                    max_tgt_len = max(max_tgt_len, len(ans_toks) - 1)
+                    max_tgt_len = max(max_tgt_len, len(ans_toks))
                 inp_ids_t = np.full((len(batch.items), max_inp_len), self.tkz.pad_token_id, dtype=int)
                 tgt_ids_t = np.full((len(batch.items), max_tgt_len), self.tkz.pad_token_id, dtype=int)
 
@@ -596,7 +596,7 @@ class Genmixemb(nn.Module):
                 emb = self.run_agg(inp_ids_t)
 
                 # [n_batch, tgt_len', d_model]
-                emb_tgt_inp = self.gen.transformer.wte(tgt_ids_t)
+                emb_tgt_inp = self.gen.transformer.wte(tgt_ids_t[:, :-1])
                 # [n_batch, n_toks + tgt_len', d_model]
                 emb_inp = torch.concat([emb, emb_tgt_inp], dim=1)
                 gen_out: Seq2SeqLMOutput = self.gen(
@@ -722,23 +722,34 @@ class Genmixemb(nn.Module):
         )
 
         if not self.need_run_agg:
-            if cq_toks is None:
-                cq_toks = []
-                if ctx_toks[0, 0] != self.tkz.cls_token_id:
-                    cq_toks.append([[self.tkz.cls_token_id]])
-                cq_toks.append(ctx_toks)
-                if ctx_toks[0, -1] != self.tkz.sep_token_id and que_toks[0, 0] != self.tkz.sep_token_id:
-                    cq_toks.append([[self.tkz.sep_token_id]])
-                cq_toks.append(que_toks)
-                if que_toks[0, -1] != self.tkz.sep_token_id:
-                    cq_toks.append([[self.tkz.sep_token_id]])
-                cq_toks = torch.concatenate(cq_toks, dim=1)
-            elif cq_toks.ndim == 1:
-                cq_toks = cq_toks.unsqueeze(0)
-            att_mask = cq_toks != self.tkz.pad_token_id
-            out_toks = self.gen.generate(
-                input_ids=cq_toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
-            )
+            if not self.cfg.is_gpt2:
+                if cq_toks is None:
+                    cq_toks = []
+                    if ctx_toks[0, 0] != self.tkz.cls_token_id:
+                        cq_toks.append([[self.tkz.cls_token_id]])
+                    cq_toks.append(ctx_toks)
+                    if ctx_toks[0, -1] != self.tkz.sep_token_id and que_toks[0, 0] != self.tkz.sep_token_id:
+                        cq_toks.append([[self.tkz.sep_token_id]])
+                    cq_toks.append(que_toks)
+                    if que_toks[0, -1] != self.tkz.sep_token_id:
+                        cq_toks.append([[self.tkz.sep_token_id]])
+                    cq_toks = torch.concatenate(cq_toks, dim=1)
+                elif cq_toks.ndim == 1:
+                    cq_toks = cq_toks.unsqueeze(0)
+                att_mask = cq_toks != self.tkz.pad_token_id
+                out_toks = self.gen.generate(
+                    input_ids=cq_toks, attention_mask=att_mask, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+                )
+            else:
+                prompt_toks = self.tkz('Context: ', add_special_tokens=False).input_ids
+                prompt_toks = prompt_toks + ctx_toks[0].tolist()
+                prompt_toks = prompt_toks + self.tkz('\nQuestion: ', add_special_tokens=False).input_ids
+                prompt_toks = prompt_toks + que_toks[0].tolist()
+                prompt_toks = prompt_toks + self.tkz('\nAnswer:', add_special_tokens=False).input_ids
+                prompt_toks = torch.tensor(prompt_toks, dtype=torch.long, device=self.device).unsqueeze(0)
+                out_toks = self.gen.generate(
+                    input_ids=prompt_toks, generation_config=gen_cfg, use_cache=True,
+                )
         else:
             # [n_batch, n_toks, d_model]
             emb = self.prompt_emb(ctx_toks, que_toks)
