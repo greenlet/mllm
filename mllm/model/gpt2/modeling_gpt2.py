@@ -363,28 +363,49 @@ class GPT2Attention(nn.Module):
 
 
 class GPT2MLP(nn.Module):
+    self.expert_type: DecExpertType
+
     def __init__(self, intermediate_size, config):
         super().__init__()
         embed_dim = config.hidden_size
-        expert_type: DecExpertType = config.expert_type
-        if expert_type == DecExpertType.Non:
-            self.c_fc = Conv1D(intermediate_size, embed_dim)
-            self.c_proj = Conv1D(embed_dim, intermediate_size)
-        elif expert_type == DecExpertType.Ttid:
-            self.c_fc = nn.ModuleList([Conv1D(intermediate_size, embed_dim) for _ in range(2)])
-            self.c_proj = nn.ModuleList([Conv1D(embed_dim, intermediate_size) for _ in range(2)])
+        self.expert_type = config.expert_type
+        self.c_fc = Conv1D(intermediate_size, embed_dim)
+        self.c_proj = Conv1D(embed_dim, intermediate_size)
+        if self.expert_type == DecExpertType.Non:
+            pass
+        elif self.expert_type == DecExpertType.Ttid:
+            self.c_fc_1 = Conv1D(intermediate_size, embed_dim)
+            self.c_proj_1 = Conv1D(embed_dim, intermediate_size)
         else:
-            raise Exception(f'Expert type {expert_type} is not supported.')
+            raise Exception(f'Expert type {self.expert_type} is not supported.')
 
         self.act = ACT2FN[config.activation_function]
         self.dropout = nn.Dropout(config.resid_pdrop)
 
     # hidden_states: [batch_size, seq_length, embed_dim]
-    # token_type_ids: [batch_size, seq_length]
-    def forward(self, hidden_states: Optional[tuple[torch.FloatTensor]], token_type_ids: Optional[torch.LongTensor] = None) -> torch.FloatTensor:
-        hidden_states = self.c_fc(hidden_states)
-        hidden_states = self.act(hidden_states)
-        hidden_states = self.c_proj(hidden_states)
+    def forward(self, hidden_states: Optional[tuple[torch.FloatTensor]], emb_off: Optional[int] = None) -> torch.FloatTensor:
+        if self.expert_type == DecExpertType.Non:
+            hidden_states = self.c_fc(hidden_states)
+            hidden_states = self.act(hidden_states)
+            hidden_states = self.c_proj(hidden_states)
+        elif self.expert_type == DecExpertType.Ttid:
+            if emb_off is None or emb_off == 0:
+                hidden_states = self.c_fc(hidden_states)
+                hidden_states = self.act(hidden_states)
+                hidden_states = self.c_proj(hidden_states)
+            else:
+                hs_0, hs_1 = hidden_states[:, :emb_off], hidden_states[:, emb_off:]
+                hs_0 = self.c_fc(hs_0)
+                hs_0 = self.act(hs_0)
+                hs_0 = self.c_proj(hs_0)
+                if hs_1.shape[1] > 0:
+                    hs_1 = self.c_fc_1(hs_0)
+                    hs_1 = self.act(hs_1)
+                    hs_1 = self.c_proj_1(hs_1)
+                    hs_0 = torch.concat([hs_0, hs_1], dim=1)
+                hidden_states = hs_0
+        else:
+            raise
         hidden_states = self.dropout(hidden_states)
         return hidden_states
 
@@ -415,6 +436,7 @@ class GPT2Block(GradientCheckpointingLayer):
         head_mask: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        emb_off: Optional[int] = None,
         use_cache: Optional[bool] = False,
         output_attentions: Optional[bool] = False,
         **kwargs,
@@ -457,7 +479,7 @@ class GPT2Block(GradientCheckpointingLayer):
 
         residual = hidden_states
         hidden_states = self.ln_2(hidden_states)
-        feed_forward_hidden_states = self.mlp(hidden_states)
+        feed_forward_hidden_states = self.mlp(hidden_states, emb_off=emb_off)
         # residual connection
         hidden_states = residual + feed_forward_hidden_states
 
@@ -799,6 +821,7 @@ class GPT2Model(GPT2PreTrainedModel):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        emb_off: Optional[int] = None,
         return_dict: Optional[bool] = None,
         **kwargs,
     ) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
@@ -942,6 +965,7 @@ class GPT2Model(GPT2PreTrainedModel):
                 head_mask[i],
                 encoder_hidden_states,  # as a positional argument for gradient checkpointing
                 encoder_attention_mask=encoder_attention_mask,
+                emb_off=emb_off,
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 **kwargs,
@@ -1055,6 +1079,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel, GenerationMixin):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         logits_to_keep: Union[int, torch.Tensor] = 0,
+        emb_off: Optional[int] = None,
         **kwargs,
     ) -> Union[tuple, CausalLMOutputWithCrossAttentions]:
         r"""
@@ -1091,6 +1116,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel, GenerationMixin):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            emb_off=emb_off,
             return_dict=return_dict,
         )
         hidden_states = transformer_outputs[0]

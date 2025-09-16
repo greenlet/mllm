@@ -600,7 +600,7 @@ class Genmixemb(nn.Module):
                 # [n_batch, n_toks + tgt_len', d_model]
                 emb_inp = torch.concat([emb, emb_tgt_inp], dim=1)
                 gen_out: Seq2SeqLMOutput = self.gen(
-                    inputs_embeds=emb_inp,
+                    inputs_embeds=emb_inp, emb_off=emb.shape[1],
                 )
 
         # [n_batch, tgt_len, n_vocab]
