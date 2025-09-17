@@ -11,7 +11,7 @@ from torch import nn
 from transformers import BatchEncoding, GenerationConfig
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
-from mllm.config.model import GenmixembCfg, TokensAggType, \
+from mllm.config.model import DecExpertType, GenmixembCfg, TokensAggType, \
     EncPyrCfg, VocabEncoderCfg, PosEncType, BertAggType, CtxQuePromptType, EncoderConvCfg
 from mllm.data.itsquadv2 import QnaBatchV2
 from mllm.data.wiki.itwiki import WikiBatch
@@ -22,6 +22,7 @@ from mllm.model.encdec_ranker_hg import EncoderPyramid
 from mllm.model.encoder_conv import EncoderConv
 from mllm.model.encoder_decoder import EncoderDecoderModel
 from mllm.model.gpt2 import GPT2LMHeadModel, GPT2Tokenizer
+from mllm.model.gpt2.modeling_gpt2 import GPT2MLP
 from mllm.model.utils import get_top_vects
 
 
@@ -105,8 +106,14 @@ class Genmixemb(nn.Module):
         elif self.cfg.is_gpt2:
             gen_model = GPT2LMHeadModel.from_pretrained(
                 self.cfg.model_name, device_map=self.device, embd_pdrop=self.cfg.gpt2_embd_pdrop,
-                attn_pdrop=self.cfg.gpt2_attn_pdrop, resid_pdrop=self.cfg.gpt2_resid_pdrop,
+                attn_pdrop=self.cfg.gpt2_attn_pdrop, resid_pdrop=self.cfg.gpt2_resid_pdrop, expert_type=self.cfg.dec_expert_type,
+                moe_experts_num=self.cfg.moe_experts_num,
             )
+            if self.cfg.dec_expert_type == DecExpertType.Ttid:
+                for block in gen_model.transformer.h:
+                    mlp: GPT2MLP = block.mlp
+                    mlp.c_fc_1.load_state_dict(mlp.c_fc.state_dict())
+                    mlp.c_proj_1.load_state_dict(mlp.c_proj.state_dict())
         else:
             raise Exception(f'Model type {self.cfg.model_name} is not supported.')
 
@@ -422,7 +429,7 @@ class Genmixemb(nn.Module):
                 att_mask = torch.ones(inp_emb.shape[:-1], dtype=torch.long, device=self.device)
                 att_mask[:, emb.shape[1]:] = tgt_att_mask
                 gen_out = self.gen(
-                    inputs_embeds=inp_emb, attention_mask=att_mask,
+                    inputs_embeds=inp_emb, attention_mask=att_mask, emb_off=emb.shape[1],
                 )
             else:
                 gen_out = self.gen(
@@ -700,7 +707,7 @@ class Genmixemb(nn.Module):
                     temperature=0.2,
                 )
                 out_toks = self.gen.generate(
-                    inputs_embeds=emb, generation_config=gen_cfg, use_cache=True,
+                    inputs_embeds=emb, generation_config=gen_cfg, use_cache=True, emb_off=emb.shape[1],
                 )
         return out_toks
 
@@ -755,7 +762,7 @@ class Genmixemb(nn.Module):
             emb = self.prompt_emb(ctx_toks, que_toks)
 
             out_toks = self.gen.generate(
-                inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+                inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg, emb_off=emb.shape[1],
             )
 
         return out_toks

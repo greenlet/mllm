@@ -363,7 +363,7 @@ class GPT2Attention(nn.Module):
 
 
 class GPT2MLP(nn.Module):
-    self.expert_type: DecExpertType
+    expert_type: DecExpertType
 
     def __init__(self, intermediate_size, config):
         super().__init__()
@@ -384,6 +384,7 @@ class GPT2MLP(nn.Module):
 
     # hidden_states: [batch_size, seq_length, embed_dim]
     def forward(self, hidden_states: Optional[tuple[torch.FloatTensor]], emb_off: Optional[int] = None) -> torch.FloatTensor:
+        assert type(hidden_states) == torch.Tensor
         if self.expert_type == DecExpertType.Non:
             hidden_states = self.c_fc(hidden_states)
             hidden_states = self.act(hidden_states)
@@ -394,16 +395,16 @@ class GPT2MLP(nn.Module):
                 hidden_states = self.act(hidden_states)
                 hidden_states = self.c_proj(hidden_states)
             else:
-                hs_0, hs_1 = hidden_states[:, :emb_off], hidden_states[:, emb_off:]
-                hs_0 = self.c_fc(hs_0)
+                hs_0, hs_1 = hidden_states[:, :emb_off].contiguous(), hidden_states[:, emb_off:].contiguous()
+                hs_0 = self.c_fc_1(hs_0)
                 hs_0 = self.act(hs_0)
-                hs_0 = self.c_proj(hs_0)
-                if hs_1.shape[1] > 0:
-                    hs_1 = self.c_fc_1(hs_0)
-                    hs_1 = self.act(hs_1)
-                    hs_1 = self.c_proj_1(hs_1)
-                    hs_0 = torch.concat([hs_0, hs_1], dim=1)
+                hs_0 = self.c_proj_1(hs_0)
                 hidden_states = hs_0
+                if hs_1.shape[1] > 0:
+                    hs_1 = self.c_fc(hs_1)
+                    hs_1 = self.act(hs_1)
+                    hs_1 = self.c_proj(hs_1)
+                    hidden_states = torch.concat([hs_0, hs_1], dim=1)
         else:
             raise
         hidden_states = self.dropout(hidden_states)
