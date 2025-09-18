@@ -163,7 +163,7 @@ class GPT2Config(PretrainedConfig):
         scale_attn_by_inverse_layer_idx=False,
         reorder_and_upcast_attn=False,
         expert_type: DecExpertType = DecExpertType.Non,
-        moa_experts_num: int = 0,
+        moe_experts_num: int = 0,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -188,7 +188,7 @@ class GPT2Config(PretrainedConfig):
         self.scale_attn_by_inverse_layer_idx = scale_attn_by_inverse_layer_idx
         self.reorder_and_upcast_attn = reorder_and_upcast_attn
         self.expert_type = expert_type
-        self.moa_experts_num = moa_experts_num
+        self.moe_experts_num = moe_experts_num
 
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
