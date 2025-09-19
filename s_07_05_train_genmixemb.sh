@@ -184,7 +184,8 @@ gpt2_resid_pdrop=0.1
 #gpt2_embd_pdrop=0.2
 #gpt2_attn_pdrop=0.2
 #gpt2_resid_pdrop=0.2
-dec_expert_type=ttid
+dec_expert_type=non
+#dec_expert_type=ttid
 
 
 #train_root_path=$data_path/train_mllm_genmixemb_qna
