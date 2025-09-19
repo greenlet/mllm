@@ -367,6 +367,7 @@ class GPT2MLP(nn.Module):
 
     def __init__(self, intermediate_size, config):
         super().__init__()
+        self.config = config
         embed_dim = config.hidden_size
         self.expert_type = config.expert_type
         self.c_fc = Conv1D(intermediate_size, embed_dim)
@@ -376,6 +377,11 @@ class GPT2MLP(nn.Module):
         elif self.expert_type == DecExpertType.Ttid:
             self.c_fc_1 = Conv1D(intermediate_size, embed_dim)
             self.c_proj_1 = Conv1D(embed_dim, intermediate_size)
+        elif self.expert_type == DecExpertType.Moe:
+            self.c_fcs = nn.ModuleList([Conv1D(intermediate_size, embed_dim) for _ in range(config.moe_experts_num)])
+            self.c_projs = nn.ModuleList([Conv1D(embed_dim, intermediate_size) for _ in range(config.moe_experts_num)])
+            self.gate = Conv1D(config.moe_experts_num, embed_dim)
+            self.gate_act = nn.Softmax(dim=-1)
         else:
             raise Exception(f'Expert type {self.expert_type} is not supported.')
 
@@ -405,6 +411,28 @@ class GPT2MLP(nn.Module):
                     hs_1 = self.act(hs_1)
                     hs_1 = self.c_proj(hs_1)
                     hidden_states = torch.concat([hs_0, hs_1], dim=1)
+        elif self.expert_type == DecExpertType.Moe:
+            gate_values = self.gate(hidden_states)  # [batch_size, seq_length, num_experts]
+            gate_values = self.gate_act(gate_values)
+            # import pdb; pdb.set_trace()
+            # hidden_states = sum_i (gate_i * expert_i(hidden_states))
+            try:
+                if self.config.moe_topk > 0 and self.config.moe_topk < len(self.c_fcs):
+                    topk_val, topk_idx = torch.topk(gate_values, self.config.moe_topk, dim=-1)  # [batch_size, seq_length, topk]
+                    topk_val = self.gate_act(topk_val)  # re-normalize
+                    gate_values = torch.zeros_like(gate_values).scatter_(-1, topk_idx, topk_val)
+                hidden_states = sum(
+                    gate_values[:, :, i : i + 1] * self.c_projs[i](self.act(self.c_fcs[i](hidden_states)))
+                    for i in range(len(self.c_fcs))
+                )
+            except RuntimeError as e:
+                if 'CUDA out of memory' in str(e):
+                    warnings.warn(
+                        'Ran out of memory during MoE forward. '
+                        'This can happen when the number of experts is large. '
+                        'Try to reduce the batch size or the number of experts.'
+                    )
+                raise e
         else:
             raise
         hidden_states = self.dropout(hidden_states)

@@ -448,6 +448,7 @@ class GenmixembCfg(BaseModel):
 
     dec_expert_type: DecExpertType = DecExpertType.Non
     moe_experts_num: int = 0
+    moe_topk: int = 0
 
     dp_prob: float = 0.1
 
