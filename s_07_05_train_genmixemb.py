@@ -220,6 +220,12 @@ class ArgsGenmixembTrain(BaseModel):
         description=f'Number of experts in Mixture of Experts decoder implementation (DEC_EXPERT_TYP = {DecExpertType.Moe}.',
         cli=('--moe-experts-num',),
     )
+    moe_topk: int = Field(
+        0,
+        description=f'Number of top experts to use in Mixture of Experts decoder implementation (DEC_EXPERT_TYP={DecExpertType.Moe}). '
+                    f'If 0 then all experts are used.',
+        cli=('--moe-topk',),
+    )
 
     n_toks_min: int = Field(
         ...,
@@ -317,7 +323,7 @@ def main(args: ArgsGenmixembTrain) -> int:
         cnv_pool_kernel_size=args.cnv_pool_kernel_size, cnv_pool_stride=args.cnv_pool_stride, cnv_share_layer_weights=args.cnv_share_layer_weights,
         train_agg_model=args.train_agg_model, share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
         join_ctx_que_agg=args.join_ctx_que_agg, ctx_que_prompt_type=args.ctx_que_prompt_type, dec_expert_type=args.dec_expert_type,
-        moe_experts_num=args.moe_experts_num, bert_attention_prob_dropout_prob=args.bert_attention_prob_dropout_prob,
+        moe_experts_num=args.moe_experts_num, moe_topk=args.moe_topk, bert_attention_prob_dropout_prob=args.bert_attention_prob_dropout_prob,
         bert_hidden_dropout_prob=args.bert_hidden_dropout_prob, gpt2_embd_pdrop=args.gpt2_embd_pdrop,
         gpt2_attn_pdrop=args.gpt2_attn_pdrop, gpt2_resid_pdrop=args.gpt2_resid_pdrop,
     )

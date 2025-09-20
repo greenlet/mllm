@@ -419,10 +419,10 @@ class GPT2MLP(nn.Module):
             try:
                 if self.config.moe_topk > 0 and self.config.moe_topk < len(self.c_fcs):
                     topk_val, topk_idx = torch.topk(gate_values, self.config.moe_topk, dim=-1)  # [batch_size, seq_length, topk]
-                    topk_val = self.gate_act(topk_val)  # re-normalize
                     gate_values = torch.zeros_like(gate_values).scatter_(-1, topk_idx, topk_val)
+                    gate_values = gate_values / gate_values.sum(dim=-1, keepdim=True)  # renormalize
                 hidden_states = sum(
-                    gate_values[:, :, i : i + 1] * self.c_projs[i](self.act(self.c_fcs[i](hidden_states)))
+                    gate_values[:, :, i:i + 1] * self.c_projs[i](self.act(self.c_fcs[i](hidden_states)))
                     for i in range(len(self.c_fcs))
                 )
             except RuntimeError as e:

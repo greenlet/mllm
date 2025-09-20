@@ -804,7 +804,7 @@ def create_genmixemb_cfg(
         cnv_n_levels: int = 0, cnv_n_layers_per_level: int = 0, cnv_conv_kernel_size: int = 0, cnv_pool_kernel_size: int = 0,
         cnv_pool_stride: int = 0, cnv_share_layer_weights: bool = False, train_agg_model: bool = False, add_token_type_ids: bool = False,
         share_agg_enc_token_embeds: bool = False, join_ctx_que_agg: bool = False, ctx_que_prompt_type: CtxQuePromptType = CtxQuePromptType.Tok,
-        dec_expert_type: DecExpertType = DecExpertType.Non, moe_experts_num: int = 0, bert_attention_prob_dropout_prob: float = 0.1,
+        dec_expert_type: DecExpertType = DecExpertType.Non, moe_experts_num: int = 0, moe_topk: int = 0, bert_attention_prob_dropout_prob: float = 0.1,
         bert_hidden_dropout_prob: float = 0.1, gpt2_embd_pdrop: float = 0.1, gpt2_attn_pdrop: float = 0.1, gpt2_resid_pdrop: float = 0.1,
 ) -> GenmixembCfg:
     if model_name.startswith('bert'):
@@ -1065,7 +1065,7 @@ def copy_override_genmixemb_cfg(
         cnv_pool_stride: Optional[int] = None, cnv_share_layer_weights: Optional[bool] = None, train_agg_model: Optional[bool] = None,
         share_agg_enc_token_embeds: Optional[bool] = None, add_token_type_ids: Optional[bool] = None, join_ctx_que_agg: Optional[bool] = None,
         ctx_que_prompt_type: Optional[CtxQuePromptType] = None, dec_expert_type: Optional[DecExpertType] = None, moe_experts_num: Optional[int] = None,
-        bert_attention_prob_dropout_prob: Optional[float] = None, bert_hidden_dropout_prob: Optional[float] = None,
+        moe_topk: Optional[int] = None, bert_attention_prob_dropout_prob: Optional[float] = None, bert_hidden_dropout_prob: Optional[float] = None,
         gpt2_embd_pdrop: Optional[float] = None, gpt2_attn_pdrop: Optional[float] = None, gpt2_resid_pdrop: Optional[float] = None,
 ) -> GenmixembCfg:
     model_name = model_name or cfg.model_name
@@ -1092,6 +1092,7 @@ def copy_override_genmixemb_cfg(
     cnv_share_layer_weights = coalesce(cnv_share_layer_weights, cfg.cnv_share_layer_weights)
     dec_expert_type = coalesce(dec_expert_type, cfg.dec_expert_type)
     moe_experts_num = coalesce(moe_experts_num, cfg.moe_experts_num)
+    moe_topk = coalesce(moe_topk, cfg.moe_topk)
     bert_attention_prob_dropout_prob = coalesce(bert_attention_prob_dropout_prob, cfg.bert_attention_prob_dropout_prob)
     bert_hidden_dropout_prob = coalesce(bert_hidden_dropout_prob, cfg.bert_hidden_dropout_prob)
     gpt2_embd_pdrop = coalesce(gpt2_embd_pdrop, cfg.gpt2_embd_pdrop)
@@ -1106,7 +1107,7 @@ def copy_override_genmixemb_cfg(
         cnv_pool_kernel_size=cnv_pool_kernel_size, cnv_pool_stride=cnv_pool_stride, cnv_share_layer_weights=cnv_share_layer_weights,
         train_agg_model=train_agg_model, share_agg_enc_token_embeds=share_agg_enc_token_embeds, add_token_type_ids=add_token_type_ids,
         join_ctx_que_agg=join_ctx_que_agg, ctx_que_prompt_type=ctx_que_prompt_type, dec_expert_type=dec_expert_type, moe_experts_num=moe_experts_num,
-        bert_attention_prob_dropout_prob=bert_attention_prob_dropout_prob, bert_hidden_dropout_prob=bert_hidden_dropout_prob,
+        moe_topk=moe_topk, bert_attention_prob_dropout_prob=bert_attention_prob_dropout_prob, bert_hidden_dropout_prob=bert_hidden_dropout_prob,
         gpt2_embd_pdrop=gpt2_embd_pdrop, gpt2_attn_pdrop=gpt2_attn_pdrop, gpt2_resid_pdrop=gpt2_resid_pdrop,
     )
 
@@ -1413,6 +1414,7 @@ def gen_prefpostfix_genmixemb(
             pass
         elif cfg.dec_expert_type == DecExpertType.Moe:
             postfix_parts.append(f'exn{cfg.moe_experts_num}')
+            postfix_parts.append(f'exk{cfg.moe_topk}')
         else:
             raise ValueError(f'Expert type {cfg.dec_expert_type} is not supported.')
 

@@ -107,13 +107,23 @@ class Genmixemb(nn.Module):
             gen_model = GPT2LMHeadModel.from_pretrained(
                 self.cfg.model_name, device_map=self.device, embd_pdrop=self.cfg.gpt2_embd_pdrop,
                 attn_pdrop=self.cfg.gpt2_attn_pdrop, resid_pdrop=self.cfg.gpt2_resid_pdrop, expert_type=self.cfg.dec_expert_type,
-                moe_experts_num=self.cfg.moe_experts_num,
+                moe_experts_num=self.cfg.moe_experts_num, moe_topk=self.cfg.moe_topk,
             )
             if self.cfg.dec_expert_type == DecExpertType.Ttid:
                 for block in gen_model.transformer.h:
                     mlp: GPT2MLP = block.mlp
                     mlp.c_fc_1.load_state_dict(mlp.c_fc.state_dict())
                     mlp.c_proj_1.load_state_dict(mlp.c_proj.state_dict())
+            elif self.cfg.dec_expert_type == DecExpertType.Moe:
+                assert self.cfg.moe_experts_num > 1
+                for block in gen_model.transformer.h:
+                    mlp: GPT2MLP = block.mlp
+                    assert hasattr(mlp, 'c_fcs') and hasattr(mlp, 'c_projs')
+                    for i in range(self.cfg.moe_experts_num):
+                        mlp.c_fcs[i].load_state_dict(mlp.c_fc.state_dict())
+                        mlp.c_projs[i].load_state_dict(mlp.c_proj.state_dict())
+                    mlp.c_fc = None
+                    mlp.c_proj = None
         else:
             raise Exception(f'Model type {self.cfg.model_name} is not supported.')
 
@@ -183,7 +193,8 @@ class Genmixemb(nn.Module):
             n_vocab = gen_model.config.vocab_size
             n_heads = gen_model.config.n_head
             dropout_rate = gen_model.config.resid_pdrop
-            d_inner = gen_model.transformer.h[0].mlp.c_proj.nx
+            d_inner = gen_model.transformer.h[0].mlp.c_proj.nx if self.cfg.dec_expert_type != DecExpertType.Moe \
+                else gen_model.transformer.h[0].mlp.c_projs[0].nx
             hidden_dropout_prob = gen_model.config.embd_pdrop
             word_embeddings = gen_model.transformer.wte
             position_embeddings = gen_model.transformer.wpe

@@ -164,6 +164,7 @@ class GPT2Config(PretrainedConfig):
         reorder_and_upcast_attn=False,
         expert_type: DecExpertType = DecExpertType.Non,
         moe_experts_num: int = 0,
+        moe_topk: int = 0,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -189,6 +190,7 @@ class GPT2Config(PretrainedConfig):
         self.reorder_and_upcast_attn = reorder_and_upcast_attn
         self.expert_type = expert_type
         self.moe_experts_num = moe_experts_num
+        self.moe_topk = moe_topk
 
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id

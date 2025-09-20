@@ -184,8 +184,12 @@ gpt2_resid_pdrop=0.1
 #gpt2_embd_pdrop=0.2
 #gpt2_attn_pdrop=0.2
 #gpt2_resid_pdrop=0.2
-dec_expert_type=non
-#dec_expert_type=ttid
+#dec_expert_type=non
+dec_expert_type=ttid
+dec_expert_type=moe
+moe_experts_num=2
+moe_topk=0
+
 
 
 #train_root_path=$data_path/train_mllm_genmixemb_qna
@@ -295,6 +299,7 @@ python s_07_05_train_genmixemb.py \
   --ctx-que-prompt-type $ctx_que_prompt_type \
   --dec-expert-type $dec_expert_type \
   --moe-experts-num $moe_experts_num \
+  --moe-topk $moe_topk \
   --n-toks-min $n_toks_min \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
