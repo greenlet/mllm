@@ -1,11 +1,10 @@
-import re
 import sys
-from typing import Optional, Union
+from typing import Optional
 
+from mllm.model.bert import BertModel
 from mllm.model.bert_generation.modeling_bert_generation import BertGenerationEmbeddings
 from mllm.model.utils import get_top_vects
 from mllm.train.utils import get_activation_module
-from transformers import BertModel, PreTrainedModel, BertTokenizerFast
 
 if '..' not in sys.path: sys.path.append('..')
 
@@ -320,7 +319,15 @@ class EncoderBert(nn.Module):
     def __init__(self, cfg: EncBertCfg):
         super().__init__()
         self.cfg = cfg
-        self.bert_model = BertModel.from_pretrained(self.cfg.pretrained_model_name, torch_dtype=torch.float32)
+        self.bert_model = BertModel.from_pretrained(self.cfg.pretrained_model_name, torch_dtype=torch.float32, max_position_embeddings=cfg.inp_len)
+        pos_embs = self.bert_model.embeddings.position_embeddings
+        # pos_embs_len = pos_embs.weight.shape[0]
+        # if self.cfg.inp_len > pos_embs_len:
+        #     n_repeat = self.cfg.inp_len // pos_embs_len + min(self.cfg.inp_len % pos_embs_len, 1)
+        #     pos_embs_shape = pos_embs.weight.shape
+        #     pos_embs.weight = nn.Parameter(pos_embs.weight.repeat((n_repeat, 1)))
+        #     print(f'Input length (={self.cfg.inp_len}) > position embeddings length (={pos_embs_len}). '
+        #           f'Repeating position embeddings {n_repeat} times, changing shape: {pos_embs_shape} --> {pos_embs.weight.shape}')
 
     def forward(self, inp_toks: Tensor, inp_mask: Optional[Tensor] = None) -> Tensor:
         if inp_mask is None:

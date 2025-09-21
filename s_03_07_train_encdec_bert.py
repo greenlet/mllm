@@ -5,7 +5,6 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.utils.tensorboard as tb
-from datasets import load_dataset
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
@@ -15,12 +14,10 @@ from transformers import AutoTokenizer
 
 from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
     gen_prefpostfix_encdec_bert, EncdecOneTgtType
-from mllm.data.utils import HfDsIterator
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.model.losses import EncdecMaskPadLoss, EncdecTargenMaskLoss, EncdecMaskPadLossExt
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators, \
-    get_wiki_ds_batch_iterators2
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators2
 
 
 class ArgsEncdecBertTrain(BaseModel):
@@ -194,8 +191,9 @@ def main(args: ArgsEncdecBertTrain) -> int:
     )
 
     sched_wait_steps = 0
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-7)
-    print(f'Scheduler {scheduler.__class__.__name__} lr: {scheduler.get_last_lr()[0]:0.10f}.')
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
+    lr = optimizer.param_groups[0]['lr']
+    print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
     if args.one_tgt_type == EncdecOneTgtType.All:
