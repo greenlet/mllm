@@ -29,10 +29,11 @@ dec_dropout_rate=0
 
 
 bert_emb_type=cls
-inp_len=512
+#inp_len=384
+inp_len=256
 dec_n_layers=0
 dec_n_similar_layers=1
-one_tgt_type=mskseq
+one_tgt_type=allmsk
 #dec_enhance_type=matmul
 #dec_enhance_type=mmbeg
 dec_enhance_type=mmbb
@@ -40,7 +41,6 @@ dec_dropout_rate=0
 
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
-#pretrained_model_path=$train_root_path/encdecbert-20250629_222704-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 
 device=cpu
 epochs=5
@@ -53,6 +53,7 @@ epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=15
+docs_batch_size=5
 #train_subdir=last
 
 

@@ -292,31 +292,37 @@ class EncdecMaskPadLossExt(nn.Module):
         probs_gt = torch.gather(probs_pred, dim=2, index=toks_tgt)
         # probs_gt = torch.maximum(probs_gt, self.prob_cap)
 
-        # probs_gt_reg: (n_reg_toks, )
-        probs_gt_reg = probs_gt[mask_reg]
-        # probs_gt_msk: (n_msk_toks, )
-        probs_gt_msk = probs_gt[mask_msk]
-        # probs_gt_spc: (n_spc_toks, )
-        probs_gt_spc = probs_gt[mask_spc]
-        # n_reg_toks + n_msk_toks + n_spc_toks = batch_size * inp_len
+        n_batch = logits_pred.shape[0]
+        loss = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
+        for ib in range(n_batch):
+            probs_gt_i, mask_reg_i, mask_msk_i, mask_spc_i = probs_gt[ib], mask_reg[ib], mask_msk[ib], mask_spc[ib]
+            # probs_gt_reg: (n_reg_toks, )
+            probs_gt_reg = probs_gt_i[mask_reg_i]
+            # probs_gt_msk: (n_msk_toks, )
+            probs_gt_msk = probs_gt_i[mask_msk_i]
+            # probs_gt_spc: (n_spc_toks, )
+            probs_gt_spc = probs_gt_i[mask_spc_i]
+            # n_reg_toks + n_msk_toks + n_spc_toks = inp_len
 
-        # loss_reg: (1,)
-        # loss_msk: (1,)
-        # loss_spc: (1,)
-        loss_reg = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
-        loss_msk, loss_spc = loss_reg, loss_reg
-        total_weight = 0
-        if probs_gt_reg.size()[0] > 0:
-            loss_reg = -torch.mean(torch.log(probs_gt_reg))
-            total_weight += self.reg_weight
-        if probs_gt_msk.size()[0] > 0:
-            loss_msk = -torch.mean(torch.log(probs_gt_msk))
-            total_weight += self.msk_weight
-        if probs_gt_spc.size()[0] > 0:
-            loss_spc = -torch.mean(torch.log(probs_gt_spc))
-            total_weight += self.spc_weight
+            # loss_reg: (1,)
+            # loss_msk: (1,)
+            # loss_spc: (1,)
+            loss_reg = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
+            loss_msk, loss_spc = loss_reg, loss_reg
+            total_weight = 0
+            if probs_gt_reg.size()[0] > 0:
+                loss_reg = -torch.mean(torch.log(probs_gt_reg))
+                total_weight += self.reg_weight
+            if probs_gt_msk.size()[0] > 0:
+                loss_msk = -torch.mean(torch.log(probs_gt_msk))
+                total_weight += self.msk_weight
+            if probs_gt_spc.size()[0] > 0:
+                loss_spc = -torch.mean(torch.log(probs_gt_spc))
+                total_weight += self.spc_weight
+            loss_i = (loss_reg * self.reg_weight + loss_msk * self.msk_weight + loss_spc * self.spc_weight) / total_weight
+            loss = loss + loss_i
         # loss: (1,)
-        loss = (loss_reg * self.reg_weight + loss_msk * self.msk_weight + loss_spc * self.spc_weight) / total_weight
+        loss = loss / n_batch
         return loss
 
 

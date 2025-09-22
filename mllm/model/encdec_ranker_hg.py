@@ -319,7 +319,7 @@ class EncoderBert(nn.Module):
     def __init__(self, cfg: EncBertCfg):
         super().__init__()
         self.cfg = cfg
-        self.bert_model = BertModel.from_pretrained(self.cfg.pretrained_model_name, torch_dtype=torch.float32, max_position_embeddings=cfg.inp_len)
+        self.bert_model = BertModel.from_pretrained(self.cfg.pretrained_model_name, torch_dtype=torch.float32)
         pos_embs = self.bert_model.embeddings.position_embeddings
         # pos_embs_len = pos_embs.weight.shape[0]
         # if self.cfg.inp_len > pos_embs_len:
