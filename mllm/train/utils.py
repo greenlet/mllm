@@ -453,7 +453,7 @@ class EedWikiIterator2:
 
 def get_wiki_ds_batch_iterators2(
         wiki_ds_name: str, data_path: Path, inp_len: int, docs_batch_size: int, tkz: PreTrainedTokenizer, mask_conseq: bool,
-        device: torch.device, shuffle: bool = False, val_ratio: float = 0.05) -> tuple[ChunkTargetToksGen, ChunkTargetToksGen]:
+        device: torch.device, shuffle: bool = False, val_ratio: float = 0.05, random_seed: int = 111) -> tuple[ChunkTargetToksGen, ChunkTargetToksGen]:
     print(f'Loading Wikipedia dataset: {wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
     # dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
@@ -463,7 +463,7 @@ def get_wiki_ds_batch_iterators2(
     print(f'Wikipedia {wiki_ds_name} docs: {n_docs}')
 
     doc_inds = np.arange(n_docs)
-    # np.random.seed(777)
+    np.random.seed(random_seed)
     np.random.shuffle(doc_inds)
     n_docs_val = int(n_docs * val_ratio)
     n_docs_train = n_docs - n_docs_val

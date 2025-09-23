@@ -1,6 +1,9 @@
 add_token_type_ids: false
+bert_agg_cls_inp_len: 0
 bert_agg_n_subseq_toks: 2
 bert_agg_type: sep
+bert_attention_prob_dropout_prob: 0.1
+bert_hidden_dropout_prob: 0.1
 cnv_conv_kernel_size: 3
 cnv_n_layers_per_level: 1
 cnv_n_levels: 1
@@ -10,11 +13,16 @@ cnv_share_layer_weights: false
 ctx_que_prompt_type: tok
 d_model: 768
 dec_expert_type: non
+dp_prob: 0.1
+gpt2_attn_pdrop: 0.1
+gpt2_embd_pdrop: 0.1
+gpt2_resid_pdrop: 0.1
 join_ctx_que_agg: false
 max_inp_toks: 384
 max_out_toks: 50
 model_name: bert-base-uncased
 moe_experts_num: 0
+moe_topk: 0
 pyr_agg_n_layers_per_level: 0
 pyr_agg_n_levels: 0
 pyr_agg_step: 2
