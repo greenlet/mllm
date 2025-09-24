@@ -381,7 +381,6 @@ class BertAggType(str, Enum):
     Sep = 'sep'
     Topcos = 'topcos'
     Topdot = 'topdot'
-    Cls = 'cls'
 
 
 class CtxQuePromptType(str, Enum):
@@ -426,9 +425,9 @@ class GenmixembCfg(BaseModel):
     max_inp_toks: int
     max_out_toks: int
     toks_agg_type: TokensAggType
+    bert_agg_model_name: str = 'bert-base-uncased'
     bert_agg_type: BertAggType = BertAggType.Sep
     bert_agg_n_subseq_toks: int
-    bert_agg_cls_inp_len: int = 0
     pyr_agg_type: HgReductType = HgReductType.Decim
     pyr_agg_step: int = 0
     pyr_agg_n_levels: int
@@ -801,7 +800,7 @@ def create_genmix_bert_cfg(
 
 def create_genmixemb_cfg(
         model_name: str = 'bert-base-uncased', max_inp_toks: int = 0, max_out_toks: int = 0, toks_agg_type: TokensAggType = TokensAggType.Bert,
-        bert_agg_type: BertAggType = BertAggType.Sep, bert_agg_n_subseq_toks: int = 0, bert_agg_cls_inp_len: int = 0, pyr_agg_type: HgReductType = HgReductType.Decim,
+        bert_agg_type: BertAggType = BertAggType.Sep, bert_agg_model_name: str = 'bert-base-uncased', bert_agg_n_subseq_toks: int = 0, pyr_agg_type: HgReductType = HgReductType.Decim,
         pyr_agg_step: int = 2, pyr_agg_n_levels: int = 0, pyr_agg_n_layers_per_level: int = 0, pyr_share_layer_weights: bool = False,
         cnv_n_levels: int = 0, cnv_n_layers_per_level: int = 0, cnv_conv_kernel_size: int = 0, cnv_pool_kernel_size: int = 0,
         cnv_pool_stride: int = 0, cnv_share_layer_weights: bool = False, train_agg_model: bool = False, add_token_type_ids: bool = False,
@@ -890,7 +889,7 @@ def create_genmixemb_cfg(
 
     cfg = GenmixembCfg(
         model_name=model_name, d_model=d_model, max_inp_toks=max_inp_toks, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
-        bert_agg_type=bert_agg_type, bert_agg_n_subseq_toks=bert_agg_n_subseq_toks, bert_agg_cls_inp_len=bert_agg_cls_inp_len,
+        bert_agg_type=bert_agg_type, bert_agg_model_name=bert_agg_model_name, bert_agg_n_subseq_toks=bert_agg_n_subseq_toks,
         pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels,
         pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level, pyr_share_layer_weights=pyr_share_layer_weights, cnv_n_levels=cnv_n_levels,
         cnv_n_layers_per_level=cnv_n_layers_per_level, cnv_conv_kernel_size=cnv_conv_kernel_size, cnv_pool_kernel_size=cnv_pool_kernel_size,
@@ -1061,8 +1060,8 @@ def copy_override_genmix_bert_cfg(
 
 def copy_override_genmixemb_cfg(
         cfg: GenmixembCfg, model_name: str = '', max_inp_toks: Optional[int] = None, max_out_toks: Optional[int] = None,
-        toks_agg_type: Optional[TokensAggType] = None, bert_agg_type: Optional[BertAggType] = None, bert_agg_n_subseq_toks: Optional[int] = None,
-        bert_agg_cls_inp_len: Optional[int] = None, pyr_agg_type: Optional[HgReductType] = None, pyr_agg_step: Optional[int] = None, pyr_agg_n_levels: Optional[int] = None,
+        toks_agg_type: Optional[TokensAggType] = None, bert_agg_type: Optional[BertAggType] = None, bert_agg_model_name: Optional[str] = None, bert_agg_n_subseq_toks: Optional[int] = None,
+        pyr_agg_type: Optional[HgReductType] = None, pyr_agg_step: Optional[int] = None, pyr_agg_n_levels: Optional[int] = None,
         pyr_agg_n_layers_per_level: Optional[int] = None, pyr_share_layer_weights: Optional[bool] = None, cnv_n_levels: Optional[int] = None,
         cnv_n_layers_per_level: Optional[int] = None, cnv_conv_kernel_size: Optional[int] = None, cnv_pool_kernel_size: Optional[int] = None,
         cnv_pool_stride: Optional[int] = None, cnv_share_layer_weights: Optional[bool] = None, train_agg_model: Optional[bool] = None,
@@ -1076,8 +1075,8 @@ def copy_override_genmixemb_cfg(
     max_out_toks = coalesce(max_out_toks, cfg.max_out_toks)
     toks_agg_type = coalesce(toks_agg_type, cfg.toks_agg_type)
     bert_agg_type = coalesce(bert_agg_type, cfg.bert_agg_type)
+    bert_agg_model_name = coalesce(bert_agg_model_name, cfg.bert_agg_model_name)
     bert_agg_n_subseq_toks = coalesce(bert_agg_n_subseq_toks, cfg.bert_agg_n_subseq_toks)
-    bert_agg_cls_inp_len = coalesce(bert_agg_cls_inp_len, cfg.bert_agg_cls_inp_len)
     pyr_agg_n_levels = coalesce(pyr_agg_n_levels, cfg.pyr_agg_n_levels)
     pyr_agg_n_layers_per_level = coalesce(pyr_agg_n_layers_per_level, cfg.pyr_agg_n_layers_per_level)
     train_agg_model = coalesce(train_agg_model, cfg.train_agg_model)
@@ -1105,7 +1104,7 @@ def copy_override_genmixemb_cfg(
 
     return create_genmixemb_cfg(
         model_name=model_name, max_inp_toks=max_inp_toks, max_out_toks=max_out_toks, toks_agg_type=toks_agg_type,
-        bert_agg_type=bert_agg_type, bert_agg_n_subseq_toks=bert_agg_n_subseq_toks, bert_agg_cls_inp_len=bert_agg_cls_inp_len,
+        bert_agg_type=bert_agg_type, bert_agg_model_name=bert_agg_model_name, bert_agg_n_subseq_toks=bert_agg_n_subseq_toks,
         pyr_agg_type=pyr_agg_type, pyr_agg_step=pyr_agg_step, pyr_agg_n_levels=pyr_agg_n_levels, pyr_agg_n_layers_per_level=pyr_agg_n_layers_per_level,
         pyr_share_layer_weights=pyr_share_layer_weights, cnv_n_levels=cnv_n_levels, cnv_n_layers_per_level=cnv_n_layers_per_level, cnv_conv_kernel_size=cnv_conv_kernel_size,
         cnv_pool_kernel_size=cnv_pool_kernel_size, cnv_pool_stride=cnv_pool_stride, cnv_share_layer_weights=cnv_share_layer_weights,
@@ -1358,12 +1357,11 @@ def gen_prefpostfix_genmixemb(
     if cfg.toks_agg_type == TokensAggType.Bert:
         if cfg.bert_agg_n_subseq_toks > 0:
             postfix_parts.append(agg_type_str)
+            if cfg.bert_agg_model_name != cfg.model_name:
+                agg_bert_str = cfg.bert_agg_model_name.replace('-', '')
+                postfix_parts.append(agg_bert_str)
             postfix_parts.append(f'sub{cfg.bert_agg_n_subseq_toks}')
             postfix_parts.append(f'agt{cfg.bert_agg_type.value.capitalize()}')
-            agg_enabled = True
-        elif cfg.bert_agg_cls_inp_len > 0:
-            postfix_parts.append(agg_type_str)
-            postfix_parts.append(f'cls{cfg.bert_agg_cls_inp_len}')
             agg_enabled = True
     elif cfg.toks_agg_type == TokensAggType.Pyramid:
         if cfg.pyr_agg_step > 0 and cfg.pyr_agg_n_levels > 0:

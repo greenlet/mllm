@@ -127,7 +127,9 @@ class Genmixemb(nn.Module):
         else:
             raise Exception(f'Model type {self.cfg.model_name} is not supported.')
 
-        self.agg = self.create_agg_model(gen_model)
+        agg, agg_tkz = self.create_agg_model(gen_model)
+        self.agg = agg
+        self.agg_tkz = agg_tkz
         self.gen = gen_model
 
     # ctx_toks: [n_batch, n_ctx]
@@ -175,9 +177,9 @@ class Genmixemb(nn.Module):
         emb = self.toks_template_to_emb_tensor(prompt_template, ctx_toks, que_toks)
         return emb
 
-    def create_agg_model(self, gen_model: Union[EncoderDecoderModel, GPT2LMHeadModel]) -> Optional[nn.Module]:
+    def create_agg_model(self, gen_model: Union[EncoderDecoderModel, GPT2LMHeadModel]) -> tuple[Optional[nn.Module], Optional[PreTrainedTokenizer]]:
         if not self.need_run_agg:
-            return
+            return None, None
 
         if self.cfg.is_bert:
             gen_model: BertGenerationEncoder = gen_model.encoder
@@ -201,18 +203,22 @@ class Genmixemb(nn.Module):
         else:
             raise
 
+        agg_tkz = None
         if self.cfg.toks_agg_type == TokensAggType.Bert:
             agg = BertModel.from_pretrained(
-                self.cfg.model_name, torch_dtype=torch.float32, device_map=self.device,
+                self.cfg.bert_agg_model_name, torch_dtype=torch.float32, device_map=self.device,
             )
-            if self.cfg.share_agg_enc_token_embeds:
-                agg.embeddings.word_embeddings = word_embeddings
-                agg.embeddings.position_embeddings = position_embeddings
+            if self.cfg.model_name == self.cfg.bert_agg_model_name:
+                if self.cfg.share_agg_enc_token_embeds:
+                    agg.embeddings.word_embeddings = word_embeddings
+                    agg.embeddings.position_embeddings = position_embeddings
+                else:
+                    # agg.embeddings.word_embeddings.load_state_dict(word_embeddings.state_dict(), strict=False)
+                    # agg.embeddings.position_embeddings.load_state_dict(position_embeddings.state_dict(), strict=False)
+                    agg.embeddings.word_embeddings = word_embeddings.clone()
+                    agg.embeddings.position_embeddings = position_embeddings.clone()
             else:
-                # agg.embeddings.word_embeddings.load_state_dict(word_embeddings.state_dict(), strict=False)
-                # agg.embeddings.position_embeddings.load_state_dict(position_embeddings.state_dict(), strict=False)
-                agg.embeddings.word_embeddings = word_embeddings.clone()
-                agg.embeddings.position_embeddings = position_embeddings.clone()
+                agg_tkz = BertTokenizer.from_pretrained(self.cfg.bert_agg_model_name)
         elif self.cfg.toks_agg_type == TokensAggType.Pyramid:
             d_model = self.cfg.d_model
             pad_idx = self.tkz.pad_token_id
@@ -257,7 +263,7 @@ class Genmixemb(nn.Module):
         else:
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
 
-        return agg
+        return agg, agg_tkz
 
     # logits: [n_batch, n_seq, n_vocab]
     # labels: [n_batch, n_seq]
@@ -303,20 +309,21 @@ class Genmixemb(nn.Module):
     def run_agg(self, toks: torch.Tensor):
         inp_shape = toks.shape
         if self.cfg.toks_agg_type == TokensAggType.Bert:
+            tkz = self.agg_tkz if self.agg_tkz is not None else self.tkz
             if self.cfg.bert_agg_type == BertAggType.Sep:
                 n_subseq = self.cfg.bert_agg_n_subseq_toks
                 n_batch, n_seq = toks.shape
                 n_seq_mod = n_seq % n_subseq
                 if n_seq_mod > 0:
                     pad_size = n_subseq - n_seq_mod
-                    toks = F.pad(toks, (0, pad_size), 'constant', self.tkz.pad_token_id)
+                    toks = F.pad(toks, (0, pad_size), 'constant', tkz.pad_token_id)
                     n_seq += pad_size
                 # [n_batch * n_chunks, n_subseq]
                 toks = toks.reshape((-1, n_subseq))
                 # [n_batch * n_chunks, 1 + n_subseq]
-                toks = torch.pad(toks, (1, 0), 'constant', self.tkz.cls_token_id)
+                toks = torch.pad(toks, (1, 0), 'constant', tkz.cls_token_id)
                 # [n_batch * n_chunks, 1 + n_subseq]
-                mask = toks != self.tkz.pad_token_id
+                mask = toks != tkz.pad_token_id
                 out = self.agg(input_ids=toks, attention_mask=mask)
                 # [n_batch * n_chunks, 1 + n_subseq, d_model]
                 emb = out.last_hidden_state
@@ -328,11 +335,11 @@ class Genmixemb(nn.Module):
             elif self.cfg.bert_agg_type in (BertAggType.Topcos, BertAggType.Topdot):
                 n_subseq = self.cfg.bert_agg_n_subseq_toks
                 # # [n_batch, n_seq]
-                # toks = self.prefix_token(toks, self.tkz.cls_token_id)
+                # toks = self.prefix_token(toks, tkz.cls_token_id)
                 n_batch, n_seq = toks.shape
                 n_chunks = n_seq // n_subseq
                 # [n_batch, n_seq]
-                mask = toks != self.tkz.pad_token_id
+                mask = toks != tkz.pad_token_id
                 out = self.agg(input_ids=toks, attention_mask=mask)
                 # [n_batch, n_seq, d_model]
                 emb = out.last_hidden_state

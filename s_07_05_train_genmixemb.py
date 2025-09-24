@@ -110,6 +110,11 @@ class ArgsGenmixembTrain(BaseModel):
         description=f'Aggregation method for sequence of tokens. Values {[t.value for t in TokensAggType]}',
         cli=('--toks-agg-type',),
     )
+    bert_agg_model_name: str = Field(
+        'bert-base-uncased',
+        description='Pretrained BERT model name for token aggregation (bert-base-uncased, bert-large-uncased).',
+        cli=('--bert-agg-model-name',),
+    )
     bert_agg_type: BertAggType = Field(
         BertAggType.Sep,
         description=f'Bert aggregation type. Values: {[t.value for t in BertAggType]}',
@@ -119,11 +124,6 @@ class ArgsGenmixembTrain(BaseModel):
         ...,
         description=f'Number of sequential tokens to aggregate for Bert.',
         cli=('--bert-agg-n-subseq-toks',),
-    )
-    bert_agg_cls_inp_len: int = Field(
-        0,
-        description=f'Input length for CLS token in Bert aggregation. TOKS_AGG_TYPE={TokensAggType.Bert}.',
-        cli=('--bert-agg-cls-inp-len',),
     )
     pyr_agg_type: HgReductType = Field(
         HgReductType.Decim,
@@ -321,8 +321,7 @@ def main(args: ArgsGenmixembTrain) -> int:
     model_cfg = parse_yaml_file_as(GenmixembCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmixemb_cfg(
         model_cfg, model_name=args.model_name, max_inp_toks=args.max_inp_toks, max_out_toks=args.max_out_toks,
-        toks_agg_type=args.toks_agg_type, bert_agg_type=args.bert_agg_type, bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks,
-        bert_agg_cls_inp_len=args.bert_agg_cls_inp_len,
+        toks_agg_type=args.toks_agg_type, bert_agg_model_name=args.bert_agg_model_name, bert_agg_type=args.bert_agg_type, bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks,
         pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step, pyr_agg_n_levels=args.pyr_agg_n_levels,
         pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, pyr_share_layer_weights=args.pyr_share_layer_weights,
         cnv_n_levels=args.cnv_n_levels, cnv_n_layers_per_level=args.cnv_n_layers_per_level, cnv_conv_kernel_size=args.cnv_conv_kernel_size,

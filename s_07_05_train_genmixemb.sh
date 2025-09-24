@@ -21,13 +21,13 @@ model_name=bert-base-uncased
 #toks_agg_type=brt
 #toks_agg_type=pyr
 toks_agg_type=cnv
+bert_agg_model_name=bert-base-uncased
 #bert_agg_type=sep
 #bert_agg_type=topcos
 bert_agg_type=topdot
 #bert_agg_n_subseq_toks=0
 bert_agg_n_subseq_toks=2
 bert_agg_n_subseq_toks=8
-bert_agg_cls_inp_len=0
 #pyr_agg_type=decim
 #pyr_agg_type=matmul
 #pyr_agg_type=avg
@@ -144,8 +144,9 @@ train_ds_type=wki
 model_name=gpt2
 train_agg_model=true
 toks_agg_type=brt
+bert_agg_model_name=bert-base-uncased
+bert_agg_n_subseq_toks=128
 bert_agg_type=cls
-bert_agg_cls_inp_len=128
 n_toks_min=20
 #max_inp_toks=1024
 max_inp_toks=128
@@ -275,9 +276,9 @@ python s_07_05_train_genmixemb.py \
   --max-inp-toks $max_inp_toks \
   --max-out-toks $max_out_toks \
   --toks-agg-type $toks_agg_type \
+  --bert-agg-model-name $bert_agg_model_name \
   --bert-agg-type $bert_agg_type \
   --bert-agg-n-subseq-toks $bert_agg_n_subseq_toks \
-  --bert-agg-cls-inp-len $bert_agg_cls_inp_len \
   --pyr-agg-type $pyr_agg_type \
   --pyr-agg-step $pyr_agg_step \
   --pyr-agg-n-levels $pyr_agg_n_levels \
