@@ -15,7 +15,7 @@ from tqdm import trange
 from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembCfg, copy_override_genmixemb_cfg, \
     gen_prefpostfix_genmixemb, HgReductType, BertAggType, CtxQuePromptType, SelfSuperviseType, DecExpertType
 from mllm.data.itsquadv2 import get_squadv2_batch_iterators_v2, QnaBatchV2
-from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true
+from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG
 from mllm.model import bert, gpt2
 from mllm.model.genmixemb import Genmixemb
 from mllm.train.mask_utils import MaskCfg
@@ -25,7 +25,6 @@ from mllm.utils.utils import rethrow
 
 train_agg_model_ARG = '--train-agg-model', 'Train aggregation model'
 pred_next_sent_ARG = '--pred-next-sent', 'Predict next sentence'
-mask_tokens_ARG = '--mask-tokens', 'Mask input tokens'
 share_agg_enc_token_embeds_ARG = '--share-agg-enc-token-embeds', 'Share token embeddings between aggregator model and encoder'
 add_token_type_ids_ARG = '--add-token-type-ids', 'Add token type ids to input tokens'
 join_ctx_que_agg_ARG = '--join-ctx-que-agg', 'Join context and question for aggregation'

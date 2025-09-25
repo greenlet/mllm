@@ -40,6 +40,15 @@ dec_enhance_type=mmbb
 dec_dropout_rate=0
 
 
+mask_tokens=false
+#mask_tokens=true
+mask_sep_freq=0.5
+mask_sep_frac=0.15
+mask_seq_freq=0.5
+mask_seq_max_frac=0.2
+mask_seq_max_len=20
+
+
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 
 device=cpu
@@ -76,6 +85,12 @@ python s_03_07_train_encdec_bert.py \
   --dec-enhance-type $dec_enhance_type \
   --dec-n-layers $dec_n_layers \
   --dec-n-similar-layers $dec_n_similar_layers \
+  --mask-tokens $mask_tokens \
+  --mask-sep-freq $mask_sep_freq \
+  --mask-sep-frac $mask_sep_frac \
+  --mask-seq-freq $mask_seq_freq \
+  --mask-seq-max-frac $mask_seq_max_frac \
+  --mask-seq-max-len $mask_seq_max_len \
   --dec-dropout-rate $dec_dropout_rate \
   --docs-batch-size $docs_batch_size \
   --device $device \

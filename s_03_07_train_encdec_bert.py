@@ -14,7 +14,7 @@ from transformers import AutoTokenizer
 
 from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
     gen_prefpostfix_encdec_bert, EncdecOneTgtType
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.model.losses import EncdecMaskPadLoss, EncdecTargenMaskLoss, EncdecMaskPadLossExt
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators2
@@ -72,6 +72,41 @@ class ArgsEncdecBertTrain(BaseModel):
         description='Number of consecutive similar attention layers for each decoder level.',
         cli=('--dec-n-similar-layers',),
     )
+
+    mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
+    @property
+    def mask_tokens(self) -> bool:
+        return is_arg_true(mask_tokens_ARG[0], self.mask_tokens_STR)
+
+    mask_sep_freq: float = Field(
+        ...,
+        description='Sparse mask frequency from 0 to 1. When MASK_SEP_FREQ=0.2 this type of mask will be applied in 20% of cases randomly. '
+                    'Must hold: 0 <= MASK_SEP_FREQ and MASK_SEP_FREQ + MASK_SEQ_FREQ <= 1',
+        cli=('--mask-sep-freq',),
+    )
+    mask_sep_frac: float = Field(
+        ...,
+        description='Fraction of the input to mask using sparse masking.',
+        cli=('--mask-sep-frac',),
+    )
+    mask_seq_freq: float = Field(
+        ...,
+        description='Sequential mask frequency from 0 to 1. When MASK_SEQ_FREQ=0.2 this type of mask will be applied in 20% of cases randomly. '
+                    'Must hold: 0 <= MASK_SEQ_FREQ and MASK_SEP_FREQ + MASK_SEQ_FREQ <= 1',
+        cli=('--mask-seq-freq',),
+    )
+    mask_seq_max_frac: float = Field(
+        ...,
+        description='Fraction of the input to calculate maximum length of tokens sequence to mask. Resulting value is combined '
+                    'with MASK_SEQ_MAX_LEN using min() function.',
+        cli=('--mask-seq-max-frac',),
+    )
+    mask_seq_max_len: int = Field(
+        ...,
+        description='Maximum length of tokens sequence to mask. Combined with value derived from MASK_SEQ_MAX_FRAC using min() function.',
+        cli=('--mask-seq-max-len',),
+    )
+
     dec_dropout_rate: float = Field(
         0.0,
         required=False,
