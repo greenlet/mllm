@@ -17,7 +17,7 @@ from mllm.config.model import TokenizerCfg, EncdecHgCfg, copy_override_encdec_hg
 from mllm.data.utils import HfDsIterator
 from mllm.exp.args import TOKENIZER_CFG_FNAME, ENCDEC_HG_MODEL_CFG_FNAME
 from mllm.model.encdec_ranker_hg import EncdecHg
-from mllm.model.losses import EncdecMaskPadLoss
+from mllm.model.losses import EncdecMaskPadBatchLoss
 from mllm.tokenization.chunk_tokenizer import tokenizer_from_config
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.train.mask_utils import mask_random_words
@@ -237,7 +237,7 @@ def main(args: ArgsEncdecHgTrain) -> int:
     # loss_fn = EncdecProbLossSigmoid(seq_len=inp_len, n_tokens=len(tokenizer), device=device)
     # loss_fn = nn.CrossEntropyLoss()
     # loss_fn = encdec_prob_loss_softmax
-    loss_fn = EncdecMaskPadLoss(pad_tok_ind=pad_tok.ind, pad_weight=0.1)
+    loss_fn = EncdecMaskPadBatchLoss(pad_tok_ind=pad_tok.ind, pad_weight=0.1)
 
     print(model)
 

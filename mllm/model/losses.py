@@ -169,7 +169,7 @@ class RankerCosEmbLoss(nn.Module):
         return loss, loss_tgt, loss_nontgt
 
 
-class EncdecMaskPadLoss(nn.Module):
+class EncdecMaskPadBatchLoss(nn.Module):
     msk_tok_ind: int
     pad_tok_ind: int
     reg_weight: float
@@ -239,7 +239,7 @@ class EncdecMaskPadLoss(nn.Module):
         return loss
 
 
-class EncdecMaskPadLossExt(nn.Module):
+class EncdecMaskPadItemLoss(nn.Module):
     msk_tok_id: int
     spc_tok_ids: list[int]
     reg_weight: float
@@ -265,7 +265,7 @@ class EncdecMaskPadLossExt(nn.Module):
     # logits_pred: (batch_size, inp_len, vocab_size)
     # tokens_: (batch_size, inp_len)
     # tokens_gt: (batch_size, inp_len)
-    def forward(self, logits_pred: torch.Tensor, tokens_inp: torch.Tensor, tokens_tgt: torch.Tensor) -> torch.Tensor:
+    def forward(self, logits_pred: torch.Tensor, tokens_inp: torch.Tensor, tokens_tgt: torch.Tensor, **kwargs) -> torch.Tensor:
         # (batch_size, inp_len, 1)
         toks_inp = tokens_inp.to(torch.int64).unsqueeze(-1)
         toks_tgt = tokens_tgt.to(torch.int64).unsqueeze(-1)
@@ -326,7 +326,7 @@ class EncdecMaskPadLossExt(nn.Module):
         return loss
 
 
-class EncdecTargenMaskLoss(nn.Module):
+class EncdecPadBatchLoss(nn.Module):
     pad_tok_id: int
     weight_reg: float
     weight_pad: float

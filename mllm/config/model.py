@@ -278,10 +278,10 @@ class EncdecBertCfg(BaseModel):
     dec_pyr: DecPyrCfg
 
 
-class EncdecOneTgtType(str, Enum):
-    All = 'all'
-    AllMsk = 'allmsk'
-    MskSeq = 'mskseq'
+class EncdecLossType(str, Enum):
+    MaskPadBatch = 'mskpadb'
+    MaskPadItem = 'mskpadi'
+    PadBatch = 'padb'
 
 
 class DecRankHgCfg(BaseModel):
@@ -1133,26 +1133,32 @@ def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
 
 
 def gen_prefpostfix_encdec_bert(
-        model_cfg: EncdecBertCfg, one_tgt_type: EncdecOneTgtType, mask_cfg: Optional[MaskCfg],
+        model_cfg: EncdecBertCfg, loss_type: EncdecLossType, mask_cfg: Optional[MaskCfg],
         pretrained_model_path: Optional[Path] = None,
     ) -> tuple[str, str]:
     prefix, postfix_parts = f'encdecbert', []
     enc, dec = model_cfg.enc_bert, model_cfg.dec_pyr
 
-    brt_str = enc.pretrained_model_name
-    if enc.tokenizer_name != enc.pretrained_model_name:
-        tkz_name = enc.tokenizer_name
+    if pretrained_model_path is not None:
+        dname = pretrained_model_path.parent.name
+        m = checkpoint_fname_pat.match(dname)
+        assert m is not None, f'Cannot parse checkpoint filename "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
+        postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
+
+    brt_str = enc.pretrained_model_name.replace('-', '')
+    tkz_name = enc.tokenizer_name.replace('-', '')
+    if brt_str != tkz_name:
         brt_str = f'{brt_str}-{tkz_name}'
     postfix_parts.append(brt_str)
 
     postfix_parts.append(f'd{enc.d_model}')
-    postfix_parts.append(f'emb_{enc.emb_type}')
+    postfix_parts.append(f'emb{enc.emb_type.value.capitalize()}')
     postfix_parts.append(f'inp{dec.inp_len}')
     postfix_parts.append(f'lrs{dec.n_layers}x{dec.n_similar_layers}')
-    postfix_parts.append(f'enh_{dec.enhance_type.value}')
+    postfix_parts.append(f'enh{dec.enhance_type.value.capitalize()}')
     postfix_parts.append(f'step{dec.step}')
     postfix_parts.append(f'h{dec.n_heads}')
-    postfix_parts.append(f'tgt_{one_tgt_type.value}')
+    postfix_parts.append(f'tgt{loss_type.value.capitalize()}')
 
     if mask_cfg is not None:
         sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)
