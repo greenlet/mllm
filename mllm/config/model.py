@@ -278,12 +278,6 @@ class EncdecBertCfg(BaseModel):
     dec_pyr: DecPyrCfg
 
 
-class EncdecLossType(str, Enum):
-    MaskPadBatch = 'mskpadb'
-    MaskPadItem = 'mskpadi'
-    PadBatch = 'padb'
-
-
 class DecRankHgCfg(BaseModel):
     d_model: int
     mlp_layers: str = ''
@@ -1133,7 +1127,7 @@ def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
 
 
 def gen_prefpostfix_encdec_bert(
-        model_cfg: EncdecBertCfg, loss_type: EncdecLossType, mask_cfg: Optional[MaskCfg],
+        model_cfg: EncdecBertCfg, mask_cfg: Optional[MaskCfg],
         pretrained_model_path: Optional[Path] = None,
     ) -> tuple[str, str]:
     prefix, postfix_parts = f'encdecbert', []
@@ -1158,7 +1152,6 @@ def gen_prefpostfix_encdec_bert(
     postfix_parts.append(f'enh{dec.enhance_type.value.capitalize()}')
     postfix_parts.append(f'step{dec.step}')
     postfix_parts.append(f'h{dec.n_heads}')
-    postfix_parts.append(f'tgt{loss_type.value.capitalize()}')
 
     if mask_cfg is not None:
         sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)

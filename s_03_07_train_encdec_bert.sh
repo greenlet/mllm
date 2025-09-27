@@ -19,9 +19,6 @@ inp_len=128
 dec_n_layers=0
 dec_n_similar_layers=1
 #n_similar_layers=2
-#loss_type=all
-#loss_type=allmsk
-loss_type=mskseq
 #dec_enhance_type=matmul
 #dec_enhance_type=mmbeg
 dec_enhance_type=mmbb
@@ -33,7 +30,6 @@ bert_emb_type=cls
 inp_len=256
 dec_n_layers=0
 dec_n_similar_layers=1
-loss_type=allmsk
 #dec_enhance_type=matmul
 #dec_enhance_type=mmbeg
 dec_enhance_type=mmbb
@@ -99,7 +95,6 @@ python s_03_07_train_encdec_bert.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed \
-  --pretrained-model-path "$pretrained_model_path" \
-  --loss-type $loss_type
+  --pretrained-model-path "$pretrained_model_path"
 #"
 

@@ -18,7 +18,7 @@ from transformers import PreTrainedTokenizer, AutoTokenizer
 from mllm.data.common import DsView, TDs, TBatch
 from mllm.data.utils import get_squadv2_df, split_df
 from mllm.data.wiki.itwiki import get_wiki_iterators
-from mllm.train.mask_utils import mask_random_tokens, mask_random_words
+from mllm.train.mask_utils import mask_random_tokens, mask_random_words, MaskCfg
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
 
 SUBDIR_PAT_STR = re.compile(r'^[\w-]*?-(%s)-.*$' % DT_PAT_RE)
@@ -343,9 +343,9 @@ class EedWikiIterator2:
     mask_tok_repr: str
     tkz: PreTrainedTokenizer
     docs_batch_size: int
-    device: torch.device
+    mask_cfg: Optional[MaskCfg]
+    device: Optional[torch.device]
     preserve_edge_tokens: bool
-    conseq: bool = False
     rem_freq: float = 0
     rem_conseq_freq: float = 1
     rem_conseq_max_len: int = 30
@@ -353,7 +353,7 @@ class EedWikiIterator2:
 
     def __init__(
             self, ds: Dataset, inds: np.ndarray, inp_len: int, tkz: PreTrainedTokenizer,
-            docs_batch_size: int, device: torch.device, preserve_edge_tokens: bool = False, conseq: bool = False,
+            docs_batch_size: int, mask_cfg: Optional[MaskCfg] = None, device: Optional[torch.device] = None, preserve_edge_tokens: bool = False,
         ):
         assert tkz.pad_token_id is not None
         self.ds = ds
@@ -363,9 +363,9 @@ class EedWikiIterator2:
         self.mask_tok_repr = tkz.mask_token
         self.tkz = tkz
         self.docs_batch_size = docs_batch_size
+        self.mask_cfg = mask_cfg
         self.device = device
         self.preserve_edge_tokens = preserve_edge_tokens
-        self.conseq = conseq
 
     def mask_tokens(self, toks: np.ndarray) -> np.ndarray:
         if self.conseq:
@@ -452,8 +452,8 @@ class EedWikiIterator2:
 
 
 def get_wiki_ds_batch_iterators2(
-        wiki_ds_name: str, data_path: Path, inp_len: int, docs_batch_size: int, tkz: PreTrainedTokenizer, mask_conseq: bool,
-        device: torch.device, shuffle: bool = False, val_ratio: float = 0.05, random_seed: int = 111) -> tuple[ChunkTargetToksGen, ChunkTargetToksGen]:
+        wiki_ds_name: str, data_path: Path, inp_len: int, docs_batch_size: int, tkz: PreTrainedTokenizer, mask_cfg: Optional[MaskCfg] = None,
+        device: Optional[torch.device] = None, shuffle: bool = False, val_ratio: float = 0.05, random_seed: int = 111) -> tuple[ChunkTargetToksGen, ChunkTargetToksGen]:
     print(f'Loading Wikipedia dataset: {wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
     # dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
@@ -474,12 +474,12 @@ def get_wiki_ds_batch_iterators2(
         np.random.shuffle(doc_inds_val)
 
     train_batch_it = EedWikiIterator2(
-        ds=ds, inds=doc_inds_train, inp_len=inp_len, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
-        preserve_edge_tokens=True, conseq=mask_conseq,
+        ds=ds, inds=doc_inds_train, inp_len=inp_len, tkz=tkz, docs_batch_size=docs_batch_size, mask_cfg=mask_cfg, device=device,
+        preserve_edge_tokens=True,
     ).get_batch_iterator()
     val_batch_it = EedWikiIterator2(
-        ds=ds, inds=doc_inds_val, inp_len=inp_len, tkz=tkz, docs_batch_size=docs_batch_size, device=device,
-        preserve_edge_tokens=True, conseq=mask_conseq,
+        ds=ds, inds=doc_inds_val, inp_len=inp_len, tkz=tkz, docs_batch_size=docs_batch_size, mask_cfg=mask_cfg, device=device,
+        preserve_edge_tokens=True,
     ).get_batch_iterator()
     return train_batch_it, val_batch_it
 

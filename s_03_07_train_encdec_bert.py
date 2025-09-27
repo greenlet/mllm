@@ -13,7 +13,7 @@ from tqdm import trange
 from transformers import AutoTokenizer
 
 from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
-    gen_prefpostfix_encdec_bert, EncdecLossType
+    gen_prefpostfix_encdec_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG
 from mllm.model.encdec_ranker_hg import EncdecBert
 from mllm.model.losses import EncdecMaskPadBatchLoss, EncdecPadBatchLoss, EncdecMaskPadItemLoss
@@ -154,15 +154,11 @@ class ArgsEncdecBertTrain(BaseModel):
         description='Path to EncdecHg model train directory.',
         cli=('--pretrained-model-path',),
     )
-    loss_type: EncdecLossType = Field(
-        EncdecLossType.MaskPadBatch,
-        description=f'Encdec loss type, one of: {[t.value for t in EncdecLossType]}',
-        cli=('--loss-type',)
-    )
 
 
 def main(args: ArgsEncdecBertTrain) -> int:
     print(args)
+    pretrained_model_path = args.pretrained_model_path if args.pretrained_model_path and args.pretrained_model_path.name else None
 
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
@@ -182,7 +178,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
             seq_max_len=args.mask_seq_max_len,
         )
     prefix, suffix = gen_prefpostfix_encdec_bert(
-        model_cfg, loss_type=args.loss_type, mask_cfg=mask_cfg, pretrained_model_path=pretrained_model_path,
+        model_cfg, mask_cfg=mask_cfg, pretrained_model_path=pretrained_model_path,
     )
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
@@ -226,7 +222,6 @@ def main(args: ArgsEncdecBertTrain) -> int:
         del checkpoint
         shuffle = True
 
-    mask_conseq = args.loss_type == EncdecLossType.PadBatch
     train_batch_it, val_batch_it = get_wiki_ds_batch_iterators2(
         wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
         tkz=tkz, device=device, shuffle=shuffle, mask_conseq=mask_conseq,
@@ -238,21 +233,11 @@ def main(args: ArgsEncdecBertTrain) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-    if args.loss_type == EncdecLossType.MaskPadBatch:
-        loss_fn = EncdecMaskPadBatchLoss(
-            msk_tok_ind=tkz.mask_token_id, pad_tok_ind=tkz.pad_token_id,
-            reg_weight=1, msk_weight=1, pad_weight=0.1,
-        )
-    elif args.loss_type == EncdecLossType.MaskPadItem:
-        loss_fn = EncdecMaskPadItemLoss(
-            msk_tok_id=tkz.mask_token_id, spc_tok_ids=[tkz.pad_token_id, tkz.cls_token_id, tkz.sep_token_id],
-            reg_weight=1, msk_weight=1, spc_weight=0.1,
-        )
-    elif args.loss_type == EncdecLossType.PadBatch:
-        loss_fn = EncdecPadBatchLoss(pad_tok_id=tkz.pad_token_id)
-    else:
-        raise Exception(f'Value {args.loss_type} is not supported')
 
+    loss_fn = EncdecMaskPadItemLoss(
+        msk_tok_id=tkz.mask_token_id, spc_tok_ids=[tkz.pad_token_id, tkz.cls_token_id, tkz.sep_token_id],
+        reg_weight=1, msk_weight=1, spc_weight=0.1,
+    )
     print(model)
 
     loss_gt, loss_nongt = None, None
@@ -273,14 +258,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
             mask = tokens_inp_aug != tkz.pad_token_id
             out_logits = model(tokens_inp_aug, mask)
 
-            if args.loss_type == EncdecLossType.MaskPadBatch:
-                loss = loss_fn(out_logits, tokens_inp)
-            elif args.loss_type == EncdecLossType.MaskPadItem:
-                loss = loss_fn(out_logits, tokens_inp_aug, tokens_inp)
-            elif args.loss_type == EncdecLossType.PadBatch:
-                loss = loss_fn(out_logits, tokens_tgt)
-            else:
-                raise
+            loss = loss_fn(out_logits, tokens_inp_aug, tokens_inp)
 
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
@@ -328,14 +306,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
                 mask = tokens_inp_aug != tkz.pad_token_id
                 out_logits = model(tokens_inp_aug, mask)
 
-                if args.loss_type == EncdecLossType.MaskPadBatch:
-                    loss = loss_fn(out_logits, tokens_inp)
-                elif args.loss_type == EncdecLossType.MaskPadItem:
-                    loss = loss_fn(out_logits, tokens_inp_aug, tokens_inp)
-                elif args.loss_type == EncdecLossType.PadBatch:
-                    loss = loss_fn(out_logits, tokens_tgt)
-                else:
-                    raise
+            loss = loss_fn(out_logits, tokens_inp_aug, tokens_inp)
 
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
