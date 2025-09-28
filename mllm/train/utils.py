@@ -18,7 +18,7 @@ from transformers import PreTrainedTokenizer, AutoTokenizer
 from mllm.data.common import DsView, TDs, TBatch
 from mllm.data.utils import get_squadv2_df, split_df
 from mllm.data.wiki.itwiki import get_wiki_iterators
-from mllm.train.mask_utils import mask_random_tokens, mask_random_words, MaskCfg
+from mllm.train.mask_utils import mask_random_tokens, mask_random_words, MaskCfg, mask_random_words_v2
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
 
 SUBDIR_PAT_STR = re.compile(r'^[\w-]*?-(%s)-.*$' % DT_PAT_RE)
@@ -366,31 +366,25 @@ class EedWikiIterator2:
         self.mask_cfg = mask_cfg
         self.device = device
         self.preserve_edge_tokens = preserve_edge_tokens
+        toks = self.tkz('x')['input_ids']
+        assert toks[0] == self.tkz.cls_token_id and toks[-11] == self.tkz.sep_token_id
+        self.edge_tokens = toks[0], toks[-1]
 
-    def mask_tokens(self, toks: np.ndarray) -> np.ndarray:
-        if self.conseq:
-            n_toks = len(toks)
-            assert n_toks > 1, f'n_toks (={n_toks}) must be > 1'
-            max_prob, max_len = 0.2, 15
-            max_len = min(max_len, int(max_prob * len(toks)), n_toks // 2)
-            max_len = max(max_len, 1)
-            mask_len = np.random.randint(1, max_len + 1)
-            mask_off = np.random.randint(n_toks - mask_len + 1)
-            res = toks.copy()
-            res[mask_off:mask_off + mask_len] = self.tkz.mask_token_id
-        else:
-            res = mask_random_tokens(
-                toks, self.tkz, rem_freq=self.rem_freq, rem_conseq_freq=self.rem_conseq_freq,
-                rem_conseq_max_len=self.rem_conseq_max_len, rem_conseq_max_times=self.rem_conseq_max_times,
-            )
-        return res
+    def mask_tokens(self, toks: np.ndarray) -> tuple[np.ndarray, Optional[np.ndarray]]:
+        masked_toks, mask = toks, None
+        if self.mask_cfg is not None:
+            masked_toks, mask = mask_random_words_v2(toks, self.tkz, self.mask_cfg)
+        return masked_toks, mask
 
-    def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def get_batch_tokens(self, doc_inds: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
         n_docs = len(doc_inds)
         res_shape = (n_docs, self.inp_len)
-        docs_toks_src = np.full(res_shape, self.pad_tok_ind)
-        docs_toks_aug = np.full(res_shape, self.pad_tok_ind)
-        docs_toks_tgt = np.full(res_shape, self.pad_tok_ind)
+        toks_src_b = np.full(res_shape, self.pad_tok_ind)
+        toks_masked_b = np.full(res_shape, self.pad_tok_ind)
+        i_off, inp_len = 0, self.inp_len
+        if self.preserve_edge_tokens:
+            i_off += 1
+            inp_len -= 2
         for i, doc_ind in enumerate(doc_inds):
             doc = self.ds[int(doc_ind)]
             title, text = doc['title'], doc['text']
@@ -400,36 +394,31 @@ class EedWikiIterator2:
             #     doc_txt: str = text
             # doc_txt = f'{title} {text}'
             doc_txt = text
-            doc_toks = self.tkz(doc_txt)['input_ids']
+            doc_toks = self.tkz(doc_txt, add_special_tokens=False)['input_ids']
             if len(doc_toks) <= 3:
                 doc_txt = f'{title} {text}'
-                doc_toks = self.tkz(doc_txt)['input_ids']
+                doc_toks = self.tkz(doc_txt, add_special_tokens=False)['input_ids']
             doc_toks = np.array(doc_toks)
             n_toks = len(doc_toks)
-            if n_toks > self.inp_len:
-                if self.preserve_edge_tokens:
-                    i_off = np.random.randint(1, n_toks - self.inp_len + 1)
-                    doc_toks = np.concatenate([doc_toks[:1], doc_toks[i_off:i_off + self.inp_len - 2], doc_toks[-1:]])
-                else:
-                    i_off = np.random.randint(n_toks - self.inp_len + 1)
-                    doc_toks = doc_toks[i_off:i_off + self.inp_len].copy()
-            docs_toks_src[i, :len(doc_toks)] = doc_toks
+            if n_toks > inp_len:
+                i_off = np.random.randint(n_toks - inp_len + 1)
+                doc_toks = doc_toks[i_off:i_off + inp_len]
 
-            toks_tgt = doc_toks.copy()
+            toks_masked, _ = self.mask_tokens(doc_toks)
+            assert len(toks_masked) == n_toks
+
+            toks_src_b[i, i_off:i_off + n_toks] = doc_toks
+            toks_masked_b[i, i_off:i_off + n_toks] = toks_masked
+
             if self.preserve_edge_tokens:
-                doc_toks[1:-1] = self.mask_tokens(doc_toks[1:-1])
-            else:
-                doc_toks = self.mask_tokens(doc_toks)
-            tgt_mask = doc_toks == self.tkz.mask_token_id
-            doc_toks_tgt = toks_tgt[tgt_mask]
+                toks_src_b[i, i_off] = self.edge_tokens[0]
+                toks_src_b[i, i_off + n_toks] = self.edge_tokens[1]
+                toks_masked_b[i, i_off] = self.edge_tokens[0]
+                toks_masked_b[i, i_off + n_toks] = self.edge_tokens[1]
 
-            docs_toks_aug[i, :len(doc_toks)] = doc_toks
-            docs_toks_tgt[i, :len(doc_toks_tgt)] = doc_toks_tgt
-
-        docs_toks_src_t = torch.from_numpy(docs_toks_src).to(self.device)
-        docs_toks_aug_t = torch.from_numpy(docs_toks_aug).to(self.device)
-        docs_toks_tgt_t = torch.from_numpy(docs_toks_tgt).to(self.device)
-        return docs_toks_aug_t, docs_toks_src_t, docs_toks_tgt_t
+        toks_src_t = torch.from_numpy(toks_src_b).to(self.device)
+        toks_masked_t = torch.from_numpy(toks_masked_b).to(self.device)
+        return toks_src_t, toks_masked_t
 
     def get_batch(self, i_batch: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
         i1 = i_batch * self.docs_batch_size
@@ -441,7 +430,7 @@ class EedWikiIterator2:
         if i2 >= len(batch_inds):
             i_batch = 0
             np.random.shuffle(self.inds)
-        batch_toks_aug, batch_toks, batch_toks_tgt = self.get_batch_tokens(batch_inds)
+        toks_src = self.get_batch_tokens(batch_inds)
         return batch_toks_aug, batch_toks, batch_toks_tgt, i_batch
 
     def get_batch_iterator(self) -> ChunkTargetToksGen:

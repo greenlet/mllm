@@ -224,7 +224,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
 
     train_batch_it, val_batch_it = get_wiki_ds_batch_iterators2(
         wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
-        tkz=tkz, device=device, shuffle=shuffle, mask_conseq=mask_conseq,
+        tkz=tkz, mask_cfg=mask_cfg, device=device, shuffle=shuffle,
     )
 
     sched_wait_steps = 0
