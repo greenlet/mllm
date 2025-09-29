@@ -334,6 +334,8 @@ def get_wiki_ds_batch_iterators(
     return train_batch_it, val_batch_it
 
 
+MaskedToksBatchGen = Generator[tuple[torch.Tensor, torch.Tensor, int], None, None]
+
 
 class EedWikiIterator2:
     ds: Dataset
@@ -420,7 +422,7 @@ class EedWikiIterator2:
         toks_masked_t = torch.from_numpy(toks_masked_b).to(self.device)
         return toks_src_t, toks_masked_t
 
-    def get_batch(self, i_batch: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
+    def get_batch(self, i_batch: int) -> tuple[torch.Tensor, torch.Tensor, int]:
         i1 = i_batch * self.docs_batch_size
         i2 = i1 + self.docs_batch_size
         batch_inds = self.inds[i1:i2].copy()
@@ -430,19 +432,19 @@ class EedWikiIterator2:
         if i2 >= len(batch_inds):
             i_batch = 0
             np.random.shuffle(self.inds)
-        toks_src = self.get_batch_tokens(batch_inds)
-        return batch_toks_aug, batch_toks, batch_toks_tgt, i_batch
+        toks_src, toks_masked = self.get_batch_tokens(batch_inds)
+        return toks_src, toks_masked, i_batch
 
-    def get_batch_iterator(self) -> ChunkTargetToksGen:
+    def get_batch_iterator(self) -> MaskedToksBatchGen:
         i_batch = 0
         while True:
-            batch_toks_aug, batch_toks, batch_toks_tgt, i_batch = self.get_batch(i_batch)
-            yield batch_toks_aug, batch_toks, batch_toks_tgt, None
+            toks_src, toks_masked, i_batch = self.get_batch(i_batch)
+            yield toks_src, toks_masked, i_batch
 
 
 def get_wiki_ds_batch_iterators2(
         wiki_ds_name: str, data_path: Path, inp_len: int, docs_batch_size: int, tkz: PreTrainedTokenizer, mask_cfg: Optional[MaskCfg] = None,
-        device: Optional[torch.device] = None, shuffle: bool = False, val_ratio: float = 0.05, random_seed: int = 111) -> tuple[ChunkTargetToksGen, ChunkTargetToksGen]:
+        device: Optional[torch.device] = None, shuffle: bool = False, val_ratio: float = 0.05, random_seed: int = 111) -> tuple[MaskedToksBatchGen, MaskedToksBatchGen]:
     print(f'Loading Wikipedia dataset: {wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
     # dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))

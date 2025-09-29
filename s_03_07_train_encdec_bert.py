@@ -154,11 +154,19 @@ class ArgsEncdecBertTrain(BaseModel):
         description='Path to EncdecHg model train directory.',
         cli=('--pretrained-model-path',),
     )
+    pretrained_model_as_emb_target: bool = Field(
+        False,
+        description='When set, pretrained model will be used 1) to initialize weights of the current Encoder model, ' \
+        '2) As a target for embeddings of the current Encoder model.',
+        cli=('--pretrained-model-as-emb-target',),
+    )
 
 
 def main(args: ArgsEncdecBertTrain) -> int:
     print(args)
     pretrained_model_path = args.pretrained_model_path if args.pretrained_model_path and args.pretrained_model_path.name else None
+    assert args.pretrained_model_as_emb_target is False or pretrained_model_path is not None, \
+        'When PRETRAINED_MODEL_AS_EMB_TARGET is True, PRETRAINED_MODEL_PATH must be set to valid path.'
 
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
@@ -202,7 +210,11 @@ def main(args: ArgsEncdecBertTrain) -> int:
     tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
 
     print(model_cfg)
-    model = EncdecBert(model_cfg).to(device)
+    if not args.pretrained_model_as_emb_target:
+        model = EncdecBert(model_cfg).to(device)
+    else:
+        model_teacher = EncdecBert(model_cfg, enc_only=True).to(device)
+        model_student = EncdecBert(model_cfg, enc_only=True).to(device)
 
     if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
         pretrained_model_path = args.pretrained_model_path / 'best.pth'

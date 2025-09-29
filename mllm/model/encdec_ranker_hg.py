@@ -449,14 +449,17 @@ class EncdecHg(nn.Module):
 
 class EncdecBert(nn.Module):
     cfg: EncdecBertCfg
+    enc_only: bool
     enc_bert: EncoderBert
-    dec_pyr: DecoderPyramid
+    # dec_pyr: DecoderPyramid
 
-    def __init__(self, cfg: EncdecBertCfg):
+    def __init__(self, cfg: EncdecBertCfg, enc_only: bool = False):
         super().__init__()
         self.cfg = cfg
+        self.enc_only = enc_only
         self.enc_bert = EncoderBert(cfg.enc_bert)
-        self.dec_pyr = DecoderPyramid(cfg.dec_pyr)
+        if not self.enc_only:
+            self.dec_pyr = DecoderPyramid(cfg.dec_pyr)
 
         for n, p in self.dec_pyr.named_parameters():
             if p.dim() > 1:
@@ -466,9 +469,13 @@ class EncdecBert(nn.Module):
             # pnp = p.detach().cpu().numpy()
             # print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
 
+    # inp: [batch_size, inp_len]
+    # mask: [batch_size, inp_len]
     def forward(self, inp: Tensor, mask: Tensor, enc_only: bool = False) -> Tensor:
+        # [batch_size, d_model]
         out = self.enc_bert(inp, mask)
-        if not enc_only:
+        if not self.enc_only and not enc_only:
+            # [batch_size, inp_len, n_vocab]
             out = self.dec_pyr(out)
         return out
 
