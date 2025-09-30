@@ -1,8 +1,11 @@
 import sys
 from typing import Optional
 
+from transformers import PreTrainedTokenizer
+
 from mllm.model.bert import BertModel
 from mllm.model.bert_generation.modeling_bert_generation import BertGenerationEmbeddings
+from mllm.model.losses import EncdecMaskPadItemLoss
 from mllm.model.utils import get_top_vects
 from mllm.train.utils import get_activation_module
 
@@ -478,6 +481,44 @@ class EncdecBert(nn.Module):
             # [batch_size, inp_len, n_vocab]
             out = self.dec_pyr(out)
         return out
+    
+class EncdecBertAgg(nn.Module):
+    cfg: EncdecBertCfg
+    tkz: PreTrainedTokenizer
+    model: EncdecBert
+    enc_emb_target: bool
+
+    def __init__(self, cfg: EncdecBertCfg, tkz: PreTrainedTokenizer, enc_emb_target: bool = False, load_enc_only: bool = False):
+        super().__init__()
+        self.cfg = cfg
+        self.tkz = tkz
+        self.model = EncdecBert(cfg, enc_only=load_enc_only)
+        self.enc_emb_target = enc_emb_target
+        if self.enc_emb_target:
+            self.model_teacher = EncdecBert(cfg, enc_only=True)
+        else:
+            self.loss_fn = EncdecMaskPadItemLoss(
+                msk_tok_id=tkz.mask_token_id, spc_tok_ids=[tkz.pad_token_id, tkz.cls_token_id, tkz.sep_token_id],
+                reg_weight=1, msk_weight=1, spc_weight=0.1,
+            )
+
+    # inp: [batch_size, inp_len]
+    # mask: [batch_size, inp_len]
+    def forward(self, inp_toks: Tensor, inp_masked_toks) -> Tensor:
+        out = self.model(inp_masked_toks)
+        if self.enc_emb_target:
+            # out: [batch_size, d_model]
+            with torch.no_grad():
+                # [batch_size, inp_len]
+                inp_attn_mask = inp_toks != self.cfg.enc_bert.pad_token_id
+                # [batch_size, d_model]
+                out_target = self.model_teacher(inp_toks, inp_attn_mask)
+            # [batch_size, 1] ?
+            loss = F.cosine_embedding_loss(out, out_target)
+        else:
+            # out: [batch_size, inp_len, n_vocab]
+            pass
+        return loss
 
 
 class DecoderRankHg(nn.Module):
