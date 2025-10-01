@@ -15,10 +15,14 @@ from transformers import AutoTokenizer
 from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
     gen_prefpostfix_encdec_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG
-from mllm.model.encdec_ranker_hg import EncdecBert
+from mllm.model.encdec_ranker_hg import EncdecBert, EncdecBertAgg
 from mllm.model.losses import EncdecMaskPadBatchLoss, EncdecPadBatchLoss, EncdecMaskPadItemLoss
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators2
+
+
+pretrained_model_as_emb_target_ARG = '--pretrained-model-as-emb-target', 'Use pretrained model as a teacher for encoder embedding training'
+
 
 
 class ArgsEncdecBertTrain(BaseModel):
@@ -154,13 +158,11 @@ class ArgsEncdecBertTrain(BaseModel):
         description='Path to EncdecHg model train directory.',
         cli=('--pretrained-model-path',),
     )
-    pretrained_model_as_emb_target: bool = Field(
-        False,
-        description='When set, pretrained model will be used 1) to initialize weights of the current Encoder model, ' \
-        '2) As a target for embeddings of the current Encoder model.',
-        cli=('--pretrained-model-as-emb-target',),
-    )
 
+    pretrained_model_as_emb_target_STR: str = create_bool_str_field(*pretrained_model_as_emb_target_ARG)
+    @property
+    def pretrained_model_as_emb_target(self) -> bool:
+        return is_arg_true(pretrained_model_as_emb_target_ARG[0], self.pretrained_model_as_emb_target_STR)
 
 def main(args: ArgsEncdecBertTrain) -> int:
     print(args)
@@ -210,17 +212,10 @@ def main(args: ArgsEncdecBertTrain) -> int:
     tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
 
     print(model_cfg)
-    if not args.pretrained_model_as_emb_target:
-        model = EncdecBert(model_cfg).to(device)
-    else:
-        model_teacher = EncdecBert(model_cfg, enc_only=True).to(device)
-        model_student = EncdecBert(model_cfg, enc_only=True).to(device)
+    model = EncdecBertAgg(model_cfg, tkz, args.pretrained_model_as_emb_target, load_enc_only=True)
 
-    if args.pretrained_model_path and (args.pretrained_model_path / 'best.pth').exists() and checkpoint is None:
-        pretrained_model_path = args.pretrained_model_path / 'best.pth'
-        print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
-        pretrained_checkpoint = torch.load(pretrained_model_path)
-        model.load_state_dict(pretrained_checkpoint['model'], strict=False)
+    if checkpoint is None:
+        model.load_pretrained(pretrained_model_path)
 
     params = model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
@@ -245,11 +240,6 @@ def main(args: ArgsEncdecBertTrain) -> int:
     print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
     tbsw = tb.SummaryWriter(log_dir=str(train_path))
 
-
-    loss_fn = EncdecMaskPadItemLoss(
-        msk_tok_id=tkz.mask_token_id, spc_tok_ids=[tkz.pad_token_id, tkz.cls_token_id, tkz.sep_token_id],
-        reg_weight=1, msk_weight=1, spc_weight=0.1,
-    )
     print(model)
 
     loss_gt, loss_nongt = None, None
@@ -267,10 +257,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
             # tokens_inp_aug = tokens_inp
 
             optimizer.zero_grad()
-            mask = tokens_inp_aug != tkz.pad_token_id
-            out_logits = model(tokens_inp_aug, mask)
-
-            loss = loss_fn(out_logits, tokens_inp_aug, tokens_inp)
+            loss = model(tokens_inp_aug, tokens_inp)
 
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss
@@ -315,10 +302,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
             tokens_inp_aug, tokens_inp, tokens_tgt, _ = next(val_batch_it)
 
             with torch.no_grad():
-                mask = tokens_inp_aug != tkz.pad_token_id
-                out_logits = model(tokens_inp_aug, mask)
-
-            loss = loss_fn(out_logits, tokens_inp_aug, tokens_inp)
+                loss = model(tokens_inp_aug, tokens_inp)
 
             if type(loss) == tuple:
                 loss_gt, loss_nongt, loss = loss

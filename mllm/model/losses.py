@@ -263,8 +263,8 @@ class EncdecMaskPadItemLoss(nn.Module):
         self.register_buffer('prob_cap', torch.scalar_tensor(prob_cap))
 
     # logits_pred: (batch_size, inp_len, vocab_size)
-    # tokens_: (batch_size, inp_len)
-    # tokens_gt: (batch_size, inp_len)
+    # tokens_inp: (batch_size, inp_len)
+    # tokens_tgt: (batch_size, inp_len)
     def forward(self, logits_pred: torch.Tensor, tokens_inp: torch.Tensor, tokens_tgt: torch.Tensor, **kwargs) -> torch.Tensor:
         # (batch_size, inp_len, 1)
         toks_inp = tokens_inp.to(torch.int64).unsqueeze(-1)

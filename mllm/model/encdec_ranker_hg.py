@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from typing import Optional
 
 from transformers import PreTrainedTokenizer
@@ -502,9 +503,18 @@ class EncdecBertAgg(nn.Module):
                 reg_weight=1, msk_weight=1, spc_weight=0.1,
             )
 
+    def load_pretrained(self, pretrained_model_path: Optional[Path]):
+        if pretrained_model_path and (pretrained_model_path / 'best.pth').exists():
+            pretrained_model_path = pretrained_model_path / 'best.pth'
+            print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
+            pretrained_checkpoint = torch.load(pretrained_model_path)
+            self.model.load_state_dict(pretrained_checkpoint['model'])
+            if self.enc_emb_target:
+                self.model_teacher.load_state_dict(pretrained_checkpoint['model'], strict=True)
+
     # inp: [batch_size, inp_len]
     # mask: [batch_size, inp_len]
-    def forward(self, inp_toks: Tensor, inp_masked_toks) -> Tensor:
+    def forward(self, inp_masked_toks, inp_toks: Tensor) -> Tensor:
         out = self.model(inp_masked_toks)
         if self.enc_emb_target:
             # out: [batch_size, d_model]
@@ -513,11 +523,11 @@ class EncdecBertAgg(nn.Module):
                 inp_attn_mask = inp_toks != self.cfg.enc_bert.pad_token_id
                 # [batch_size, d_model]
                 out_target = self.model_teacher(inp_toks, inp_attn_mask)
-            # [batch_size, 1] ?
-            loss = F.cosine_embedding_loss(out, out_target)
+            # [batch_size]
+            loss = F.cosine_embedding_loss(out, out_target, torch.ones(len(out), dtype=torch.int, device=inp_toks.device))
         else:
             # out: [batch_size, inp_len, n_vocab]
-            pass
+            loss = self.loss_fn(out, inp_masked_toks, inp_toks)
         return loss
 
 
