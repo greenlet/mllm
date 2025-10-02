@@ -464,14 +464,13 @@ class EncdecBert(nn.Module):
         self.enc_bert = EncoderBert(cfg.enc_bert)
         if not self.enc_only:
             self.dec_pyr = DecoderPyramid(cfg.dec_pyr)
-
-        for n, p in self.dec_pyr.named_parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-            # else:
-            #     nn.init.uniform_(p, -0.1, 0.1)
-            # pnp = p.detach().cpu().numpy()
-            # print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
+            for n, p in self.dec_pyr.named_parameters():
+                if p.dim() > 1:
+                    nn.init.xavier_uniform_(p)
+                # else:
+                #     nn.init.uniform_(p, -0.1, 0.1)
+                # pnp = p.detach().cpu().numpy()
+                # print(n, pnp.shape, pnp.min(), pnp.mean(), pnp.max())
 
     # inp: [batch_size, inp_len]
     # mask: [batch_size, inp_len]
@@ -515,7 +514,8 @@ class EncdecBertAgg(nn.Module):
     # inp: [batch_size, inp_len]
     # mask: [batch_size, inp_len]
     def forward(self, inp_masked_toks, inp_toks: Tensor) -> Tensor:
-        out = self.model(inp_masked_toks)
+        att_mask = inp_masked_toks != self.tkz.pad_token_id
+        out = self.model(inp_masked_toks, att_mask)
         if self.enc_emb_target:
             # out: [batch_size, d_model]
             with torch.no_grad():

@@ -166,7 +166,12 @@ class ArgsEncdecBertTrain(BaseModel):
 
 def main(args: ArgsEncdecBertTrain) -> int:
     print(args)
-    pretrained_model_path = args.pretrained_model_path if args.pretrained_model_path and args.pretrained_model_path.name else None
+    if args.pretrained_model_path and args.pretrained_model_path.name:
+        pretrained_model_path = args.pretrained_model_path
+        if not pretrained_model_path.is_file():
+            pretrained_model_path /= 'best.pth'
+    else:
+        pretrained_model_path = None
     assert args.pretrained_model_as_emb_target is False or pretrained_model_path is not None, \
         'When PRETRAINED_MODEL_AS_EMB_TARGET is True, PRETRAINED_MODEL_PATH must be set to valid path.'
 
@@ -252,9 +257,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
         train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp_aug, tokens_inp, tokens_tgt, _ = next(train_batch_it)
-            # tokens_inp_aug = mask_random_tokens(tokens_inp, mask_tok, input_zeros_ratio)
-            # tokens_inp_aug = tokens_inp
+            tokens_inp, tokens_inp_aug, _ = next(train_batch_it)
 
             optimizer.zero_grad()
             loss = model(tokens_inp_aug, tokens_inp)
@@ -299,7 +302,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
         val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
-            tokens_inp_aug, tokens_inp, tokens_tgt, _ = next(val_batch_it)
+            tokens_inp, tokens_inp_aug, _ = next(val_batch_it)
 
             with torch.no_grad():
                 loss = model(tokens_inp_aug, tokens_inp)

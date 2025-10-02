@@ -369,7 +369,7 @@ class EedWikiIterator2:
         self.device = device
         self.preserve_edge_tokens = preserve_edge_tokens
         toks = self.tkz('x')['input_ids']
-        assert toks[0] == self.tkz.cls_token_id and toks[-11] == self.tkz.sep_token_id
+        assert toks[0] == self.tkz.cls_token_id and toks[-1] == self.tkz.sep_token_id
         self.edge_tokens = toks[0], toks[-1]
 
     def mask_tokens(self, toks: np.ndarray) -> tuple[np.ndarray, Optional[np.ndarray]]:
@@ -403,20 +403,21 @@ class EedWikiIterator2:
             doc_toks = np.array(doc_toks)
             n_toks = len(doc_toks)
             if n_toks > inp_len:
-                i_off = np.random.randint(n_toks - inp_len + 1)
-                doc_toks = doc_toks[i_off:i_off + inp_len]
+                roff = np.random.randint(n_toks - inp_len + 1)
+                doc_toks = doc_toks[roff:roff + inp_len]
+                n_toks = len(doc_toks)
 
             toks_masked, _ = self.mask_tokens(doc_toks)
-            assert len(toks_masked) == n_toks
+            assert len(toks_masked) == n_toks, f'len(toks_masked) = {len(toks_masked)}. n_toks = {n_toks}'
 
             toks_src_b[i, i_off:i_off + n_toks] = doc_toks
             toks_masked_b[i, i_off:i_off + n_toks] = toks_masked
 
             if self.preserve_edge_tokens:
-                toks_src_b[i, i_off] = self.edge_tokens[0]
-                toks_src_b[i, i_off + n_toks] = self.edge_tokens[1]
-                toks_masked_b[i, i_off] = self.edge_tokens[0]
-                toks_masked_b[i, i_off + n_toks] = self.edge_tokens[1]
+                toks_src_b[i, 0] = self.edge_tokens[0]
+                toks_src_b[i, 1 + n_toks] = self.edge_tokens[1]
+                toks_masked_b[i, 0] = self.edge_tokens[0]
+                toks_masked_b[i, 1 + n_toks] = self.edge_tokens[1]
 
         toks_src_t = torch.from_numpy(toks_src_b).to(self.device)
         toks_masked_t = torch.from_numpy(toks_masked_b).to(self.device)
