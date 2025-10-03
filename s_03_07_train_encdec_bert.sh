@@ -32,24 +32,24 @@ mask_seq_max_len=20
 pretrained_model_as_emb_target=false
 
 
-#bert_emb_type=cls
-#inp_len=128
-##inp_len=256
-##dec_n_layers=7
-#dec_n_layers=0
-#dec_n_similar_layers=1
-##n_similar_layers=2
-##dec_enhance_type=matmul
-##dec_enhance_type=mmbeg
-#dec_enhance_type=mmbb
-#dec_dropout_rate=0
-#mask_tokens=true
-#mask_sep_freq=0.5
-#mask_sep_frac=0.15
-#mask_seq_freq=0.5
-#mask_seq_max_frac=0.2
-#mask_seq_max_len=20
-#pretrained_model_as_emb_target=true
+bert_emb_type=cls
+inp_len=128
+#inp_len=256
+#dec_n_layers=7
+dec_n_layers=0
+dec_n_similar_layers=1
+#n_similar_layers=2
+#dec_enhance_type=matmul
+#dec_enhance_type=mmbeg
+dec_enhance_type=mmbb
+dec_dropout_rate=0
+mask_tokens=true
+mask_sep_freq=0.5
+mask_sep_frac=0.15
+mask_seq_freq=0.5
+mask_seq_max_frac=0.2
+mask_seq_max_len=20
+pretrained_model_as_emb_target=true
 
 
 #bert_emb_type=cls

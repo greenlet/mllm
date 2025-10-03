@@ -217,7 +217,8 @@ def main(args: ArgsEncdecBertTrain) -> int:
     tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
 
     print(model_cfg)
-    model = EncdecBertAgg(model_cfg, tkz, args.pretrained_model_as_emb_target, load_enc_only=True)
+    model = EncdecBertAgg(model_cfg, tkz, args.pretrained_model_as_emb_target, load_enc_only=args.pretrained_model_as_emb_target)
+    model.to(device)
 
     if checkpoint is None:
         model.load_pretrained(pretrained_model_path)

@@ -503,13 +503,15 @@ class EncdecBertAgg(nn.Module):
             )
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
-        if pretrained_model_path and (pretrained_model_path / 'best.pth').exists():
-            pretrained_model_path = pretrained_model_path / 'best.pth'
+        if pretrained_model_path and pretrained_model_path.exists():
             print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
             pretrained_checkpoint = torch.load(pretrained_model_path)
-            self.model.load_state_dict(pretrained_checkpoint['model'])
+            checkpt_dict = pretrained_checkpoint['model']
+            # Removing decoder weights for strict loading
+            checkpt_dict = {key: val for key, val in checkpt_dict.items() if not key.startswith('dec_pyr.')}
+            self.model.load_state_dict(checkpt_dict, strict=True)
             if self.enc_emb_target:
-                self.model_teacher.load_state_dict(pretrained_checkpoint['model'], strict=True)
+                self.model_teacher.load_state_dict(checkpt_dict, strict=True)
 
     # inp: [batch_size, inp_len]
     # mask: [batch_size, inp_len]
@@ -524,7 +526,9 @@ class EncdecBertAgg(nn.Module):
                 # [batch_size, d_model]
                 out_target = self.model_teacher(inp_toks, inp_attn_mask)
             # [batch_size]
-            loss = F.cosine_embedding_loss(out, out_target, torch.ones(len(out), dtype=torch.int, device=inp_toks.device))
+            # loss = F.cosine_embedding_loss(out, out_target, torch.ones(len(out), dtype=torch.int, device=inp_toks.device))
+            # loss = F.mse_loss(out, out_target)
+            loss = F.l1_loss(out, out_target)
         else:
             # out: [batch_size, inp_len, n_vocab]
             loss = self.loss_fn(out, inp_masked_toks, inp_toks)
