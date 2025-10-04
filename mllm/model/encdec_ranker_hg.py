@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 from transformers import PreTrainedTokenizer
 
@@ -474,65 +474,83 @@ class EncdecBert(nn.Module):
 
     # inp: [batch_size, inp_len]
     # mask: [batch_size, inp_len]
-    def forward(self, inp: Tensor, mask: Tensor, enc_only: bool = False) -> Tensor:
+    def forward(self, inp: Tensor, mask: Tensor, enc_only: bool = False) -> tuple[Tensor, Optional[Tensor]]:
         # [batch_size, d_model]
-        out = self.enc_bert(inp, mask)
+        out_enc = self.enc_bert(inp, mask)
         if not self.enc_only and not enc_only:
             # [batch_size, inp_len, n_vocab]
-            out = self.dec_pyr(out)
-        return out
-    
+            out_dec = self.dec_pyr(out_enc)
+        return out_enc, out_dec
+
+
 class EncdecBertAgg(nn.Module):
     cfg: EncdecBertCfg
     tkz: PreTrainedTokenizer
     model: EncdecBert
-    enc_emb_target: bool
+    enforce_enc_mask_understanding: bool
+    emb_loss_weight: float
+    vocab_loss_weight: float
+    total_loss_weight: float
 
-    def __init__(self, cfg: EncdecBertCfg, tkz: PreTrainedTokenizer, enc_emb_target: bool = False, load_enc_only: bool = False):
+    def __init__(
+            self, cfg: EncdecBertCfg, tkz: PreTrainedTokenizer, enforce_enc_mask_understanding: bool,
+            emb_loss_weight: float = 1.0, vocab_loss_weight: float = 1.0,
+        ):
         super().__init__()
         self.cfg = cfg
         self.tkz = tkz
-        self.model = EncdecBert(cfg, enc_only=load_enc_only)
-        self.enc_emb_target = enc_emb_target
-        if self.enc_emb_target:
-            self.model_teacher = EncdecBert(cfg, enc_only=True)
-        else:
-            self.loss_fn = EncdecMaskPadItemLoss(
-                msk_tok_id=tkz.mask_token_id, spc_tok_ids=[tkz.pad_token_id, tkz.cls_token_id, tkz.sep_token_id],
-                reg_weight=1, msk_weight=1, spc_weight=0.1,
-            )
+        self.model = EncdecBert(cfg, enc_only=False)
+        self.enforce_enc_mask_understanding = enforce_enc_mask_understanding
+        self.emb_loss_weight = emb_loss_weight
+        self.vocab_loss_weight = vocab_loss_weight
+        self.total_loss_weight = self.emb_loss_weight + self.vocab_loss_weight
+        self.vocab_loss_fn = EncdecMaskPadItemLoss(
+            msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
+            reg_weight=1, msk_weight=1, spc_weight=0.1,
+        )
+        if self.enforce_enc_mask_understanding:
+            # self.emb_loss_fn = nn.CosineEmbeddingLoss()
+            # self.emb_loss_fn = nn.L1Loss()
+            self.emb_loss_fn = nn.MSELoss()
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
         if pretrained_model_path and pretrained_model_path.exists():
             print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
             pretrained_checkpoint = torch.load(pretrained_model_path)
             checkpt_dict = pretrained_checkpoint['model']
-            # Removing decoder weights for strict loading
-            checkpt_dict = {key: val for key, val in checkpt_dict.items() if not key.startswith('dec_pyr.')}
+            if self.model.enc_only:
+                # Removing decoder weights for strict loading
+                checkpt_dict = {key: val for key, val in checkpt_dict.items() if not key.startswith('dec_pyr.')}
             self.model.load_state_dict(checkpt_dict, strict=True)
-            if self.enc_emb_target:
-                self.model_teacher.load_state_dict(checkpt_dict, strict=True)
 
-    # inp: [batch_size, inp_len]
-    # mask: [batch_size, inp_len]
-    def forward(self, inp_masked_toks, inp_toks: Tensor) -> Tensor:
-        att_mask = inp_masked_toks != self.tkz.pad_token_id
-        out = self.model(inp_masked_toks, att_mask)
-        if self.enc_emb_target:
-            # out: [batch_size, d_model]
-            with torch.no_grad():
-                # [batch_size, inp_len]
-                inp_attn_mask = inp_toks != self.cfg.enc_bert.pad_token_id
-                # [batch_size, d_model]
-                out_target = self.model_teacher(inp_toks, inp_attn_mask)
-            # [batch_size]
-            # loss = F.cosine_embedding_loss(out, out_target, torch.ones(len(out), dtype=torch.int, device=inp_toks.device))
-            # loss = F.mse_loss(out, out_target)
-            loss = F.l1_loss(out, out_target)
+    # inp_masked_toks: [batch_size, inp_len]
+    # inp_toks: [batch_size, inp_len]
+    def forward(self, inp_masked_toks, inp_toks: Tensor) -> dict[str, Tensor]:
+        if self.enforce_enc_mask_understanding:
+            # [batch_size, inp_len]
+            inp_att_mask = inp_toks != self.tkz.pad_token_id
+            # out_enc: [batch_size, inp_len, d_model]
+            # out_dec: [batch_size, inp_len, n_vocab]
+            out_enc, out_dec = self.model(inp_toks, inp_att_mask)
+            # [batch_size, inp_len]
+            inp_masked_att_mask = inp_masked_toks != self.tkz.pad_token_id
+            # out_enc_masked: [batch_size, inp_len, d_model]
+            # out_dec_masked: None
+            out_enc_masked, out_dec_masked = self.model(inp_masked_toks, inp_masked_att_mask, enc_only=True)
+            # [1,]
+            vocab_loss = self.vocab_loss_fn(out_dec, inp_masked_toks, inp_toks)
+            emb_loss = self.emb_loss_fn(out_enc, out_enc_masked)
+            loss = (self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss) / self.total_loss_weight
+            return {'loss': loss, 'vocab_loss': vocab_loss, 'emb_loss': emb_loss}
         else:
-            # out: [batch_size, inp_len, n_vocab]
-            loss = self.loss_fn(out, inp_masked_toks, inp_toks)
-        return loss
+            # [batch_size, inp_len]
+            inp_masked_att_mask = inp_masked_toks != self.tkz.pad_token_id
+            # out_enc: [batch_size, inp_len, d_model]
+            # out_dec: [batch_size, inp_len, n_vocab]
+            out_enc, out_dec = self.model(inp_masked_toks, inp_masked_att_mask)
+            # [1,]
+            vocab_loss = self.vocab_loss_fn(out_dec, inp_masked_toks, inp_toks)
+            return vocab_loss
 
 
 class DecoderRankHg(nn.Module):

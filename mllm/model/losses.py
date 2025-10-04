@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Union
 
+from sympy import N
 import torch
 from torch import nn
 
@@ -265,7 +266,7 @@ class EncdecMaskPadItemLoss(nn.Module):
     # logits_pred: (batch_size, inp_len, vocab_size)
     # tokens_inp: (batch_size, inp_len)
     # tokens_tgt: (batch_size, inp_len)
-    def forward(self, logits_pred: torch.Tensor, tokens_inp: torch.Tensor, tokens_tgt: torch.Tensor, **kwargs) -> torch.Tensor:
+    def forward(self, logits_pred: torch.Tensor, tokens_inp: torch.Tensor, tokens_tgt: torch.Tensor, **kwargs) -> dict[str, torch.Tensor] | torch.Tensor:
         # (batch_size, inp_len, 1)
         toks_inp = tokens_inp.to(torch.int64).unsqueeze(-1)
         toks_tgt = tokens_tgt.to(torch.int64).unsqueeze(-1)
@@ -294,6 +295,8 @@ class EncdecMaskPadItemLoss(nn.Module):
 
         n_batch = logits_pred.shape[0]
         loss = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
+        loss_reg, loss_msk, loss_spc = loss, loss, loss
+        n_reg, n_msk, n_spc = 0, 0, 0
         for ib in range(n_batch):
             probs_gt_i, mask_reg_i, mask_msk_i, mask_spc_i = probs_gt[ib], mask_reg[ib], mask_msk[ib], mask_spc[ib]
             # probs_gt_reg: (n_reg_toks, )
@@ -307,23 +310,38 @@ class EncdecMaskPadItemLoss(nn.Module):
             # loss_reg: (1,)
             # loss_msk: (1,)
             # loss_spc: (1,)
-            loss_reg = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
-            loss_msk, loss_spc = loss_reg, loss_reg
+            loss_i = torch.zeros((1,), dtype=torch.float32, device=probs_gt.device)
             total_weight = 0
             if probs_gt_reg.size()[0] > 0:
-                loss_reg = -torch.mean(torch.log(probs_gt_reg))
+                loss_reg_i = -torch.mean(torch.log(probs_gt_reg))
+                loss_i = loss_i + loss_reg_i * self.reg_weight
                 total_weight += self.reg_weight
+                loss_reg = loss_reg + loss_reg_i
+                n_reg += 1
             if probs_gt_msk.size()[0] > 0:
-                loss_msk = -torch.mean(torch.log(probs_gt_msk))
+                loss_msk_i = -torch.mean(torch.log(probs_gt_msk))
+                loss_i = loss_i + loss_msk_i * self.msk_weight
                 total_weight += self.msk_weight
+                loss_msk = loss_msk + loss_msk_i
+                n_msk += 1
             if probs_gt_spc.size()[0] > 0:
-                loss_spc = -torch.mean(torch.log(probs_gt_spc))
+                loss_spc_i = -torch.mean(torch.log(probs_gt_spc))
+                loss_i = loss_i + loss_spc_i * self.spc_weight
                 total_weight += self.spc_weight
-            loss_i = (loss_reg * self.reg_weight + loss_msk * self.msk_weight + loss_spc * self.spc_weight) / total_weight
+                loss_spc = loss_spc + loss_spc_i
+                n_spc += 1
+            loss_i = loss_i / total_weight
             loss = loss + loss_i
         # loss: (1,)
         loss = loss / n_batch
-        return loss
+        res = {'loss': loss}
+        if n_reg > 0:
+            res['reg_toks_loss'] = loss_reg / n_reg
+        if n_msk > 0:
+            res['msk_toks_loss'] = loss_msk / n_msk
+        if n_spc > 0:
+            res['spc_toks_loss'] = loss_spc / n_spc
+        return res
 
 
 class EncdecPadBatchLoss(nn.Module):

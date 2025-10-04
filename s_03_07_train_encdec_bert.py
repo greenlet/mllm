@@ -21,7 +21,8 @@ from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators2
 
 
-pretrained_model_as_emb_target_ARG = '--pretrained-model-as-emb-target', 'Use pretrained model as a teacher for encoder embedding training'
+enforce_encoder_mask_understanding_ARG = '--enforce-encoder-mask-understanding', 'Enforce encoder embeddings for both unmasked and masked inputs '
+'to be similar'
 
 
 
@@ -159,10 +160,10 @@ class ArgsEncdecBertTrain(BaseModel):
         cli=('--pretrained-model-path',),
     )
 
-    pretrained_model_as_emb_target_STR: str = create_bool_str_field(*pretrained_model_as_emb_target_ARG)
+    enforce_encoder_mask_understanding_STR: str = create_bool_str_field(*enforce_encoder_mask_understanding_ARG)
     @property
-    def pretrained_model_as_emb_target(self) -> bool:
-        return is_arg_true(pretrained_model_as_emb_target_ARG[0], self.pretrained_model_as_emb_target_STR)
+    def enforce_encoder_mask_understanding(self) -> bool:
+        return is_arg_true(enforce_encoder_mask_understanding_ARG[0], self.enforce_encoder_mask_understanding_STR)
 
 def main(args: ArgsEncdecBertTrain) -> int:
     print(args)
@@ -172,8 +173,6 @@ def main(args: ArgsEncdecBertTrain) -> int:
             pretrained_model_path /= 'best.pth'
     else:
         pretrained_model_path = None
-    assert args.pretrained_model_as_emb_target is False or pretrained_model_path is not None, \
-        'When PRETRAINED_MODEL_AS_EMB_TARGET is True, PRETRAINED_MODEL_PATH must be set to valid path.'
 
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
@@ -217,7 +216,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
     tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
 
     print(model_cfg)
-    model = EncdecBertAgg(model_cfg, tkz, args.pretrained_model_as_emb_target, load_enc_only=args.pretrained_model_as_emb_target)
+    model = EncdecBertAgg(model_cfg, tkz, args.enforce_encoder_mask_understanding)
     model.to(device)
 
     if checkpoint is None:

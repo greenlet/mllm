@@ -29,7 +29,7 @@ mask_sep_frac=0.15
 mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
-pretrained_model_as_emb_target=false
+enforce_encoder_mask_understanding=false
 
 
 bert_emb_type=cls
@@ -49,7 +49,7 @@ mask_sep_frac=0.15
 mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
-pretrained_model_as_emb_target=true
+enforce_encoder_mask_understanding=true
 
 
 #bert_emb_type=cls
@@ -67,7 +67,7 @@ pretrained_model_as_emb_target=true
 #mask_seq_freq=0.5
 #mask_seq_max_frac=0.2
 #mask_seq_max_len=20
-#pretrained_model_as_emb_target=false
+#enforce_encoder_mask_understanding=false
 
 
 
@@ -83,8 +83,9 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=15
-docs_batch_size=5
+docs_batch_size=25
+#docs_batch_size=15
+#docs_batch_size=5
 #train_subdir=last
 
 
@@ -122,6 +123,6 @@ python s_03_07_train_encdec_bert.py \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed \
   --pretrained-model-path "$pretrained_model_path" \
-  --pretrained-model-as-emb-target $pretrained_model_as_emb_target
+  --enforce-encoder-mask-understanding $enforce_encoder_mask_understanding
 #"
 
