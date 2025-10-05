@@ -480,6 +480,8 @@ class EncdecBert(nn.Module):
         if not self.enc_only and not enc_only:
             # [batch_size, inp_len, n_vocab]
             out_dec = self.dec_pyr(out_enc)
+        else:
+            out_dec = None
         return out_enc, out_dec
 
 
@@ -494,7 +496,7 @@ class EncdecBertAgg(nn.Module):
 
     def __init__(
             self, cfg: EncdecBertCfg, tkz: PreTrainedTokenizer, enforce_enc_mask_understanding: bool,
-            emb_loss_weight: float = 1.0, vocab_loss_weight: float = 1.0,
+            emb_loss_weight: float = 20.0, vocab_loss_weight: float = 1.0,
         ):
         super().__init__()
         self.cfg = cfg
@@ -537,11 +539,14 @@ class EncdecBertAgg(nn.Module):
             # out_enc_masked: [batch_size, inp_len, d_model]
             # out_dec_masked: None
             out_enc_masked, out_dec_masked = self.model(inp_masked_toks, inp_masked_att_mask, enc_only=True)
+            vocab_loss_dict = self.vocab_loss_fn(out_dec, inp_masked_toks, inp_toks)
             # [1,]
-            vocab_loss = self.vocab_loss_fn(out_dec, inp_masked_toks, inp_toks)
+            vocab_loss = vocab_loss_dict['loss']
             emb_loss = self.emb_loss_fn(out_enc, out_enc_masked)
-            loss = (self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss) / self.total_loss_weight
-            return {'loss': loss, 'vocab_loss': vocab_loss, 'emb_loss': emb_loss}
+            # loss = (self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss) / self.total_loss_weight
+            loss = self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss
+            vocab_loss_dict = {f'vocab_{k}': v for k, v in vocab_loss_dict.items()}
+            return {'loss': loss, 'emb_loss': emb_loss, **vocab_loss_dict}
         else:
             # [batch_size, inp_len]
             inp_masked_att_mask = inp_masked_toks != self.tkz.pad_token_id

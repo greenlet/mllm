@@ -1,10 +1,68 @@
 from enum import Enum
-from typing import Union
+from typing import Optional, Union, cast
 
 from sympy import N
 import torch
 from torch import nn
+import torch.utils.tensorboard as tb
 
+
+LossDict = dict[str, Union[torch.Tensor, int]]
+
+
+def snake_to_camel(s: str) -> str:
+    parts = s.split('_')
+    return ''.join(p.capitalize() for p in parts)
+
+
+def accum_losses(loss_dict: LossDict, accum_loss_dict: Optional[LossDict] = None) -> LossDict:
+    if accum_loss_dict is None:
+        accum_loss_dict = {}
+    for k, v in loss_dict.items():
+        k_cnt = f'{k}_cnt'
+        if k in accum_loss_dict:
+            accum_loss_dict[k] = accum_loss_dict[k] + v
+        else:
+            accum_loss_dict[k] = v
+        accum_loss_dict[k_cnt] = accum_loss_dict.get(k_cnt, 0) + 1
+    return accum_loss_dict
+
+
+def log_losses_to_tb(mode: str, step: int, loss_dict: LossDict, tbw: tb.SummaryWriter):
+    for k, v in loss_dict.items():
+        if not k.endswith('_cnt'):
+            continue
+        k_loss = k[:-4]
+        loss = loss_dict[k_loss] / v
+        loss = cast(torch.Tensor, loss)
+        k_loss_str = snake_to_camel(k_loss)
+        tbw.add_scalar(f'{k_loss_str}/{mode}', loss, step)
+
+
+def losses_to_str(loss_dict: LossDict) -> str:
+    loss = loss_dict['loss'] / loss_dict['loss_cnt']
+    loss = cast(torch.Tensor, loss)
+    losses_str = [f'loss: {loss.item():.6f}']
+    for k, v in loss_dict.items():
+        if not k.endswith('_cnt'):
+            continue
+        k_loss = k[:-4]
+        if k_loss == 'loss':
+            continue
+        l = loss_dict[k_loss] / v
+        l = cast(torch.Tensor, l)
+
+        ls = k_loss.split('_')
+        if ls[-1] == 'loss':
+            ls = ls[:-1]
+        if len(ls) == 1:
+            ls = ls[0][:3]
+        else:
+            ls = ''.join(p[0] for p in ls)
+        losses_str.append(f'{ls}: {l.item():.6f}')
+
+    res = '. '.join(losses_str)
+    return res
 
 
 class RankProbLoss(nn.Module):
@@ -266,7 +324,7 @@ class EncdecMaskPadItemLoss(nn.Module):
     # logits_pred: (batch_size, inp_len, vocab_size)
     # tokens_inp: (batch_size, inp_len)
     # tokens_tgt: (batch_size, inp_len)
-    def forward(self, logits_pred: torch.Tensor, tokens_inp: torch.Tensor, tokens_tgt: torch.Tensor, **kwargs) -> dict[str, torch.Tensor] | torch.Tensor:
+    def forward(self, logits_pred: torch.Tensor, tokens_inp: torch.Tensor, tokens_tgt: torch.Tensor, **kwargs) -> LossDict:
         # (batch_size, inp_len, 1)
         toks_inp = tokens_inp.to(torch.int64).unsqueeze(-1)
         toks_tgt = tokens_tgt.to(torch.int64).unsqueeze(-1)

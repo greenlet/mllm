@@ -16,7 +16,7 @@ from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec
     gen_prefpostfix_encdec_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG
 from mllm.model.encdec_ranker_hg import EncdecBert, EncdecBertAgg
-from mllm.model.losses import EncdecMaskPadBatchLoss, EncdecPadBatchLoss, EncdecMaskPadItemLoss
+from mllm.model.losses import EncdecMaskPadBatchLoss, EncdecPadBatchLoss, EncdecMaskPadItemLoss, accum_losses, log_losses_to_tb, losses_to_str
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators2
 
@@ -247,25 +247,23 @@ def main(args: ArgsEncdecBertTrain) -> int:
 
     print(model)
 
-    loss_gt, loss_nongt = None, None
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
     if prev_train_steps > 0:
         grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
     for epoch in range(last_epoch + 1, args.epochs):
         model.train()
-        train_loss, train_loss_gt, train_loss_nongt = 0, 0, 0
+        train_losses = {}
+        train_loss = 0.0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             tokens_inp, tokens_inp_aug, _ = next(train_batch_it)
 
             optimizer.zero_grad()
-            loss = model(tokens_inp_aug, tokens_inp)
-
-            if type(loss) == tuple:
-                loss_gt, loss_nongt, loss = loss
-
+            loss_dict = model(tokens_inp_aug, tokens_inp)
+            loss = loss_dict['loss']
             loss.backward()
+
             # Gradients must be available after loss.backward()
             if grad_log_ind % grad_log_interval == 0:
                 log_weights_grads_stats(grad_log_step, model, tbsw)
@@ -274,59 +272,40 @@ def main(args: ArgsEncdecBertTrain) -> int:
 
             optimizer.step()
             train_loss += loss.item()
-            if loss_gt is not None:
-                train_loss_gt += loss_gt.item()
-                train_loss_nongt += loss_nongt.item()
+            accum_losses(loss_dict, train_losses)
 
             # if i_train == 2:
             #     import sys
             #     sys.exit()
 
-            s = f'Train. loss: {loss.item():.6f}'
-            if loss_gt is not None:
-                s += f'. loss_gt: {loss_gt.item():.6f}. loss_nongt: {loss_nongt.item():.6f}'
-            pbar.set_postfix_str(s)
+            loss_str = losses_to_str(train_losses)
+            pbar.set_postfix_str(f'Train. {loss_str}')
         pbar.close()
         train_loss /= args.train_epoch_steps
-        tbsw.add_scalar('Loss/Train', train_loss, epoch)
-        if loss_gt is not None:
-            train_loss_gt /= args.train_epoch_steps
-            train_loss_nongt /= args.train_epoch_steps
-            tbsw.add_scalar('LossGt/Train', train_loss_gt, epoch)
-            tbsw.add_scalar('LossNongt/Train', train_loss_nongt, epoch)
+        log_losses_to_tb('Train', epoch, train_losses, tbsw)
 
         model.eval()
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-        val_loss, val_loss_gt, val_loss_nongt = 0, 0, 0
+        val_losses = {}
+        val_loss = 0.0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
             tokens_inp, tokens_inp_aug, _ = next(val_batch_it)
 
             with torch.no_grad():
-                loss = model(tokens_inp_aug, tokens_inp)
-
-            if type(loss) == tuple:
-                loss_gt, loss_nongt, loss = loss
+                loss_dict = model(tokens_inp_aug, tokens_inp)
+            loss = loss_dict['loss']
 
             val_loss += loss.item()
-            if loss_gt is not None:
-                val_loss_gt += loss_gt.item()
-                val_loss_nongt += loss_nongt.item()
+            val_losses = accum_losses(loss_dict, val_losses)
 
-            s = f'Val. loss: {loss.item():.6f}'
-            if loss_gt is not None:
-                s += f'. loss_gt: {loss_gt.item():.6f}. loss_nongt: {loss_nongt.item():.6f}'
+            s = losses_to_str(val_losses)
             pbar.set_postfix_str(s)
         pbar.close()
         val_loss /= args.val_epoch_steps
-        tbsw.add_scalar('Loss/Val', val_loss, epoch)
-        if loss_gt is not None:
-            val_loss_gt /= args.val_epoch_steps
-            val_loss_nongt /= args.val_epoch_steps
-            tbsw.add_scalar('LossGt/Val', val_loss_gt, epoch)
-            tbsw.add_scalar('LossNongt/Val', val_loss_nongt, epoch)
+        log_losses_to_tb('Val', epoch, val_losses, tbsw)
 
         if epoch >= sched_wait_steps:
             scheduler.step(val_loss)
