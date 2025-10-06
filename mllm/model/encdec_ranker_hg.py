@@ -6,7 +6,7 @@ from transformers import PreTrainedTokenizer
 
 from mllm.model.bert import BertModel
 from mllm.model.bert_generation.modeling_bert_generation import BertGenerationEmbeddings
-from mllm.model.losses import EncdecMaskPadItemLoss
+from mllm.model.losses import EncdecMaskPadItemLoss, R2Loss
 from mllm.model.utils import get_top_vects
 from mllm.train.utils import get_activation_module
 
@@ -496,7 +496,7 @@ class EncdecBertAgg(nn.Module):
 
     def __init__(
             self, cfg: EncdecBertCfg, tkz: PreTrainedTokenizer, enforce_enc_mask_understanding: bool,
-            emb_loss_weight: float = 20.0, vocab_loss_weight: float = 1.0,
+            emb_loss_weight: float = 1.0, vocab_loss_weight: float = 1.0,
         ):
         super().__init__()
         self.cfg = cfg
@@ -513,16 +513,26 @@ class EncdecBertAgg(nn.Module):
         if self.enforce_enc_mask_understanding:
             # self.emb_loss_fn = nn.CosineEmbeddingLoss()
             # self.emb_loss_fn = nn.L1Loss()
-            self.emb_loss_fn = nn.MSELoss()
+            # self.emb_loss_fn = nn.MSELoss()
+            self.emb_loss_fn = R2Loss()
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
         if pretrained_model_path and pretrained_model_path.exists():
             print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
             pretrained_checkpoint = torch.load(pretrained_model_path)
             checkpt_dict = pretrained_checkpoint['model']
-            if self.model.enc_only:
-                # Removing decoder weights for strict loading
-                checkpt_dict = {key: val for key, val in checkpt_dict.items() if not key.startswith('dec_pyr.')}
+
+            checkpt_dict_renamed = {}
+            for key, val in checkpt_dict.items():
+                if key.startswith('model.'):
+                    key = key[6:]
+                if self.model.enc_only and key.startswith('dec_pyr.'):
+                    continue
+                if key.startswith('vocab_loss_fn.') or key.startswith('emb_loss_fn.'):
+                    continue
+                checkpt_dict_renamed[key] = val
+            checkpt_dict = checkpt_dict_renamed
+
             self.model.load_state_dict(checkpt_dict, strict=True)
 
     # inp_masked_toks: [batch_size, inp_len]
@@ -531,18 +541,18 @@ class EncdecBertAgg(nn.Module):
         if self.enforce_enc_mask_understanding:
             # [batch_size, inp_len]
             inp_att_mask = inp_toks != self.tkz.pad_token_id
-            # out_enc: [batch_size, inp_len, d_model]
+            # out_enc: [batch_size, d_model]
             # out_dec: [batch_size, inp_len, n_vocab]
-            out_enc, out_dec = self.model(inp_toks, inp_att_mask)
+            out_enc, out_dec = self.model(inp_toks, inp_att_mask, enc_only=True)
             # [batch_size, inp_len]
             inp_masked_att_mask = inp_masked_toks != self.tkz.pad_token_id
-            # out_enc_masked: [batch_size, inp_len, d_model]
-            # out_dec_masked: None
-            out_enc_masked, out_dec_masked = self.model(inp_masked_toks, inp_masked_att_mask, enc_only=True)
-            vocab_loss_dict = self.vocab_loss_fn(out_dec, inp_masked_toks, inp_toks)
+            # out_enc_masked: [batch_size, d_model]
+            # out_dec_masked: [batch_size, inp_len, n_vocab]
+            out_enc_masked, out_dec_masked = self.model(inp_masked_toks, inp_masked_att_mask, enc_only=False)
+            vocab_loss_dict = self.vocab_loss_fn(out_dec_masked, inp_masked_toks, inp_toks)
             # [1,]
             vocab_loss = vocab_loss_dict['loss']
-            emb_loss = self.emb_loss_fn(out_enc, out_enc_masked)
+            emb_loss = self.emb_loss_fn(out_enc_masked, out_enc)
             # loss = (self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss) / self.total_loss_weight
             loss = self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss
             vocab_loss_dict = {f'vocab_{k}': v for k, v in vocab_loss_dict.items()}
@@ -550,7 +560,7 @@ class EncdecBertAgg(nn.Module):
         else:
             # [batch_size, inp_len]
             inp_masked_att_mask = inp_masked_toks != self.tkz.pad_token_id
-            # out_enc: [batch_size, inp_len, d_model]
+            # out_enc: [batch_size, d_model]
             # out_dec: [batch_size, inp_len, n_vocab]
             out_enc, out_dec = self.model(inp_masked_toks, inp_masked_att_mask)
             # [1,]

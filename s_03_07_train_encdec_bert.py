@@ -53,6 +53,11 @@ class ArgsEncdecBertTrain(BaseModel):
         description='Path to EncdecHg model config Yaml file.',
         cli=('--model-cfg-fpath',),
     )
+    bert_model_name: str = Field(
+        'bert-base-uncased',
+        description='Pretrained BERT model name. Must be a model from Huggingface models hub (bert-base-*, bert-large-*).',
+        cli=('--bert-model-name',),
+    )
     bert_emb_type: BertEmbType = Field(
         BertEmbType.Cls,
         description=f'Bert embedding type. Can have values: {list(x.value for x in BertEmbType)}',
@@ -181,7 +186,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
 
     model_cfg = parse_yaml_file_as(EncdecBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_encdec_bert_cfg(
-        model_cfg, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
+        model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
     )
 

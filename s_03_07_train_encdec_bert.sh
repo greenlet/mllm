@@ -12,6 +12,7 @@ config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_bert
 
+bert_model_name=bert-base-uncased
 bert_emb_type=cls
 inp_len=128
 #inp_len=256
@@ -31,7 +32,7 @@ mask_seq_max_frac=0.2
 mask_seq_max_len=20
 enforce_encoder_mask_understanding=false
 
-
+bert_model_name=bert-base-uncased
 bert_emb_type=cls
 inp_len=128
 #inp_len=256
@@ -45,13 +46,13 @@ dec_enhance_type=mmbb
 dec_dropout_rate=0
 mask_tokens=true
 mask_sep_freq=0.5
-mask_sep_frac=0.15
+mask_sep_frac=0.04
 mask_seq_freq=0.5
-mask_seq_max_frac=0.2
-mask_seq_max_len=20
+mask_seq_max_frac=0.05
+mask_seq_max_len=5
 enforce_encoder_mask_understanding=true
 
-
+#bert_model_name=bert-base-uncased
 #bert_emb_type=cls
 ##inp_len=384
 #inp_len=256
@@ -71,7 +72,9 @@ enforce_encoder_mask_understanding=true
 
 
 
-pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+#pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
+
 
 device=cpu
 epochs=5
@@ -83,14 +86,17 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=25
-#docs_batch_size=15
-#docs_batch_size=5
+#docs_batch_size=25
+# docs_batch_size=20
+docs_batch_size=15
+# docs_batch_size=10
+# docs_batch_size=3
 #train_subdir=last
 
 
 learning_rate=0.0001
 learning_rate=0.00005
+#learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
@@ -103,6 +109,7 @@ python s_03_07_train_encdec_bert.py \
   --train-root-path $train_root_path \
   --train-subdir "$train_subdir" \
   --model-cfg-fpath $model_cfg_fpath \
+  --bert-model-name $bert_model_name \
   --bert-emb-type $bert_emb_type \
   --inp-len $inp_len \
   --dec-enhance-type $dec_enhance_type \

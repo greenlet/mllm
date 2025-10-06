@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, Union, cast
+from typing import Mapping, Optional, Union, cast
 
 from sympy import N
 import torch
@@ -7,7 +7,7 @@ from torch import nn
 import torch.utils.tensorboard as tb
 
 
-LossDict = dict[str, Union[torch.Tensor, int]]
+LossDict = Mapping[str, Union[torch.Tensor, int]]
 
 
 def snake_to_camel(s: str) -> str:
@@ -400,6 +400,31 @@ class EncdecMaskPadItemLoss(nn.Module):
         if n_spc > 0:
             res['spc_toks_loss'] = loss_spc / n_spc
         return res
+
+
+class R2Loss(nn.Module):
+    def __init__(self, n_history: int = 100):
+        super().__init__()
+        self.n_history = n_history
+        self.ss_tot_history = []
+
+    # y_pred: (batch_size, d_model)
+    # y_gt: (batch_size, d_model)
+    def forward(self, y_pred: torch.Tensor, y_gt: torch.Tensor) -> torch.Tensor:
+        # y_gt_mean: (1, d_model)
+        y_gt_mean = torch.mean(y_gt, dim=0, keepdim=True)
+        # ss_tot: (batch_size, d_model)
+        ss_tot = (y_gt - y_gt_mean) ** 2
+        # ss_tot_history: (batch_size..n_history+batch_size, d_model)
+        self.ss_tot_history.extend(ss_tot.cpu().tolist())
+        # ss_tot_history: (batch_size..n_history, d_model)
+        self.ss_tot_history = self.ss_tot_history[-self.n_history:]
+        ss_res = torch.mean((y_gt - y_pred) ** 2)
+        ss_tot = torch.mean(torch.tensor(self.ss_tot_history, dtype=torch.float32, device=y_pred.device))
+        r2 = 1 - ss_res / ss_tot
+        loss = 1 - r2
+        return loss
+
 
 
 class EncdecPadBatchLoss(nn.Module):
