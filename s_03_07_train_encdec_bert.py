@@ -14,7 +14,7 @@ from transformers import AutoTokenizer
 
 from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
     gen_prefpostfix_encdec_bert
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG
 from mllm.model.encdec_ranker_hg import EncdecBert, EncdecBertAgg
 from mllm.model.losses import EncdecMaskPadBatchLoss, EncdecPadBatchLoss, EncdecMaskPadItemLoss, accum_losses, log_losses_to_tb, losses_to_str
 from mllm.train.mask_utils import MaskCfg
@@ -117,6 +117,11 @@ class ArgsEncdecBertTrain(BaseModel):
         description='Maximum length of tokens sequence to mask. Combined with value derived from MASK_SEQ_MAX_FRAC using min() function.',
         cli=('--mask-seq-max-len',),
     )
+
+    next_tok_pred_STR: str = create_bool_str_field(*next_tok_pred_ARG)
+    @property
+    def next_tok_pred(self) -> bool:
+        return is_arg_true(next_tok_pred_ARG[0], self.next_tok_pred_STR)
 
     dec_dropout_rate: float = Field(
         0.0,
@@ -221,7 +226,10 @@ def main(args: ArgsEncdecBertTrain) -> int:
     tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
 
     print(model_cfg)
-    model = EncdecBertAgg(model_cfg, tkz, args.enforce_encoder_mask_understanding)
+    model = EncdecBertAgg(
+        model_cfg, tkz, enforce_enc_mask_understanding=args.enforce_encoder_mask_understanding,
+        next_tok_pred=args.next_tok_pred,
+    )
     model.to(device)
 
     if checkpoint is None:

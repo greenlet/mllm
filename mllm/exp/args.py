@@ -15,6 +15,7 @@ GENMIX_BERT_MODEL_CFG_FNAME = 'genmix_bert_model_cfg.yaml'
 GENMIXEMB_BERT_MODEL_CFG_FNAME = 'genmixemb_model_cfg.yaml'
 
 mask_tokens_ARG = '--mask-tokens', 'Mask input tokens'
+next_tok_pred_ARG = '--next-tok-pred', 'Predict next token'
 
 ARG_TRUE_VALUES = ('true', 't', 'yes', 'y', '1')
 ARG_FALSE_VALUES = ('false', 'f', 'no', 'n', '0')
