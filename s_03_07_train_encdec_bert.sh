@@ -51,7 +51,7 @@ mask_seq_freq=0.5
 mask_seq_max_frac=0.05
 mask_seq_max_len=5
 next_tok_pred=true
-enforce_encoder_mask_understanding=true
+enforce_encoder_mask_understanding=false
 
 #bert_model_name=bert-base-uncased
 #bert_emb_type=cls

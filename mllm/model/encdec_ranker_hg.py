@@ -538,28 +538,38 @@ class EncdecBertAgg(nn.Module):
             self.model.load_state_dict(checkpt_dict, strict=True)
 
     def create_causal_mask(self, size: int, device: torch.device) -> Tensor:
+        # (size, size)
         mask = torch.tril(torch.ones((size, size), device=device)).to(torch.int32)
         return mask
-
-    # inp: (1, inp_len)
-    def run_next_sent_pred(self, inp_tokens: Tensor) -> Tensor:
-        assert inp_tokens.ndim == 1 or inp_tokens.ndim == 2 and inp_tokens.shape[0] == 1
-        if inp_tokens.ndim == 2:
-            inp_tokens = inp_tokens.squeeze(0)
-        # (1, inp_len)
-        inp_tokens = inp_tokens[inp_tokens != self.tkz.pad_token_id].unsqueeze(0)
-
-        size = inp_tokens.shape[1]
-        device = inp_tokens.device
-        # (inp_len, inp_len)
-        causal_mask = self.create_causal_mask(size, device)
-
-        pass
-
 
     # inp_masked_toks: (batch_size, inp_len)
     # inp_toks: (batch_size, inp_len)
     def forward(self, inp_masked_toks, inp_toks: Tensor) -> dict[str, Tensor]:
+        if self.next_tok_pred:
+            assert not self.enforce_enc_mask_understanding, 'Next token prediction together with enforcing encoder masked token understanding is not supported yet'
+            batch_size, inp_len = inp_toks.shape
+            device = inp_toks.device
+            # (inp_len, inp_len)
+            causal_mask = self.create_causal_mask(inp_len, device)
+            # out_enc_causal: (batch_size, d_model)
+            # out_dec_causal: (batch_size, inp_len, n_vocab)
+            out_enc_causal, out_dec_causal = self.model(inp_toks, causal_mask, enc_only=False)
+
+            # tgt_toks: (batch_size, inp_len - 1)
+            tgt_toks = inp_toks[:, 1:].contiguous()
+            # logits: (batch_size, inp_len - 1, n_vocab)
+            logits = out_dec_causal[:, :-1, :].contiguous()
+
+            loss = torch.tensor(0.0, device=device)
+            for ib in range(batch_size):
+                n_nonpad = (tgt_toks[ib, :] != self.tkz.pad_token_id).sum().item()
+                tgt_toks_i = tgt_toks[ib, :n_nonpad]
+                logits_i = logits[ib, :n_nonpad, :]
+                loss_i = F.cross_entropy(logits_i, tgt_toks_i, reduction='mean')
+                loss += loss_i
+            loss /= batch_size
+            return {'loss': loss}
+
         if self.enforce_enc_mask_understanding:
             # (batch_size, inp_len)
             inp_att_mask = inp_toks != self.tkz.pad_token_id
