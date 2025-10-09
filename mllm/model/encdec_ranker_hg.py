@@ -551,6 +551,8 @@ class EncdecBertAgg(nn.Module):
             device = inp_toks.device
             # (inp_len, inp_len)
             causal_mask = self.create_causal_mask(inp_len, device)
+            # (1, inp_len, inp_len)
+            causal_mask = causal_mask.unsqueeze(0)
             # out_enc_causal: (batch_size, d_model)
             # out_dec_causal: (batch_size, inp_len, n_vocab)
             out_enc_causal, out_dec_causal = self.model(inp_toks, causal_mask, enc_only=False)

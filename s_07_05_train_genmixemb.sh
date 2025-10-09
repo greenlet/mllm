@@ -146,47 +146,47 @@ train_agg_model=true
 toks_agg_type=brt
 bert_agg_model_name=bert-base-uncased
 bert_agg_n_subseq_toks=128
-bert_agg_type=cls
+bert_agg_type=sep
 n_toks_min=20
-#max_inp_toks=1024
-max_inp_toks=128
-max_out_toks=128
-
-
-train_root_path=$data_path/train_mllm_genmixemb_qna
-train_ds_type=qna
-model_name=gpt2
-#model_name=gpt2-large
-train_agg_model=true
-toks_agg_type=cnv
-ctx_que_prompt_type=cq
-cnv_n_levels=3
-#cnv_n_levels=6
-cnv_n_layers_per_level=1
-cnv_conv_kernel_size=3
-cnv_pool_kernel_size=2
-cnv_pool_stride=2
-cnv_share_layer_weights=false
-#cnv_share_layer_weights=true
-n_toks_min=20
-max_inp_toks=768
-# max_inp_toks=448
+max_inp_toks=1024
 #max_inp_toks=128
-#max_inp_toks=64
-#max_out_toks=256
 max_out_toks=128
-#max_out_toks=16
-gpt2_embd_pdrop=0.1
-gpt2_attn_pdrop=0.1
-gpt2_resid_pdrop=0.1
-#gpt2_embd_pdrop=0.2
-#gpt2_attn_pdrop=0.2
-#gpt2_resid_pdrop=0.2
-#dec_expert_type=non
-dec_expert_type=ttid
-dec_expert_type=moe
-moe_experts_num=2
-moe_topk=0
+
+
+#train_root_path=$data_path/train_mllm_genmixemb_qna
+#train_ds_type=qna
+#model_name=gpt2
+##model_name=gpt2-large
+#train_agg_model=true
+#toks_agg_type=cnv
+#ctx_que_prompt_type=cq
+#cnv_n_levels=3
+##cnv_n_levels=6
+#cnv_n_layers_per_level=1
+#cnv_conv_kernel_size=3
+#cnv_pool_kernel_size=2
+#cnv_pool_stride=2
+#cnv_share_layer_weights=false
+##cnv_share_layer_weights=true
+#n_toks_min=20
+#max_inp_toks=768
+## max_inp_toks=448
+##max_inp_toks=128
+##max_inp_toks=64
+##max_out_toks=256
+#max_out_toks=128
+##max_out_toks=16
+#gpt2_embd_pdrop=0.1
+#gpt2_attn_pdrop=0.1
+#gpt2_resid_pdrop=0.1
+##gpt2_embd_pdrop=0.2
+##gpt2_attn_pdrop=0.2
+##gpt2_resid_pdrop=0.2
+##dec_expert_type=non
+#dec_expert_type=ttid
+#dec_expert_type=moe
+#moe_experts_num=2
+#moe_topk=0
 
 
 
@@ -224,6 +224,8 @@ val_epoch_steps=20
 batch_size=5
 
 #pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+pretrained_model_path=$train_encdec_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
+
 #pretrained_model_path=$train_root_path/genmixemb-20250713_202718-bertbaseuncased-d768-mxo50-aggBrt-sub0-dsWki-tmax100-tragF
 #pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
 #pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
@@ -234,21 +236,21 @@ batch_size=5
 #pretrained_model_path=$train_root_path/genmixemb-20250817_201509-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggCnv-lvl1-lrs1-cksz3-pksz2-pst2-dsQna-tragT-ttidF-cqprCq
 #pretrained_model_path=$train_root_path/genmixemb-20250914_112502-gpt2-d768-dp0.1-mxi512-mxo128-dsQna-ttidF
 
-#pretrained_model_path=$pretrained_model_path/best.pth
+pretrained_model_path=$pretrained_model_path/best.pth
 
 
-device=cuda
-epochs=700
-train_epoch_steps=500
-val_epoch_steps=50
-#batch_size=30
-#batch_size=25
-#batch_size=20
-batch_size=15
-#batch_size=10
-#batch_size=5
-#batch_size=1
-#train_subdir=last
+#device=cuda
+#epochs=700
+#train_epoch_steps=500
+#val_epoch_steps=50
+##batch_size=30
+##batch_size=25
+##batch_size=20
+#batch_size=15
+##batch_size=10
+##batch_size=5
+##batch_size=1
+##train_subdir=last
 
 #learning_rate=0.0001
 #learning_rate=0.00005
@@ -259,7 +261,7 @@ random_seed=200
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-#echo "
+echo "
 python s_07_05_train_genmixemb.py \
   --data-path $data_path \
   --train-root-path $train_root_path \
@@ -313,5 +315,5 @@ python s_07_05_train_genmixemb.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed
-#"
+"
 

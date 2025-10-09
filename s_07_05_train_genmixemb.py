@@ -373,12 +373,14 @@ def main(args: ArgsGenmixembTrain) -> int:
             prefix = 'enc_bert.bert_model.'
             prefix_len = len(prefix)
             model_chkpt = {}
-            for k, v in pretrained_checkpoint['model'].items():
-                if k.startswith(prefix):
-                    k = k[prefix_len:]
-                if k.startswith('dec_pyr.'):
+            for key, val in pretrained_checkpoint['model'].items():
+                if key.startswith('model.'):
+                    key = key[6:]
+                if key.startswith(prefix):
+                    key = key[prefix_len:]
+                if key.startswith('dec_pyr.') or key.startswith('vocab_loss_fn.') or key.startswith('emb_loss_fn.'):
                     continue
-                model_chkpt[k] = v
+                model_chkpt[key] = val
             model.agg.load_state_dict(model_chkpt, strict=True)
             del model_chkpt
         elif dname.startswith('genmixemb-'):

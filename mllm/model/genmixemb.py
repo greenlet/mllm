@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from transformers import BatchEncoding, GenerationConfig
+from transformers import BatchEncoding, GenerationConfig, PreTrainedTokenizer
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
 from mllm.config.model import DecExpertType, GenmixembCfg, TokensAggType, \
@@ -321,7 +321,7 @@ class Genmixemb(nn.Module):
                 # [n_batch * n_chunks, n_subseq]
                 toks = toks.reshape((-1, n_subseq))
                 # [n_batch * n_chunks, 1 + n_subseq]
-                toks = torch.pad(toks, (1, 0), 'constant', tkz.cls_token_id)
+                toks = F.pad(toks, (1, 0), 'constant', tkz.cls_token_id)
                 # [n_batch * n_chunks, 1 + n_subseq]
                 mask = toks != tkz.pad_token_id
                 out = self.agg(input_ids=toks, attention_mask=mask)
