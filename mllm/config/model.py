@@ -1129,7 +1129,7 @@ def gen_prefpostfix_encdec_hg(model_cfg: EncdecHgCfg) -> tuple[str, str]:
 
 def gen_prefpostfix_encdec_bert(
         model_cfg: EncdecBertCfg, mask_cfg: Optional[MaskCfg],
-        pretrained_model_path: Optional[Path] = None,
+        pretrained_model_path: Optional[Path] = None, next_tok_pred: bool = False,
     ) -> tuple[str, str]:
     prefix, postfix_parts = f'encdecbert', []
     enc, dec = model_cfg.enc_bert, model_cfg.dec_pyr
@@ -1157,7 +1157,10 @@ def gen_prefpostfix_encdec_bert(
     if mask_cfg is not None:
         sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)
         seq_freq, seq_max_frac = np.round(mask_cfg.seq_freq, 2), np.round(mask_cfg.seq_max_frac, 2)
-        postfix_parts.append(f'msk_sep_{sep_freq}|{sep_frac}_seq_{seq_freq}|{seq_max_frac}|{mask_cfg.seq_max_len}')
+        postfix_parts.append(f'msk_sep_{sep_freq}|{sep_frac}_seq_{seq_freq}|{seq_max_frac}|{mask_cfg.seq_max_len}_last_{mask_cfg.n_last_toks}')
+
+    if next_tok_pred:
+        postfix_parts.append('ntp')
 
     dp_rate = np.round(dec.dropout_rate, 2)
     if dp_rate < 1e-6:

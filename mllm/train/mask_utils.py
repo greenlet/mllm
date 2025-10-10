@@ -119,20 +119,34 @@ class MaskCfg:
     seq_freq: float = 0.33
     seq_max_frac: float = 0.2
     seq_max_len: int = 20
+    n_last_toks: int = 0
 
     def gen_mask(self, n_total: int) -> Optional[np.ndarray]:
+        mask = None
+        if self.n_last_toks > 0:
+            mask = np.full(n_total, False, dtype=bool)
+            n_last_toks = min(self.n_last_toks, n_total)
+            mask[-n_last_toks:] = True
+
         rv = np.random.rand()
         if rv > self.sep_freq + self.seq_freq or n_total < 2:
-            return None
+            return mask
 
         if rv < self.sep_freq:
-            mask: np.ndarray = np.random.rand(n_total) <= self.sep_frac
+            mask_sep: np.ndarray = np.random.rand(n_total) <= self.sep_frac
+            if mask is None:
+                mask = mask_sep
+            else:
+                mask = mask | mask_sep
         else:
-            mask = np.full(n_total, False, dtype=bool)
+            if mask is None:
+                mask_seq = np.full(n_total, False, dtype=bool)
+            else:
+                mask_seq = mask
             n_seq = int(n_total * self.seq_max_frac)
             n_seq = min(max(n_seq, 1), self.seq_max_len, int(0.9 * n_total))
             i_off = np.random.randint(0, n_total - n_seq + 1)
-            mask[i_off:i_off + n_seq] = True
+            mask_seq[i_off:i_off + n_seq] = True
 
         return mask
 

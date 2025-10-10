@@ -117,6 +117,11 @@ class ArgsEncdecBertTrain(BaseModel):
         description='Maximum length of tokens sequence to mask. Combined with value derived from MASK_SEQ_MAX_FRAC using min() function.',
         cli=('--mask-seq-max-len',),
     )
+    mask_n_last_toks: int = Field(
+        0,
+        description='Number of last tokens to always mask. When 0, no tokens are masked.',
+        cli=('--mask-n-last-toks',),
+    )
 
     next_tok_pred_STR: str = create_bool_str_field(*next_tok_pred_ARG)
     @property
@@ -199,10 +204,10 @@ def main(args: ArgsEncdecBertTrain) -> int:
     if args.mask_tokens:
         mask_cfg = MaskCfg(
             sep_freq=args.mask_sep_freq, sep_frac=args.mask_sep_frac, seq_freq=args.mask_seq_freq, seq_max_frac=args.mask_seq_max_frac,
-            seq_max_len=args.mask_seq_max_len,
+            seq_max_len=args.mask_seq_max_len, n_last_toks=args.mask_n_last_toks,
         )
     prefix, suffix = gen_prefpostfix_encdec_bert(
-        model_cfg, mask_cfg=mask_cfg, pretrained_model_path=pretrained_model_path,
+        model_cfg, mask_cfg=mask_cfg, pretrained_model_path=pretrained_model_path, next_tok_pred=args.next_tok_pred
     )
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')

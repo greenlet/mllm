@@ -45,12 +45,13 @@ dec_n_similar_layers=1
 dec_enhance_type=mmbb
 dec_dropout_rate=0
 mask_tokens=true
-mask_sep_freq=0.5
+mask_sep_freq=0
 mask_sep_frac=0.04
-mask_seq_freq=0.5
+mask_seq_freq=0
 mask_seq_max_frac=0.05
 mask_seq_max_len=5
-next_tok_pred=true
+mask_n_last_toks=4
+next_tok_pred=false
 enforce_encoder_mask_understanding=false
 
 #bert_model_name=bert-base-uncased
@@ -96,8 +97,8 @@ docs_batch_size=15
 
 
 learning_rate=0.0001
-learning_rate=0.00005
-#learning_rate=0.00001
+# learning_rate=0.00005
+learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
@@ -122,6 +123,7 @@ python s_03_07_train_encdec_bert.py \
   --mask-seq-freq $mask_seq_freq \
   --mask-seq-max-frac $mask_seq_max_frac \
   --mask-seq-max-len $mask_seq_max_len \
+  --mask-n-last-toks $mask_n_last_toks \
   --next-tok-pred $next_tok_pred \
   --dec-dropout-rate $dec_dropout_rate \
   --docs-batch-size $docs_batch_size \
