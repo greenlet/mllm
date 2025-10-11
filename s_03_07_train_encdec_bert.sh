@@ -52,7 +52,7 @@ mask_seq_max_frac=0.05
 mask_seq_max_len=5
 mask_n_last_toks=4
 next_tok_pred=false
-enforce_encoder_mask_understanding=false
+enforce_encoder_mask_understanding=true
 
 #bert_model_name=bert-base-uncased
 #bert_emb_type=cls
@@ -97,8 +97,8 @@ docs_batch_size=15
 
 
 learning_rate=0.0001
-# learning_rate=0.00005
-learning_rate=0.00001
+learning_rate=0.00005
+#learning_rate=0.00001
 random_seed=200
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path

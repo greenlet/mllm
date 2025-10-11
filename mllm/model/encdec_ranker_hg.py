@@ -513,10 +513,10 @@ class EncdecBertAgg(nn.Module):
             reg_weight=1, msk_weight=1, spc_weight=0.1,
         )
         if self.enforce_enc_mask_understanding:
-            # self.emb_loss_fn = nn.CosineEmbeddingLoss()
+            self.emb_loss_fn = nn.CosineEmbeddingLoss()
             # self.emb_loss_fn = nn.L1Loss()
             # self.emb_loss_fn = nn.MSELoss()
-            self.emb_loss_fn = R2Loss()
+            # self.emb_loss_fn = R2Loss()
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
         if pretrained_model_path and pretrained_model_path.exists():
@@ -586,7 +586,8 @@ class EncdecBertAgg(nn.Module):
             vocab_loss_dict = self.vocab_loss_fn(out_dec_masked, inp_masked_toks, inp_toks)
             # (1,)
             vocab_loss = vocab_loss_dict['loss']
-            emb_loss = self.emb_loss_fn(out_enc_masked, out_enc)
+            # emb_loss = self.emb_loss_fn(out_enc_masked, out_enc)
+            emb_loss = self.emb_loss_fn(out_enc_masked, out_enc, torch.ones((out_enc.shape[0],), device=out_enc.device))
             # loss = (self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss) / self.total_loss_weight
             loss = self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss
             vocab_loss_dict = {f'vocab_{k}': v for k, v in vocab_loss_dict.items()}

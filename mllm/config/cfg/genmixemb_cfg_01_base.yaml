@@ -1,9 +1,10 @@
 add_token_type_ids: false
-bert_agg_cls_inp_len: 0
+bert_agg_model_name: bert-base-uncased
 bert_agg_n_subseq_toks: 2
 bert_agg_type: sep
 bert_attention_prob_dropout_prob: 0.1
 bert_hidden_dropout_prob: 0.1
+bert_model_type: encdec
 cnv_conv_kernel_size: 3
 cnv_n_layers_per_level: 1
 cnv_n_levels: 1

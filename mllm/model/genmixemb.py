@@ -91,18 +91,26 @@ class Genmixemb(nn.Module):
             raise Exception(f'Context-Query prompt type {self.cfg.ctx_que_prompt_type} is not supported.')
 
         if self.cfg.is_bert:
-            encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
-                self.cfg.model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
-                device_map=self.device, attention_prob_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
-                hidden_dropout_prob=self.cfg.bert_hidden_dropout_prob,
-            )
-            decoder: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
-                self.cfg.model_name, add_cross_attention=True, is_decoder=True,
-                bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
-                attention_prob_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
-                hidden_dropout_prob=self.cfg.bert_hidden_dropout_prob,
-            )
-            gen_model = EncoderDecoderModel(encoder=encoder, decoder=decoder)
+            if self.cfg.bert_model_type == BertModelType.EncDec:
+                encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
+                    self.cfg.model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
+                    device_map=self.device, attention_prob_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
+                    hidden_dropout_prob=self.cfg.bert_hidden_dropout_prob,
+                )
+                decoder: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
+                    self.cfg.model_name, add_cross_attention=True, is_decoder=True,
+                    bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
+                    attention_prob_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
+                    hidden_dropout_prob=self.cfg.bert_hidden_dropout_prob,
+                )
+                gen_model = EncoderDecoderModel(encoder=encoder, decoder=decoder)
+            elif self.cfg.bert_model_type == BertModelType.Dec:
+                gen_model = BertGenerationDecoder.from_pretrained(
+                    self.cfg.model_name, add_cross_attention=False, is_decoder=True,
+                    bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
+                    attention_prob_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
+                    hidden_dropout_prob=self.cfg.bert_hidden_dropout_prob,
+                )
         elif self.cfg.is_gpt2:
             gen_model = GPT2LMHeadModel.from_pretrained(
                 self.cfg.model_name, device_map=self.device, embd_pdrop=self.cfg.gpt2_embd_pdrop,

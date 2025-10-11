@@ -69,6 +69,11 @@ class ArgsGenmixembTrain(BaseModel):
         description='Pretrained model name (bert-base-uncased, bert-large-uncased, gpt2, gpt2-large).',
         cli=('--model-name',),
     )
+    bert_model_type: BertModelType = Field(
+        BertModelType.EncDec,
+        description=f'Bert model type. Values: {[t.value for t in BertModelType]}',
+        cli=('--bert-model-type',),
+    )
     bert_attention_prob_dropout_prob: float = Field(
         0.1,
         description='Dropout probability for Bert attention layers.',
@@ -327,8 +332,8 @@ def main(args: ArgsGenmixembTrain) -> int:
         cnv_pool_kernel_size=args.cnv_pool_kernel_size, cnv_pool_stride=args.cnv_pool_stride, cnv_share_layer_weights=args.cnv_share_layer_weights,
         train_agg_model=args.train_agg_model, share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
         join_ctx_que_agg=args.join_ctx_que_agg, ctx_que_prompt_type=args.ctx_que_prompt_type, dec_expert_type=args.dec_expert_type,
-        moe_experts_num=args.moe_experts_num, moe_topk=args.moe_topk, bert_attention_prob_dropout_prob=args.bert_attention_prob_dropout_prob,
-        bert_hidden_dropout_prob=args.bert_hidden_dropout_prob, gpt2_embd_pdrop=args.gpt2_embd_pdrop,
+        moe_experts_num=args.moe_experts_num, moe_topk=args.moe_topk, bert_model_type=args.bert_model_type,
+        bert_attention_prob_dropout_prob=args.bert_attention_prob_dropout_prob, bert_hidden_dropout_prob=args.bert_hidden_dropout_prob, gpt2_embd_pdrop=args.gpt2_embd_pdrop,
         gpt2_attn_pdrop=args.gpt2_attn_pdrop, gpt2_resid_pdrop=args.gpt2_resid_pdrop,
     )
 

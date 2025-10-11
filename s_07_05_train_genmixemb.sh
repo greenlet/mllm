@@ -58,6 +58,7 @@ ctx_que_prompt_type=cq
 #ctx_que_prompt_type=cqqc
 dec_expert_type=non
 moe_experts_num=0
+bert_model_type=encdec
 bert_attention_prob_dropout_prob=0.1
 bert_hidden_dropout_prob=0.1
 gpt2_embd_pdrop=0.1
@@ -141,7 +142,8 @@ max_out_toks=128
 
 train_root_path=$data_path/train_mllm_genmixemb_wki
 train_ds_type=wki
-model_name=gpt2
+model_name=bert
+bert_model_type=dec
 train_agg_model=true
 toks_agg_type=brt
 bert_agg_model_name=bert-base-uncased
@@ -270,6 +272,7 @@ python s_07_05_train_genmixemb.py \
   --train-ds-type "$train_ds_type" \
   --model-cfg-fpath $model_cfg_fpath \
   --model-name $model_name \
+  --bert-model-type $bert_model_type \
   --bert-attention-probs-dropout-prob $bert_attention_prob_dropout_prob \
   --bert-hidden-dropout-prob $bert_hidden_dropout_prob \
   --gpt2-embd-pdrop $gpt2_embd_pdrop \
