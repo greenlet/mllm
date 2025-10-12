@@ -142,7 +142,7 @@ max_out_toks=128
 
 train_root_path=$data_path/train_mllm_genmixemb_wki
 train_ds_type=wki
-model_name=bert
+model_name=bert-base-uncased
 bert_model_type=dec
 train_agg_model=true
 toks_agg_type=brt
@@ -153,6 +153,10 @@ n_toks_min=20
 max_inp_toks=1024
 #max_inp_toks=128
 max_out_toks=128
+mask_tokens=false
+dec_expert_type=non
+moe_experts_num=0
+moe_topk=0
 
 
 #train_root_path=$data_path/train_mllm_genmixemb_qna
@@ -238,21 +242,19 @@ pretrained_model_path=$train_encdec_root_path/encdecbert-20251004_224422-bertbas
 #pretrained_model_path=$train_root_path/genmixemb-20250817_201509-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggCnv-lvl1-lrs1-cksz3-pksz2-pst2-dsQna-tragT-ttidF-cqprCq
 #pretrained_model_path=$train_root_path/genmixemb-20250914_112502-gpt2-d768-dp0.1-mxi512-mxo128-dsQna-ttidF
 
-pretrained_model_path=$pretrained_model_path/best.pth
 
-
-#device=cuda
-#epochs=700
-#train_epoch_steps=500
-#val_epoch_steps=50
-##batch_size=30
-##batch_size=25
-##batch_size=20
-#batch_size=15
-##batch_size=10
-##batch_size=5
-##batch_size=1
-##train_subdir=last
+device=cuda
+epochs=700
+train_epoch_steps=500
+val_epoch_steps=50
+#batch_size=30
+#batch_size=25
+#batch_size=20
+batch_size=15
+#batch_size=10
+#batch_size=5
+#batch_size=1
+#train_subdir=last
 
 #learning_rate=0.0001
 #learning_rate=0.00005
@@ -263,7 +265,7 @@ random_seed=200
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
-echo "
+# echo "
 python s_07_05_train_genmixemb.py \
   --data-path $data_path \
   --train-root-path $train_root_path \
@@ -318,5 +320,5 @@ python s_07_05_train_genmixemb.py \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed
-"
+# "
 

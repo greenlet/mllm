@@ -13,7 +13,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembCfg, copy_override_genmixemb_cfg, \
-    gen_prefpostfix_genmixemb, HgReductType, BertAggType, CtxQuePromptType, SelfSuperviseType, DecExpertType
+    gen_prefpostfix_genmixemb, HgReductType, BertAggType, CtxQuePromptType, SelfSuperviseType, DecExpertType, \
+    BertModelType
 from mllm.data.itsquadv2 import get_squadv2_batch_iterators_v2, QnaBatchV2
 from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG
 from mllm.model import bert, gpt2
@@ -315,7 +316,12 @@ class ArgsGenmixembTrain(BaseModel):
 
 def main(args: ArgsGenmixembTrain) -> int:
     print(args)
-    pretrained_model_path = args.pretrained_model_path if args.pretrained_model_path and args.pretrained_model_path.name else None
+    if args.pretrained_model_path and args.pretrained_model_path.name:
+        pretrained_model_path = args.pretrained_model_path
+        if not pretrained_model_path.is_file():
+            pretrained_model_path /= 'best.pth'
+    else:
+        pretrained_model_path = None
 
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
@@ -369,32 +375,7 @@ def main(args: ArgsGenmixembTrain) -> int:
     model = Genmixemb(model_cfg, device=device)
 
     if pretrained_model_path and checkpoint is None:
-        dname = pretrained_model_path.parent.name
-        print(f'Loading checkpoint with pretrained model from {args.pretrained_model_path}')
-        pretrained_checkpoint = torch.load(args.pretrained_model_path, map_location=device)
-        # model.load_state_dict(pretrained_checkpoint['model'], strict=False)
-        print(list(pretrained_checkpoint['model'].keys()))
-        if dname.startswith('encdecbert-'):
-            prefix = 'enc_bert.bert_model.'
-            prefix_len = len(prefix)
-            model_chkpt = {}
-            for key, val in pretrained_checkpoint['model'].items():
-                if key.startswith('model.'):
-                    key = key[6:]
-                if key.startswith(prefix):
-                    key = key[prefix_len:]
-                if key.startswith('dec_pyr.') or key.startswith('vocab_loss_fn.') or key.startswith('emb_loss_fn.'):
-                    continue
-                model_chkpt[key] = val
-            model.agg.load_state_dict(model_chkpt, strict=True)
-            del model_chkpt
-        elif dname.startswith('genmixemb-'):
-            # strict = True
-            strict = False
-            model.load_state_dict(pretrained_checkpoint['model'], strict=strict)
-        else:
-            raise Exception(f'Model checkpoint {args.pretrained_model_path.name} is not supported')
-        del pretrained_checkpoint
+        model.load_weights(pretrained_model_path)
 
     if model_cfg.train_agg_model:
         params = model.parameters()

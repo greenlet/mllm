@@ -11,8 +11,8 @@ from torch import nn
 from transformers import BatchEncoding, GenerationConfig, PreTrainedTokenizer
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
-from mllm.config.model import DecExpertType, GenmixembCfg, TokensAggType, \
-    EncPyrCfg, VocabEncoderCfg, PosEncType, BertAggType, CtxQuePromptType, EncoderConvCfg
+from mllm.config.model import DecExpertType, GenmixembCfg, TokensAggType, EncPyrCfg, VocabEncoderCfg, \
+    PosEncType, BertAggType, CtxQuePromptType, EncoderConvCfg, BertModelType
 from mllm.data.itsquadv2 import QnaBatchV2
 from mllm.data.wiki.itwiki import WikiBatch
 from mllm.model.at2_decoder import BertGenerationEmbeddings
@@ -94,21 +94,21 @@ class Genmixemb(nn.Module):
             if self.cfg.bert_model_type == BertModelType.EncDec:
                 encoder: BertGenerationEncoder = BertGenerationEncoder.from_pretrained(
                     self.cfg.model_name, bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id,
-                    device_map=self.device, attention_prob_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
+                    device_map=self.device, attention_probs_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
                     hidden_dropout_prob=self.cfg.bert_hidden_dropout_prob,
                 )
                 decoder: BertGenerationDecoder = BertGenerationDecoder.from_pretrained(
                     self.cfg.model_name, add_cross_attention=True, is_decoder=True,
                     bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
-                    attention_prob_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
+                    attention_probs_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
                     hidden_dropout_prob=self.cfg.bert_hidden_dropout_prob,
                 )
                 gen_model = EncoderDecoderModel(encoder=encoder, decoder=decoder)
             elif self.cfg.bert_model_type == BertModelType.Dec:
                 gen_model = BertGenerationDecoder.from_pretrained(
-                    self.cfg.model_name, add_cross_attention=False, is_decoder=True,
+                    self.cfg.model_name, is_decoder=True, add_cross_attention=False,
                     bos_token_id=self.tkz.bos_token_id, eos_token_id=self.tkz.eos_token_id, device_map=self.device,
-                    attention_prob_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
+                    attention_probs_dropout_prob=self.cfg.bert_attention_prob_dropout_prob,
                     hidden_dropout_prob=self.cfg.bert_hidden_dropout_prob,
                 )
         elif self.cfg.is_gpt2:
@@ -185,19 +185,19 @@ class Genmixemb(nn.Module):
         emb = self.toks_template_to_emb_tensor(prompt_template, ctx_toks, que_toks)
         return emb
 
-    def create_agg_model(self, gen_model: Union[EncoderDecoderModel, GPT2LMHeadModel]) -> tuple[Optional[nn.Module], Optional[PreTrainedTokenizer]]:
+    def create_agg_model(self, gen_model: Union[EncoderDecoderModel, BertGenerationDecoder, GPT2LMHeadModel]) -> tuple[Optional[nn.Module], Optional[PreTrainedTokenizer]]:
         if not self.need_run_agg:
             return None, None
 
         if self.cfg.is_bert:
-            gen_model: BertGenerationEncoder = gen_model.encoder
+            gen_model: BertGenerationDecoder = gen_model.decoder if isinstance(gen_model, EncoderDecoderModel) else gen_model
             n_vocab = gen_model.config.vocab_size
             n_heads = gen_model.config.num_attention_heads
             dropout_rate = gen_model.config.hidden_dropout_prob
             d_inner = gen_model.config.intermediate_size
             hidden_dropout_prob = gen_model.config.hidden_dropout_prob
-            word_embeddings = gen_model.embeddings.word_embeddings
-            position_embeddings = gen_model.embeddings.position_embeddings
+            word_embeddings = gen_model.bert.embeddings.word_embeddings
+            position_embeddings = gen_model.bert.embeddings.position_embeddings
         elif self.cfg.is_gpt2:
             gen_model: GPT2LMHeadModel = gen_model
             n_vocab = gen_model.config.vocab_size
@@ -272,6 +272,33 @@ class Genmixemb(nn.Module):
             raise Exception(f'Tokens aggregation type {self.cfg.toks_agg_type} is not supported.')
 
         return agg, agg_tkz
+
+    def load_weights(self, checkpoint_fpath: str):
+        dname = checkpoint_fpath.parent.name
+        print(f'Loading checkpoint with pretrained model from {checkpoint_fpath}')
+        pretrained_checkpoint = torch.load(checkpoint_fpath, map_location=self.device)
+        print(list(pretrained_checkpoint['model'].keys()))
+        if dname.startswith('encdecbert-'):
+            prefix = 'enc_bert.bert_model.'
+            prefix_len = len(prefix)
+            model_chkpt = {}
+            for key, val in pretrained_checkpoint['model'].items():
+                if key.startswith('model.'):
+                    key = key[6:]
+                if key.startswith(prefix):
+                    key = key[prefix_len:]
+                if key.startswith('dec_pyr.') or key.startswith('vocab_loss_fn.') or key.startswith('emb_loss_fn.'):
+                    continue
+                model_chkpt[key] = val
+            self.agg.load_state_dict(model_chkpt, strict=True)
+            del model_chkpt
+        elif dname.startswith('genmixemb-'):
+            # strict = True
+            strict = False
+            self.load_state_dict(pretrained_checkpoint['model'], strict=strict)
+        else:
+            raise Exception(f'Model checkpoint {args.pretrained_model_path.name} is not supported')
+        del pretrained_checkpoint
 
     # logits: [n_batch, n_seq, n_vocab]
     # labels: [n_batch, n_seq]
@@ -458,8 +485,19 @@ class Genmixemb(nn.Module):
                     inputs_embeds=inp_emb, attention_mask=att_mask, emb_off=emb.shape[1],
                 )
             else:
+                # [n_batch, tgt_len, d_model]
+                toks_emb = self.gen.bert.embeddings.word_embeddings(tgt_toks[:, :-1])
+
+                if self.cfg.add_token_type_ids:
+                    emb = emb + self.tt_embs_0
+                    toks_emb = toks_emb + self.tt_embs_1
+
+                inp_emb = torch.concat([emb, toks_emb], dim=1)
+                tgt_att_mask = tgt_toks[:, :-1] != self.tkz.pad_token_id
+                att_mask = torch.ones(inp_emb.shape[:-1], dtype=torch.long, device=self.device)
+                att_mask[:, emb.shape[1]:] = tgt_att_mask
                 gen_out = self.gen(
-                    inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
+                    inputs_embeds=inp_emb, attention_mask=att_mask,
                 )
 
         # # [n_batch, tgt_len, n_vocab]
@@ -473,12 +511,42 @@ class Genmixemb(nn.Module):
         #     raise
 
         if self.cfg.is_bert:
-            # [n_batch, tgt_len, n_vocab]
-            logits = gen_out.logits
-            # [n_batch, tgt_len]
-            labels = tgt_out_ids
-            label_mask = mask[:, :self.cfg.max_out_toks]
-            loss = self.calc_loss(logits, labels, label_mask)
+            # # [n_batch, tgt_len, n_vocab]
+            # logits = gen_out.logits
+            # # [n_batch, tgt_len]
+            # labels = tgt_out_ids
+            # label_mask = mask[:, :self.cfg.max_out_toks]
+            # loss = self.calc_loss(logits, labels, label_mask)
+
+            if not self.need_run_agg:
+                loss = torch.zeros(size=(1,), device=self.device)
+                for ib, item in enumerate(batch.items):
+                    tgt_toks = target_toks[ib]
+                    # [n_tgt]
+                    n_toks = len(tgt_toks)
+                    # [n_tgt, n_vocab]
+                    logits = gen_out.logits[ib][:n_toks]
+                    # [n_tgt]
+                    labels = tgt_toks
+                    item_loss = F.cross_entropy(logits, labels)
+                    loss = loss + item_loss
+                loss = loss / len(batch.items)
+            else:
+                # [n_batch, n_tgt, d_model]
+                logits_b = gen_out.logits[:, emb.shape[1] - 1:]
+                # [n_tgt, n_vocab]
+                labels_b = tgt_toks
+                loss = torch.zeros(size=(1,), device=self.device)
+                for ib, item in enumerate(batch.items):
+                    # [n_tgt, n_vocab]
+                    logits = logits_b[ib]
+                    # [n_tgt]
+                    labels = labels_b[ib]
+                    labels = labels[labels != self.tkz.pad_token_id]
+                    logits = logits[:len(labels)]
+                    item_loss = F.cross_entropy(logits, labels)
+                    loss = loss + item_loss
+                loss = loss / len(batch.items)
         elif self.cfg.is_gpt2:
             if not self.need_run_agg:
                 loss = torch.zeros(size=(1,), device=self.device)
