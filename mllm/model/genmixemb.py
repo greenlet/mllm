@@ -150,7 +150,16 @@ class Genmixemb(nn.Module):
 
         embs = []
         n_batch = ctx_toks.shape[0]
-        word_embeddings = self.gen.transformer.wte if self.cfg.is_gpt2 else self.gen.encoder.embeddings.word_embeddings
+        if self.cfg.is_gpt2:
+            word_embeddings = self.gen.transformer.wte
+        else:
+            if self.cfg.bert_model_type == BertModelType.EncDec:
+                word_embeddings = self.gen.encoder.embeddings.word_embeddings
+            elif self.cfg.bert_model_type == BertModelType.Dec:
+                word_embeddings = self.gen.bert.embeddings.word_embeddings
+            else:
+                raise Exception(f'Bert model type {self.cfg.bert_model_type} is not supported.')
+
         for pat in prompt_template:
             if isinstance(pat, torch.Tensor):
                 # [1, n_toks]
@@ -656,19 +665,7 @@ class Genmixemb(nn.Module):
                     input_ids=inp_ids_t, attention_mask=att_mask, use_cache=True,
                 )
         else:
-            if not self.cfg.is_gpt2:
-                if self.training and not self.cfg.train_agg_model:
-                    with torch.no_grad():
-                        # [n_batch, n_toks, d_model]
-                        emb = self.prompt_emb(ctx_toks, que_toks)
-                else:
-                    # [n_batch, n_toks, d_model]
-                    emb = self.prompt_emb(ctx_toks, que_toks)
-
-                gen_out: Seq2SeqLMOutput = self.gen(
-                    inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
-                )
-            else:
+            if self.cfg.is_gpt2 or self.cfg.is_bert and self.cfg.bert_model_type == BertModelType.Dec:
                 inp_ids, tgt_ids, tgt_lens = [], [], []
                 max_inp_len, max_tgt_len = 0, 0
                 for item in batch.items:
@@ -696,12 +693,25 @@ class Genmixemb(nn.Module):
                 tgt_ids_t = torch.from_numpy(tgt_ids_t).to(self.device)
                 emb = self.run_agg(inp_ids_t)
 
+                word_embeddings = self.gen.transformer.wte if self.cfg.is_gpt2 else self.gen.bert.embeddings.word_embeddings
                 # [n_batch, tgt_len', d_model]
-                emb_tgt_inp = self.gen.transformer.wte(tgt_ids_t[:, :-1])
+                emb_tgt_inp = word_embeddings(tgt_ids_t[:, :-1])
                 # [n_batch, n_toks + tgt_len', d_model]
                 emb_inp = torch.concat([emb, emb_tgt_inp], dim=1)
                 gen_out: Seq2SeqLMOutput = self.gen(
                     inputs_embeds=emb_inp, emb_off=emb.shape[1],
+                )
+            else:
+                if self.training and not self.cfg.train_agg_model:
+                    with torch.no_grad():
+                        # [n_batch, n_toks, d_model]
+                        emb = self.prompt_emb(ctx_toks, que_toks)
+                else:
+                    # [n_batch, n_toks, d_model]
+                    emb = self.prompt_emb(ctx_toks, que_toks)
+
+                gen_out: Seq2SeqLMOutput = self.gen(
+                    inputs_embeds=emb, decoder_input_ids=tgt_inp_ids, use_cache=False,
                 )
 
         # [n_batch, tgt_len, n_vocab]
@@ -709,7 +719,7 @@ class Genmixemb(nn.Module):
         # [n_batch, tgt_len]
         labels = tgt_out_ids
 
-        if self.cfg.is_gpt2:
+        if self.cfg.is_gpt2 or self.cfg.is_bert and self.cfg.bert_model_type == BertModelType.Dec:
             if self.need_run_agg:
                 loss = torch.zeros(size=(1,), device=self.device)
                 for ib in range(len(batch.items)):
@@ -740,7 +750,6 @@ class Genmixemb(nn.Module):
                 loss = loss / len(batch.items)
         else:
             loss = self.calc_gen_loss(logits, labels)
-
 
         return loss
 
