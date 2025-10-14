@@ -256,6 +256,7 @@ batch_size=5
 
 #pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 pretrained_model_path=$train_encdec_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
+pretrained_model_path="$train_encdec_root_path/encdecbert-20251006_213852-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5|0.04_seq_0.5|0.05|5-dp0-t0.0"
 
 #pretrained_model_path=$train_root_path/genmixemb-20250713_202718-bertbaseuncased-d768-mxo50-aggBrt-sub0-dsWki-tmax100-tragF
 #pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
@@ -275,8 +276,8 @@ val_epoch_steps=50
 #batch_size=30
 #batch_size=25
 #batch_size=20
-batch_size=15
-# batch_size=10
+#batch_size=15
+batch_size=10
 # batch_size=5
 #batch_size=1
 #train_subdir=last

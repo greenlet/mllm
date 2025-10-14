@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Mapping, Optional, Union, cast
 
+from arrow import get
 from sympy import N
 import torch
 from torch import nn
@@ -19,50 +20,70 @@ def accum_losses(loss_dict: LossDict, accum_loss_dict: Optional[LossDict] = None
     if accum_loss_dict is None:
         accum_loss_dict = {}
     for k, v in loss_dict.items():
-        k_cnt = f'{k}_cnt'
-        if k in accum_loss_dict:
-            accum_loss_dict[k] = accum_loss_dict[k] + v
-        else:
-            accum_loss_dict[k] = v
+        k_lst, k_sum, k_cnt = f'{k}|lst', f'{k}|sum', f'{k}|cnt'
+        accum_loss_dict[k_lst] = v
+        accum_loss_dict[k_sum] = accum_loss_dict.get(k_sum, 0) + v
         accum_loss_dict[k_cnt] = accum_loss_dict.get(k_cnt, 0) + 1
     return accum_loss_dict
 
 
-def log_losses_to_tb(mode: str, step: int, loss_dict: LossDict, tbw: tb.SummaryWriter):
+def get_agg_losses(loss_dict: LossDict, aggregate: bool) -> LossDict:
+    res = {}
     for k, v in loss_dict.items():
-        if not k.endswith('_cnt'):
+        if not k.endswith('|lst'):
             continue
-        k_loss = k[:-4]
-        loss = loss_dict[k_loss] / v
-        loss = cast(torch.Tensor, loss)
-        k_loss_str = snake_to_camel(k_loss)
+        k_lst, k = k, k[:-4]  # remove |_lst
+        if aggregate:
+            k_sum, k_cnt = f'{k}|sum', f'{k}|cnt'
+            res[k] = loss_dict[k_sum] / loss_dict[k_cnt]
+        else:
+            res[k] = loss_dict[k_lst]
+    return cast(LossDict, res)
+
+
+def log_losses_to_tb(mode: str, step: int, loss_dict: LossDict, tbw: tb.SummaryWriter):
+    loss_dict = get_agg_losses(loss_dict, aggregate=True)
+    for k, v in loss_dict.items():
+        loss = cast(torch.Tensor, v)
+        k_loss_str = snake_to_camel(k)
         tbw.add_scalar(f'{k_loss_str}/{mode}', loss, step)
 
 
-def losses_to_str(loss_dict: LossDict) -> str:
-    loss = loss_dict['loss'] / loss_dict['loss_cnt']
+def losses_to_str(loss_dict: LossDict, aggregate: bool) -> str:
+    loss_dict = get_agg_losses(loss_dict, aggregate=aggregate)
+    loss = loss_dict['loss']
     loss = cast(torch.Tensor, loss)
-    losses_str = [f'loss: {loss.item():.6f}']
+    precision = 6 if len(loss_dict) <= 6 else 4
+    fmt_str = '{k}: {v:.%df}' % precision
+    format_key_val = lambda k, v: fmt_str.format(k=k, v=v.item())
+    losses_str = [format_key_val('loss', loss)]
     for k, v in loss_dict.items():
-        if not k.endswith('_cnt'):
+        if k == 'loss':
             continue
-        k_loss = k[:-4]
-        if k_loss == 'loss':
-            continue
-        l = loss_dict[k_loss] / v
-        l = cast(torch.Tensor, l)
+        l = cast(torch.Tensor, v)
 
-        ls = k_loss.split('_')
+        ls = k.split('_')
         if ls[-1] == 'loss':
             ls = ls[:-1]
         if len(ls) == 1:
             ls = ls[0][:3]
         else:
             ls = ''.join(p[0] for p in ls)
-        losses_str.append(f'{ls}: {l.item():.6f}')
+        losses_str.append(format_key_val(ls, l))
 
     res = '. '.join(losses_str)
     return res
+
+
+def prefix_losses_dict(prefix: str, loss_dict: LossDict) -> LossDict:
+    return {f'{prefix}_{k}': v for k, v in loss_dict.items()}
+
+
+def join_losses_dicts(prefixes: list[str], loss_dicts: list[LossDict]) -> LossDict:
+    joined = {}
+    for prefix, loss_dict in zip(prefixes, loss_dicts):
+        joined.update(prefix_losses_dict(prefix, loss_dict))
+    return joined
 
 
 class RankProbLoss(nn.Module):

@@ -14,7 +14,7 @@ from transformers import AutoTokenizer
 
 from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
     gen_prefpostfix_encdec_bert
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, masked_loss_for_encoder_ARG
 from mllm.model.encdec_ranker_hg import EncdecBert, EncdecBertAgg
 from mllm.model.losses import EncdecMaskPadBatchLoss, EncdecPadBatchLoss, EncdecMaskPadItemLoss, accum_losses, log_losses_to_tb, losses_to_str
 from mllm.train.mask_utils import MaskCfg
@@ -128,6 +128,11 @@ class ArgsEncdecBertTrain(BaseModel):
     def next_tok_pred(self) -> bool:
         return is_arg_true(next_tok_pred_ARG[0], self.next_tok_pred_STR)
 
+    masked_loss_for_encoder_STR: str = create_bool_str_field(*masked_loss_for_encoder_ARG)
+    @property
+    def masked_loss_for_encoder(self) -> bool:
+        return is_arg_true(masked_loss_for_encoder_ARG[0], self.masked_loss_for_encoder_STR)
+
     dec_dropout_rate: float = Field(
         0.0,
         required=False,
@@ -233,7 +238,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
     print(model_cfg)
     model = EncdecBertAgg(
         model_cfg, tkz, enforce_enc_mask_understanding=args.enforce_encoder_mask_understanding,
-        next_tok_pred=args.next_tok_pred,
+        next_tok_pred=args.next_tok_pred, masked_loss_for_encoder=args.masked_loss_for_encoder,
     )
     model.to(device)
 
@@ -296,8 +301,8 @@ def main(args: ArgsEncdecBertTrain) -> int:
             #     import sys
             #     sys.exit()
 
-            loss_str = losses_to_str(train_losses)
-            pbar.set_postfix_str(f'Train. {loss_str}')
+            losses_str = losses_to_str(train_losses, aggregate=False)
+            pbar.set_postfix_str(f'Train. {losses_str}')
         pbar.close()
         train_loss /= args.train_epoch_steps
         log_losses_to_tb('Train', epoch, train_losses, tbsw)
@@ -319,8 +324,8 @@ def main(args: ArgsEncdecBertTrain) -> int:
             val_loss += loss.item()
             val_losses = accum_losses(loss_dict, val_losses)
 
-            s = losses_to_str(val_losses)
-            pbar.set_postfix_str(s)
+            losses_str = losses_to_str(val_losses, aggregate=False)
+            pbar.set_postfix_str(f'Val. {losses_str}')
         pbar.close()
         val_loss /= args.val_epoch_steps
         log_losses_to_tb('Val', epoch, val_losses, tbsw)
@@ -330,7 +335,13 @@ def main(args: ArgsEncdecBertTrain) -> int:
         last_lr = scheduler.get_last_lr()[0]
         tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
-        print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
+        print(f'Train mean loss: {train_loss:.6f}. Val mean loss: {val_loss:.6f}')
+        train_losses_str = losses_to_str(train_losses, aggregate=True)
+        val_losses_str = losses_to_str(val_losses, aggregate=True)
+        print(f'Train mean losses: {train_losses_str}')
+        print(f'Val mean losses: {val_losses_str}')
+        print(f'Current lr: {last_lr:.10f}.')
+        
         best = False
         if val_loss_min is None or val_loss < val_loss_min:
             val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'

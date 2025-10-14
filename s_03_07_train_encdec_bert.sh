@@ -45,14 +45,16 @@ dec_n_similar_layers=1
 dec_enhance_type=mmbb
 dec_dropout_rate=0
 mask_tokens=true
-mask_sep_freq=0
+mask_sep_freq=0.5
 mask_sep_frac=0.04
-mask_seq_freq=0
+mask_seq_freq=0.5
 mask_seq_max_frac=0.05
 mask_seq_max_len=5
-mask_n_last_toks=4
+mask_n_last_toks=0
 next_tok_pred=false
-enforce_encoder_mask_understanding=true
+enforce_encoder_mask_understanding=false
+masked_loss_for_encoder=true
+
 
 #bert_model_name=bert-base-uncased
 #bert_emb_type=cls
@@ -125,6 +127,7 @@ python s_03_07_train_encdec_bert.py \
   --mask-seq-max-len $mask_seq_max_len \
   --mask-n-last-toks $mask_n_last_toks \
   --next-tok-pred $next_tok_pred \
+  --masked-loss-for-encoder $masked_loss_for_encoder \
   --dec-dropout-rate $dec_dropout_rate \
   --docs-batch-size $docs_batch_size \
   --device $device \
