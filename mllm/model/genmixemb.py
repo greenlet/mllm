@@ -1,7 +1,6 @@
 from enum import Enum
+from pathlib import Path
 import random
-import random
-from enum import Enum
 from typing import Optional, Union
 
 import numpy as np
@@ -282,32 +281,54 @@ class Genmixemb(nn.Module):
 
         return agg, agg_tkz
 
-    def load_weights(self, checkpoint_fpath: str):
-        dname = checkpoint_fpath.parent.name
-        print(f'Loading checkpoint with pretrained model from {checkpoint_fpath}')
-        pretrained_checkpoint = torch.load(checkpoint_fpath, map_location=self.device)
-        print(list(pretrained_checkpoint['model'].keys()))
-        if dname.startswith('encdecbert-'):
-            prefix = 'enc_bert.bert_model.'
-            prefix_len = len(prefix)
-            model_chkpt = {}
-            for key, val in pretrained_checkpoint['model'].items():
-                if key.startswith('model.'):
-                    key = key[6:]
-                if key.startswith(prefix):
-                    key = key[prefix_len:]
-                if key.startswith('dec_pyr.') or key.startswith('vocab_loss_fn.') or key.startswith('emb_loss_fn.'):
-                    continue
-                model_chkpt[key] = val
-            self.agg.load_state_dict(model_chkpt, strict=True)
-            del model_chkpt
-        elif dname.startswith('genmixemb-'):
-            # strict = True
-            strict = False
-            self.load_state_dict(pretrained_checkpoint['model'], strict=strict)
-        else:
-            raise Exception(f'Model checkpoint {args.pretrained_model_path.name} is not supported')
-        del pretrained_checkpoint
+    def load_weights(self, agg_pretrained_model_path: Optional[Path], gen_pretrained_model_path: Optional[Path]):
+        if agg_pretrained_model_path is not None and self.agg is not None:
+            dname = agg_pretrained_model_path.parent.name
+            print(f'Loading checkpoint with pretrained model from {agg_pretrained_model_path}')
+            agg_pretrained_checkpoint = torch.load(agg_pretrained_model_path, map_location=self.device)
+            print(list(agg_pretrained_checkpoint['model'].keys()))
+            if dname.startswith('encdecbert-'):
+                prefix = 'enc_bert.bert_model.'
+                prefix_len = len(prefix)
+                agg_model_chkpt = {}
+                for key, val in agg_pretrained_checkpoint['model'].items():
+                    if key.startswith('model.'):
+                        key = key[6:]
+                    if key.startswith(prefix):
+                        key = key[prefix_len:]
+                    if key.startswith('dec_pyr.') or key.startswith('vocab_loss_fn.') or key.startswith('emb_loss_fn.'):
+                        continue
+                    agg_model_chkpt[key] = val
+                self.agg.load_state_dict(agg_model_chkpt, strict=True)
+                del agg_model_chkpt
+            else:
+                raise Exception(f'Aggregator model checkpoint {agg_pretrained_model_path.name} is not supported')
+            del agg_pretrained_checkpoint
+        
+        if gen_pretrained_model_path is not None:
+            dname = gen_pretrained_model_path.parent.name
+            print(f'Loading checkpoint with pretrained model from {gen_pretrained_model_path}')
+            gen_pretrained_checkpoint = torch.load(gen_pretrained_model_path, map_location=self.device)
+            print(list(gen_pretrained_checkpoint['model'].keys()))
+            print('Current model keys:')
+            print(list(self.gen.state_dict().keys()))
+            if dname.startswith('genmixemb-'):
+                prefix = 'gen.decoder.'
+                prefix_len = len(prefix)
+                gen_model_chkpt = {}
+                for key, val in gen_pretrained_checkpoint['model'].items():
+                    if key.startswith(prefix):
+                        key = key[prefix_len:]
+                    else:
+                        continue
+                    if '.crossattention.' in key:
+                        continue
+                    gen_model_chkpt[key] = val
+                self.gen.load_state_dict(gen_model_chkpt, strict=True)
+                del gen_model_chkpt
+            else:
+                raise Exception(f'Generator model checkpoint {gen_pretrained_model_path.name} is not supported')
+            del gen_pretrained_checkpoint
 
     # logits: [n_batch, n_seq, n_vocab]
     # labels: [n_batch, n_seq]

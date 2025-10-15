@@ -16,7 +16,8 @@ from mllm.config.model import GenmixTrainDsType, TokensAggType, GenmixembCfg, co
     gen_prefpostfix_genmixemb, HgReductType, BertAggType, CtxQuePromptType, SelfSuperviseType, DecExpertType, \
     BertModelType
 from mllm.data.itsquadv2 import get_squadv2_batch_iterators_v2, QnaBatchV2
-from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG
+from mllm.exp.args import GENMIXEMB_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, \
+    get_pretrained_model_path
 from mllm.model import bert, gpt2
 from mllm.model.genmixemb import Genmixemb
 from mllm.train.mask_utils import MaskCfg
@@ -44,10 +45,15 @@ class ArgsGenmixembTrain(BaseModel):
         description='Path to train root directory. New train subdirectory will be created within each new run.',
         cli=('--train-root-path',),
     )
-    pretrained_model_path: Optional[Path] = Field(
+    agg_pretrained_model_path: Optional[Path] = Field(
         None,
-        description='Path to EncdecHg model train directory.',
-        cli=('--pretrained-model-path',),
+        description='Path to EncdecHg model train directory. Weights will be loaded to Aggregator model.',
+        cli=('--agg-pretrained-model-path',),
+    )
+    gen_pretrained_model_path: Optional[Path] = Field(
+        None,
+        description='Path to Generator model train directory. Weights will be loaded to Generator model.',
+        cli=('--gen-pretrained-model-path',),
     )
     train_subdir: str = Field(
         '',
@@ -316,12 +322,8 @@ class ArgsGenmixembTrain(BaseModel):
 
 def main(args: ArgsGenmixembTrain) -> int:
     print(args)
-    if args.pretrained_model_path and args.pretrained_model_path.name:
-        pretrained_model_path = args.pretrained_model_path
-        if not pretrained_model_path.is_file():
-            pretrained_model_path /= 'best.pth'
-    else:
-        pretrained_model_path = None
+    agg_pretrained_model_path = get_pretrained_model_path(args.agg_pretrained_model_path)
+    gen_pretrained_model_path = get_pretrained_model_path(args.gen_pretrained_model_path)
 
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
@@ -350,7 +352,8 @@ def main(args: ArgsGenmixembTrain) -> int:
             seq_max_len=args.mask_seq_max_len,
         )
     prefix, suffix = gen_prefpostfix_genmixemb(
-        model_cfg, train_ds_type=args.train_ds_type, mask_cfg=mask_cfg, self_supervise_type=args.self_supervise_type, pretrained_model_path=pretrained_model_path,
+        model_cfg, train_ds_type=args.train_ds_type, mask_cfg=mask_cfg, self_supervise_type=args.self_supervise_type,
+        agg_pretrained_model_path=agg_pretrained_model_path, gen_pretrained_model_path=gen_pretrained_model_path,
     )
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
     print(f'train_path: {train_path}')
@@ -374,8 +377,8 @@ def main(args: ArgsGenmixembTrain) -> int:
     print(model_cfg)
     model = Genmixemb(model_cfg, device=device)
 
-    if pretrained_model_path and checkpoint is None:
-        model.load_weights(pretrained_model_path)
+    if checkpoint is None:
+        model.load_weights(agg_pretrained_model_path=agg_pretrained_model_path, gen_pretrained_model_path=gen_pretrained_model_path)
 
     if model_cfg.train_agg_model:
         params = model.parameters()

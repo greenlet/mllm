@@ -164,3 +164,14 @@ class ArgsTokensChunksTrain(BaseModel):
         cli=('--embs-chunk-size',),
     )
 
+
+def get_pretrained_model_path(args_pretrained_model_path: Optional[Path], weights_fname: str = 'best.pth') -> Optional[Path]:
+    if args_pretrained_model_path and args_pretrained_model_path.name:
+        pretrained_model_path = args_pretrained_model_path
+        if not pretrained_model_path.is_file():
+            pretrained_model_path /= weights_fname
+    else:
+        pretrained_model_path = None
+    return pretrained_model_path
+
+

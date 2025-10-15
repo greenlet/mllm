@@ -254,19 +254,23 @@ train_epoch_steps=20
 val_epoch_steps=20
 batch_size=5
 
-#pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
-pretrained_model_path=$train_encdec_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
-pretrained_model_path="$train_encdec_root_path/encdecbert-20251006_213852-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5|0.04_seq_0.5|0.05|5-dp0-t0.0"
+#agg_pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
+agg_pretrained_model_path=$train_encdec_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
+agg_pretrained_model_path="$train_encdec_root_path/encdecbert-20251006_213852-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5|0.04_seq_0.5|0.05|5-dp0-t0.0"
+agg_pretrained_model_path="$train_encdec_root_path/encdecbert-20251015_222032-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5|0.04_seq_0.5|0.05|5_last_0-dp0-t0.0"
 
-#pretrained_model_path=$train_root_path/genmixemb-20250713_202718-bertbaseuncased-d768-mxo50-aggBrt-sub0-dsWki-tmax100-tragF
-#pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
-#pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250713_202718-bertbaseuncased-d768-mxo50-aggBrt-sub0-dsWki-tmax100-tragF
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
 
-#pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
-#pretrained_model_path=$train_root_path/genmixemb-20250810_125920-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggBrt-sub2-agtTopdot-dsQna-tragT-shemT-ttidF-jcqF
-#pretrained_model_path=$train_root_path/genmixemb-20250815_220237-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtMxpl-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-cqprCq
-#pretrained_model_path=$train_root_path/genmixemb-20250817_201509-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggCnv-lvl1-lrs1-cksz3-pksz2-pst2-dsQna-tragT-ttidF-cqprCq
-#pretrained_model_path=$train_root_path/genmixemb-20250914_112502-gpt2-d768-dp0.1-mxi512-mxo128-dsQna-ttidF
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250810_125920-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggBrt-sub2-agtTopdot-dsQna-tragT-shemT-ttidF-jcqF
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250815_220237-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtMxpl-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-cqprCq
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250817_201509-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggCnv-lvl1-lrs1-cksz3-pksz2-pst2-dsQna-tragT-ttidF-cqprCq
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250914_112502-gpt2-d768-dp0.1-mxi512-mxo128-dsQna-ttidF
+
+
+gen_pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
 
 
 device=cuda
@@ -295,7 +299,8 @@ cd "$mllm_src_path" || exit 1
 python s_07_05_train_genmixemb.py \
   --data-path $data_path \
   --train-root-path $train_root_path \
-  --pretrained-model-path "$pretrained_model_path" \
+  --agg-pretrained-model-path "$agg_pretrained_model_path" \
+  --gen-pretrained-model-path "$gen_pretrained_model_path" \
   --train-subdir "$train_subdir" \
   --train-ds-type "$train_ds_type" \
   --model-cfg-fpath $model_cfg_fpath \

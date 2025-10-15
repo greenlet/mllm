@@ -1332,15 +1332,21 @@ checkpoint_fname_pat = re.compile(r'^(\w+)-(\d{8})_(\d{6})-.*$')
 
 def gen_prefpostfix_genmixemb(
         cfg: GenmixembCfg, train_ds_type: GenmixTrainDsType, mask_cfg: Optional[MaskCfg], self_supervise_type: Optional[SelfSuperviseType] = None,
-        pretrained_model_path: Optional[Path] = None,
+        agg_pretrained_model_path: Optional[Path] = None, gen_pretrained_model_path: Optional[Path] = None,
 ) -> tuple[str, str]:
     prefix, postfix_parts = f'genmixemb', []
 
-    if pretrained_model_path is not None:
-        dname = pretrained_model_path.parent.name
+    if agg_pretrained_model_path is not None:
+        dname = agg_pretrained_model_path.parent.name
         m = checkpoint_fname_pat.match(dname)
         assert m is not None, f'Cannot parse checkpoint filename "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
-        postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
+        postfix_parts.append(f'preagg_{m.group(1)}{m.group(2)}{m.group(3)}')
+
+    if gen_pretrained_model_path is not None:
+        dname = gen_pretrained_model_path.parent.name
+        m = checkpoint_fname_pat.match(dname)
+        assert m is not None, f'Cannot parse checkpoint filename "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
+        postfix_parts.append(f'pregen_{m.group(1)}{m.group(2)}{m.group(3)}')
 
     postfix_parts.append(cfg.model_name.replace('-', ''))
 
