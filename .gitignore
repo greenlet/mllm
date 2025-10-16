@@ -169,3 +169,9 @@ cython_debug/
 /notebooks/data/
 .DS_Store
 bert-finetuned-sem_eval-english/
+
+
+# AzureML
+aml_jobs/
+
+
