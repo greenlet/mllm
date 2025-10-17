@@ -3,6 +3,7 @@ from pathlib import Path
 import random
 from typing import Optional, Union
 
+from IPython import embed_kernel
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -719,8 +720,13 @@ class Genmixemb(nn.Module):
                 emb_tgt_inp = word_embeddings(tgt_ids_t[:, :-1])
                 # [n_batch, n_toks + tgt_len', d_model]
                 emb_inp = torch.concat([emb, emb_tgt_inp], dim=1)
+
+                kwargs = {}
+                if self.cfg.is_gpt2:
+                    kwargs['emb_off'] = emb.shape[1]
+
                 gen_out: Seq2SeqLMOutput = self.gen(
-                    inputs_embeds=emb_inp, emb_off=emb.shape[1],
+                    inputs_embeds=emb_inp, **kwargs,
                 )
             else:
                 if self.training and not self.cfg.train_agg_model:
@@ -830,8 +836,13 @@ class Genmixemb(nn.Module):
                     top_k=5,
                     temperature=0.2,
                 )
+
+                kwargs = {}
+                if self.cfg.is_gpt2:
+                    kwargs['emb_off'] = emb.shape[1]
+
                 out_toks = self.gen.generate(
-                    inputs_embeds=emb, generation_config=gen_cfg, use_cache=True, emb_off=emb.shape[1],
+                    inputs_embeds=emb, generation_config=gen_cfg, use_cache=True, **kwargs,
                 )
         return out_toks
 
@@ -884,10 +895,15 @@ class Genmixemb(nn.Module):
         else:
             # [n_batch, n_toks, d_model]
             emb = self.prompt_emb(ctx_toks, que_toks)
-
-            out_toks = self.gen.generate(
-                inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg, emb_off=emb.shape[1],
-            )
+            if self.cfg.is_gpt2:
+                out_toks = self.gen.generate(
+                    inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg, emb_off=emb.shape[1], **kwargs,
+                )
+            else:
+                out_toks = self.gen.generate(
+                    inputs_embeds=emb, decoder_start_token_id=self.tkz.cls_token_id, generation_config=gen_cfg,
+                    use_cache=False,
+                )
 
         return out_toks
 
