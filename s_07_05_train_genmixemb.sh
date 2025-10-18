@@ -162,15 +162,15 @@ moe_topk=0
 train_root_path=$data_path/train_mllm_genmixemb_qna
 train_ds_type=qna
 model_name=bert-base-uncased
-bert_model_type=dec
+bert_model_type=encdec
 train_agg_model=true
 toks_agg_type=brt
 bert_agg_model_name=bert-base-uncased
 bert_agg_n_subseq_toks=128
 bert_agg_type=sep
 n_toks_min=20
-# max_inp_toks=1024
-#max_inp_toks=512
+#max_inp_toks=1024
+max_inp_toks=512
 #max_inp_toks=128
 max_out_toks=50
 mask_tokens=false
@@ -181,6 +181,30 @@ add_token_type_ids=false
 share_agg_enc_token_embeds=true
 join_ctx_que_agg=false
 ctx_que_prompt_type=cq
+
+
+# train_root_path=$data_path/train_mllm_genmixemb_qna
+# train_ds_type=qna
+# model_name=bert-base-uncased
+# bert_model_type=dec
+# train_agg_model=true
+# toks_agg_type=brt
+# bert_agg_model_name=bert-base-uncased
+# bert_agg_n_subseq_toks=128
+# bert_agg_type=sep
+# n_toks_min=20
+# # max_inp_toks=1024
+# #max_inp_toks=512
+# #max_inp_toks=128
+# max_out_toks=50
+# mask_tokens=false
+# dec_expert_type=non
+# moe_experts_num=0
+# moe_topk=0
+# add_token_type_ids=false
+# share_agg_enc_token_embeds=true
+# join_ctx_que_agg=false
+# ctx_que_prompt_type=cq
 
 
 

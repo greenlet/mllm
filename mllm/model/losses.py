@@ -1,7 +1,9 @@
+from curses import window
 from enum import Enum
-from typing import Mapping, Optional, Union, cast
+from typing import Any, Mapping, Optional, Union, cast
 
 from arrow import get
+from regex import D
 from sympy import N
 import torch
 from torch import nn
@@ -84,6 +86,101 @@ def join_losses_dicts(prefixes: list[str], loss_dicts: list[LossDict]) -> LossDi
     for prefix, loss_dict in zip(prefixes, loss_dicts):
         joined.update(prefix_losses_dict(prefix, loss_dict))
     return joined
+
+
+class CircularBuffer:
+    _max_size: int
+    _buffer: list[float]
+    _index: int
+
+    def __init__(self, max_size: int):
+        assert max_size > 0, f'CircularBuffer size must be > 0 (got {max_size}).'
+        self._max_size = max_size
+        self._buffer = []
+        self._index = -1
+
+    def append(self, value: float):
+        if len(self._buffer) < self._max_size:
+            self._buffer.append(value)
+            self._index += 1
+        else:
+            self._index = (self._index + 1) % self._max_size
+            self._buffer[self._index] = value
+
+    def last(self) -> Optional[float]:
+        if len(self._buffer) == 0:
+            return None
+        return self._buffer[self._index]
+
+    def mean(self) -> Optional[float]:
+        if len(self._buffer) == 0:
+            return None
+        return sum(self._buffer) / len(self._buffer)
+
+    def clear(self):
+        self._buffer = []
+        self._index = -1
+
+    def __len__(self) -> int:
+        return len(self._buffer)
+
+    def __repr__(self) -> str:
+        return f'CircularBuffer(max_size={self._max_size}, buffer={self._buffer})'
+    
+    def copy(self) -> 'CircularBuffer':
+        res = CircularBuffer(self._max_size)
+        res._buffer = self._buffer.copy()
+        res._index = self._index
+        return res
+
+
+class LossStats:
+    _name: str
+    _window_size: int
+    _n_items: int
+    _last_val: float
+    _sum_val: float
+    _vals: Optional[CircularBuffer]
+
+    def __init__(self, name: str, window_size: int = 0):
+        self._name = name
+        self._n_items = 0
+        self._sum_val = 0.0
+        self._vals = None if window_size <= 0 else CircularBuffer(window_size)
+
+    def update(self, loss: float):
+        if self._vals is not None:
+            self._vals.append(loss)
+        else:
+            self._last_val = loss
+            self._sum_val += loss
+            self._n_items += 1
+
+    def last(self) -> Optional[float]:
+        if self._vals is not None:
+            return self._vals.last()
+        if self._n_items > 0:
+            return self._last_val
+        return None
+
+    def mean(self) -> Optional[float]:
+        if self._vals is not None:
+            return self._vals.mean()
+        if self._n_items > 0:
+            return self._sum_val / self._n_items
+        return None
+    
+    def clear(self):
+        self._n_items = 0
+        self._sum_val = 0.0
+        if self._vals is not None:
+            self._vals.clear()
+
+    def prefixed(self, prefix: str) -> 'LossStats':
+        res = LossStats(f'{prefix}_{self._name}', self._window_size)
+        if self._vals is not None:
+            res._vals = self._vals.copy()
+        return res
 
 
 class RankProbLoss(nn.Module):
