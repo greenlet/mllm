@@ -127,11 +127,11 @@ class CircularBuffer:
     def __repr__(self) -> str:
         return f'CircularBuffer(max_size={self._max_size}, buffer={self._buffer})'
     
-    def copy(self) -> 'CircularBuffer':
-        res = CircularBuffer(self._max_size)
-        res._buffer = self._buffer.copy()
-        res._index = self._index
-        return res
+    # def copy(self) -> 'CircularBuffer':
+    #     res = CircularBuffer(self._max_size)
+    #     res._buffer = self._buffer.copy()
+    #     res._index = self._index
+    #     return res
 
 
 class LossStats:
@@ -176,11 +176,59 @@ class LossStats:
         if self._vals is not None:
             self._vals.clear()
 
-    def prefixed(self, prefix: str) -> 'LossStats':
-        res = LossStats(f'{prefix}_{self._name}', self._window_size)
-        if self._vals is not None:
-            res._vals = self._vals.copy()
+
+class LossesStats:
+    _loss_stats: dict[str, LossStats]
+    _prefix: str
+
+    def __init__(self, prefix: str = ''):
+        self._loss_stats = {}
+        self._prefix = prefix
+
+    def update(self, name: str, val: Union[float, torch.Tensor]):
+        if name not in self._loss_stats:
+            self._loss_stats[name] = LossStats(name)
+        if isinstance(val, torch.Tensor):
+            val = val.item()
+        self._loss_stats[name].update(val)
+
+    def clear(self):
+        for ls in self._loss_stats.values():
+            ls.clear()
+    
+    def _get_agg_losses(self, aggregate: bool) -> LossDict:
+        if aggregate:
+            return {f'{self._prefix}{k}': v.mean() for k, v in self._loss_stats.items()}
+        return {f'{self._prefix}{k}': v.last() for k, v in self._loss_stats.items()}
+
+    def log_to_tb(mode: str, step: int, tbw: tb.SummaryWriter):
+        loss_dict = self._get_agg_losses(aggregate=True)
+        for k, v in loss_dict.items():
+            k_loss_str = snake_to_camel(k)
+            tbw.add_scalar(f'{k_loss_str}/{mode}', v, step)
+
+    def to_cli_str(loss_dict: LossDict, aggregate: bool) -> str:
+        loss_dict = self._get_agg_losses(aggregate=aggregate)
+        loss = loss_dict['loss']
+        precision = 6 if len(loss_dict) <= 6 else 4
+        fmt_str = '{k}: {v:.%df}' % precision
+        format_key_val = lambda k, v: fmt_str.format(k=k, v=v.item())
+        losses_str = [format_key_val('loss', loss)]
+        for k, v in loss_dict.items():
+            if k == 'loss':
+                continue
+            ls = k.split('_')
+            if ls[-1] == 'loss':
+                ls = ls[:-1]
+            if len(ls) == 1:
+                ls = ls[0][:3]
+            else:
+                ls = ''.join(p[0] for p in ls)
+            losses_str.append(format_key_val(ls, v))
+
+        res = '. '.join(losses_str)
         return res
+
 
 
 class RankProbLoss(nn.Module):

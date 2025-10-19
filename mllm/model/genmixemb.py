@@ -312,21 +312,26 @@ class Genmixemb(nn.Module):
             gen_pretrained_checkpoint = torch.load(gen_pretrained_model_path, map_location=self.device)
             print(list(gen_pretrained_checkpoint['model'].keys()))
             print('Current model keys:')
-            print(list(self.gen.state_dict().keys()))
+            print(list(self.state_dict().keys()))
             if dname.startswith('genmixemb-'):
-                prefix = 'gen.decoder.'
-                prefix_len = len(prefix)
-                gen_model_chkpt = {}
-                for key, val in gen_pretrained_checkpoint['model'].items():
-                    if key.startswith(prefix):
-                        key = key[prefix_len:]
-                    else:
-                        continue
-                    if '.crossattention.' in key:
-                        continue
-                    gen_model_chkpt[key] = val
-                self.gen.load_state_dict(gen_model_chkpt, strict=True)
-                del gen_model_chkpt
+                if self.cfg.bert_model_type == BertModelType.Dec:
+                    prefix = 'gen.decoder.'
+                    prefix_len = len(prefix)
+                    gen_model_chkpt = {}
+                    for key, val in gen_pretrained_checkpoint['model'].items():
+                        if key.startswith(prefix):
+                            key = key[prefix_len:]
+                        else:
+                            continue
+                        if '.crossattention.' in key:
+                            continue
+                        gen_model_chkpt[key] = val
+                    self.gen.load_state_dict(gen_model_chkpt, strict=True)
+                    del gen_model_chkpt
+                elif self.cfg.bert_model_type == BertModelType.EncDec:
+                    self.load_state_dict(gen_pretrained_checkpoint['model'], strict=False)
+                else:
+                    raise Exception(f'Bert model type {self.cfg.bert_model_type} is not supported')
             else:
                 raise Exception(f'Generator model checkpoint {gen_pretrained_model_path.name} is not supported')
             del gen_pretrained_checkpoint
