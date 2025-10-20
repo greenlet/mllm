@@ -172,6 +172,6 @@ bert-finetuned-sem_eval-english/
 
 
 # AzureML
-aml_jobs/
+aml/jobs/
 
 
