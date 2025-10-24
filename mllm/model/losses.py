@@ -191,6 +191,10 @@ class LossesStats:
         if isinstance(val, torch.Tensor):
             val = val.item()
         self._loss_stats[name].update(val)
+    
+    def update_dict(self, loss_dict: LossDict):
+        for k, v in loss_dict.items():
+            self.update(k, v)
 
     def clear(self):
         for ls in self._loss_stats.values():
@@ -201,13 +205,13 @@ class LossesStats:
             return {f'{self._prefix}{k}': v.mean() for k, v in self._loss_stats.items()}
         return {f'{self._prefix}{k}': v.last() for k, v in self._loss_stats.items()}
 
-    def log_to_tb(mode: str, step: int, tbw: tb.SummaryWriter):
+    def log_to_tb(self, mode: str, step: int, tbw: tb.SummaryWriter):
         loss_dict = self._get_agg_losses(aggregate=True)
         for k, v in loss_dict.items():
             k_loss_str = snake_to_camel(k)
             tbw.add_scalar(f'{k_loss_str}/{mode}', v, step)
 
-    def to_cli_str(loss_dict: LossDict, aggregate: bool) -> str:
+    def to_cli_str(self, aggregate: bool) -> str:
         loss_dict = self._get_agg_losses(aggregate=aggregate)
         loss = loss_dict['loss']
         precision = 6 if len(loss_dict) <= 6 else 4

@@ -1,6 +1,7 @@
 
 code_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH
-data_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH/data
+# data_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH/data
+data_path=$AZURE_ML_OUTPUT_segmentrelevance_c11_mi/local/users/mburakov
 #wiki_ds_name=20200501.en
 wiki_ds_name=20220301.en
 

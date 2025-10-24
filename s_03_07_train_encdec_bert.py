@@ -16,7 +16,7 @@ from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec
     gen_prefpostfix_encdec_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, masked_loss_for_encoder_ARG
 from mllm.model.encdec_ranker_hg import EncdecBert, EncdecBertAgg
-from mllm.model.losses import EncdecMaskPadBatchLoss, EncdecPadBatchLoss, EncdecMaskPadItemLoss, accum_losses, log_losses_to_tb, losses_to_str
+from mllm.model.losses import EncdecMaskPadBatchLoss, EncdecPadBatchLoss, EncdecMaskPadItemLoss, LossesStats, accum_losses, log_losses_to_tb, losses_to_str
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators2
 
@@ -276,7 +276,7 @@ def main(args: ArgsEncdecBertTrain) -> int:
         grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
     for epoch in range(last_epoch + 1, args.epochs):
         model.train()
-        train_losses = {}
+        train_losses = LossesStats()
         train_loss = 0.0
         pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
@@ -295,23 +295,23 @@ def main(args: ArgsEncdecBertTrain) -> int:
 
             optimizer.step()
             train_loss += loss.item()
-            accum_losses(loss_dict, train_losses)
+            train_losses.update_dict(loss_dict)
 
             # if i_train == 2:
             #     import sys
             #     sys.exit()
 
-            losses_str = losses_to_str(train_losses, aggregate=False)
+            losses_str = train_losses.to_cli_str(aggregate=False)
             pbar.set_postfix_str(f'Train. {losses_str}')
         pbar.close()
         train_loss /= args.train_epoch_steps
-        log_losses_to_tb('Train', epoch, train_losses, tbsw)
+        train_losses.log_to_tb('Train', epoch, tbsw)
 
         model.eval()
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-        val_losses = {}
+        val_losses = LossesStats()
         val_loss = 0.0
         pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         for _ in pbar:
@@ -322,13 +322,13 @@ def main(args: ArgsEncdecBertTrain) -> int:
             loss = loss_dict['loss']
 
             val_loss += loss.item()
-            val_losses = accum_losses(loss_dict, val_losses)
+            val_losses.update_dict(loss_dict)
 
-            losses_str = losses_to_str(val_losses, aggregate=False)
+            losses_str = val_losses.to_cli_str(aggregate=False)
             pbar.set_postfix_str(f'Val. {losses_str}')
         pbar.close()
         val_loss /= args.val_epoch_steps
-        log_losses_to_tb('Val', epoch, val_losses, tbsw)
+        val_losses.log_to_tb('Val', epoch, tbsw)
 
         if epoch >= sched_wait_steps:
             scheduler.step(val_loss)
@@ -336,8 +336,8 @@ def main(args: ArgsEncdecBertTrain) -> int:
         tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
         print(f'Train mean loss: {train_loss:.6f}. Val mean loss: {val_loss:.6f}')
-        train_losses_str = losses_to_str(train_losses, aggregate=True)
-        val_losses_str = losses_to_str(val_losses, aggregate=True)
+        train_losses_str = train_losses.to_cli_str(aggregate=True)
+        val_losses_str = val_losses.to_cli_str(aggregate=True)
         print(f'Train mean losses: {train_losses_str}')
         print(f'Val mean losses: {val_losses_str}')
         print(f'Current lr: {last_lr:.10f}.')

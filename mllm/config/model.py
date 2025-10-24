@@ -1167,7 +1167,7 @@ def gen_prefpostfix_encdec_bert(
     if mask_cfg is not None:
         sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)
         seq_freq, seq_max_frac = np.round(mask_cfg.seq_freq, 2), np.round(mask_cfg.seq_max_frac, 2)
-        postfix_parts.append(f'msk_sep_{sep_freq}|{sep_frac}_seq_{seq_freq}|{seq_max_frac}|{mask_cfg.seq_max_len}_last_{mask_cfg.n_last_toks}')
+        postfix_parts.append(f'msk_sep_{sep_freq}x{sep_frac}_seq_{seq_freq}x{seq_max_frac}x{mask_cfg.seq_max_len}_last_{mask_cfg.n_last_toks}')
 
     if next_tok_pred:
         postfix_parts.append('ntp')
@@ -1420,7 +1420,7 @@ def gen_prefpostfix_genmixemb(
     if mask_cfg is not None:
         sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)
         seq_freq, seq_max_frac = np.round(mask_cfg.seq_freq, 2), np.round(mask_cfg.seq_max_frac, 2)
-        postfix_parts.append(f'msk_sep_{sep_freq}|{sep_frac}_seq_{seq_freq}|{seq_max_frac}|{mask_cfg.seq_max_len}')
+        postfix_parts.append(f'msk_sep_{sep_freq}x{sep_frac}_seq_{seq_freq}x{seq_max_frac}x{mask_cfg.seq_max_len}_last_{mask_cfg.n_last_toks}')
 
     if agg_enabled:
         postfix_parts.append(bool_param_to_str('trag', cfg.train_agg_model))
