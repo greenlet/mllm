@@ -70,7 +70,13 @@ def train(dataset: Dataset, batch_size: int, rank: int = -1, world_size: int = -
     dist.destroy_process_group()
 
 
-if __name__ == '__main__':
+def load_masked_wiki_dataset(data_path: Path) -> Dataset:
+    wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
+    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))[wiki_ds_subdir]['train']
+    return dataset
+
+
+def run_training():
     default_data_path = Path(os.path.expandvars('$HOME/data'))
     parser = argparse.ArgumentParser()
     parser.add_argument('--local-rank', type=int)
@@ -86,3 +92,6 @@ if __name__ == '__main__':
     # Launch one process per GPU
     mp.spawn(train, args=(dataset, args.batch_size, local_rank, world_size), nprocs=world_size)
 
+
+if __name__ == '__main__':
+    run_training()
