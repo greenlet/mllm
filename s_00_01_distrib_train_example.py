@@ -15,16 +15,30 @@ from mllm.model.bert.modeling_bert import BertModel
 
 
 class MaskedBert(nn.Module):
-    def __init__(self):
+    def __init__(self, share_inout_embeddings: bool = True):
         super(MaskedBert, self).__init__()
         self.bert = BertModel.from_pretrained('bert-base-uncased')
+        self.share_inout_embeddings = share_inout_embeddings
+        if not share_inout_embeddings:
+            self.output_linear = nn.Linear(self.bert.config.hidden_size, self.bert.config.vocab_size)
 
+    # x: (batch_size, seq_length) --> (batch_size, seq_length, vocab_size)
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert(x)
-        return out.last_hidden_state
+        # y: (batch_size, seq_length, hidden_size)
+        y = out.last_hidden_state
+        if not self.share_inout_embeddings:
+            # y: (batch_size, seq_length, vocab_size)
+            y = self.output_linear(y)
+        else:
+            # y: (batch_size, vocab_size, seq_length)
+            y = self.bert.embeddings.word_embeddings.weight @ y.permute(0, 2, 1)
+            # y: (batch_size, seq_length, vocab_size)
+            y = y.permute(0, 2, 1)
+        return y
 
 
-def train(dataset: Dataset, batch_size: int, rank: int = -1, world_size: int = -1):
+def train(dataset: Dataset, share_inout_embeddings: bool, batch_size: int, rank: int = -1, world_size: int = -1):
     '''Training function for each GPU process.
 
     Args:
@@ -50,7 +64,7 @@ def train(dataset: Dataset, batch_size: int, rank: int = -1, world_size: int = -
     )
 
     # Instantiate the model and move it to the current GPU
-    model = MaskedBert().to(device)
+    model = MaskedBert(share_inout_embeddings=share_inout_embeddings).to(device)
     # Wrap the model with DDP
     ddp_model = DDP(model, device_ids=[rank])
 
@@ -82,6 +96,7 @@ def run_training():
     parser.add_argument('--local-rank', type=int)
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--data-path', type=Path, default=default_data_path)
+    parser.add_argument('--share-inout-embeddings', action='store_true')
     args = parser.parse_args()
     world_size = torch.cuda.device_count()
     local_rank = args.local_rank
@@ -90,7 +105,7 @@ def run_training():
     dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(args.data_path))[wiki_ds_subdir]['train']
 
     # Launch one process per GPU
-    mp.spawn(train, args=(dataset, args.batch_size, local_rank, world_size), nprocs=world_size)
+    mp.spawn(train, args=(dataset, args.share_inout_embeddings, args.batch_size, local_rank, world_size), nprocs=world_size)
 
 
 if __name__ == '__main__':

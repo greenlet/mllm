@@ -7,7 +7,7 @@ accelerate
 alembic
 #apache_beam
 #datasets==1.18.4
-datasets
+datasets==3.6.0
 jupyter
 matplotlib
 #mteb
@@ -17,13 +17,14 @@ numpy
 openai
 pandas
 pydantic
-pydantic-cli
+pydantic-cli==4.3.0
 pydantic-yaml
 scikit-learn
 scipy
 tensorboard
-torch
-torchtext
+torch==2.3.0
+torchtext==0.18.0
 transformers
 tqdm
+
 
