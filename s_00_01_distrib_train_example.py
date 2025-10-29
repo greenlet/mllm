@@ -38,6 +38,41 @@ class MaskedBert(nn.Module):
         return y
 
 
+def extract_masked_input(item: Dict, mask_token_id: int = 103, pad_token_id: int = 0, max_seq_length: int = 512) -> Dict:
+    input_ids = item['toks'][:max_seq_length]
+    labels = [-100] * len(input_ids)  # Initialize labels with -100 (ignore index)
+    for i in range(len(input_ids)):
+        if input_ids[i] == mask_token_id:
+            labels[i] = input_ids[i]  # Set label to the original token id
+    attention_mask = [1] * len(input_ids)
+
+    # Padding
+    padding_length = max_seq_length - len(input_ids)
+    if padding_length > 0:
+        input_ids += [pad_token_id] * padding_length
+        labels += [-100] * padding_length
+        attention_mask += [0] * padding_length
+
+    return {
+        'input_ids': torch.tensor(input_ids, dtype=torch.long),
+        'attention_mask': torch.tensor(attention_mask, dtype=torch.long),
+        'labels': torch.tensor(labels, dtype=torch.long)
+    }
+
+
+def masked_data_collate_fn(batch) -> Dict:
+    # Custom batching logic
+    input_ids = torch.stack([item['input_ids'] for item in batch])
+    attention_mask = torch.stack([item['attention_mask'] for item in batch])
+    labels = torch.tensor([item['labels'] for item in batch])
+     
+    return {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+        'labels': labels
+    }
+
+
 def train(dataset: Dataset, share_inout_embeddings: bool, batch_size: int, rank: int = -1, world_size: int = -1):
     '''Training function for each GPU process.
 
