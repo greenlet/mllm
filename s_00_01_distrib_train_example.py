@@ -1,8 +1,10 @@
 import argparse
 import os
 from pathlib import Path
+from typing import Dict
 
 from datasets import Dataset, load_dataset
+import numpy as np
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -38,26 +40,38 @@ class MaskedBert(nn.Module):
         return y
 
 
-def extract_masked_input(item: Dict, mask_token_id: int = 103, pad_token_id: int = 0, max_seq_length: int = 512) -> Dict:
-    input_ids = item['toks'][:max_seq_length]
-    labels = [-100] * len(input_ids)  # Initialize labels with -100 (ignore index)
-    for i in range(len(input_ids)):
-        if input_ids[i] == mask_token_id:
-            labels[i] = input_ids[i]  # Set label to the original token id
-    attention_mask = [1] * len(input_ids)
+class MaskDataset:
+    def __init__(self, pad_token_id: int = 0, max_seq_len: int = 512, mask_token_id: int = 103, min_mask_toks: int = 0, max_mask_toks: int = 10):
+        self.pad_token_id = pad_token_id
+        self.max_seq_len = max_seq_len
+        self.mask_token_id = mask_token_id
+        self.min_mask_toks = min_mask_toks
+        self.max_mask_toks = max_mask_toks
+        self.inds = np.arange(self.max_seq_len)
 
-    # Padding
-    padding_length = max_seq_length - len(input_ids)
-    if padding_length > 0:
-        input_ids += [pad_token_id] * padding_length
-        labels += [-100] * padding_length
-        attention_mask += [0] * padding_length
+    def extract_masked_input(self, item: Dict) -> Dict:
+        cur_len = item['toks_len']
+        max_seq_len = min(cur_len, self.max_seq_len)
+        input_ids = item['toks']
+        if max_seq_len < cur_len:
+            ind_off_max = cur_len - max_seq_len + 1
+            ind_off_max = min(ind_off_max, 3)
+            ind_off = np.random.randint(0, ind_off_max)
+            input_ids = input_ids[ind_off:ind_off + max_seq_len]
+        input_ids_masked = input_ids
+        mask_toks_num = np.random.randint(self.min_mask_toks, self.max_mask_toks + 1)
+        mask_toks_num = min(mask_toks_num, max_seq_len // 2)
+        if mask_toks_num > 0:
+            mask_inds = np.random.choice(self.inds[:max_seq_len], size=mask_toks_num, replace=False)
+            input_ids_masked = np.array(input_ids)
+            input_ids_masked[mask_inds] = self.mask_token_id
+    
+        return {
+            **item,
+            'input_ids': torch.tensor(input_ids, dtype=torch.long),
+            'input_ids_masked': torch.tensor(input_ids_masked, dtype=torch.long),
+        }
 
-    return {
-        'input_ids': torch.tensor(input_ids, dtype=torch.long),
-        'attention_mask': torch.tensor(attention_mask, dtype=torch.long),
-        'labels': torch.tensor(labels, dtype=torch.long)
-    }
 
 
 def masked_data_collate_fn(batch) -> Dict:

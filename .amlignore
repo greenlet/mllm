@@ -1,0 +1,14 @@
+# Azure ML ignore file - this overrides .gitignore
+# Leave this file empty or add only specific files you want to exclude
+# Having this file tells Azure ML to ignore .gitignore rules
+
+# Example: if you want to exclude only specific large files:
+# *.large
+# /very_large_data/
+
+# For now, keep this mostly empty to include everything
+
+/data/
+/.git/
+
+
