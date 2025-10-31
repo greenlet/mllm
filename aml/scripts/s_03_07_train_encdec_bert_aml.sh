@@ -1,7 +1,7 @@
 
 code_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH
 # data_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH/data
-data_path=$AZURE_ML_OUTPUT_segmentrelevance_c11_mi/local/users/mburakov
+data_path=$AZURE_ML_OUTPUT_segmentrelevance_c11_mi/local/users/mburakov/data
 #wiki_ds_name=20200501.en
 wiki_ds_name=20220301.en
 
@@ -12,6 +12,7 @@ model_cfg_fname=encdec_bert_cfg_01.yaml
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_encdec_bert
+train_root_path=./data/train_mllm_encdec_bert
 
 bert_model_name=bert-base-uncased
 bert_emb_type=cls
@@ -94,7 +95,7 @@ train_epoch_steps=500
 val_epoch_steps=50
 #docs_batch_size=25
 # docs_batch_size=20
-docs_batch_size=15
+# docs_batch_size=15
 # docs_batch_size=10
 # docs_batch_size=3
 #train_subdir=last

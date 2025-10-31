@@ -216,7 +216,7 @@ class LossesStats:
         loss = loss_dict['loss']
         precision = 6 if len(loss_dict) <= 6 else 4
         fmt_str = '{k}: {v:.%df}' % precision
-        format_key_val = lambda k, v: fmt_str.format(k=k, v=v.item())
+        format_key_val = lambda k, v: fmt_str.format(k=k, v=v)
         losses_str = [format_key_val('loss', loss)]
         for k, v in loss_dict.items():
             if k == 'loss':

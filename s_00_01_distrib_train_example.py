@@ -1,7 +1,7 @@
 import argparse
 import os
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Tuple
 
 from datasets import Dataset, load_dataset
 import numpy as np
@@ -11,6 +11,7 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.nn as nn
 from torch.utils.data import DataLoader, DistributedSampler
+from transformers import PreTrainedTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 
 from mllm.model.bert.modeling_bert import BertModel
@@ -38,6 +39,16 @@ class MaskedBert(nn.Module):
             # y: (batch_size, seq_length, vocab_size)
             y = y.permute(0, 2, 1)
         return y
+
+
+def tokenize_item(tokenizer: PreTrainedTokenizer, item):
+    text = item['text']
+    toks = tokenizer(text, add_special_tokens=False).input_ids
+    return {
+        **item,
+        'toks': toks,
+        'toks_len': len(toks),
+    }
 
 
 class MaskDataset:
@@ -73,7 +84,6 @@ class MaskDataset:
         }
 
 
-
 def masked_data_collate_fn(batch) -> Dict:
     # Custom batching logic
     input_ids = torch.stack([item['input_ids'] for item in batch])
@@ -87,7 +97,7 @@ def masked_data_collate_fn(batch) -> Dict:
     }
 
 
-def train(dataset: Dataset, share_inout_embeddings: bool, batch_size: int, rank: int = -1, world_size: int = -1):
+def train(dataset: Dataset, model_name: str, share_inout_embeddings: bool, batch_size: int, rank: int = -1, world_size: int = -1):
     '''Training function for each GPU process.
 
     Args:
@@ -133,10 +143,13 @@ def train(dataset: Dataset, share_inout_embeddings: bool, batch_size: int, rank:
     dist.destroy_process_group()
 
 
-def load_masked_wiki_dataset(data_path: Path) -> Dataset:
+def load_masked_wiki_dataset(data_path: Path, model_name: str) -> Tuple[PreTrainedTokenizer, Dataset]:
+    tkz = BertModel.from_pretrained(model_name).get_input_embeddings().tokenizer
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
     dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))[wiki_ds_subdir]['train']
-    return dataset
+    dataset = dataset.map(tokenize_item, fn_kwargs={'tokenizer': tkz}, remove_columns=dataset.column_names)
+    dataset = dataset.map(MaskDataset(pad_token_id=tkz.pad_token_id, max_seq_len=512, mask_token_id=tkz.mask_token_id, min_mask_toks=0, max_mask_toks=10).extract_masked_input, remove_columns=dataset.column_names)
+    return tkz, dataset
 
 
 def run_training():
@@ -146,15 +159,16 @@ def run_training():
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--data-path', type=Path, default=default_data_path)
     parser.add_argument('--share-inout-embeddings', action='store_true')
+    parser.add_argument('--model-name', type=str, default='bert-base-uncased')
     args = parser.parse_args()
     world_size = torch.cuda.device_count()
     local_rank = args.local_rank
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
 
-    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(args.data_path))[wiki_ds_subdir]['train']
+    tokenizer, dataset = load_masked_wiki_dataset(args.data_path, args.model_name)
 
     # Launch one process per GPU
-    mp.spawn(train, args=(dataset, args.share_inout_embeddings, args.batch_size, local_rank, world_size), nprocs=world_size)
+    mp.spawn(train, args=(dataset, args.model_name, args.share_inout_embeddings, args.batch_size, local_rank, world_size), nprocs=world_size)
 
 
 if __name__ == '__main__':

@@ -943,6 +943,7 @@ def copy_override_encdec_bert_cfg(
     enc = cfg.enc_bert
     dec = cfg.dec_pyr
     pretrained_model_name = coalesce(pretrained_model_name, enc.pretrained_model_name)
+    tokenizer_name = pretrained_model_name
     emb_type = coalesce(emb_type, cfg.enc_bert.emb_type)
     inp_len = inp_len or enc.inp_len
     dec_enhance_type = coalesce(dec_enhance_type, dec.enhance_type)
@@ -952,7 +953,7 @@ def copy_override_encdec_bert_cfg(
     dec_temperature = coalesce(dec_temperature, dec.temperature)
 
     return create_encdec_bert_cfg(
-        pretrained_model_name=pretrained_model_name, tokenizer_name=enc.tokenizer_name, emb_type=emb_type,
+        pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
         inp_len=inp_len, dec_enhance_type=dec_enhance_type, dec_n_layers=dec_n_layers, dec_n_similar_layers=dec_n_similar_layers,
         dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature,
     )
