@@ -11,7 +11,6 @@ model_cfg_fname=encdec_bert_cfg_01.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
-train_root_path=$data_path/train_mllm_encdec_bert
 train_root_path=./data/train_mllm_encdec_bert
 
 bert_model_name=bert-base-uncased
@@ -90,10 +89,11 @@ val_epoch_steps=20
 docs_batch_size=5
 
 device=cuda
-epochs=700
+epochs=800
 train_epoch_steps=500
 val_epoch_steps=50
-#docs_batch_size=25
+
+docs_batch_size=50
 # docs_batch_size=20
 # docs_batch_size=15
 # docs_batch_size=10
