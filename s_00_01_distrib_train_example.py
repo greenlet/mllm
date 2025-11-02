@@ -84,17 +84,44 @@ class MaskDataset:
         }
 
 
-def masked_data_collate_fn(batch) -> Dict:
-    # Custom batching logic
-    input_ids = torch.stack([item['input_ids'] for item in batch])
-    attention_mask = torch.stack([item['attention_mask'] for item in batch])
-    labels = torch.tensor([item['labels'] for item in batch])
-     
-    return {
-        'input_ids': input_ids,
-        'attention_mask': attention_mask,
-        'labels': labels
-    }
+class MaskCollateDataset:
+    def __init__(self, pad_token_id: int = 0, max_seq_len: int = 512, mask_token_id: int = 103, min_mask_toks: int = 0, max_mask_toks: int = 10):
+        self.pad_token_id = pad_token_id
+        self.max_seq_len = max_seq_len
+        self.mask_token_id = mask_token_id
+        self.min_mask_toks = min_mask_toks
+        self.max_mask_toks = max_mask_toks
+        self.inds = np.arange(self.max_seq_len)
+
+    def extract_masked_input(self, item: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
+        cur_len = item['toks_len']
+        max_seq_len = min(cur_len, self.max_seq_len)
+        input_ids = item['toks']
+        if max_seq_len < cur_len:
+            ind_off_max = cur_len - max_seq_len + 1
+            ind_off_max = min(ind_off_max, 3)
+            ind_off = np.random.randint(0, ind_off_max)
+            input_ids = input_ids[ind_off:ind_off + max_seq_len]
+        input_ids_masked = input_ids
+        mask_toks_num = np.random.randint(self.min_mask_toks, self.max_mask_toks + 1)
+        mask_toks_num = min(mask_toks_num, max_seq_len // 2)
+        if mask_toks_num > 0:
+            mask_inds = np.random.choice(self.inds[:max_seq_len], size=mask_toks_num, replace=False)
+            input_ids_masked = np.array(input_ids)
+            input_ids_masked[mask_inds] = self.mask_token_id
+        
+        return torch.tensor(input_ids, dtype=torch.long), torch.tensor(input_ids_masked, dtype=torch.long)
+    
+    def collate_fn(self, batch) -> Tuple[torch.Tensor, torch.Tensor]:
+        input_ids_batch = []
+        input_ids_masked_batch = []
+        for item in batch:
+            input_ids, input_ids_masked = self.extract_masked_input(item)
+            input_ids_batch.append(input_ids)
+            input_ids_masked_batch.append(input_ids_masked)
+        input_ids = nn.utils.rnn.pad_sequence(input_ids_batch, batch_first=True, padding_value=self.pad_token_id)
+        input_ids_masked = nn.utils.rnn.pad_sequence(input_ids_masked_batch, batch_first=True, padding_value=self.pad_token_id)
+        return input_ids, input_ids_masked
 
 
 def train(dataset: Dataset, model_name: str, share_inout_embeddings: bool, batch_size: int, rank: int = -1, world_size: int = -1):
