@@ -51,40 +51,8 @@ def tokenize_item(tokenizer: PreTrainedTokenizer, item):
     }
 
 
-class MaskDataset:
-    def __init__(self, pad_token_id: int = 0, max_seq_len: int = 512, mask_token_id: int = 103, min_mask_toks: int = 0, max_mask_toks: int = 10):
-        self.pad_token_id = pad_token_id
-        self.max_seq_len = max_seq_len
-        self.mask_token_id = mask_token_id
-        self.min_mask_toks = min_mask_toks
-        self.max_mask_toks = max_mask_toks
-        self.inds = np.arange(self.max_seq_len)
 
-    def extract_masked_input(self, item: Dict) -> Dict:
-        cur_len = item['toks_len']
-        max_seq_len = min(cur_len, self.max_seq_len)
-        input_ids = item['toks']
-        if max_seq_len < cur_len:
-            ind_off_max = cur_len - max_seq_len + 1
-            ind_off_max = min(ind_off_max, 3)
-            ind_off = np.random.randint(0, ind_off_max)
-            input_ids = input_ids[ind_off:ind_off + max_seq_len]
-        input_ids_masked = input_ids
-        mask_toks_num = np.random.randint(self.min_mask_toks, self.max_mask_toks + 1)
-        mask_toks_num = min(mask_toks_num, max_seq_len // 2)
-        if mask_toks_num > 0:
-            mask_inds = np.random.choice(self.inds[:max_seq_len], size=mask_toks_num, replace=False)
-            input_ids_masked = np.array(input_ids)
-            input_ids_masked[mask_inds] = self.mask_token_id
-    
-        return {
-            **item,
-            'input_ids': torch.tensor(input_ids, dtype=torch.long),
-            'input_ids_masked': torch.tensor(input_ids_masked, dtype=torch.long),
-        }
-
-
-class MaskCollateDataset:
+class DatasetMaskCollator:
     def __init__(self, pad_token_id: int = 0, max_seq_len: int = 512, mask_token_id: int = 103, min_mask_toks: int = 0, max_mask_toks: int = 10):
         self.pad_token_id = pad_token_id
         self.max_seq_len = max_seq_len
@@ -112,7 +80,7 @@ class MaskCollateDataset:
         
         return torch.tensor(input_ids, dtype=torch.long), torch.tensor(input_ids_masked, dtype=torch.long)
     
-    def collate_fn(self, batch) -> Tuple[torch.Tensor, torch.Tensor]:
+    def collate(self, batch) -> Tuple[torch.Tensor, torch.Tensor]:
         input_ids_batch = []
         input_ids_masked_batch = []
         for item in batch:
@@ -124,7 +92,7 @@ class MaskCollateDataset:
         return input_ids, input_ids_masked
 
 
-def train(dataset: Dataset, model_name: str, share_inout_embeddings: bool, batch_size: int, rank: int = -1, world_size: int = -1):
+def train(tkz: PreTrainedTokenizer, dataset: Dataset, model_name: str, share_inout_embeddings: bool, batch_size: int, rank: int = -1, world_size: int = -1):
     '''Training function for each GPU process.
 
     Args:
@@ -137,6 +105,13 @@ def train(dataset: Dataset, model_name: str, share_inout_embeddings: bool, batch
 
     # Create a DistributedSampler to ensure each GPU gets a different mini-batch
     train_sampler = DistributedSampler(dataset)
+    collator = DatasetMaskCollator(
+        pad_token_id=tkz.pad_token_id,
+        max_seq_len=512,
+        mask_token_id=tkz.mask_token_id,
+        min_mask_toks=0,
+        max_mask_toks=10
+    )
 
     # Create a DataLoader with the DistributedSampler
     train_loader = DataLoader(
