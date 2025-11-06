@@ -1,16 +1,19 @@
 import argparse
 import os
 from pathlib import Path
+import shutil
 from typing import Dict, List, Tuple, Any, Callable, Optional, Union
 
 from datasets import Dataset, load_dataset
 import numpy as np
 import torch
+import torch.utils.tensorboard as tb
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.nn as nn
 from torch.utils.data import DataLoader, DistributedSampler
+from tqdm import trange
 from transformers import PreTrainedTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 
@@ -19,9 +22,9 @@ from mllm.model.losses import EncdecMaskPadItemLoss
 
 
 class MaskedBert(nn.Module):
-    def __init__(self, share_inout_embeddings: bool = True):
+    def __init__(self, model_name: str, share_inout_embeddings: bool = True):
         super(MaskedBert, self).__init__()
-        self.bert = BertModel.from_pretrained('bert-base-uncased')
+        self.bert = BertModel.from_pretrained(model_name)
         self.share_inout_embeddings = share_inout_embeddings
         if not share_inout_embeddings:
             self.output_linear = nn.Linear(self.bert.config.hidden_size, self.bert.config.vocab_size)
@@ -109,7 +112,7 @@ def collate_masked_batch(batch: List[Dict[str, Any]]) -> Tuple[torch.Tensor, tor
 
 
 
-def train(tkz: PreTrainedTokenizer, dataset: Dataset, model_name: str, share_inout_embeddings: bool, batch_size: int, rank: int = -1, world_size: int = -1):
+def train(ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenizer, model_name: str, share_inout_embeddings: bool, batch_size: int, rank: int = -1, world_size: int = -1):
     '''Training function for each GPU process.
 
     Args:
@@ -125,18 +128,29 @@ def train(tkz: PreTrainedTokenizer, dataset: Dataset, model_name: str, share_ino
 
     # Create a DataLoader with the DistributedSampler
     train_loader = DataLoader(
-        dataset,
+        ds_train,
         batch_size=batch_size,
         shuffle=False,  # Don't shuffle for distributed training (handled by the sampler)
         sampler=train_sampler,
-        num_workers=4, # Sets the number of subprocesses to load data in parallel, avoiding I/O bottlenecks
+        num_workers=world_size, # Sets the number of subprocesses to load data in parallel, avoiding I/O bottlenecks
+        pin_memory=True, # Copies data to pinned memory, which is faster to transfer to the GPU.
+        prefetch_factor=2, # Sets the number of batches that each worker will prepare in advance.
+        collate_fn=collate_masked_batch,
+    )
+
+    val_loader = DataLoader(
+        ds_val,
+        batch_size=batch_size,
+        shuffle=False,  # Don't shuffle for distributed training (handled by the sampler)
+        sampler=train_sampler,
+        num_workers=world_size, # Sets the number of subprocesses to load data in parallel, avoiding I/O bottlenecks
         pin_memory=True, # Copies data to pinned memory, which is faster to transfer to the GPU.
         prefetch_factor=2, # Sets the number of batches that each worker will prepare in advance.
         collate_fn=collate_masked_batch,
     )
 
     # Instantiate the model and move it to the current GPU
-    model = MaskedBert(share_inout_embeddings=share_inout_embeddings).to(device)
+    model = MaskedBert(model_name=model_name, share_inout_embeddings=share_inout_embeddings).to(device)
     # Wrap the model with DDP
     ddp_model = DDP(model, device_ids=[rank])
 
@@ -149,25 +163,96 @@ def train(tkz: PreTrainedTokenizer, dataset: Dataset, model_name: str, share_ino
         spc_weight=0.1,
     )
 
-    # Example training loop
-    for input_ids, input_ids_masked in train_loader:
-        input_ids, input_ids_masked = input_ids.to(device), input_ids_masked.to(device)
-        optimizer.zero_grad()
-        logits = ddp_model(input_ids_masked)
-        loss = criterion(logits, input_ids_masked, input_ids)
-        loss.backward()
-        optimizer.step()
+    if rank == 0:
+        print('Starting training...')
+        train_path = Path(f'./train_distrib_example')
+        train_path.mkdir(parents=True, exist_ok=True)
+        tbsw = tb.SummaryWriter(log_dir=str(train_path))
+    train_steps, val_steps = 100, 10
+    train_it, val_it = iter(train_loader), iter(val_loader)
+    val_min_loss = float('inf')
+    for epoch in range(10):  # Example: 10 training steps
+        ddp_model.train()
+        if rank == 0:
+            pbar = trange(train_steps, desc=f'Epoch {epoch}', unit='batch')
+        else:
+            pbar = range(train_steps)
+        for _ in pbar:
+            input_ids, input_ids_masked = next(train_it)
+            input_ids, input_ids_masked = input_ids.to(device), input_ids_masked.to(device)
+            optimizer.zero_grad()
+            logits = ddp_model(input_ids_masked)
+            loss = criterion(logits, input_ids_masked, input_ids)
+            loss.backward()
+            optimizer.step()
+
+            if rank == 0:
+                pbar.set_postfix({'Train Loss': loss.item()})
+        if rank == 0:
+            pbar.close()
+            tbsw.add_scalar('Train/Loss', loss.item(), epoch)
+
+        # Validation loop
+        ddp_model.eval()
+        if device.type == 'cuda':
+            torch.cuda.empty_cache()
+
+        with torch.no_grad():
+            val_loss = 0.0
+            val_steps = 0
+            if rank == 0:
+                pbar = trange(val_steps, desc=f'Epoch {epoch}', unit='batch')
+            else:
+                pbar = range(val_steps)
+            for _ in pbar:
+                input_ids, input_ids_masked = next(val_it)
+                input_ids, input_ids_masked = input_ids.to(device), input_ids_masked.to(device)
+                logits = ddp_model(input_ids_masked)
+                loss = criterion(logits, input_ids_masked, input_ids)
+                val_loss += loss.item()
+                val_steps += 1
+                if rank == 0:
+                    pbar.set_postfix({'Val Loss': loss.item()})
+            pbar.close()
+            val_avg_loss = val_loss / val_steps
+            if rank == 0:
+                print(f'Epoch {epoch}. Validation Loss: {val_avg_loss:.4f}')
+                tbsw.add_scalar('Val/Loss', val_avg_loss, epoch)
+        
+        if rank == 0:
+            tbsw.flush()
+            last_fpath = train_path / 'model_last.pt'
+            print(f'Save model weights to {last_fpath}')
+            torch.save(ddp_model.state_dict(), last_fpath)
+            if val_avg_loss < val_min_loss:
+                print(f'New best model found at epoch {epoch}. Val loss: {val_min_loss:.6f}  --> {val_avg_loss:.6f}.')
+                best_fpath = train_path / 'model_best.pt'
+                val_min_loss = val_avg_loss
+                print(f'Save best model weights to {best_fpath}')
+                shutil.copyfile(last_fpath, best_fpath)
 
     # Clean up
     dist.destroy_process_group()
 
 
-def load_masked_wiki_dataset(data_path: Path, model_name: str, max_seq_len: int, min_mask_toks: int, max_mask_toks: int) -> Tuple[PreTrainedTokenizer, Dataset]:
+def load_masked_wiki_dataset(
+        data_path: Path, model_name: str, max_seq_len: int, min_mask_toks: int, max_mask_toks: int, val_split_ratio: float,
+        random_seed: Optional[int] = 55,
+    ) -> Tuple[PreTrainedTokenizer, Dataset, Dataset]:
     tkz = BertModel.from_pretrained(model_name).get_input_embeddings().tokenizer
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
     dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))[wiki_ds_subdir]['train']
+
+    if random_seed is not None:
+        dataset = dataset.shuffle(seed=random_seed)
+    n_total = len(dataset)
+    n_val = int(n_total * val_split_ratio)
+    n_train = n_total - n_val
+    ds_train = dataset[:n_train]
+    ds_val = dataset[n_train:]
+
     dataset = MaskedDataset(dataset, tkz, max_seq_len=max_seq_len, min_mask_toks=min_mask_toks, max_mask_toks=max_mask_toks)
-    return tkz, dataset
+    return tkz, ds_train, ds_val
 
 
 def run_training():
@@ -181,21 +266,25 @@ def run_training():
     parser.add_argument('--max-seq-len', type=int, default=512)
     parser.add_argument('--min-mask-toks', type=int, default=1)
     parser.add_argument('--max-mask-toks', type=int, default=10)
+    parser.add_argument('--val-split-ratio', type=float, default=0.1)
 
     args = parser.parse_args()
     world_size = torch.cuda.device_count()
     local_rank = args.local_rank
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
 
-    tokenizer, dataset = load_masked_wiki_dataset(
+    tokenizer, ds_train, ds_val = load_masked_wiki_dataset(
         args.data_path, args.model_name,
         max_seq_len=args.max_seq_len,
         min_mask_toks=args.min_mask_toks,
-        max_mask_toks=args.max_mask_toks
+        max_mask_toks=args.max_mask_toks,
+        val_split_ratio=args.val_split_ratio,
     )
 
     # Launch one process per GPU
-    mp.spawn(train, args=(dataset, args.model_name, args.share_inout_embeddings, args.batch_size, local_rank, world_size), nprocs=world_size)
+    mp.spawn(train, args=(
+        ds_train, ds_val, tokenizer, args.model_name, args.share_inout_embeddings, args.batch_size, local_rank, world_size,
+    ), nprocs=world_size)
 
 
 if __name__ == '__main__':
