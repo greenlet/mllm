@@ -236,12 +236,12 @@ def train(ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenizer, model_na
 
 
 def load_masked_wiki_dataset(
-        data_path: Path, model_name: str, max_seq_len: int, min_mask_toks: int, max_mask_toks: int, val_split_ratio: float,
+        data_path: Path, tkz: PreTrainedTokenizer, max_seq_len: int, min_mask_toks: int, max_mask_toks: int, val_split_ratio: float,
         random_seed: Optional[int] = 55,
-    ) -> Tuple[PreTrainedTokenizer, Dataset, Dataset]:
-    tkz = BertModel.from_pretrained(model_name).get_input_embeddings().tokenizer
+    ) -> Tuple[Dataset, Dataset]:
+    data_path.mkdir(parents=True, exist_ok=True)
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
-    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))[wiki_ds_subdir]['train']
+    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path), trust_remote_code=True)['train']
 
     if random_seed is not None:
         dataset = dataset.shuffle(seed=random_seed)
@@ -252,11 +252,11 @@ def load_masked_wiki_dataset(
     ds_val = dataset[n_train:]
 
     dataset = MaskedDataset(dataset, tkz, max_seq_len=max_seq_len, min_mask_toks=min_mask_toks, max_mask_toks=max_mask_toks)
-    return tkz, ds_train, ds_val
+    return ds_train, ds_val
 
 
 def run_training():
-    default_data_path = Path(os.path.expandvars('$HOME/data'))
+    default_data_path = Path(os.path.expandvars('./data'))
     parser = argparse.ArgumentParser()
     parser.add_argument('--local-rank', type=int)
     parser.add_argument('--batch-size', type=int, default=32)
@@ -272,9 +272,10 @@ def run_training():
     world_size = torch.cuda.device_count()
     local_rank = args.local_rank
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
-
-    tokenizer, ds_train, ds_val = load_masked_wiki_dataset(
-        args.data_path, args.model_name,
+    tkz = PreTrainedTokenizer.from_pretrained(args.model_name)
+    
+    ds_train, ds_val = load_masked_wiki_dataset(
+        args.data_path, tkz,
         max_seq_len=args.max_seq_len,
         min_mask_toks=args.min_mask_toks,
         max_mask_toks=args.max_mask_toks,
@@ -283,7 +284,7 @@ def run_training():
 
     # Launch one process per GPU
     mp.spawn(train, args=(
-        ds_train, ds_val, tokenizer, args.model_name, args.share_inout_embeddings, args.batch_size, local_rank, world_size,
+        ds_train, ds_val, tkz, args.model_name, args.share_inout_embeddings, args.batch_size, local_rank, world_size,
     ), nprocs=world_size)
 
 
