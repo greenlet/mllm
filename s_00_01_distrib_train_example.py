@@ -1,4 +1,5 @@
 import argparse
+from functools import partial
 import os
 from pathlib import Path
 import shutil
@@ -14,7 +15,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.nn as nn
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import trange
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizer, AutoTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 
 from mllm.model.bert.modeling_bert import BertModel
@@ -57,8 +58,10 @@ def tokenize_item(tokenizer: PreTrainedTokenizer, item):
 
 class MaskedDataset(Dataset):
     def __init__(self, dataset: Dataset, tkz: PreTrainedTokenizer, max_seq_len: int, min_mask_toks: int, max_mask_toks: int):
-        self.dataset = dataset.map(tokenize_item, fn_kwargs={'tokenizer': tkz})
-        self.len = len(dataset)
+        self.dataset = dataset
+        # self.dataset = dataset.map(partial(tokenize_item, tkz))
+        self.tkz = tkz
+        self.len = len(self.dataset)
         self.pad_token_id = tkz.pad_token_id
         self.max_seq_len = max_seq_len
         self.mask_token_id = tkz.mask_token_id
@@ -70,9 +73,10 @@ class MaskedDataset(Dataset):
         return self.len * 1000
 
     def extract_masked_input(self, item: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
-        cur_len = item['toks_len']
+        toks = self.tkz(item['text'], add_special_tokens=True).input_ids
+        cur_len = len(toks)
         max_seq_len = min(cur_len, self.max_seq_len)
-        input_ids = item['toks']
+        input_ids = toks
         if max_seq_len < cur_len:
             ind_off_max = cur_len - max_seq_len + 1
             ind_off = np.random.randint(0, ind_off_max)
@@ -112,7 +116,7 @@ def collate_masked_batch(batch: List[Dict[str, Any]]) -> Tuple[torch.Tensor, tor
 
 
 
-def train(ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenizer, model_name: str, share_inout_embeddings: bool, batch_size: int, rank: int = -1, world_size: int = -1):
+def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenizer, model_name: str, share_inout_embeddings: bool, batch_size: int, world_size: int = -1):
     '''Training function for each GPU process.
 
     Args:
@@ -124,7 +128,8 @@ def train(ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenizer, model_na
     device = torch.device(f'cuda:{rank}')  # Set device to current GPU
 
     # Create a DistributedSampler to ensure each GPU gets a different mini-batch
-    train_sampler = DistributedSampler(dataset)
+    train_sampler = DistributedSampler(ds_train)
+    val_sampler = DistributedSampler(ds_val)
 
     # Create a DataLoader with the DistributedSampler
     train_loader = DataLoader(
@@ -142,7 +147,7 @@ def train(ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenizer, model_na
         ds_val,
         batch_size=batch_size,
         shuffle=False,  # Don't shuffle for distributed training (handled by the sampler)
-        sampler=train_sampler,
+        sampler=val_sampler,
         num_workers=world_size, # Sets the number of subprocesses to load data in parallel, avoiding I/O bottlenecks
         pin_memory=True, # Copies data to pinned memory, which is faster to transfer to the GPU.
         prefetch_factor=2, # Sets the number of batches that each worker will prepare in advance.
@@ -258,7 +263,6 @@ def load_masked_wiki_dataset(
 def run_training():
     default_data_path = Path(os.path.expandvars('./data'))
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local-rank', type=int)
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--data-path', type=Path, default=default_data_path)
     parser.add_argument('--share-inout-embeddings', action='store_true')
@@ -270,9 +274,11 @@ def run_training():
 
     args = parser.parse_args()
     world_size = torch.cuda.device_count()
-    local_rank = args.local_rank
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
-    tkz = PreTrainedTokenizer.from_pretrained(args.model_name)
+    # tkz = PreTrainedTokenizer.from_pretrained(args.model_name)
+    # tkz = AutoTokenizer.from_pretrained('google-bert/bert-base-uncased')
+    tkz = AutoTokenizer.from_pretrained(args.model_name)
+    print(tkz)
     
     ds_train, ds_val = load_masked_wiki_dataset(
         args.data_path, tkz,
@@ -284,9 +290,10 @@ def run_training():
 
     # Launch one process per GPU
     mp.spawn(train, args=(
-        ds_train, ds_val, tkz, args.model_name, args.share_inout_embeddings, args.batch_size, local_rank, world_size,
+        ds_train, ds_val, tkz, args.model_name, args.share_inout_embeddings, args.batch_size, world_size,
     ), nprocs=world_size)
 
 
 if __name__ == '__main__':
     run_training()
+
