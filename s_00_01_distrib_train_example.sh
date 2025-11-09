@@ -5,7 +5,7 @@
 
 python s_00_01_distrib_train_example.py \
     --model-name bert-large-uncased \
-    --share-input-embeddings \
+    --share-inout-embeddings \
     --max-seq-len 512 \
     --batch-size 300
 
