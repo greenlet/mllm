@@ -70,7 +70,7 @@ class MaskedDataset(Dataset):
         self.inds = np.arange(self.max_seq_len)
 
     def __len__(self):
-        return self.len * 1000
+        return self.len
 
     def extract_masked_input(self, item: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
         toks = self.tkz(item['text'], add_special_tokens=True).input_ids
@@ -115,6 +115,26 @@ def collate_masked_batch(batch: List[Dict[str, Any]]) -> Tuple[torch.Tensor, tor
     return input_ids, input_ids_masked
 
 
+def create_dataloader_iter(dataset: Dataset, batch_size: int, num_workers: int, collate_fn: Any):
+    while True:
+        print(f'Generate Dataloader')
+        train_sampler = DistributedSampler(dataset)
+
+        # Create a DataLoader with the DistributedSampler
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=False,  # Don't shuffle for distributed training (handled by the sampler)
+            sampler=train_sampler,
+            num_workers=num_workers, # Sets the number of subprocesses to load data in parallel, avoiding I/O bottlenecks
+            pin_memory=True, # Copies data to pinned memory, which is faster to transfer to the GPU.
+            # prefetch_factor=2, # Sets the number of batches that each worker will prepare in advance.
+            collate_fn=collate_fn,
+        )
+        
+        for item in dataloader:
+            yield item
+
 
 def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenizer, model_name: str, share_inout_embeddings: bool, batch_size: int, world_size: int = -1):
     '''Training function for each GPU process.
@@ -127,30 +147,16 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
     dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
     device = torch.device(f'cuda:{rank}')  # Set device to current GPU
 
-    # Create a DistributedSampler to ensure each GPU gets a different mini-batch
-    train_sampler = DistributedSampler(ds_train)
-    val_sampler = DistributedSampler(ds_val)
-
-    # Create a DataLoader with the DistributedSampler
-    train_loader = DataLoader(
+    train_loader = create_dataloader_iter(
         ds_train,
         batch_size=batch_size,
-        shuffle=False,  # Don't shuffle for distributed training (handled by the sampler)
-        sampler=train_sampler,
-        num_workers=world_size, # Sets the number of subprocesses to load data in parallel, avoiding I/O bottlenecks
-        pin_memory=True, # Copies data to pinned memory, which is faster to transfer to the GPU.
-        prefetch_factor=2, # Sets the number of batches that each worker will prepare in advance.
+        num_workers=world_size,
         collate_fn=collate_masked_batch,
     )
-
-    val_loader = DataLoader(
+    val_loader = create_dataloader_iter(
         ds_val,
         batch_size=batch_size,
-        shuffle=False,  # Don't shuffle for distributed training (handled by the sampler)
-        sampler=val_sampler,
-        num_workers=world_size, # Sets the number of subprocesses to load data in parallel, avoiding I/O bottlenecks
-        pin_memory=True, # Copies data to pinned memory, which is faster to transfer to the GPU.
-        prefetch_factor=2, # Sets the number of batches that each worker will prepare in advance.
+        num_workers=world_size,
         collate_fn=collate_masked_batch,
     )
 
