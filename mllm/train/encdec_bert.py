@@ -19,39 +19,39 @@ from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAtte
 
 from mllm.model.bert.modeling_bert import BertModel
 from mllm.model.losses import EncdecMaskPadItemLoss
-from mllm.train.mask_utils import MaskCfg
+from mllm.train.mask_utils import MaskCfg, mask_random_words_v2
 
 
 
 class MaskedDataset(Dataset):
-    def __init__(self, dataset: Dataset, tkz: PreTrainedTokenizer, max_seq_len: int, min_mask_toks: int, max_mask_toks: int):
-        self.dataset = dataset.map(tokenize_item, fn_kwargs={'tokenizer': tkz})
-        self.len = len(dataset)
+    def __init__(self, dataset: Dataset, tkz: PreTrainedTokenizer, max_seq_len: int, mask_cfg: Optional[MaskCfg] = None):
+        self.dataset = dataset
+        self.tkz = tkz
+        self.len = len(self.dataset)
         self.pad_token_id = tkz.pad_token_id
         self.max_seq_len = max_seq_len
         self.mask_token_id = tkz.mask_token_id
-        self.min_mask_toks = min_mask_toks
-        self.max_mask_toks = max_mask_toks
+        self.mask_cfg = mask_cfg
         self.inds = np.arange(self.max_seq_len)
 
     def __len__(self):
-        return self.len * 1000
+        return self.len
 
     def extract_masked_input(self, item: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
-        cur_len = item['toks_len']
+        toks = self.tkz(item['text'], add_special_tokens=True).input_ids
+        cur_len = len(toks)
         max_seq_len = min(cur_len, self.max_seq_len)
-        input_ids = item['toks']
+        input_ids = toks
         if max_seq_len < cur_len:
             ind_off_max = cur_len - max_seq_len + 1
             ind_off = np.random.randint(0, ind_off_max)
             input_ids = input_ids[ind_off:ind_off + max_seq_len]
-        input_ids_masked = input_ids
-        mask_toks_num = np.random.randint(self.min_mask_toks, self.max_mask_toks + 1)
-        mask_toks_num = min(mask_toks_num, max_seq_len // 2)
-        if mask_toks_num > 0:
-            mask_inds = np.random.choice(self.inds[:max_seq_len], size=mask_toks_num, replace=False)
-            input_ids_masked = np.array(input_ids)
-            input_ids_masked[mask_inds] = self.mask_token_id
+        
+        # Use mask_cfg if provided, otherwise use original ids
+        if self.mask_cfg is not None:
+            input_ids_masked, _ = mask_random_words_v2(np.array(input_ids), self.tkz, self.mask_cfg)
+        else:
+            input_ids_masked = input_ids
         
         return torch.tensor(input_ids, dtype=torch.long), torch.tensor(input_ids_masked, dtype=torch.long)
 
@@ -64,7 +64,6 @@ class MaskedDataset(Dataset):
             'input_ids': input_ids,
             'input_ids_masked': input_ids_masked,
         }
-    
 
 
 def load_masked_wiki_dataset(
@@ -83,7 +82,7 @@ def load_masked_wiki_dataset(
     ds_train = dataset[:n_train]
     ds_val = dataset[n_train:]
 
-    dataset = MaskedDataset(dataset, tkz, max_seq_len=max_seq_len, min_mask_toks=min_mask_toks, max_mask_toks=max_mask_toks)
+    dataset = MaskedDataset(dataset, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
     return tkz, ds_train, ds_val
 
 

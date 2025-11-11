@@ -144,6 +144,13 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
         world_size (int): Total number of processes.
     '''
     # Initialize the process group for distributed training
+    os.environ['MASTER_ADDR'] = '127.0.0.1'
+    os.environ['MASTER_PORT'] = '9000'
+    # Set additional environment variables to force IPv4 usage
+    os.environ['GLOO_SOCKET_IFNAME'] = 'lo'  # Use loopback interface
+    os.environ['NCCL_SOCKET_IFNAME'] = 'lo'  # Use loopback interface for NCCL
+    os.environ['NCCL_IBEXT_DISABLE'] = '1'   # Disable InfiniBand extensions
+    
     dist.init_process_group(backend='nccl', rank=rank, world_size=world_size)
     device = torch.device(f'cuda:{rank}')  # Set device to current GPU
 
