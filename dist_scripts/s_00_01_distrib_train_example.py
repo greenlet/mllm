@@ -3,6 +3,7 @@ from functools import partial
 import os
 from pathlib import Path
 import shutil
+import sys
 import traceback
 from typing import Dict, List, Tuple, Any, Callable, Optional, Union
 
@@ -18,6 +19,9 @@ from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import trange
 from transformers import PreTrainedTokenizer, AutoTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
+
+if '..' not in sys.path:
+    sys.path.append('..')
 
 from mllm.model.bert.modeling_bert import BertModel
 from mllm.model.losses import EncdecMaskPadItemLoss
@@ -137,6 +141,22 @@ def create_dataloader_iter(dataset: Dataset, batch_size: int, num_workers: int, 
             yield item
 
 
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
+    # We want to be able to train our model on an `accelerator <https://pytorch.org/docs/stable/torch.html#accelerators>`__
+    # such as CUDA, MPS, MTIA, or XPU.
+    acc = torch.accelerator.current_accelerator()
+    backend = torch.distributed.get_default_backend_for_device(acc)
+    # initialize the process group
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
+
+
+def cleanup():
+    dist.destroy_process_group()
+
+
 def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenizer, model_name: str, share_inout_embeddings: bool, batch_size: int, world_size: int = -1):
     '''Training function for each GPU process.
 
@@ -144,13 +164,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
         rank (int): The rank of the current process (one per GPU).
         world_size (int): Total number of processes.
     '''
-    # Initialize the process group for distributed training
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-    # acc = torch.accelerator.current_accelerator()
-    # backend = torch.distributed.get_default_backend_for_device(acc)
-    backend = 'nccl'
-    dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+    setup()
     device = torch.device(f'cuda:{rank}')  # Set device to current GPU
 
     train_loader = create_dataloader_iter(
@@ -252,11 +266,10 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
         print(e)
         print(traceback.format_stack())
 
-    # Clean up
-    dist.destroy_process_group()
+    cleanup()
 
 
-def train_v2(rank: int, model_name: str, share_inout_embeddings: bool, batch_size: int, data_path: Path, max_seq_len: int, min_mask_toks: int, max_mask_toks: int, val_split_ratio: float, world_size: int = -1):
+def train_v2(rank: int, train_loader: DataLoader, val_loader: DataLoader, model_name: str, share_inout_embeddings: bool, batch_size: int, data_path: Path, max_seq_len: int, min_mask_toks: int, max_mask_toks: int, val_split_ratio: float, world_size: int = -1):
     tkz = AutoTokenizer.from_pretrained(model_name)     
     print(tkz)
     ds_train, ds_val = load_masked_wiki_dataset(
@@ -273,26 +286,7 @@ def train_v2(rank: int, model_name: str, share_inout_embeddings: bool, batch_siz
         rank (int): The rank of the current process (one per GPU).
         world_size (int): Total number of processes.
     '''
-    # Initialize the process group for distributed training
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-    acc = torch.accelerator.current_accelerator()
-    backend = torch.distributed.get_default_backend_for_device(acc)
-    dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
-    device = torch.device(f'cuda:{rank}')  # Set device to current GPU
-
-    train_loader = create_dataloader_iter(
-        ds_train,
-        batch_size=batch_size,
-        num_workers=world_size,
-        collate_fn=collate_masked_batch,
-    )
-    val_loader = create_dataloader_iter(
-        ds_val,
-        batch_size=batch_size,
-        num_workers=world_size,
-        collate_fn=collate_masked_batch,
-    )
+    setup()
 
     # Instantiate the model and move it to the current GPU
     model = MaskedBert(model_name=model_name, share_inout_embeddings=share_inout_embeddings).to(device)
@@ -376,8 +370,7 @@ def train_v2(rank: int, model_name: str, share_inout_embeddings: bool, batch_siz
                 print(f'Save best model weights to {best_fpath}')
                 shutil.copyfile(last_fpath, best_fpath)
 
-    # Clean up
-    dist.destroy_process_group()
+    cleanup()
 
 
 def load_masked_wiki_dataset(
@@ -414,7 +407,6 @@ def run_training():
 
     args = parser.parse_args()
     world_size = torch.cuda.device_count()
-
     tkz = AutoTokenizer.from_pretrained(args.model_name)
     print(tkz)
     ds_train, ds_val = load_masked_wiki_dataset(
@@ -424,15 +416,29 @@ def run_training():
         max_mask_toks=args.max_mask_toks,
         val_split_ratio=args.val_split_ratio,
     )
-    # Launch one process per GPU
-    mp.spawn(train, args=(
-        ds_train, ds_val, tkz, args.model_name, args.share_inout_embeddings, args.batch_size, world_size,
-    ), nprocs=world_size, join=True)
 
     # # Launch one process per GPU
-    # mp.spawn(train_v2, args=(
-    #     args.model_name, args.share_inout_embeddings, args.batch_size, args.data_path, args.max_seq_len, args.min_mask_toks, args.max_mask_toks, args.val_split_ratio, world_size,
+    # mp.spawn(train, args=(
+    #     ds_train, ds_val, tkz, args.model_name, args.share_inout_embeddings, args.batch_size, world_size,
     # ), nprocs=world_size, join=True)
+
+
+    train_loader = create_dataloader_iter(
+        ds_train,
+        batch_size=args.batch_size,
+        num_workers=world_size,
+        collate_fn=collate_masked_batch,
+    )
+    val_loader = create_dataloader_iter(
+        ds_val,
+        batch_size=args.batch_size,
+        num_workers=world_size,
+        collate_fn=collate_masked_batch,
+    )
+    # Launch one process per GPU
+    mp.spawn(train_v2, args=(
+        train_loader, val_loader, args.model_name, args.share_inout_embeddings, args.batch_size, args.data_path, args.max_seq_len, args.min_mask_toks, args.max_mask_toks, args.val_split_ratio, world_size,
+    ), nprocs=world_size, join=True)
 
 
 if __name__ == '__main__':
