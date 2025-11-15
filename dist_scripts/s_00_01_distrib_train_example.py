@@ -141,6 +141,24 @@ def create_dataloader_iter(dataset: Dataset, batch_size: int, num_workers: int, 
             yield item
 
 
+def create_dataloader(dataset: Dataset, batch_size: int, num_workers: int, collate_fn: Any) -> DataLoader:
+        print(f'Generate Dataloader for dataset of size: {len(dataset)}. Batch size: {batch_size}. Num workers: {num_workers}')
+        train_sampler = DistributedSampler(dataset)
+
+        # Create a DataLoader with the DistributedSampler
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=False,  # Don't shuffle for distributed training (handled by the sampler)
+            sampler=train_sampler,
+            num_workers=num_workers, # Sets the number of subprocesses to load data in parallel, avoiding I/O bottlenecks
+            pin_memory=True, # Copies data to pinned memory, which is faster to transfer to the GPU.
+            # prefetch_factor=2, # Sets the number of batches that each worker will prepare in advance.
+            collate_fn=collate_fn,
+        )
+        return dataloader
+
+
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
@@ -164,7 +182,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
         rank (int): The rank of the current process (one per GPU).
         world_size (int): Total number of processes.
     '''
-    setup()
+    setup(rank, world_size)
     device = torch.device(f'cuda:{rank}')  # Set device to current GPU
 
     train_loader = create_dataloader_iter(
@@ -270,16 +288,6 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
 
 
 def train_v2(rank: int, train_loader: DataLoader, val_loader: DataLoader, model_name: str, share_inout_embeddings: bool, batch_size: int, data_path: Path, max_seq_len: int, min_mask_toks: int, max_mask_toks: int, val_split_ratio: float, world_size: int = -1):
-    tkz = AutoTokenizer.from_pretrained(model_name)     
-    print(tkz)
-    ds_train, ds_val = load_masked_wiki_dataset(
-        data_path, tkz,
-        max_seq_len=max_seq_len,
-        min_mask_toks=min_mask_toks,
-        max_mask_toks=max_mask_toks,
-        val_split_ratio=val_split_ratio,
-    )
-
     '''Training function for each GPU process.
 
     Args:
@@ -287,6 +295,8 @@ def train_v2(rank: int, train_loader: DataLoader, val_loader: DataLoader, model_
         world_size (int): Total number of processes.
     '''
     setup()
+    device = torch.device(f'cuda:{rank}')  # Set device to current GPU
+    tkz = AutoTokenizer.from_pretrained(model_name)     
 
     # Instantiate the model and move it to the current GPU
     model = MaskedBert(model_name=model_name, share_inout_embeddings=share_inout_embeddings).to(device)
@@ -417,28 +427,28 @@ def run_training():
         val_split_ratio=args.val_split_ratio,
     )
 
-    # # Launch one process per GPU
-    # mp.spawn(train, args=(
-    #     ds_train, ds_val, tkz, args.model_name, args.share_inout_embeddings, args.batch_size, world_size,
-    # ), nprocs=world_size, join=True)
-
-
-    train_loader = create_dataloader_iter(
-        ds_train,
-        batch_size=args.batch_size,
-        num_workers=world_size,
-        collate_fn=collate_masked_batch,
-    )
-    val_loader = create_dataloader_iter(
-        ds_val,
-        batch_size=args.batch_size,
-        num_workers=world_size,
-        collate_fn=collate_masked_batch,
-    )
     # Launch one process per GPU
-    mp.spawn(train_v2, args=(
-        train_loader, val_loader, args.model_name, args.share_inout_embeddings, args.batch_size, args.data_path, args.max_seq_len, args.min_mask_toks, args.max_mask_toks, args.val_split_ratio, world_size,
+    mp.spawn(train, args=(
+        ds_train, ds_val, tkz, args.model_name, args.share_inout_embeddings, args.batch_size, world_size,
     ), nprocs=world_size, join=True)
+
+
+    # train_loader = create_dataloader(
+    #     ds_train,
+    #     batch_size=args.batch_size,
+    #     num_workers=world_size,
+    #     collate_fn=collate_masked_batch,
+    # )
+    # val_loader = create_dataloader(
+    #     ds_val,
+    #     batch_size=args.batch_size,
+    #     num_workers=world_size,
+    #     collate_fn=collate_masked_batch,
+    # )
+    # # Launch one process per GPU
+    # mp.spawn(train_v2, args=(
+    #     train_loader, val_loader, args.model_name, args.share_inout_embeddings, args.batch_size, args.data_path, args.max_seq_len, args.min_mask_toks, args.max_mask_toks, args.val_split_ratio, world_size,
+    # ), nprocs=world_size, join=True)
 
 
 if __name__ == '__main__':
