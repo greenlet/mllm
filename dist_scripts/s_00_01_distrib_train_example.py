@@ -1,7 +1,10 @@
 import argparse
 from functools import partial
+import itertools as itt
+from collections import defaultdict
 import os
 from pathlib import Path
+from pprint import pprint
 import shutil
 import sys
 import traceback
@@ -75,10 +78,10 @@ class MaskedDataset(Dataset):
         self.inds = np.arange(self.max_seq_len)
 
     def __len__(self):
-        return self.len
+        return self.len * 10000
 
     def extract_masked_input(self, item: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
-        toks = self.tkz(item['text'], add_special_tokens=True).input_ids
+        toks = self.tkz(item['text'], add_special_tokens=True, max_length=len(item['text']) + 1, truncation=False).input_ids
         cur_len = len(toks)
         max_seq_len = min(cur_len, self.max_seq_len)
         input_ids = toks
@@ -96,18 +99,30 @@ class MaskedDataset(Dataset):
         
         return torch.tensor(input_ids, dtype=torch.long), torch.tensor(input_ids_masked, dtype=torch.long)
 
-    def __getitem__(self, idx: int) -> dict[str, Any]:
-        idx = idx % len(self.dataset)
-        item = self.dataset[idx]
+    def _get_item(self, ind: int) -> dict[str, Any]:
+        ind = ind % len(self.dataset)
+        item = self.dataset[ind]
         input_ids, input_ids_masked = self.extract_masked_input(item)
         return {
             **item,
             'input_ids': input_ids,
             'input_ids_masked': input_ids_masked,
         }
+
+    def __getitem__(self, idx: Union[int, List[int]]) -> dict[str, Any]:
+        # print('!!!', isinstance(idx, int), idx)
+        if isinstance(idx, int):
+            return self._get_item(idx)
+        res = defaultdict(list)
+        for i in idx:
+            item = self._get_item(i)
+            for k, v in item.items():
+                res[k].append(v)
+        return res
     
 
 def collate_masked_batch(batch: List[Dict[str, Any]]) -> Tuple[torch.Tensor, torch.Tensor]:
+    # pprint(batch)
     input_ids_batch = []
     input_ids_masked_batch = []
     for item in batch:
@@ -115,8 +130,8 @@ def collate_masked_batch(batch: List[Dict[str, Any]]) -> Tuple[torch.Tensor, tor
         input_ids_masked = item['input_ids_masked']
         input_ids_batch.append(input_ids)
         input_ids_masked_batch.append(input_ids_masked)
-    input_ids = nn.utils.rnn.pad_sequence(input_ids_batch, batch_first=True, padding_value=tkz.pad_token_id)
-    input_ids_masked = nn.utils.rnn.pad_sequence(input_ids_masked_batch, batch_first=True, padding_value=tkz.pad_token_id)
+    input_ids = nn.utils.rnn.pad_sequence(input_ids_batch, batch_first=True, padding_value=0)
+    input_ids_masked = nn.utils.rnn.pad_sequence(input_ids_masked_batch, batch_first=True, padding_value=0)
     return input_ids, input_ids_masked
 
 
@@ -185,13 +200,29 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
     setup(rank, world_size)
     device = torch.device(f'cuda:{rank}')  # Set device to current GPU
 
-    train_loader = create_dataloader_iter(
+    # epochs, batch_size, train_steps, val_steps = 2, 3, 3, 2
+    epochs, train_steps, val_steps = 100, 500, 50
+
+
+    # train_loader = create_dataloader_iter(
+    #     ds_train,
+    #     batch_size=batch_size,
+    #     num_workers=world_size,
+    #     collate_fn=collate_masked_batch,
+    # )
+    # val_loader = create_dataloader_iter(
+    #     ds_val,
+    #     batch_size=batch_size,
+    #     num_workers=world_size,
+    #     collate_fn=collate_masked_batch,
+    # )
+    train_loader = create_dataloader(
         ds_train,
         batch_size=batch_size,
         num_workers=world_size,
         collate_fn=collate_masked_batch,
     )
-    val_loader = create_dataloader_iter(
+    val_loader = create_dataloader(
         ds_val,
         batch_size=batch_size,
         num_workers=world_size,
@@ -201,7 +232,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
     # Instantiate the model and move it to the current GPU
     model = MaskedBert(model_name=model_name, share_inout_embeddings=share_inout_embeddings).to(device)
     # Wrap the model with DDP
-    ddp_model = DDP(model, device_ids=[rank])
+    ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
     optimizer = torch.optim.Adam(ddp_model.parameters())
     criterion = EncdecMaskPadItemLoss(
@@ -218,10 +249,9 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
         train_path.mkdir(parents=True, exist_ok=True)
         tbsw = tb.SummaryWriter(log_dir=str(train_path))
     try:
-        train_steps, val_steps = 100, 10
         train_it, val_it = iter(train_loader), iter(val_loader)
         val_min_loss = float('inf')
-        for epoch in range(10):  # Example: 10 training steps
+        for epoch in range(epochs):
             ddp_model.train()
             if rank == 0:
                 pbar = trange(train_steps, desc=f'Epoch {epoch}', unit='batch')
@@ -229,10 +259,12 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
                 pbar = range(train_steps)
             for _ in pbar:
                 input_ids, input_ids_masked = next(train_it)
+                # print(f'input_ids.shape: {input_ids.shape}, input_ids_masked.shape: {input_ids_masked.shape}')
                 input_ids, input_ids_masked = input_ids.to(device), input_ids_masked.to(device)
                 optimizer.zero_grad()
-                logits = ddp_model(input_ids_masked)
-                loss = criterion(logits, input_ids_masked, input_ids)
+                attention_mask = (input_ids_masked != tkz.pad_token_id).long()
+                logits = ddp_model(input_ids_masked, attention_mask=attention_mask)
+                loss = criterion(logits, input_ids_masked, input_ids)['loss']
                 loss.backward()
                 optimizer.step()
 
@@ -249,23 +281,25 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
 
             with torch.no_grad():
                 val_loss = 0.0
-                val_steps = 0
+                steps = 0
                 if rank == 0:
                     pbar = trange(val_steps, desc=f'Epoch {epoch}', unit='batch')
                 else:
                     pbar = range(val_steps)
                 for _ in pbar:
                     input_ids, input_ids_masked = next(val_it)
+                    # print(f'Val input_ids.shape: {input_ids.shape}, input_ids_masked.shape: {input_ids_masked.shape}')
                     input_ids, input_ids_masked = input_ids.to(device), input_ids_masked.to(device)
-                    logits = ddp_model(input_ids_masked)
-                    loss = criterion(logits, input_ids_masked, input_ids)
+                    attention_mask = (input_ids_masked != tkz.pad_token_id).long()
+                    logits = ddp_model(input_ids_masked, attention_mask=attention_mask)
+                    loss = criterion(logits, input_ids_masked, input_ids)['loss']
                     val_loss += loss.item()
-                    val_steps += 1
+                    steps += 1
                     if rank == 0:
                         pbar.set_postfix({'Val Loss': loss.item()})
-                pbar.close()
-                val_avg_loss = val_loss / val_steps
+                val_avg_loss = val_loss / steps
                 if rank == 0:
+                    pbar.close()
                     print(f'Epoch {epoch}. Validation Loss: {val_avg_loss:.4f}')
                     tbsw.add_scalar('Val/Loss', val_avg_loss, epoch)
             
@@ -393,13 +427,20 @@ def load_masked_wiki_dataset(
 
     if random_seed is not None:
         dataset = dataset.shuffle(seed=random_seed)
+    
     n_total = len(dataset)
+    # n_total = 100
+    # dataset = dataset.select(range(n_total))
     n_val = int(n_total * val_split_ratio)
     n_train = n_total - n_val
-    ds_train = dataset[:n_train]
-    ds_val = dataset[n_train:]
+    ds_train = dataset.select(range(n_train))
+    ds_val = dataset.select(range(n_train, n_train + n_val))
+    # for i in range(len(ds_val)):
+    #     item = ds_val[i]
+    #     print(f'Val item {i}: {item["text"][:50]}...')
 
-    dataset = MaskedDataset(dataset, tkz, max_seq_len=max_seq_len, min_mask_toks=min_mask_toks, max_mask_toks=max_mask_toks)
+    ds_train = MaskedDataset(ds_train, tkz, max_seq_len=max_seq_len, min_mask_toks=min_mask_toks, max_mask_toks=max_mask_toks)
+    ds_val = MaskedDataset(ds_val, tkz, max_seq_len=max_seq_len, min_mask_toks=min_mask_toks, max_mask_toks=max_mask_toks)
     return ds_train, ds_val
 
 

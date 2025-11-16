@@ -1,8 +1,11 @@
+from math import ceil
 from random import Random
 
 import datasets
 import torch
 from torch import dist
+from torch import optim
+import torch.nn.functional as F
 from torchvision import transforms
 
 
@@ -58,4 +61,36 @@ def partition_dataset():
                                          batch_size=bsz,
                                          shuffle=True)
     return train_set, bsz
+
+
+""" Gradient averaging. """
+def average_gradients(model):
+    size = float(dist.get_world_size())
+    for param in model.parameters():
+        dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+        param.grad.data /= size
+
+
+""" Distributed Synchronous SGD Example """
+def run(rank, size):
+    torch.manual_seed(1234)
+    train_set, bsz = partition_dataset()
+    model = Net()
+    optimizer = optim.SGD(model.parameters(),
+                          lr=0.01, momentum=0.5)
+
+    num_batches = ceil(len(train_set.dataset) / float(bsz))
+    for epoch in range(10):
+        epoch_loss = 0.0
+        for data, target in train_set:
+            optimizer.zero_grad()
+            output = model(data)
+            loss = F.nll_loss(output, target)
+            epoch_loss += loss.item()
+            loss.backward()
+            average_gradients(model)
+            optimizer.step()
+        print('Rank ', dist.get_rank(), ', epoch ',
+              epoch, ': ', epoch_loss / num_batches)
+
 
