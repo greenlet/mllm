@@ -39,8 +39,8 @@ class MaskedBert(nn.Module):
             self.output_linear = nn.Linear(self.bert.config.hidden_size, self.bert.config.vocab_size)
 
     # x: (batch_size, seq_length) --> (batch_size, seq_length, vocab_size)
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert(x)
+    def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        out: BaseModelOutputWithPoolingAndCrossAttentions = self.bert(x, attention_mask=attention_mask)
         # y: (batch_size, seq_length, hidden_size)
         y = out.last_hidden_state
         if not self.share_inout_embeddings:
@@ -78,7 +78,8 @@ class MaskedDataset(Dataset):
         self.inds = np.arange(self.max_seq_len)
 
     def __len__(self):
-        return self.len * 10000
+        # return self.len * 10000
+        return self.len
 
     def extract_masked_input(self, item: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
         toks = self.tkz(item['text'], add_special_tokens=True, max_length=len(item['text']) + 1, truncation=False).input_ids
@@ -204,35 +205,39 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
     epochs, train_steps, val_steps = 100, 500, 50
 
 
-    # train_loader = create_dataloader_iter(
-    #     ds_train,
-    #     batch_size=batch_size,
-    #     num_workers=world_size,
-    #     collate_fn=collate_masked_batch,
-    # )
-    # val_loader = create_dataloader_iter(
-    #     ds_val,
-    #     batch_size=batch_size,
-    #     num_workers=world_size,
-    #     collate_fn=collate_masked_batch,
-    # )
-    train_loader = create_dataloader(
+    train_it = create_dataloader_iter(
         ds_train,
         batch_size=batch_size,
         num_workers=world_size,
         collate_fn=collate_masked_batch,
     )
-    val_loader = create_dataloader(
+    val_it = create_dataloader_iter(
         ds_val,
         batch_size=batch_size,
         num_workers=world_size,
         collate_fn=collate_masked_batch,
     )
+    # train_loader = create_dataloader(
+    #     ds_train,
+    #     batch_size=batch_size,
+    #     num_workers=world_size,
+    #     collate_fn=collate_masked_batch,
+    # )
+    # val_loader = create_dataloader(
+    #     ds_val,
+    #     batch_size=batch_size,
+    #     num_workers=world_size,
+    #     collate_fn=collate_masked_batch,
+    # )
+    # train_it, val_it = iter(train_loader), iter(val_loader)
+
 
     # Instantiate the model and move it to the current GPU
     model = MaskedBert(model_name=model_name, share_inout_embeddings=share_inout_embeddings).to(device)
     # Wrap the model with DDP
-    ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=True)
+    find_unused_parameters = False
+    # find_unused_parameters = True
+    ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=find_unused_parameters)
 
     optimizer = torch.optim.Adam(ddp_model.parameters())
     criterion = EncdecMaskPadItemLoss(
@@ -249,7 +254,6 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
         train_path.mkdir(parents=True, exist_ok=True)
         tbsw = tb.SummaryWriter(log_dir=str(train_path))
     try:
-        train_it, val_it = iter(train_loader), iter(val_loader)
         val_min_loss = float('inf')
         for epoch in range(epochs):
             ddp_model.train()
@@ -269,7 +273,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
                 optimizer.step()
 
                 if rank == 0:
-                    pbar.set_postfix({'Train Loss': loss.item()})
+                    pbar.set_postfix({'Train Loss': loss.item(), 'logits': f'{logits.shape}'})
             if rank == 0:
                 pbar.close()
                 tbsw.add_scalar('Train/Loss', loss.item(), epoch)
@@ -317,102 +321,6 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, tkz: PreTrainedTokenize
     except Exception as e:
         print(e)
         print(traceback.format_stack())
-
-    cleanup()
-
-
-def train_v2(rank: int, train_loader: DataLoader, val_loader: DataLoader, model_name: str, share_inout_embeddings: bool, batch_size: int, data_path: Path, max_seq_len: int, min_mask_toks: int, max_mask_toks: int, val_split_ratio: float, world_size: int = -1):
-    '''Training function for each GPU process.
-
-    Args:
-        rank (int): The rank of the current process (one per GPU).
-        world_size (int): Total number of processes.
-    '''
-    setup()
-    device = torch.device(f'cuda:{rank}')  # Set device to current GPU
-    tkz = AutoTokenizer.from_pretrained(model_name)     
-
-    # Instantiate the model and move it to the current GPU
-    model = MaskedBert(model_name=model_name, share_inout_embeddings=share_inout_embeddings).to(device)
-    # Wrap the model with DDP
-    ddp_model = DDP(model, device_ids=[rank])
-
-    optimizer = torch.optim.Adam(ddp_model.parameters())
-    criterion = EncdecMaskPadItemLoss(
-        msk_tok_id=tkz.mask_token_id,
-        spc_tok_ids=[tkz.cls_token_id, tkz.sep_token_id, tkz.pad_token_id],
-        reg_weight=0.5,
-        msk_weight=1.0,
-        spc_weight=0.1,
-    )
-
-    if rank == 0:
-        print('Starting training...')
-        train_path = Path(f'./train_distrib_example')
-        train_path.mkdir(parents=True, exist_ok=True)
-        tbsw = tb.SummaryWriter(log_dir=str(train_path))
-    train_steps, val_steps = 100, 10
-    train_it, val_it = iter(train_loader), iter(val_loader)
-    val_min_loss = float('inf')
-    for epoch in range(10):  # Example: 10 training steps
-        ddp_model.train()
-        if rank == 0:
-            pbar = trange(train_steps, desc=f'Epoch {epoch}', unit='batch')
-        else:
-            pbar = range(train_steps)
-        for _ in pbar:
-            input_ids, input_ids_masked = next(train_it)
-            input_ids, input_ids_masked = input_ids.to(device), input_ids_masked.to(device)
-            optimizer.zero_grad()
-            logits = ddp_model(input_ids_masked)
-            loss = criterion(logits, input_ids_masked, input_ids)
-            loss.backward()
-            optimizer.step()
-
-            if rank == 0:
-                pbar.set_postfix({'Train Loss': loss.item()})
-        if rank == 0:
-            pbar.close()
-            tbsw.add_scalar('Train/Loss', loss.item(), epoch)
-
-        # Validation loop
-        ddp_model.eval()
-        if device.type == 'cuda':
-            torch.cuda.empty_cache()
-
-        with torch.no_grad():
-            val_loss = 0.0
-            val_steps = 0
-            if rank == 0:
-                pbar = trange(val_steps, desc=f'Epoch {epoch}', unit='batch')
-            else:
-                pbar = range(val_steps)
-            for _ in pbar:
-                input_ids, input_ids_masked = next(val_it)
-                input_ids, input_ids_masked = input_ids.to(device), input_ids_masked.to(device)
-                logits = ddp_model(input_ids_masked)
-                loss = criterion(logits, input_ids_masked, input_ids)
-                val_loss += loss.item()
-                val_steps += 1
-                if rank == 0:
-                    pbar.set_postfix({'Val Loss': loss.item()})
-            pbar.close()
-            val_avg_loss = val_loss / val_steps
-            if rank == 0:
-                print(f'Epoch {epoch}. Validation Loss: {val_avg_loss:.4f}')
-                tbsw.add_scalar('Val/Loss', val_avg_loss, epoch)
-        
-        if rank == 0:
-            tbsw.flush()
-            last_fpath = train_path / 'model_last.pt'
-            print(f'Save model weights to {last_fpath}')
-            torch.save(ddp_model.state_dict(), last_fpath)
-            if val_avg_loss < val_min_loss:
-                print(f'New best model found at epoch {epoch}. Val loss: {val_min_loss:.6f}  --> {val_avg_loss:.6f}.')
-                best_fpath = train_path / 'model_best.pt'
-                val_min_loss = val_avg_loss
-                print(f'Save best model weights to {best_fpath}')
-                shutil.copyfile(last_fpath, best_fpath)
 
     cleanup()
 
@@ -472,24 +380,6 @@ def run_training():
     mp.spawn(train, args=(
         ds_train, ds_val, tkz, args.model_name, args.share_inout_embeddings, args.batch_size, world_size,
     ), nprocs=world_size, join=True)
-
-
-    # train_loader = create_dataloader(
-    #     ds_train,
-    #     batch_size=args.batch_size,
-    #     num_workers=world_size,
-    #     collate_fn=collate_masked_batch,
-    # )
-    # val_loader = create_dataloader(
-    #     ds_val,
-    #     batch_size=args.batch_size,
-    #     num_workers=world_size,
-    #     collate_fn=collate_masked_batch,
-    # )
-    # # Launch one process per GPU
-    # mp.spawn(train_v2, args=(
-    #     train_loader, val_loader, args.model_name, args.share_inout_embeddings, args.batch_size, args.data_path, args.max_seq_len, args.min_mask_toks, args.max_mask_toks, args.val_split_ratio, world_size,
-    # ), nprocs=world_size, join=True)
 
 
 if __name__ == '__main__':

@@ -1,13 +1,19 @@
-import shutil
+import os
 from pathlib import Path
 from typing import Optional
+import shutil
 
 import numpy as np
-import torch
-import torch.utils.tensorboard as tb
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
+import torch
+import torch.utils.tensorboard as tb
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.nn as nn
+from torch.utils.data import DataLoader, DistributedSampler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
@@ -184,6 +190,23 @@ class ArgsEncdecBertTrain(BaseModel):
     @property
     def enforce_encoder_mask_understanding(self) -> bool:
         return is_arg_true(enforce_encoder_mask_understanding_ARG[0], self.enforce_encoder_mask_understanding_STR)
+
+
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
+    # We want to be able to train our model on an `accelerator <https://pytorch.org/docs/stable/torch.html#accelerators>`__
+    # such as CUDA, MPS, MTIA, or XPU.
+    acc = torch.accelerator.current_accelerator()
+    backend = torch.distributed.get_default_backend_for_device(acc)
+    # initialize the process group
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
+
+
+def cleanup():
+    dist.destroy_process_group()
+
 
 
 def main(args: ArgsEncdecBertTrain) -> int:

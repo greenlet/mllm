@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 import os
 from pathlib import Path
 import shutil
@@ -55,9 +56,9 @@ class MaskedDataset(Dataset):
         
         return torch.tensor(input_ids, dtype=torch.long), torch.tensor(input_ids_masked, dtype=torch.long)
 
-    def __getitem__(self, idx: int) -> dict[str, Any]:
-        idx = idx % len(self.dataset)
-        item = self.dataset[idx]
+    def _get_item(self, ind: int) -> dict[str, Any]:
+        ind = ind % len(self.dataset)
+        item = self.dataset[ind]
         input_ids, input_ids_masked = self.extract_masked_input(item)
         return {
             **item,
@@ -65,6 +66,17 @@ class MaskedDataset(Dataset):
             'input_ids_masked': input_ids_masked,
         }
 
+    def __getitem__(self, idx: Union[int, List[int]]) -> dict[str, Any]:
+        # print('!!!', isinstance(idx, int), idx)
+        if isinstance(idx, int):
+            return self._get_item(idx)
+        res = defaultdict(list)
+        for i in idx:
+            item = self._get_item(i)
+            for k, v in item.items():
+                res[k].append(v)
+        return res
+    
 
 def load_masked_wiki_dataset(
         data_path: Path, tkz: PreTrainedTokenizer, max_seq_len: int, val_split_ratio: float,
@@ -79,10 +91,11 @@ def load_masked_wiki_dataset(
     n_total = len(dataset)
     n_val = int(n_total * val_split_ratio)
     n_train = n_total - n_val
-    ds_train = dataset[:n_train]
-    ds_val = dataset[n_train:]
+    ds_train = dataset.select(range(n_train))
+    ds_val = dataset.select(range(n_train, n_train + n_val))
 
-    dataset = MaskedDataset(dataset, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
+    ds_train = MaskedDataset(ds_train, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
+    ds_val = MaskedDataset(ds_val, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
     return tkz, ds_train, ds_val
 
 
