@@ -3,7 +3,7 @@ from collections import defaultdict
 import os
 from pathlib import Path
 import shutil
-from typing import Dict, List, Tuple, Any, Callable, Optional, Union
+from typing import Dict, Generator, List, Tuple, Any, Callable, Optional, Union
 
 from datasets import Dataset, load_dataset
 import numpy as np
@@ -57,7 +57,7 @@ class MaskedDataset(Dataset):
         return torch.tensor(input_ids, dtype=torch.long), torch.tensor(input_ids_masked, dtype=torch.long)
 
     def _get_item(self, ind: int) -> dict[str, Any]:
-        ind = ind % len(self.dataset)
+        ind = self.inds[ind % self.max_seq_len]
         item = self.dataset[ind]
         input_ids, input_ids_masked = self.extract_masked_input(item)
         return {
@@ -66,16 +66,25 @@ class MaskedDataset(Dataset):
             'input_ids_masked': input_ids_masked,
         }
 
-    def __getitem__(self, idx: Union[int, List[int]]) -> dict[str, Any]:
-        # print('!!!', isinstance(idx, int), idx)
+    def __getitem__(self, idx: Union[int, List[int]]) -> Tuple[List, List]:
         if isinstance(idx, int):
-            return self._get_item(idx)
-        res = defaultdict(list)
+            idx = [idx]
+        
+        input_ids_list = []
+        input_ids_masked_list = []
         for i in idx:
             item = self._get_item(i)
-            for k, v in item.items():
-                res[k].append(v)
-        return res
+            input_ids_list.append(item['input_ids'])
+            input_ids_masked_list.append(item['input_ids_masked'])
+        return input_ids_list, input_ids_masked_list
+    
+    def shuffle(self, seed: Optional[int] = None) -> 'MaskedDataset':
+        if seed is not None:
+            rng = np.random.default_rng(seed)
+            rng.shuffle(self.inds)
+        else:
+            np.random.shuffle(self.inds)
+        return self
     
 
 def load_masked_wiki_dataset(
@@ -98,4 +107,35 @@ def load_masked_wiki_dataset(
     ds_val = MaskedDataset(ds_val, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
     return tkz, ds_train, ds_val
 
+
+def create_dataloader(
+        dataset: Dataset, batch_size: int, num_workers: int, distributed: bool, drop_last: bool = False,
+    ) -> DataLoader:
+    if distributed:
+        sampler = DistributedSampler(dataset)
+    else:
+        sampler = None
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        drop_last=drop_last,
+        sampler=sampler,
+        pin_memory=True,
+    )
+    return dataloader
+
+
+def create_dataloader_iter(
+        dataset: Dataset, batch_size: int, num_workers: int, distributed: bool, drop_last: bool = False,
+    ) -> Generator[Dict[str, Any], None, None]:
+    while True:
+        dataloader = create_dataloader(
+            dataset, batch_size=batch_size, num_workers=num_workers, distributed=distributed, drop_last=drop_last,
+        )
+        for batch in dataloader:
+            yield batch
+        dataset.shuffle()
+    
 

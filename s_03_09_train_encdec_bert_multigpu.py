@@ -32,7 +32,7 @@ enforce_encoder_mask_understanding_ARG = '--enforce-encoder-mask-understanding',
 
 
 
-class ArgsEncdecBertTrain(BaseModel):
+class ArgsEncdecBertMultigpuTrain(BaseModel):
     data_path: Path = Field(
         ...,
         description='Root data path. Must contain subpath `wikipedia/WIKI_DS_NAME` with Wikipedia dataset.',
@@ -208,8 +208,51 @@ def cleanup():
     dist.destroy_process_group()
 
 
+def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecBertMultigpuTrain):
+    print(f'Running DDP training on rank {rank}.')
+    setup(rank, args.world_size)
 
-def main(args: ArgsEncdecBertTrain) -> int:
+    device = torch.device(args.device)
+
+    model_cfg = parse_yaml_file_as(EncdecBertCfg, args.model_cfg_fpath)
+    tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
+
+    model = EncdecBertAgg(
+        model_cfg, tkz, enforce_enc_mask_understanding=args.enforce_encoder_mask_understanding,
+        next_tok_pred=args.next_tok_pred, masked_loss_for_encoder=args.masked_loss_for_encoder,
+    )
+    model.to(device)
+    ddp_model = DDP(model, device_ids=[rank] if device.type == 'cuda' else None)
+
+    params = ddp_model.parameters()
+    optimizer = torch.optim.Adam(params, lr=args.learning_rate)
+
+    for epoch in range(args.epochs):
+        ddp_model.train()
+        train_losses = LossesStats()
+        for i_batch, (tokens_inp, tokens_inp_aug, _) in enumerate(ds_train):
+            tokens_inp = tokens_inp.to(device)
+            tokens_inp_aug = tokens_inp_aug.to(device)
+
+            optimizer.zero_grad()
+            loss_dict = ddp_model(tokens_inp_aug, tokens_inp)
+            loss = loss_dict['loss']
+            loss.backward()
+            optimizer.step()
+
+            train_losses.update_dict(loss_dict)
+
+            if i_batch >= args.train_epoch_steps - 1:
+                break
+
+        if rank == 0:
+            train_losses_str = train_losses.to_cli_str(aggregate=True)
+            print(f'Epoch {epoch}. Train mean losses: {train_losses_str}')
+
+    cleanup()
+
+
+def main(args: ArgsEncdecBertMultigpuTrain) -> int:
     print(args)
     if args.pretrained_model_path and args.pretrained_model_path.name:
         pretrained_model_path = args.pretrained_model_path
@@ -392,5 +435,5 @@ def main(args: ArgsEncdecBertTrain) -> int:
 if __name__ == '__main__':
     def rethrow(e):
         raise e
-    run_and_exit(ArgsEncdecBertTrain, main, 'Train Encoder-Decoder Hourglass model.', exception_handler=rethrow)
+    run_and_exit(ArgsEncdecBertMultigpuTrain, main, 'Train Encoder-Decoder Hourglass model.', exception_handler=rethrow)
 
