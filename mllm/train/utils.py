@@ -74,7 +74,10 @@ def find_last_train_subdir(train_root_path: Path, prefix: Optional[str] = None, 
         return train_root_path / subdir_last
 
 
-def find_create_train_path(train_root_path: Path, prefix: Optional[str] = None, postfix: Optional[str] = None, subdir: Optional[str] = None) -> Path:
+def find_create_train_path(
+        train_root_path: Path, prefix: Optional[str] = None, postfix: Optional[str] = None, subdir: Optional[str] = None,
+        create: bool = True,
+    ) -> Path:
     if subdir == 'last':
         train_path = find_last_train_subdir(train_root_path, prefix, postfix)
         if train_path is None:
@@ -85,7 +88,8 @@ def find_create_train_path(train_root_path: Path, prefix: Optional[str] = None, 
     else:
         train_subdir = gen_train_subdir(prefix, postfix)
         train_path = train_root_path / train_subdir
-        train_path.mkdir(parents=True, exist_ok=True)
+        if create:
+            train_path.mkdir(parents=True, exist_ok=True)
     return train_path
 
 

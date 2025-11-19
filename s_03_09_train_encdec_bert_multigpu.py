@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 import shutil
 
 import numpy as np
@@ -191,6 +191,13 @@ class ArgsEncdecBertMultigpuTrain(BaseModel):
     def enforce_encoder_mask_understanding(self) -> bool:
         return is_arg_true(enforce_encoder_mask_understanding_ARG[0], self.enforce_encoder_mask_understanding_STR)
 
+    world_size: int = Field(
+        1,
+        description='Number of GPU instances to use for distributed training.',
+        cli=('--world-size',),
+    )
+
+
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -210,44 +217,184 @@ def cleanup():
 
 def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecBertMultigpuTrain):
     print(f'Running DDP training on rank {rank}.')
+    def log(*msgs: Any, forall: bool = False):
+        if rank == 0 or forall:
+            print(*msgs)
+
     setup(rank, args.world_size)
+
+    if args.pretrained_model_path and args.pretrained_model_path.name:
+        pretrained_model_path = args.pretrained_model_path
+        if not pretrained_model_path.is_file():
+            pretrained_model_path /= 'best.pth'
+    else:
+        pretrained_model_path = None
 
     device = torch.device(args.device)
 
     model_cfg = parse_yaml_file_as(EncdecBertCfg, args.model_cfg_fpath)
+    model_cfg = copy_override_encdec_bert_cfg(
+        model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
+        dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
+    )
+
+    mask_cfg = None
+    if args.mask_tokens:
+        mask_cfg = MaskCfg(
+            sep_freq=args.mask_sep_freq, sep_frac=args.mask_sep_frac, seq_freq=args.mask_seq_freq, seq_max_frac=args.mask_seq_max_frac,
+            seq_max_len=args.mask_seq_max_len, n_last_toks=args.mask_n_last_toks,
+        )
+    prefix, suffix = gen_prefpostfix_encdec_bert(
+        model_cfg, mask_cfg=mask_cfg, pretrained_model_path=pretrained_model_path, next_tok_pred=args.next_tok_pred
+    )
+    train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir, create=(rank == 0))
+    log(f'train_path: {train_path}')
+
+    last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
+    checkpoint = None
+    if args.train_subdir == 'last':
+        assert last_checkpoint_path.exists(),\
+            (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
+             f'but file {last_checkpoint_path} does not exits.')
+
+    if last_checkpoint_path.exists():
+        log(f'Loading checkpoint from {last_checkpoint_path}')
+        checkpoint = torch.load(last_checkpoint_path, map_location=device)
+        log(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
+        chkpt_model_cfg = parse_yaml_file_as(EncdecBertCfg, train_path / ENCDEC_BERT_MODEL_CFG_FNAME)
+        assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
+    else:
+        if rank == 0:
+            to_yaml_file(train_path / ENCDEC_BERT_MODEL_CFG_FNAME, model_cfg)
+
     tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
 
+    log(model_cfg)
     model = EncdecBertAgg(
         model_cfg, tkz, enforce_enc_mask_understanding=args.enforce_encoder_mask_understanding,
         next_tok_pred=args.next_tok_pred, masked_loss_for_encoder=args.masked_loss_for_encoder,
     )
-    model.to(device)
-    ddp_model = DDP(model, device_ids=[rank] if device.type == 'cuda' else None)
 
+    if checkpoint is None:
+        model.load_pretrained(pretrained_model_path)
+
+    ddp_model = DDP(model)
     params = ddp_model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
-    for epoch in range(args.epochs):
-        ddp_model.train()
+    last_epoch, val_loss_min, shuffle = -1, None, False
+    if checkpoint is not None:
+        model.load_state_dict(checkpoint['model'], strict=False)
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        last_epoch = checkpoint['last_epoch']
+        val_loss_min = checkpoint['val_loss_min']
+        del checkpoint
+        shuffle = True
+
+    train_batch_it, val_batch_it = get_wiki_ds_batch_iterators2(
+        wiki_ds_name=args.wiki_ds_name, data_path=args.data_path, inp_len=args.inp_len, docs_batch_size=args.docs_batch_size,
+        tkz=tkz, mask_cfg=mask_cfg, device=device, shuffle=shuffle,
+    )
+
+    sched_wait_steps = 0
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
+    lr = optimizer.param_groups[0]['lr']
+    log(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
+    if rank == 0:
+        tbsw = tb.SummaryWriter(log_dir=str(train_path))
+        log(model)
+
+    grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
+    prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
+    if prev_train_steps > 0:
+        grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
+    for epoch in range(last_epoch + 1, args.epochs):
+        model.train()
         train_losses = LossesStats()
-        for i_batch, (tokens_inp, tokens_inp_aug, _) in enumerate(ds_train):
-            tokens_inp = tokens_inp.to(device)
-            tokens_inp_aug = tokens_inp_aug.to(device)
+        train_loss = 0.0
+        pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
+        for _ in pbar:
+            tokens_inp, tokens_inp_aug, _ = next(train_batch_it)
 
             optimizer.zero_grad()
-            loss_dict = ddp_model(tokens_inp_aug, tokens_inp)
+            loss_dict = model(tokens_inp_aug, tokens_inp)
             loss = loss_dict['loss']
             loss.backward()
-            optimizer.step()
 
+            # Gradients must be available after loss.backward()
+            if grad_log_ind % grad_log_interval == 0:
+                log_weights_grads_stats(grad_log_step, model, tbsw)
+                grad_log_step += 1
+            grad_log_ind += 1
+
+            optimizer.step()
+            train_loss += loss.item()
             train_losses.update_dict(loss_dict)
 
-            if i_batch >= args.train_epoch_steps - 1:
-                break
+            # if i_train == 2:
+            #     import sys
+            #     sys.exit()
 
-        if rank == 0:
-            train_losses_str = train_losses.to_cli_str(aggregate=True)
-            print(f'Epoch {epoch}. Train mean losses: {train_losses_str}')
+            losses_str = train_losses.to_cli_str(aggregate=False)
+            pbar.set_postfix_str(f'Train. {losses_str}')
+        pbar.close()
+        train_loss /= args.train_epoch_steps
+        train_losses.log_to_tb('Train', epoch, tbsw)
+
+        model.eval()
+        if device.type == 'cuda':
+            torch.cuda.empty_cache()
+
+        val_losses = LossesStats()
+        val_loss = 0.0
+        pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
+        for _ in pbar:
+            tokens_inp, tokens_inp_aug, _ = next(val_batch_it)
+
+            with torch.no_grad():
+                loss_dict = model(tokens_inp_aug, tokens_inp)
+            loss = loss_dict['loss']
+
+            val_loss += loss.item()
+            val_losses.update_dict(loss_dict)
+
+            losses_str = val_losses.to_cli_str(aggregate=False)
+            pbar.set_postfix_str(f'Val. {losses_str}')
+        pbar.close()
+        val_loss /= args.val_epoch_steps
+        val_losses.log_to_tb('Val', epoch, tbsw)
+
+        if epoch >= sched_wait_steps:
+            scheduler.step(val_loss)
+        last_lr = scheduler.get_last_lr()[0]
+        tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
+
+        print(f'Train mean loss: {train_loss:.6f}. Val mean loss: {val_loss:.6f}')
+        train_losses_str = train_losses.to_cli_str(aggregate=True)
+        val_losses_str = val_losses.to_cli_str(aggregate=True)
+        print(f'Train mean losses: {train_losses_str}')
+        print(f'Val mean losses: {val_losses_str}')
+        print(f'Current lr: {last_lr:.10f}.')
+        
+        best = False
+        if val_loss_min is None or val_loss < val_loss_min:
+            val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'
+            print(f'Val min loss change: {val_loss_str} --> {val_loss:.6f}')
+            val_loss_min = val_loss
+            best = True
+
+        checkpoint = {
+            'model': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'last_epoch': epoch,
+            'val_loss_min': val_loss_min,
+        }
+        print(f'Saving checkpoint to {last_checkpoint_path}')
+        torch.save(checkpoint, last_checkpoint_path)
+
+        if best:
+            print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
+            shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
 
     cleanup()
 

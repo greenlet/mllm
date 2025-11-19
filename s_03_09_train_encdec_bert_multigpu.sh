@@ -102,6 +102,7 @@ learning_rate=0.0001
 learning_rate=0.00005
 #learning_rate=0.00001
 random_seed=200
+world_size=4
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
@@ -137,6 +138,7 @@ python s_03_07_train_encdec_bert_multigpu.py \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed \
   --pretrained-model-path "$pretrained_model_path" \
-  --enforce-encoder-mask-understanding $enforce_encoder_mask_understanding
+  --enforce-encoder-mask-understanding $enforce_encoder_mask_understanding \
+  --world-size $world_size
 #"
 
