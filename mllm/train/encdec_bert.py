@@ -90,7 +90,7 @@ class MaskedDataset(Dataset):
 def load_masked_wiki_dataset(
         data_path: Path, tkz: PreTrainedTokenizer, max_seq_len: int, val_split_ratio: float,
         mask_cfg: Optional[MaskCfg] = None, random_seed: Optional[int] = 55,
-    ) -> Tuple[PreTrainedTokenizer, Dataset, Dataset]:
+    ) -> Tuple[Dataset, Dataset]:
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
     dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))[wiki_ds_subdir]['train']
 
@@ -105,7 +105,7 @@ def load_masked_wiki_dataset(
 
     ds_train = MaskedDataset(ds_train, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
     ds_val = MaskedDataset(ds_val, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
-    return tkz, ds_train, ds_val
+    return ds_train, ds_val
 
 
 def create_dataloader(
