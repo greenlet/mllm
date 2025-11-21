@@ -204,12 +204,14 @@ def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
 
-    # We want to be able to train our model on an `accelerator <https://pytorch.org/docs/stable/torch.html#accelerators>`__
-    # such as CUDA, MPS, MTIA, or XPU.
-    acc = torch.accelerator.current_accelerator()
-    backend = torch.distributed.get_default_backend_for_device(acc)
+    # # We want to be able to train our model on an `accelerator <https://pytorch.org/docs/stable/torch.html#accelerators>`__
+    # # such as CUDA, MPS, MTIA, or XPU.
+    # acc = torch.accelerator.current_accelerator()
+    # backend = torch.distributed.get_default_backend_for_device(acc)
+    backend = 'nccl'
+    # backend = 'c10d'
     # initialize the process group
-    dist.init_process_group(backend, rank=rank, world_size=world_size)
+    dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
 
 
 def cleanup():
@@ -231,7 +233,7 @@ def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecB
     else:
         pretrained_model_path = None
 
-    device = torch.device(args.device)
+    device = torch.device(f'cuda:{rank}')
 
     model_cfg = parse_yaml_file_as(EncdecBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_encdec_bert_cfg(
@@ -279,10 +281,6 @@ def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecB
     if checkpoint is None:
         model.load_pretrained(pretrained_model_path)
 
-    ddp_model = DDP(model)
-    params = ddp_model.parameters()
-    optimizer = torch.optim.Adam(params, lr=args.learning_rate)
-
     last_epoch, val_loss_min, shuffle = -1, None, False
     if checkpoint is not None:
         model.load_state_dict(checkpoint['model'], strict=False)
@@ -291,6 +289,12 @@ def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecB
         val_loss_min = checkpoint['val_loss_min']
         del checkpoint
         shuffle = True
+
+    model.to(device)
+    find_unused_parameters = False
+    ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=find_unused_parameters)
+    params = ddp_model.parameters()
+    optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
     train_batch_it = create_dataloader_iter(
         ds_train, batch_size=args.docs_batch_size, num_workers=2, distributed=True, drop_last=False,
@@ -305,7 +309,7 @@ def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecB
     log(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
     if rank == 0:
         tbsw = tb.SummaryWriter(log_dir=str(train_path))
-        log(model)
+        log(ddp_model)
 
         grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
         prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
@@ -400,7 +404,7 @@ def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecB
                 best = True
 
             checkpoint = {
-                'model': model.state_dict(),
+                'model': ddp_model.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'last_epoch': epoch,
                 'val_loss_min': val_loss_min,
@@ -425,7 +429,7 @@ def main(args: ArgsEncdecBertMultigpuTrain) -> int:
             seq_max_len=args.mask_seq_max_len, n_last_toks=args.mask_n_last_toks,
         )
 
-    tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
+    tkz = AutoTokenizer.from_pretrained(args.bert_model_name)
     ds_train, ds_val = load_masked_wiki_dataset(
         data_path=args.data_path, tkz=tkz, max_seq_len=args.inp_len, val_split_ratio=0.05,
         mask_cfg=mask_cfg, random_seed=args.random_seed,

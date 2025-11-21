@@ -66,17 +66,15 @@ class MaskedDataset(Dataset):
             'input_ids_masked': input_ids_masked,
         }
 
-    def __getitem__(self, idx: Union[int, List[int]]) -> Tuple[List, List]:
+    def __getitem__(self, idx: Union[int, List[int]]) -> List[Tuple[torch.Tensor, torch.Tensor]]:
         if isinstance(idx, int):
             idx = [idx]
         
-        input_ids_list = []
-        input_ids_masked_list = []
+        batch = []
         for i in idx:
             item = self._get_item(i)
-            input_ids_list.append(item['input_ids'])
-            input_ids_masked_list.append(item['input_ids_masked'])
-        return input_ids_list, input_ids_masked_list
+            batch.append((item['input_ids'], item['input_ids_masked']))
+        return batch
     
     def shuffle(self, seed: Optional[int] = None) -> 'MaskedDataset':
         if seed is not None:
@@ -92,7 +90,7 @@ def load_masked_wiki_dataset(
         mask_cfg: Optional[MaskCfg] = None, random_seed: Optional[int] = 55,
     ) -> Tuple[Dataset, Dataset]:
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
-    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))[wiki_ds_subdir]['train']
+    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path), trust_remote_code=True)['train']
 
     if random_seed is not None:
         dataset = dataset.shuffle(seed=random_seed)

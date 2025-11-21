@@ -1,10 +1,13 @@
 
 code_path=$HOME/prog
 data_path=$HOME/data
+code_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH
+data_path=$code_path/data
+mllm_src_path=$code_path
+
 #wiki_ds_name=20200501.en
 wiki_ds_name=20220301.en
 
-mllm_src_path=$code_path/mllm
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fname=encdec_bert_cfg_01.yaml
 
@@ -108,7 +111,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_03_07_train_encdec_bert_multigpu.py \
+python s_03_09_train_encdec_bert_multigpu.py \
   --data-path $data_path \
   --wiki-ds-name $wiki_ds_name \
   --train-root-path $train_root_path \
