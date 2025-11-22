@@ -38,7 +38,7 @@ class MaskedDataset(Dataset):
     def __len__(self):
         return self.len
 
-    def extract_masked_input(self, item: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
+    def extract_masked_input(self, item: Dict) -> Dict[str, Any]:
         toks = self.tkz(item['text'], add_special_tokens=True).input_ids
         cur_len = len(toks)
         max_seq_len = min(cur_len, self.max_seq_len)
@@ -51,31 +51,48 @@ class MaskedDataset(Dataset):
         # Use mask_cfg if provided, otherwise use original ids
         if self.mask_cfg is not None:
             input_ids_masked, _ = mask_random_words_v2(np.array(input_ids), self.tkz, self.mask_cfg)
+            input_ids_masked = input_ids_masked.tolist()
         else:
             input_ids_masked = input_ids
         
-        return torch.tensor(input_ids, dtype=torch.long), torch.tensor(input_ids_masked, dtype=torch.long)
-
-    def _get_item(self, ind: int) -> dict[str, Any]:
-        ind = self.inds[ind % self.max_seq_len]
-        item = self.dataset[ind]
-        input_ids, input_ids_masked = self.extract_masked_input(item)
+        n = len(input_ids)
+        assert n == len(input_ids_masked), f'Size mismatch: {n} vs {len(input_ids_masked)}'
+ 
         return {
             **item,
             'input_ids': input_ids,
             'input_ids_masked': input_ids_masked,
         }
 
-    def __getitem__(self, idx: Union[int, List[int]]) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+    def _get_item(self, ind: int) -> dict[str, Any]:
+        ind = self.inds[ind % self.max_seq_len]
+        ind = ind.item()
+        item = self.dataset[ind]
+        item = self.extract_masked_input(item)
+        return item
+
+    def __getitem__(self, idx: Union[int, List[int]]) -> Dict[str, List[Any]]:
         if isinstance(idx, int):
             idx = [idx]
         
-        batch = []
+        batch = {
+            'input_ids': [],
+            'input_ids_masked': [],
+        }
         for i in idx:
             item = self._get_item(i)
-            batch.append((item['input_ids'], item['input_ids_masked']))
+            input_ids, input_ids_masked = item['input_ids'], item['input_ids_masked']
+            n = len(input_ids)
+            if n < self.max_seq_len:
+                pad_len = self.max_seq_len - n
+                input_ids = input_ids + [self.pad_token_id] * pad_len
+                input_ids_masked = input_ids_masked + [self.pad_token_id] * pad_len
+            input_ids = torch.tensor(input_ids, dtype=torch.long)
+            input_ids_masked = torch.tensor(input_ids_masked, dtype=torch.long)
+            batch['input_ids'].append(input_ids)
+            batch['input_ids_masked'].append(input_ids_masked)
         return batch
-    
+
     def shuffle(self, seed: Optional[int] = None) -> 'MaskedDataset':
         if seed is not None:
             rng = np.random.default_rng(seed)
@@ -118,6 +135,7 @@ def create_dataloader(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
+        prefetch_factor=2,
         drop_last=drop_last,
         sampler=sampler,
         pin_memory=True,

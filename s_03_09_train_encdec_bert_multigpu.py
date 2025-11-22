@@ -291,7 +291,8 @@ def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecB
         shuffle = True
 
     model.to(device)
-    find_unused_parameters = False
+    # find_unused_parameters = False
+    find_unused_parameters = True
     ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=find_unused_parameters)
     params = ddp_model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
@@ -326,7 +327,11 @@ def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecB
         else:
             pbar = range(args.train_epoch_steps)
         for _ in pbar:
-            tokens_inp, tokens_inp_aug, _ = next(train_batch_it)
+            item = next(train_batch_it)
+            # log(type(item))
+            # for k, v in item.items():
+            #     log(f'  {k}: {v.shape}')
+            tokens_inp, tokens_inp_aug = item['input_ids'], item['input_ids_masked']
 
             optimizer.zero_grad()
             loss_dict = ddp_model(tokens_inp_aug, tokens_inp)
@@ -364,7 +369,8 @@ def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecB
         else:
             pbar = range(args.val_epoch_steps)
         for _ in pbar:
-            tokens_inp, tokens_inp_aug, _ = next(val_batch_it)
+            item = next(val_batch_it)
+            tokens_inp, tokens_inp_aug = item['input_ids'], item['input_ids_masked']
 
             with torch.no_grad():
                 loss_dict = ddp_model(tokens_inp_aug, tokens_inp)
