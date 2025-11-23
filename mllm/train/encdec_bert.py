@@ -28,15 +28,15 @@ class MaskedDataset(Dataset):
     def __init__(self, dataset: Dataset, tkz: PreTrainedTokenizer, max_seq_len: int, mask_cfg: Optional[MaskCfg] = None):
         self.dataset = dataset
         self.tkz = tkz
-        self.len = len(self.dataset)
+        self.size = len(self.dataset)
         self.pad_token_id = tkz.pad_token_id
         self.max_seq_len = max_seq_len
         self.mask_token_id = tkz.mask_token_id
         self.mask_cfg = mask_cfg
-        self.inds = np.arange(self.max_seq_len)
+        self.inds = np.arange(self.size)
 
     def __len__(self):
-        return self.len
+        return self.size
 
     def extract_masked_input(self, item: Dict) -> Dict[str, Any]:
         toks = self.tkz(item['text'], add_special_tokens=True).input_ids
@@ -65,7 +65,7 @@ class MaskedDataset(Dataset):
         }
 
     def _get_item(self, ind: int) -> dict[str, Any]:
-        ind = self.inds[ind % self.max_seq_len]
+        ind = self.inds[ind % self.size]
         ind = ind.item()
         item = self.dataset[ind]
         item = self.extract_masked_input(item)
@@ -120,6 +120,11 @@ def load_masked_wiki_dataset(
 
     ds_train = MaskedDataset(ds_train, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
     ds_val = MaskedDataset(ds_val, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
+    
+    train_sz_str = f'!={n_train}' if len(ds_train) != n_train else ''
+    val_sz_str = f'!={n_val}' if len(ds_val) != n_val else ''
+    print(f'Loaded masked Wiki dataset. Total size: {len(dataset)}. Train: {len(ds_train)}{train_sz_str}. Val: {len(ds_val)}{val_sz_str}.')
+    
     return ds_train, ds_val
 
 
@@ -127,7 +132,7 @@ def create_dataloader(
         dataset: Dataset, batch_size: int, num_workers: int, distributed: bool, drop_last: bool = False,
     ) -> DataLoader:
     if distributed:
-        sampler = DistributedSampler(dataset)
+        sampler = DistributedSampler(dataset, shuffle=False)
     else:
         sampler = None
     dataloader = DataLoader(
@@ -147,11 +152,16 @@ def create_dataloader_iter(
         dataset: Dataset, batch_size: int, num_workers: int, distributed: bool, drop_last: bool = False,
     ) -> Generator[Dict[str, Any], None, None]:
     while True:
+        rank = dist.get_rank() if distributed else 0
+        print(f'R{rank}. Create dataloader. batch_size={batch_size}. num_workers={num_workers}. distributed={distributed}. drop_last={drop_last}.')
         dataloader = create_dataloader(
             dataset, batch_size=batch_size, num_workers=num_workers, distributed=distributed, drop_last=drop_last,
         )
+        n = 0
         for batch in dataloader:
             yield batch
+            n += 1
+        print(f'R{rank}. Dataloader cycle finished. Processed {n} batches. Shuffling dataset for next cycle.')
         dataset.shuffle()
-    
+
 
