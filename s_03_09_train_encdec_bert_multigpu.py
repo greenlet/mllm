@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Optional
 import shutil
 
+from datasets import Dataset
 import numpy as np
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
@@ -218,7 +219,7 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def train(rank: int, ds_train: DataLoader, ds_val: DataLoader, args: ArgsEncdecBertMultigpuTrain):
+def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecBertMultigpuTrain):
     print(f'Running DDP training on rank {rank}.')
     def log(*msgs: Any, forall: bool = False):
         if rank == 0 or forall:

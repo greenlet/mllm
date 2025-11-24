@@ -59,28 +59,35 @@ enforce_encoder_mask_understanding=false
 masked_loss_for_encoder=true
 
 
-#bert_model_name=bert-base-uncased
-#bert_emb_type=cls
-##inp_len=384
-#inp_len=256
-#dec_n_layers=0
-#dec_n_similar_layers=1
-##dec_enhance_type=matmul
-##dec_enhance_type=mmbeg
-#dec_enhance_type=mmbb
-#dec_dropout_rate=0
-#mask_tokens=false
-#mask_sep_freq=0.5
-#mask_sep_frac=0.15
-#mask_seq_freq=0.5
-#mask_seq_max_frac=0.2
-#mask_seq_max_len=20
-#enforce_encoder_mask_understanding=false
+bert_model_name=bert-large-uncased
+bert_emb_type=cls
+inp_len=128
+# inp_len=256
+#dec_n_layers=7
+dec_n_layers=0
+dec_n_similar_layers=1
+#n_similar_layers=2
+#dec_enhance_type=matmul
+#dec_enhance_type=mmbeg
+dec_enhance_type=mmbb
+dec_dropout_rate=0
+mask_tokens=true
+mask_sep_freq=0.5
+mask_sep_frac=0.04
+mask_seq_freq=0.5
+mask_seq_max_frac=0.05
+mask_seq_max_len=5
+mask_n_last_toks=0
+next_tok_pred=false
+enforce_encoder_mask_understanding=false
+masked_loss_for_encoder=true
+
+
 
 
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
-pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
+# pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
 
 
 device=cpu
@@ -94,6 +101,7 @@ epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=120
+docs_batch_size=60
 #docs_batch_size=25
 # docs_batch_size=20
 # docs_batch_size=15

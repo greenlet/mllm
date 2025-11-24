@@ -322,7 +322,7 @@ export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_07_05_train_genmixemb.py \
+python s_07_06_train_genmixemb_multigpu.py \
   --data-path $data_path \
   --train-root-path $train_root_path \
   --agg-pretrained-model-path "$agg_pretrained_model_path" \
