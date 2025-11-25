@@ -1,11 +1,44 @@
 from typing import Generator, Optional, Union
 
+from datasets import load_dataset
 import numpy as np
 import pandas as pd
 import torch
 from transformers import PreTrainedTokenizer
 
 from mllm.data.utils import get_squadv2_df, split_df
+
+
+def get_squadv2_df(exclude_empty_answers: bool = False) -> pd.DataFrame:
+    ds_name = 'squad_v2'
+    ds_sq = load_dataset(ds_name)
+    df_sq = pd.concat([ds_sq['train'].to_pandas(), ds_sq['validation'].to_pandas()], axis=0)
+    n_total = len(df_sq)
+    # df_sq = df_sq.sample(n_total, random_state=random_state)
+    if exclude_empty_answers:
+        mask = df_sq['answers'].apply(lambda ans: len(ans['text']) > 0)
+        df_sq = df_sq[mask]
+        print(f'Remove empty answers from dataset {ds_name}. Size: {n_total} --> {len(df_sq)}')
+    return df_sq
+
+
+def get_split_squadv2_df(exclude_empty_answers: bool = False, val_ratio: float = 0.05, shuffle: bool = False, rand_seed: Optional[int] = None) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+    df = get_squadv2_df(exclude_empty_answers=exclude_empty_answers)
+    n_total = len(df)
+    print(f'SQuADv2 {n_total} samples')
+
+    inds = np.arange(n_total)
+    if rand_seed is not None:
+        np.random.seed(rand_seed)
+    np.random.shuffle(inds)
+    n_val = int(n_total * val_ratio)
+    n_train = n_total - n_val
+    inds_train, inds_val = inds[:n_train].copy(), inds[n_train:].copy()
+
+    if shuffle:
+        np.random.shuffle(inds_train)
+        np.random.shuffle(inds_val)
+    return df, inds_train, inds_val
 
 
 class QnaItemV2:

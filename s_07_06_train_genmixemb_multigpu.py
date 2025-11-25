@@ -1,13 +1,19 @@
+import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional
+from turtle import pd
+from typing import Any, Optional, Union
 
 from datasets import Dataset
 from mllm.data.utils import get_split_squadv2_df, get_squadv2_df
 import numpy as np
 import torch
 import torch.utils.tensorboard as tb
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.nn as nn
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
@@ -327,8 +333,32 @@ class ArgsGenmixembMultigpuTrain(BaseModel):
     )
 
 
-def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsGenmixembMultigpuTrain) -> int:
-    print(args)
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
+    # # We want to be able to train our model on an `accelerator <https://pytorch.org/docs/stable/torch.html#accelerators>`__
+    # # such as CUDA, MPS, MTIA, or XPU.
+    # acc = torch.accelerator.current_accelerator()
+    # backend = torch.distributed.get_default_backend_for_device(acc)
+    backend = 'nccl'
+    # backend = 'c10d'
+    # initialize the process group
+    dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+
+
+def cleanup():
+    dist.destroy_process_group()
+
+
+def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, inds_val: np.ndarray, args: ArgsGenmixembMultigpuTrain) -> int:
+    print(f'Running DDP training on rank {rank}.')
+    def log(*msgs: Any, forall: bool = False):
+        if rank == 0 or forall:
+            print(*msgs)
+
+    setup(rank, args.world_size)
+
     agg_pretrained_model_path = get_pretrained_model_path(args.agg_pretrained_model_path)
     gen_pretrained_model_path = get_pretrained_model_path(args.gen_pretrained_model_path)
 
@@ -532,211 +562,29 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsGenmixembMult
             print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
             shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
 
-    return 0
-
+    cleanup()
 
 
 def main(args: ArgsGenmixembMultigpuTrain) -> int:
     print(args)
-    agg_pretrained_model_path = get_pretrained_model_path(args.agg_pretrained_model_path)
-    gen_pretrained_model_path = get_pretrained_model_path(args.gen_pretrained_model_path)
 
-    if args.random_seed is not None:
-        np.random.seed(args.random_seed)
-
-    device = torch.device(args.device)
-
-    model_cfg = parse_yaml_file_as(GenmixembCfg, args.model_cfg_fpath)
-    model_cfg = copy_override_genmixemb_cfg(
-        model_cfg, model_name=args.model_name, max_inp_toks=args.max_inp_toks, max_out_toks=args.max_out_toks,
-        toks_agg_type=args.toks_agg_type, bert_agg_model_name=args.bert_agg_model_name, bert_agg_type=args.bert_agg_type, bert_agg_n_subseq_toks=args.bert_agg_n_subseq_toks,
-        pyr_agg_type=args.pyr_agg_type, pyr_agg_step=args.pyr_agg_step, pyr_agg_n_levels=args.pyr_agg_n_levels,
-        pyr_agg_n_layers_per_level=args.pyr_agg_n_layers_per_level, pyr_share_layer_weights=args.pyr_share_layer_weights,
-        cnv_n_levels=args.cnv_n_levels, cnv_n_layers_per_level=args.cnv_n_layers_per_level, cnv_conv_kernel_size=args.cnv_conv_kernel_size,
-        cnv_pool_kernel_size=args.cnv_pool_kernel_size, cnv_pool_stride=args.cnv_pool_stride, cnv_share_layer_weights=args.cnv_share_layer_weights,
-        train_agg_model=args.train_agg_model, share_agg_enc_token_embeds=args.share_agg_enc_token_embs, add_token_type_ids=args.add_token_type_ids,
-        join_ctx_que_agg=args.join_ctx_que_agg, ctx_que_prompt_type=args.ctx_que_prompt_type, dec_expert_type=args.dec_expert_type,
-        moe_experts_num=args.moe_experts_num, moe_topk=args.moe_topk, bert_model_type=args.bert_model_type,
-        bert_attention_prob_dropout_prob=args.bert_attention_prob_dropout_prob, bert_hidden_dropout_prob=args.bert_hidden_dropout_prob, gpt2_embd_pdrop=args.gpt2_embd_pdrop,
-        gpt2_attn_pdrop=args.gpt2_attn_pdrop, gpt2_resid_pdrop=args.gpt2_resid_pdrop,
-    )
-
-    mask_cfg = None
-    if args.mask_tokens:
-        mask_cfg = MaskCfg(
-            sep_freq=args.mask_sep_freq, sep_frac=args.mask_sep_frac, seq_freq=args.mask_seq_freq, seq_max_frac=args.mask_seq_max_frac,
-            seq_max_len=args.mask_seq_max_len,
-        )
-    prefix, suffix = gen_prefpostfix_genmixemb(
-        model_cfg, train_ds_type=args.train_ds_type, mask_cfg=mask_cfg, self_supervise_type=args.self_supervise_type,
-        agg_pretrained_model_path=agg_pretrained_model_path, gen_pretrained_model_path=gen_pretrained_model_path,
-    )
-    train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
-    print(f'train_path: {train_path}')
-
-    last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
-    checkpoint = None
-    if args.train_subdir == 'last':
-        assert last_checkpoint_path.exists(),\
-            (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
-             f'but file {last_checkpoint_path} does not exits.')
-
-    if last_checkpoint_path.exists():
-        print(f'Loading checkpoint from {last_checkpoint_path}')
-        checkpoint = torch.load(last_checkpoint_path, map_location=device)
-        print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        chkpt_model_cfg = parse_yaml_file_as(GenmixembCfg, train_path / GENMIXEMB_BERT_MODEL_CFG_FNAME)
-        assert model_cfg == chkpt_model_cfg, f'{model_cfg} != {chkpt_model_cfg}'
-    else:
-        to_yaml_file(train_path / GENMIXEMB_BERT_MODEL_CFG_FNAME, model_cfg)
-
-    print(model_cfg)
-    model = Genmixemb(model_cfg, device=device)
-
-    if checkpoint is None:
-        model.load_weights(agg_pretrained_model_path=agg_pretrained_model_path, gen_pretrained_model_path=gen_pretrained_model_path)
-
-    if model_cfg.train_agg_model:
-        params = model.parameters()
-    else:
-        params = model.gen.parameters()
-    optimizer = torch.optim.Adam(params, lr=args.learning_rate)
-
-    last_epoch, val_loss_min, shuffle = -1, None, False
-    if checkpoint is not None:
-        model.load_state_dict(checkpoint['model'], strict=True)
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        last_epoch = checkpoint['last_epoch']
-        val_loss_min = checkpoint['val_loss_min']
-        shuffle = True
-        del checkpoint
-
+    shuffle = True
     val_ratio = 0.05
     if args.train_ds_type == GenmixTrainDsType.Wki:
         assert args.self_supervise_type is not None, 'For Wiki dataset self supervised learning type must be specified.'
-        ds, doc_inds_train, doc_inds_val = get_split_wiki_ds(
+        ds, inds_train, inds_val = get_split_wiki_ds(
             data_path=args.data_path, val_ratio=val_ratio, shuffle=shuffle, rand_seed=args.random_seed,
         )        
     elif args.train_ds_type == GenmixTrainDsType.Qna:
-        ds, doc_inds_train, doc_inds_val = get_split_squadv2_df(
+        ds, inds_train, inds_val = get_split_squadv2_df(
             exclude_empty_answers=True, val_ratio=val_ratio, shuffle=shuffle, rand_seed=args.random_seed,
         )
     else:
         raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
 
-    sched_wait_steps = 0
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=15, threshold=1e-6, min_lr=1e-8)
-    # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, threshold=1e-6, min_lr=1e-8)
-    # lr = scheduler.get_last_lr()[0]
-    lr = optimizer.param_groups[0]['lr']
-    print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
-    tbsw = tb.SummaryWriter(log_dir=str(train_path))
-
-    print(model)
-
-    grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
-    prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
-    if prev_train_steps > 0:
-        grad_log_step = (prev_train_steps - 1) // grad_log_interval + 1
-        grad_log_ind = prev_train_steps
-    for epoch in range(last_epoch + 1, args.epochs):
-        if model_cfg.train_agg_model:
-            model.train()
-        else:
-            model.agg.eval()
-            model.gen.train()
-        train_loss = 0
-        pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
-        for _ in pbar:
-            item = next(train_it)
-
-            optimizer.zero_grad()
-            if args.train_ds_type == GenmixTrainDsType.Wki:
-                batch: WikiBatch = item
-                loss = model.run_on_wiki(batch=batch)
-            elif args.train_ds_type == GenmixTrainDsType.Qna:
-                batch: QnaBatchV2 = item
-                loss = model.run_on_qna(batch=batch)
-                # loss = model.run_on_qna_v2(batch=batch)
-            else:
-                raise
-            if loss.isnan():
-                print('Loss is NaN!!!')
-                sys.exit(0)
-
-            loss.backward()
-            # Gradients must be available after loss.backward()
-            if grad_log_ind % grad_log_interval == 0:
-                log_weights_grads_stats(grad_log_step, model, tbsw)
-                grad_log_step += 1
-            grad_log_ind += 1
-
-            optimizer.step()
-            train_loss += loss.item()
-
-            s = f'Train. loss: {loss.item():.6f}'
-            pbar.set_postfix_str(s)
-        pbar.close()
-        train_loss /= args.train_epoch_steps
-        tbsw.add_scalar('Loss/Train', train_loss, epoch)
-
-        model.eval()
-        if device.type == 'cuda':
-            torch.cuda.empty_cache()
-
-        val_loss = 0
-        pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
-        for _ in pbar:
-            item = next(val_it)
-
-            with torch.no_grad():
-                if args.train_ds_type == GenmixTrainDsType.Wki:
-                    batch: WikiBatch = item
-                    loss = model.run_on_wiki(batch=batch)
-                elif args.train_ds_type == GenmixTrainDsType.Qna:
-                    batch: QnaBatchV2 = item
-                    loss = model.run_on_qna(batch=batch)
-                    # loss = model.run_on_qna_v2(batch=batch)
-                else:
-                    raise
-                if loss.isnan():
-                    print('Loss is NaN!!!')
-                    sys.exit(0)
-
-            val_loss += loss.item()
-
-            s = f'Val. loss: {loss.item():.6f}'
-            pbar.set_postfix_str(s)
-        pbar.close()
-        val_loss /= args.val_epoch_steps
-        tbsw.add_scalar('Loss/Val', val_loss, epoch)
-
-        if epoch >= sched_wait_steps:
-            scheduler.step(val_loss)
-        # last_lr = scheduler.get_last_lr()[0]
-        last_lr = optimizer.param_groups[0]['lr']
-        tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
-
-        print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
-        best = False
-        if val_loss_min is None or val_loss < val_loss_min:
-            val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'
-            print(f'Val min loss change: {val_loss_str} --> {val_loss:.6f}')
-            val_loss_min = val_loss
-            best = True
-
-        checkpoint = {
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'last_epoch': epoch,
-            'val_loss_min': val_loss_min,
-        }
-        print(f'Saving checkpoint to {last_checkpoint_path}')
-        torch.save(checkpoint, last_checkpoint_path)
-
-        if best:
-            print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
-            shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
+    mp.spawn(train, args=(
+        ds, inds_train, inds_val, args,
+    ), nprocs=args.world_size, join=True)
 
     return 0
 

@@ -83,9 +83,6 @@ enforce_encoder_mask_understanding=false
 masked_loss_for_encoder=true
 
 
-
-
-
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 # pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
 
@@ -101,7 +98,7 @@ epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
 docs_batch_size=120
-docs_batch_size=60
+docs_batch_size=58
 #docs_batch_size=25
 # docs_batch_size=20
 # docs_batch_size=15

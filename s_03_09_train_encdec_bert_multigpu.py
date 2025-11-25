@@ -5,6 +5,7 @@ import shutil
 
 from datasets import Dataset
 import numpy as np
+import pandas as pd
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
@@ -21,7 +22,7 @@ from transformers import AutoTokenizer
 
 from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
     gen_prefpostfix_encdec_bert
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, masked_loss_for_encoder_ARG
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, masked_loss_for_encoder_ARG
 from mllm.model.encdec_ranker_hg import EncdecBert, EncdecBertAgg
 from mllm.model.losses import EncdecMaskPadBatchLoss, EncdecPadBatchLoss, EncdecMaskPadItemLoss, LossesStats, accum_losses, log_losses_to_tb, losses_to_str
 from mllm.train.mask_utils import MaskCfg
@@ -227,12 +228,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecBertMul
 
     setup(rank, args.world_size)
 
-    if args.pretrained_model_path and args.pretrained_model_path.name:
-        pretrained_model_path = args.pretrained_model_path
-        if not pretrained_model_path.is_file():
-            pretrained_model_path /= 'best.pth'
-    else:
-        pretrained_model_path = None
+    pretrained_model_path = get_pretrained_model_path(pretrained_model_path)
 
     device = torch.device(f'cuda:{rank}')
 
