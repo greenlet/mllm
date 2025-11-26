@@ -6,7 +6,7 @@ import pandas as pd
 import torch
 from transformers import PreTrainedTokenizer
 
-from mllm.data.utils import get_squadv2_df, split_df
+from mllm.data.utils import split_df
 
 
 def get_squadv2_df(exclude_empty_answers: bool = False) -> pd.DataFrame:

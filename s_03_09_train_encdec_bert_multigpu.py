@@ -228,7 +228,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecBertMul
 
     setup(rank, args.world_size)
 
-    pretrained_model_path = get_pretrained_model_path(pretrained_model_path)
+    pretrained_model_path = get_pretrained_model_path(args.pretrained_model_path)
 
     device = torch.device(f'cuda:{rank}')
 

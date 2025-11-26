@@ -518,7 +518,7 @@ class EncdecBertAgg(nn.Module):
         self.total_loss_weight = self.emb_loss_weight + self.vocab_loss_weight
         self.vocab_loss_fn = EncdecMaskPadItemLoss(
             msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
-            reg_weight=1, msk_weight=1, spc_weight=0.1,
+            reg_weight=1, msk_weight=5, spc_weight=0.1,
         )
         if self.enforce_enc_mask_understanding:
             self.emb_loss_fn = nn.CosineEmbeddingLoss()

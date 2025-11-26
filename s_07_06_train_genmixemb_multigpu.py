@@ -6,7 +6,7 @@ from turtle import pd
 from typing import Any, Optional, Union
 
 from datasets import Dataset
-from mllm.data.utils import get_split_squadv2_df, get_squadv2_df
+from mllm.data.itsquadv2 import get_split_squadv2_df, get_squadv2_df
 import numpy as np
 import torch
 import torch.utils.tensorboard as tb
@@ -365,7 +365,7 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
     if args.random_seed is not None:
         np.random.seed(args.random_seed)
 
-    device = torch.device(args.device)
+    device = torch.device(f'cuda:{rank}')
 
     model_cfg = parse_yaml_file_as(GenmixembCfg, args.model_cfg_fpath)
     model_cfg = copy_override_genmixemb_cfg(
@@ -392,8 +392,8 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
         model_cfg, train_ds_type=args.train_ds_type, mask_cfg=mask_cfg, self_supervise_type=args.self_supervise_type,
         agg_pretrained_model_path=agg_pretrained_model_path, gen_pretrained_model_path=gen_pretrained_model_path,
     )
-    train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir)
-    print(f'train_path: {train_path}')
+    train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir, create=(rank == 0))
+    log(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
     checkpoint = None
@@ -403,19 +403,25 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
              f'but file {last_checkpoint_path} does not exits.')
 
     if last_checkpoint_path.exists():
-        print(f'Loading checkpoint from {last_checkpoint_path}')
+        log(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
-        print(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
+        log(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
         chkpt_model_cfg = parse_yaml_file_as(GenmixembCfg, train_path / GENMIXEMB_BERT_MODEL_CFG_FNAME)
         assert model_cfg == chkpt_model_cfg, f'{model_cfg} != {chkpt_model_cfg}'
     else:
-        to_yaml_file(train_path / GENMIXEMB_BERT_MODEL_CFG_FNAME, model_cfg)
+        if rank == 0:
+            to_yaml_file(train_path / GENMIXEMB_BERT_MODEL_CFG_FNAME, model_cfg)
 
-    print(model_cfg)
+    log(model_cfg)
     model = Genmixemb(model_cfg, device=device)
 
     if checkpoint is None:
         model.load_weights(agg_pretrained_model_path=agg_pretrained_model_path, gen_pretrained_model_path=gen_pretrained_model_path)
+
+    model.to(device)
+    # find_unused_parameters = False
+    find_unused_parameters = True
+    model = DDP(model, device_ids=[rank], find_unused_parameters=find_unused_parameters)
 
     if model_cfg.train_agg_model:
         params = model.parameters()
@@ -431,6 +437,13 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
         val_loss_min = checkpoint['val_loss_min']
         shuffle = True
         del checkpoint
+    
+
+    assert args.world_size == dist.get_world_size(), f'args.world_size={args.world_size} != dist.get_world_size()={dist.get_world_size()}'
+
+    if shuffle:
+        np.random.shuffle(inds_train)
+        np.random.shuffle(inds_val)
 
     val_ratio = 0.05
     if args.train_ds_type == GenmixTrainDsType.Wki:
@@ -463,6 +476,8 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
     if prev_train_steps > 0:
         grad_log_step = (prev_train_steps - 1) // grad_log_interval + 1
         grad_log_ind = prev_train_steps
+    
+    dist.barrier()
     for epoch in range(last_epoch + 1, args.epochs):
         if model_cfg.train_agg_model:
             model.train()

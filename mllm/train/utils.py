@@ -6,6 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional, Callable, Generator, Any
 
+from mllm.data.itsquadv2 import get_squadv2_df
 import numpy as np
 import pandas as pd
 import torch
@@ -16,7 +17,7 @@ from torch.nn.modules import activation
 from transformers import PreTrainedTokenizer, AutoTokenizer
 
 from mllm.data.common import DsView, TDs, TBatch
-from mllm.data.utils import get_squadv2_df, split_df
+from mllm.data.utils import split_df
 from mllm.data.wiki.itwiki import get_wiki_iterators
 from mllm.train.mask_utils import mask_random_tokens, mask_random_words, MaskCfg, mask_random_words_v2
 from mllm.utils.utils import gen_dt_str, DT_PAT_RE, parse_dt_str
