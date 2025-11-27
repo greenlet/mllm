@@ -6,17 +6,18 @@ from turtle import pd
 from typing import Any, Optional, Union
 
 from datasets import Dataset
-from mllm.data.itsquadv2 import get_split_squadv2_df, get_squadv2_df
+from mllm.data.itsquadv2 import get_split_squadv2_df, get_squadv2_batch_iterator_v2, get_squadv2_df
 import numpy as np
+import pandas as pd
+from pydantic import BaseModel, Field
+from pydantic_cli import run_and_exit
+from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 import torch
 import torch.utils.tensorboard as tb
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.nn as nn
-from pydantic import BaseModel, Field
-from pydantic_cli import run_and_exit
-from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
@@ -30,7 +31,7 @@ from mllm.model import bert, gpt2
 from mllm.model.genmixemb import Genmixemb
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats, SumTuple, QnaTuple
-from mllm.data.wiki.itwiki import WikiItem, get_split_wiki_ds, get_wiki_batch_iterators, WikiBatch
+from mllm.data.wiki.itwiki import WikiItem, get_split_wiki_ds, get_wiki_batch_iterator, get_wiki_batch_iterators, WikiBatch
 from mllm.utils.utils import rethrow
 
 train_agg_model_ARG = '--train-agg-model', 'Train aggregation model'
@@ -429,21 +430,33 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
         params = model.gen.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
-    last_epoch, val_loss_min, shuffle = -1, None, False
+    last_epoch, val_loss_min = -1, None
     if checkpoint is not None:
         model.load_state_dict(checkpoint['model'], strict=True)
         optimizer.load_state_dict(checkpoint['optimizer'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
-        shuffle = True
         del checkpoint
     
 
     assert args.world_size == dist.get_world_size(), f'args.world_size={args.world_size} != dist.get_world_size()={dist.get_world_size()}'
 
-    if shuffle:
-        np.random.shuffle(inds_train)
-        np.random.shuffle(inds_val)
+    np.random.seed(rank * 100 + (args.random_seed or 0))
+    np.random.shuffle(inds_train)
+    np.random.shuffle(inds_val)
+    print(f'Rank {rank}. inds_train: {inds_train[:10]}. inds_val: {inds_val[:10]}.')
+
+    if args.train_ds_type == GenmixTrainDsType.Wki:
+        train_it = get_wiki_batch_iterator(
+            ds=ds, tkz=model.tkz, inds=inds_train, batch_size=args.batch_size, n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg,
+            device=device, self_supervise_type=args.self_supervise_type, n_toks_pred_max=args.n_toks_pred_max,
+        )
+        val_it = get_wiki_batch_iterator(
+            ds=ds, tkz=model.tkz, inds=inds_val, batch_size=args.batch_size, n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg,
+            device=device, self_supervise_type=args.self_supervise_type, n_toks_pred_max=args.n_toks_pred_max,
+        )
+    else:
+        raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
 
     val_ratio = 0.05
     if args.train_ds_type == GenmixTrainDsType.Wki:
@@ -454,9 +467,15 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
             n_toks_pred_max=args.max_out_toks,
         )
     elif args.train_ds_type == GenmixTrainDsType.Qna:
-        train_it, val_it = get_squadv2_batch_iterators_v2(
-            batch_size=args.batch_size, exclude_empty_answers=True, tkz=model.tkz, max_inp_len=args.max_inp_toks, max_out_len=args.max_out_toks,
-            device=device,
+        df_sq = get_squadv2_df(exclude_empty_answers=args.exclude_empty_answers)
+        df_sq_t, df_sq_v = df_sq.iloc[inds_train].copy(), df_sq.iloc[inds_val].copy()
+        log(f'Squad v2 n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
+
+        train_it = get_squadv2_batch_iterator_v2(
+            df_sq=df_sq_t, tkz=model.tkz, batch_size=args.batch_size, max_inp_len=args.max_inp_toks, max_out_len=args.max_out_toks, device=device,
+        )
+        val_it = get_squadv2_batch_iterator_v2(
+            df_sq=df_sq_v, tkz=model.tkz, batch_size=args.batch_size, max_inp_len=args.max_inp_toks, max_out_len=args.max_out_toks, device=device,
         )
     else:
         raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
@@ -466,16 +485,16 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
     # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, threshold=1e-6, min_lr=1e-8)
     # lr = scheduler.get_last_lr()[0]
     lr = optimizer.param_groups[0]['lr']
-    print(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
-    tbsw = tb.SummaryWriter(log_dir=str(train_path))
+    log(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
+    if rank == 0:
+        tbsw = tb.SummaryWriter(log_dir=str(train_path))
+        log(model)
 
-    print(model)
-
-    grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
-    prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
-    if prev_train_steps > 0:
-        grad_log_step = (prev_train_steps - 1) // grad_log_interval + 1
-        grad_log_ind = prev_train_steps
+        grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
+        prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
+        if prev_train_steps > 0:
+            grad_log_step = (prev_train_steps - 1) // grad_log_interval + 1
+            grad_log_ind = prev_train_steps
     
     dist.barrier()
     for epoch in range(last_epoch + 1, args.epochs):
@@ -485,7 +504,10 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
             model.agg.eval()
             model.gen.train()
         train_loss = 0
-        pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
+        if rank == 0:
+            pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
+        else:
+            pbar = range(args.train_epoch_steps)
         for _ in pbar:
             item = next(train_it)
 
@@ -500,31 +522,37 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
             else:
                 raise
             if loss.isnan():
-                print('Loss is NaN!!!')
-                sys.exit(0)
+                raise Exception(f'Rank {rank}. Loss is NaN!!!')
 
             loss.backward()
             # Gradients must be available after loss.backward()
-            if grad_log_ind % grad_log_interval == 0:
-                log_weights_grads_stats(grad_log_step, model, tbsw)
-                grad_log_step += 1
-            grad_log_ind += 1
-
+            if rank == 0:
+                if grad_log_ind % grad_log_interval == 0:
+                    log_weights_grads_stats(grad_log_step, model, tbsw)
+                    grad_log_step += 1
+                grad_log_ind += 1
+            
             optimizer.step()
             train_loss += loss.item()
 
-            s = f'Train. loss: {loss.item():.6f}'
-            pbar.set_postfix_str(s)
-        pbar.close()
+            if rank == 0:
+                s = f'Train. loss: {loss.item():.6f}'
+                pbar.set_postfix_str(s)
+       
         train_loss /= args.train_epoch_steps
-        tbsw.add_scalar('Loss/Train', train_loss, epoch)
+        if rank == 0:
+            pbar.close()
+            tbsw.add_scalar('Loss/Train', train_loss, epoch)
 
         model.eval()
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
         val_loss = 0
-        pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
+        if rank == 0:
+            pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
+        else:
+            pbar = range(args.val_epoch_steps)
         for _ in pbar:
             item = next(val_it)
 
@@ -539,43 +567,47 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
                 else:
                     raise
                 if loss.isnan():
-                    print('Loss is NaN!!!')
-                    sys.exit(0)
+                    raise Exception(f'Rank {rank}. Loss is NaN!!!')
 
             val_loss += loss.item()
 
-            s = f'Val. loss: {loss.item():.6f}'
-            pbar.set_postfix_str(s)
-        pbar.close()
+            if rank == 0:
+                s = f'Val. loss: {loss.item():.6f}'
+                pbar.set_postfix_str(s)
+    
         val_loss /= args.val_epoch_steps
-        tbsw.add_scalar('Loss/Val', val_loss, epoch)
+        if rank == 0:
+            pbar.close()
+            tbsw.add_scalar('Loss/Val', val_loss, epoch)
 
         if epoch >= sched_wait_steps:
             scheduler.step(val_loss)
-        # last_lr = scheduler.get_last_lr()[0]
-        last_lr = optimizer.param_groups[0]['lr']
-        tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
-        print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
-        best = False
-        if val_loss_min is None or val_loss < val_loss_min:
-            val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'
-            print(f'Val min loss change: {val_loss_str} --> {val_loss:.6f}')
-            val_loss_min = val_loss
-            best = True
+        if rank == 0:
+            # last_lr = scheduler.get_last_lr()[0]
+            last_lr = optimizer.param_groups[0]['lr']
+            tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
-        checkpoint = {
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'last_epoch': epoch,
-            'val_loss_min': val_loss_min,
-        }
-        print(f'Saving checkpoint to {last_checkpoint_path}')
-        torch.save(checkpoint, last_checkpoint_path)
+            print(f'Train loss: {train_loss:.6f}. Val loss: {val_loss:.6f}')
+            best = False
+            if val_loss_min is None or val_loss < val_loss_min:
+                val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'
+                print(f'Val min loss change: {val_loss_str} --> {val_loss:.6f}')
+                val_loss_min = val_loss
+                best = True
 
-        if best:
-            print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
-            shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
+            checkpoint = {
+                'model': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'last_epoch': epoch,
+                'val_loss_min': val_loss_min,
+            }
+            print(f'Saving checkpoint to {last_checkpoint_path}')
+            torch.save(checkpoint, last_checkpoint_path)
+
+            if best:
+                print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
+                shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
 
     cleanup()
 
