@@ -293,6 +293,8 @@ class Genmixemb(nn.Module):
                 prefix_len = len(prefix)
                 agg_model_chkpt = {}
                 for key, val in agg_pretrained_checkpoint['model'].items():
+                    if key.startswith('module.'):
+                        key = key[7:]
                     if key.startswith('model.'):
                         key = key[6:]
                     if key.startswith(prefix):

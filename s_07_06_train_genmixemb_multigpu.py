@@ -415,6 +415,7 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
 
     log(model_cfg)
     model = Genmixemb(model_cfg, device=device)
+    tkz = model.tkz
 
     if checkpoint is None:
         model.load_weights(agg_pretrained_model_path=agg_pretrained_model_path, gen_pretrained_model_path=gen_pretrained_model_path)
@@ -448,34 +449,21 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
 
     if args.train_ds_type == GenmixTrainDsType.Wki:
         train_it = get_wiki_batch_iterator(
-            ds=ds, tkz=model.tkz, inds=inds_train, batch_size=args.batch_size, n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg,
+            ds=ds, tkz=tkz, inds=inds_train, batch_size=args.batch_size, n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg,
             device=device, self_supervise_type=args.self_supervise_type, n_toks_pred_max=args.n_toks_pred_max,
         )
         val_it = get_wiki_batch_iterator(
-            ds=ds, tkz=model.tkz, inds=inds_val, batch_size=args.batch_size, n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg,
+            ds=ds, tkz=tkz, inds=inds_val, batch_size=args.batch_size, n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg,
             device=device, self_supervise_type=args.self_supervise_type, n_toks_pred_max=args.n_toks_pred_max,
         )
-    else:
-        raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
-
-    val_ratio = 0.05
-    if args.train_ds_type == GenmixTrainDsType.Wki:
-        assert args.self_supervise_type is not None, 'For Wiki dataset self supervised learning type must be specified.'
-        train_it, val_it = get_wiki_batch_iterators(
-            data_path=args.data_path, tkz=model.tkz, batch_size=args.batch_size, val_ratio=val_ratio, shuffle=False, rand_seed=args.random_seed,
-            n_toks_min=args.n_toks_min, n_toks_max=args.max_inp_toks, mask_cfg=mask_cfg, device=device, self_supervise_type=args.self_supervise_type,
-            n_toks_pred_max=args.max_out_toks,
-        )
     elif args.train_ds_type == GenmixTrainDsType.Qna:
-        df_sq = get_squadv2_df(exclude_empty_answers=args.exclude_empty_answers)
+        df_sq: pd.DataFrame = ds
         df_sq_t, df_sq_v = df_sq.iloc[inds_train].copy(), df_sq.iloc[inds_val].copy()
-        log(f'Squad v2 n_total = {len(df_sq)}. n_train = {len(df_sq_t)}. n_val = {len(df_sq_v)}')
-
         train_it = get_squadv2_batch_iterator_v2(
-            df_sq=df_sq_t, tkz=model.tkz, batch_size=args.batch_size, max_inp_len=args.max_inp_toks, max_out_len=args.max_out_toks, device=device,
+            df_sq=df_sq_t, tkz=tkz, batch_size=args.batch_size, max_inp_len=args.max_inp_toks, max_out_len=args.max_out_toks, device=device,
         )
         val_it = get_squadv2_batch_iterator_v2(
-            df_sq=df_sq_v, tkz=model.tkz, batch_size=args.batch_size, max_inp_len=args.max_inp_toks, max_out_len=args.max_out_toks, device=device,
+            df_sq=df_sq_v, tkz=tkz, batch_size=args.batch_size, max_inp_len=args.max_inp_toks, max_out_len=args.max_out_toks, device=device,
         )
     else:
         raise Exception(f'Dataset type {args.train_ds_type} is not supported.')
@@ -501,8 +489,8 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
         if model_cfg.train_agg_model:
             model.train()
         else:
-            model.agg.eval()
-            model.gen.train()
+            model.module.agg.eval()
+            model.module.gen.train()
         train_loss = 0
         if rank == 0:
             pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
@@ -514,11 +502,11 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
             optimizer.zero_grad()
             if args.train_ds_type == GenmixTrainDsType.Wki:
                 batch: WikiBatch = item
-                loss = model.run_on_wiki(batch=batch)
+                loss = model.module.run_on_wiki(batch=batch)
             elif args.train_ds_type == GenmixTrainDsType.Qna:
                 batch: QnaBatchV2 = item
-                loss = model.run_on_qna(batch=batch)
-                # loss = model.run_on_qna_v2(batch=batch)
+                loss = model.module.run_on_qna(batch=batch)
+                # loss = model.module.run_on_qna_v2(batch=batch)
             else:
                 raise
             if loss.isnan():
@@ -559,11 +547,11 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
             with torch.no_grad():
                 if args.train_ds_type == GenmixTrainDsType.Wki:
                     batch: WikiBatch = item
-                    loss = model.run_on_wiki(batch=batch)
+                    loss = model.module.run_on_wiki(batch=batch)
                 elif args.train_ds_type == GenmixTrainDsType.Qna:
                     batch: QnaBatchV2 = item
-                    loss = model.run_on_qna(batch=batch)
-                    # loss = model.run_on_qna_v2(batch=batch)
+                    loss = model.module.run_on_qna(batch=batch)
+                    # loss = model.module.run_on_qna_v2(batch=batch)
                 else:
                     raise
                 if loss.isnan():
@@ -641,4 +629,5 @@ if __name__ == '__main__':
         ArgsGenmixembMultigpuTrain, main, 'Train Genmixemb model to predict masked input.',
         exception_handler=rethrow,
     )
+
 

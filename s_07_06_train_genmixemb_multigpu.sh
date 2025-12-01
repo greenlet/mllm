@@ -1,11 +1,13 @@
 
-code_path=$HOME/prog
-data_path=$HOME/data
+# code_path=$HOME/prog
+# data_path=$HOME/data
+# mllm_src_path=$code_path/mllm
 
-mllm_src_path=$code_path/mllm
-config_dir_path=$mllm_src_path/mllm/config/cfg
+code_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH
+data_path=$code_path/data
+mllm_src_path=$code_path
+
 model_cfg_fname=genmixemb_cfg_01_base.yaml
-
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
 train_root_path=$data_path/train_mllm_genmixemb
@@ -283,6 +285,8 @@ agg_pretrained_model_path=$train_encdec_root_path/encdecbert-20251004_224422-ber
 agg_pretrained_model_path="$train_encdec_root_path/encdecbert-20251006_213852-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5|0.04_seq_0.5|0.05|5-dp0-t0.0"
 agg_pretrained_model_path="$train_encdec_root_path/encdecbert-20251015_222032-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5|0.04_seq_0.5|0.05|5_last_0-dp0-t0.0"
 
+agg_pretrained_model_path=$train_encdec_root_path/encdecbert-20251123_125450-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5x0.04_seq_0.5x0.05x5_last_0-dp0-t0.0
+
 #agg_pretrained_model_path=$train_root_path/genmixemb-20250713_202718-bertbaseuncased-d768-mxo50-aggBrt-sub0-dsWki-tmax100-tragF
 #agg_pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
 #agg_pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
@@ -294,7 +298,7 @@ agg_pretrained_model_path="$train_encdec_root_path/encdecbert-20251015_222032-pr
 #agg_pretrained_model_path=$train_root_path/genmixemb-20250914_112502-gpt2-d768-dp0.1-mxi512-mxo128-dsQna-ttidF
 
 
-gen_pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
+# gen_pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
 
 
 device=cuda
@@ -303,9 +307,9 @@ train_epoch_steps=500
 val_epoch_steps=50
 #batch_size=30
 #batch_size=25
-#batch_size=20
+batch_size=20
 #batch_size=15
-batch_size=10
+# batch_size=10
 # batch_size=5
 #batch_size=1
 #train_subdir=last
