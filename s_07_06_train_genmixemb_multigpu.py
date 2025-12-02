@@ -449,12 +449,12 @@ def train(rank: int, ds: Union[Dataset, pd.DataFrame], inds_train: np.ndarray, i
 
     if args.train_ds_type == GenmixTrainDsType.Wki:
         train_it = get_wiki_batch_iterator(
-            ds=ds, tkz=tkz, inds=inds_train, batch_size=args.batch_size, n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg,
-            device=device, self_supervise_type=args.self_supervise_type, n_toks_pred_max=args.n_toks_pred_max,
+            ds=ds, tkz=tkz, inds=inds_train, batch_size=args.batch_size, n_toks_min=args.n_toks_min, n_toks_max=args.max_inp_toks, mask_cfg=mask_cfg,
+            device=device, self_supervise_type=args.self_supervise_type, n_toks_pred_max=args.max_out_toks,
         )
         val_it = get_wiki_batch_iterator(
-            ds=ds, tkz=tkz, inds=inds_val, batch_size=args.batch_size, n_toks_min=args.n_toks_min, n_toks_max=args.n_toks_max, mask_cfg=mask_cfg,
-            device=device, self_supervise_type=args.self_supervise_type, n_toks_pred_max=args.n_toks_pred_max,
+            ds=ds, tkz=tkz, inds=inds_val, batch_size=args.batch_size, n_toks_min=args.n_toks_min, n_toks_max=args.max_inp_toks, mask_cfg=mask_cfg,
+            device=device, self_supervise_type=args.self_supervise_type, n_toks_pred_max=args.max_out_toks,
         )
     elif args.train_ds_type == GenmixTrainDsType.Qna:
         df_sq: pd.DataFrame = ds

@@ -144,11 +144,12 @@ max_out_toks=128
 
 train_root_path=$data_path/train_mllm_genmixemb_wki
 train_ds_type=wki
-model_name=bert-base-uncased
+# model_name=bert-base-uncased
+model_name=bert-large-uncased
 bert_model_type=dec
 train_agg_model=true
 toks_agg_type=brt
-bert_agg_model_name=bert-base-uncased
+bert_agg_model_name=$model_name
 bert_agg_n_subseq_toks=128
 bert_agg_type=sep
 n_toks_min=20
@@ -161,28 +162,28 @@ moe_experts_num=0
 moe_topk=0
 
 
-train_root_path=$data_path/train_mllm_genmixemb_qna
-train_ds_type=qna
-model_name=bert-base-uncased
-bert_model_type=encdec
-train_agg_model=true
-toks_agg_type=brt
-bert_agg_model_name=bert-base-uncased
-bert_agg_n_subseq_toks=128
-bert_agg_type=sep
-n_toks_min=20
-#max_inp_toks=1024
-max_inp_toks=512
-#max_inp_toks=128
-max_out_toks=50
-mask_tokens=false
-dec_expert_type=non
-moe_experts_num=0
-moe_topk=0
-add_token_type_ids=false
-share_agg_enc_token_embeds=true
-join_ctx_que_agg=false
-ctx_que_prompt_type=cq
+# train_root_path=$data_path/train_mllm_genmixemb_qna
+# train_ds_type=qna
+# model_name=bert-base-uncased
+# bert_model_type=encdec
+# train_agg_model=true
+# toks_agg_type=brt
+# bert_agg_model_name=bert-base-uncased
+# bert_agg_n_subseq_toks=128
+# bert_agg_type=sep
+# n_toks_min=20
+# #max_inp_toks=1024
+# max_inp_toks=512
+# #max_inp_toks=128
+# max_out_toks=50
+# mask_tokens=false
+# dec_expert_type=non
+# moe_experts_num=0
+# moe_topk=0
+# add_token_type_ids=false
+# share_agg_enc_token_embeds=true
+# join_ctx_que_agg=false
+# ctx_que_prompt_type=cq
 
 
 # train_root_path=$data_path/train_mllm_genmixemb_qna
@@ -280,12 +281,8 @@ train_epoch_steps=20
 val_epoch_steps=20
 batch_size=5
 
-#agg_pretrained_model_path=$train_encdec_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
-agg_pretrained_model_path=$train_encdec_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
-agg_pretrained_model_path="$train_encdec_root_path/encdecbert-20251006_213852-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5|0.04_seq_0.5|0.05|5-dp0-t0.0"
-agg_pretrained_model_path="$train_encdec_root_path/encdecbert-20251015_222032-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5|0.04_seq_0.5|0.05|5_last_0-dp0-t0.0"
-
 agg_pretrained_model_path=$train_encdec_root_path/encdecbert-20251123_125450-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5x0.04_seq_0.5x0.05x5_last_0-dp0-t0.0
+agg_pretrained_model_path=$train_encdec_root_path/encdecbert-20251127_093859-bertlargeuncased-d1024-embCls-inp128-lrs7x1-enhMmbb-step2-h16-msk_sep_0.5x0.04_seq_0.5x0.05x5_last_0-dp0-t0.0
 
 #agg_pretrained_model_path=$train_root_path/genmixemb-20250713_202718-bertbaseuncased-d768-mxo50-aggBrt-sub0-dsWki-tmax100-tragF
 #agg_pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
