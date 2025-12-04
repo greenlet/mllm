@@ -1,0 +1,384 @@
+
+# code_path=$HOME/prog
+# data_path=$HOME/data
+# mllm_src_path=$code_path/mllm
+
+code_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH
+data_path=$code_path/data
+mllm_src_path=$code_path
+
+model_cfg_fname=genmixemb_cfg_01_base.yaml
+config_dir_path=$mllm_src_path/mllm/config/cfg
+model_cfg_fpath=$config_dir_path/$model_cfg_fname
+train_root_path=$data_path/train_mllm_genmixemb
+train_root_path=$data_path/train_mllm_genmixemb_qna
+train_encdec_root_path=$data_path/train_mllm_encdec_bert
+
+#train_ds_type=wki
+train_ds_type=qna
+#train_ds_type=sum
+
+model_name=bert-base-uncased
+#model_name=bert-large-uncased
+#toks_agg_type=brt
+#toks_agg_type=pyr
+toks_agg_type=cnv
+bert_agg_model_name=bert-base-uncased
+#bert_agg_type=sep
+#bert_agg_type=topcos
+bert_agg_type=topdot
+#bert_agg_n_subseq_toks=0
+bert_agg_n_subseq_toks=2
+bert_agg_n_subseq_toks=8
+#pyr_agg_type=decim
+#pyr_agg_type=matmul
+#pyr_agg_type=avg
+#pyr_agg_type=sub
+#pyr_agg_type=topcos
+#pyr_agg_type=topdot
+pyr_agg_type=mxpl
+pyr_agg_step=2
+#pyr_agg_step=4
+#pyr_agg_n_levels=1
+pyr_agg_n_levels=2
+#pyr_agg_n_levels=3
+#pyr_agg_n_layers_per_level=2
+#pyr_agg_n_layers_per_level=4
+pyr_agg_n_layers_per_level=2
+#pyr_share_layer_weights=false
+pyr_share_layer_weights=true
+#train_agg_model=false
+train_agg_model=true
+#share_agg_enc_token_embeds=false
+share_agg_enc_token_embeds=true
+add_token_type_ids=false
+#add_token_type_ids=true
+join_ctx_que_agg=false
+#ctx_que_prompt_type=tok
+ctx_que_prompt_type=cq
+#ctx_que_prompt_type=qc
+#ctx_que_prompt_type=cqqc
+dec_expert_type=non
+moe_experts_num=0
+bert_model_type=encdec
+bert_attention_prob_dropout_prob=0.1
+bert_hidden_dropout_prob=0.1
+gpt2_embd_pdrop=0.1
+gpt2_attn_pdrop=0.1
+gpt2_resid_pdrop=0.1
+
+mask_tokens=false
+#mask_tokens=true
+mask_sep_freq=0.5
+mask_sep_frac=0.15
+mask_seq_freq=0.5
+mask_seq_max_frac=0.2
+mask_seq_max_len=20
+
+
+n_toks_min=20
+max_inp_toks=100
+max_inp_toks=256
+max_inp_toks=384
+#max_inp_toks=512
+max_out_toks=50
+
+
+train_ds_type=qna
+#model_name=bert-base-uncased
+#toks_agg_type=cnv
+##cnv_n_levels=1
+#cnv_n_levels=2
+#cnv_n_layers_per_level=1
+#cnv_conv_kernel_size=3
+#cnv_pool_kernel_size=2
+#cnv_pool_stride=2
+##cnv_share_layer_weights=false
+#cnv_share_layer_weights=true
+#train_agg_model=true
+#add_token_type_ids=false
+#share_agg_enc_token_embeds=true
+#join_ctx_que_agg=false
+#ctx_que_prompt_type=cq
+
+
+train_ds_type=wki
+model_name=bert-base-large
+toks_agg_type=brt
+bert_agg_n_subseq_toks=0
+train_agg_model=true
+add_token_type_ids=false
+share_agg_enc_token_embeds=true
+join_ctx_que_agg=false
+ctx_que_prompt_type=cq
+mask_tokens=false
+self_supervise_type=nxttok
+n_toks_min=50
+max_inp_toks=448
+max_out_toks=36
+
+
+train_root_path=$data_path/train_mllm_genmixemb_wki
+train_ds_type=wki
+model_name=gpt2
+model_name=gpt2-large
+train_agg_model=true
+toks_agg_type=cnv
+ctx_que_prompt_type=cq
+# cnv_n_levels=3
+cnv_n_levels=6
+cnv_n_layers_per_level=1
+cnv_conv_kernel_size=3
+cnv_pool_kernel_size=2
+cnv_pool_stride=2
+#cnv_share_layer_weights=false
+cnv_share_layer_weights=true
+n_toks_min=20
+max_inp_toks=1024
+# max_inp_toks=448
+#max_inp_toks=128
+#max_inp_toks=64
+#max_out_toks=256
+max_out_toks=128
+#max_out_toks=16
+moe_topk=0
+
+# train_root_path=$data_path/train_mllm_genmixemb_wki
+# train_ds_type=wki
+# # model_name=bert-base-uncased
+# model_name=bert-large-uncased
+# bert_model_type=dec
+# train_agg_model=true
+# toks_agg_type=brt
+# bert_agg_model_name=$model_name
+# bert_agg_n_subseq_toks=128
+# bert_agg_type=sep
+# n_toks_min=20
+# max_inp_toks=1024
+# #max_inp_toks=128
+# max_out_toks=128
+# mask_tokens=false
+# dec_expert_type=non
+# moe_experts_num=0
+# moe_topk=0
+
+
+# train_root_path=$data_path/train_mllm_genmixemb_qna
+# train_ds_type=qna
+# model_name=bert-base-uncased
+# bert_model_type=encdec
+# train_agg_model=true
+# toks_agg_type=brt
+# bert_agg_model_name=bert-base-uncased
+# bert_agg_n_subseq_toks=128
+# bert_agg_type=sep
+# n_toks_min=20
+# #max_inp_toks=1024
+# max_inp_toks=512
+# #max_inp_toks=128
+# max_out_toks=50
+# mask_tokens=false
+# dec_expert_type=non
+# moe_experts_num=0
+# moe_topk=0
+# add_token_type_ids=false
+# share_agg_enc_token_embeds=true
+# join_ctx_que_agg=false
+# ctx_que_prompt_type=cq
+
+
+# train_root_path=$data_path/train_mllm_genmixemb_qna
+# train_ds_type=qna
+# model_name=bert-base-uncased
+# bert_model_type=dec
+# train_agg_model=true
+# toks_agg_type=brt
+# bert_agg_model_name=bert-base-uncased
+# bert_agg_n_subseq_toks=128
+# bert_agg_type=sep
+# n_toks_min=20
+# # max_inp_toks=1024
+# #max_inp_toks=512
+# #max_inp_toks=128
+# max_out_toks=50
+# mask_tokens=false
+# dec_expert_type=non
+# moe_experts_num=0
+# moe_topk=0
+# add_token_type_ids=false
+# share_agg_enc_token_embeds=true
+# join_ctx_que_agg=false
+# ctx_que_prompt_type=cq
+
+
+
+#train_root_path=$data_path/train_mllm_genmixemb_qna
+#train_ds_type=qna
+#model_name=gpt2
+##model_name=gpt2-large
+#train_agg_model=true
+#toks_agg_type=cnv
+#ctx_que_prompt_type=cq
+#cnv_n_levels=3
+##cnv_n_levels=6
+#cnv_n_layers_per_level=1
+#cnv_conv_kernel_size=3
+#cnv_pool_kernel_size=2
+#cnv_pool_stride=2
+#cnv_share_layer_weights=false
+##cnv_share_layer_weights=true
+#n_toks_min=20
+#max_inp_toks=768
+## max_inp_toks=448
+##max_inp_toks=128
+##max_inp_toks=64
+##max_out_toks=256
+#max_out_toks=128
+##max_out_toks=16
+#gpt2_embd_pdrop=0.1
+#gpt2_attn_pdrop=0.1
+#gpt2_resid_pdrop=0.1
+##gpt2_embd_pdrop=0.2
+##gpt2_attn_pdrop=0.2
+##gpt2_resid_pdrop=0.2
+##dec_expert_type=non
+#dec_expert_type=ttid
+#dec_expert_type=moe
+#moe_experts_num=2
+#moe_topk=0
+
+
+
+#train_root_path=$data_path/train_mllm_genmixemb_qna
+#train_ds_type=qna
+#model_name=gpt2
+##model_name=gpt2-large
+#train_agg_model=true
+#toks_agg_type=cnv
+#ctx_que_prompt_type=cq
+#cnv_n_levels=0
+#cnv_n_layers_per_level=1
+#cnv_conv_kernel_size=3
+#cnv_pool_kernel_size=2
+#cnv_pool_stride=2
+#cnv_share_layer_weights=false
+##cnv_share_layer_weights=true
+#n_toks_min=20
+## max_inp_toks=768
+#max_inp_toks=512
+##max_inp_toks=128
+##max_inp_toks=64
+##max_out_toks=256
+#max_out_toks=128
+##max_out_toks=16
+#gpt2_embd_pdrop=0.1
+#gpt2_attn_pdrop=0.1
+#gpt2_resid_pdrop=0.1
+
+
+device=cpu
+epochs=5
+train_epoch_steps=20
+val_epoch_steps=20
+batch_size=5
+
+# agg_pretrained_model_path=$train_encdec_root_path/encdecbert-20251123_125450-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5x0.04_seq_0.5x0.05x5_last_0-dp0-t0.0
+# agg_pretrained_model_path=$train_encdec_root_path/encdecbert-20251127_093859-bertlargeuncased-d1024-embCls-inp128-lrs7x1-enhMmbb-step2-h16-msk_sep_0.5x0.04_seq_0.5x0.05x5_last_0-dp0-t0.0
+
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250713_202718-bertbaseuncased-d768-mxo50-aggBrt-sub0-dsWki-tmax100-tragF
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250721_083250-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp0-lvl1-lrs2-dsWki-tmax256-tragF-nxtsnt
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250721_212402-bertbaseuncased-d768-mxo50-aggPyr-agtDecim-stp2-lvl2-lrs2-dsWki-tmax512-tragT-nxtsnt
+
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250810_125920-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggBrt-sub2-agtTopdot-dsQna-tragT-shemT-ttidF-jcqF
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250815_220237-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggPyr-agtMxpl-stp2-lvl1-lrs2-dsQna-tragT-shemT-ttidF-cqprCq
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250817_201509-pre_genmixemb20250726122548-bertbaseuncased-d768-mxi384-mxo50-aggCnv-lvl1-lrs1-cksz3-pksz2-pst2-dsQna-tragT-ttidF-cqprCq
+#agg_pretrained_model_path=$train_root_path/genmixemb-20250914_112502-gpt2-d768-dp0.1-mxi512-mxo128-dsQna-ttidF
+
+
+# gen_pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
+
+
+device=cuda
+epochs=700
+train_epoch_steps=500
+val_epoch_steps=50
+#batch_size=30
+#batch_size=25
+# batch_size=20
+batch_size=15
+# batch_size=8
+# batch_size=5
+#batch_size=1
+#train_subdir=last
+
+#learning_rate=0.0001
+learning_rate=0.00005
+# learning_rate=0.00001
+#learning_rate=0.000005
+random_seed=200
+world_size=4
+
+
+export PYTHONPATH=$PYTHONPATH:$mllm_src_path
+
+cd "$mllm_src_path" || exit 1
+#echo "
+python s_07_06_train_genmixemb_multigpu.py \
+  --data-path $data_path \
+  --train-root-path $train_root_path \
+  --agg-pretrained-model-path "$agg_pretrained_model_path" \
+  --gen-pretrained-model-path "$gen_pretrained_model_path" \
+  --train-subdir "$train_subdir" \
+  --train-ds-type "$train_ds_type" \
+  --model-cfg-fpath $model_cfg_fpath \
+  --model-name $model_name \
+  --bert-model-type $bert_model_type \
+  --bert-attention-probs-dropout-prob $bert_attention_prob_dropout_prob \
+  --bert-hidden-dropout-prob $bert_hidden_dropout_prob \
+  --gpt2-embd-pdrop $gpt2_embd_pdrop \
+  --gpt2-attn-pdrop $gpt2_attn_pdrop \
+  --gpt2-resid-pdrop $gpt2_resid_pdrop \
+  --max-inp-toks $max_inp_toks \
+  --max-out-toks $max_out_toks \
+  --toks-agg-type $toks_agg_type \
+  --bert-agg-model-name $bert_agg_model_name \
+  --bert-agg-type $bert_agg_type \
+  --bert-agg-n-subseq-toks $bert_agg_n_subseq_toks \
+  --pyr-agg-type $pyr_agg_type \
+  --pyr-agg-step $pyr_agg_step \
+  --pyr-agg-n-levels $pyr_agg_n_levels \
+  --pyr-agg-n-layers-per-level $pyr_agg_n_layers_per_level \
+  --pyr-share-layer-weights $pyr_share_layer_weights \
+  --cnv-n-levels $cnv_n_levels \
+  --cnv-n-layers-per-level $cnv_n_layers_per_level \
+  --cnv-conv-kernel-size $cnv_conv_kernel_size \
+  --cnv-pool-kernel-size $cnv_pool_kernel_size \
+  --cnv-pool-stride $cnv_pool_stride \
+  --cnv-share-layer-weights $cnv_share_layer_weights \
+  --train-agg-model $train_agg_model \
+  --self-supervise-type $self_supervise_type \
+  --share-agg-enc-token-embeds $share_agg_enc_token_embeds \
+  --add-token-type-ids $add_token_type_ids \
+  --join-ctx-que-agg $join_ctx_que_agg \
+  --ctx-que-prompt-type $ctx_que_prompt_type \
+  --dec-expert-type $dec_expert_type \
+  --moe-experts-num $moe_experts_num \
+  --moe-topk $moe_topk \
+  --n-toks-min $n_toks_min \
+  --mask-tokens $mask_tokens \
+  --mask-sep-freq $mask_sep_freq \
+  --mask-sep-frac $mask_sep_frac \
+  --mask-seq-freq $mask_seq_freq \
+  --mask-seq-max-frac $mask_seq_max_frac \
+  --mask-seq-max-len $mask_seq_max_len \
+  --batch-size $batch_size \
+  --device $device \
+  --epochs $epochs \
+  --learning-rate $learning_rate \
+  --train-epoch-steps $train_epoch_steps \
+  --val-epoch-steps $val_epoch_steps \
+  --random-seed $random_seed \
+  --world-size $world_size
+#"
+
