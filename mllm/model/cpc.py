@@ -5,6 +5,16 @@ import torch
 import torch.nn as nn
 
 
+class AutoRegressiveModel(nn.Module):
+    def __init__(self, input_dim: int, hidden_dim: int, num_layers: int):
+        super().__init__()
+        self.gru = nn.GRU(input_dim, hidden_dim, num_layers, batch_first=True)
+        self.output_dim = hidden_dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out, _ = self.gru(x)
+        return out
+
 class CPCModel(nn.Module):
     def __init__(self, encoder: nn.Module, ar_model: nn.Module, n_future: int):
         super().__init__()
