@@ -249,31 +249,31 @@ moe_topk=0
 
 
 
-#train_root_path=$data_path/train_mllm_genmixemb_qna
-#train_ds_type=qna
-#model_name=gpt2
-##model_name=gpt2-large
-#train_agg_model=true
-#toks_agg_type=cnv
-#ctx_que_prompt_type=cq
-#cnv_n_levels=0
-#cnv_n_layers_per_level=1
-#cnv_conv_kernel_size=3
-#cnv_pool_kernel_size=2
-#cnv_pool_stride=2
-#cnv_share_layer_weights=false
-##cnv_share_layer_weights=true
-#n_toks_min=20
-## max_inp_toks=768
-#max_inp_toks=512
-##max_inp_toks=128
-##max_inp_toks=64
-##max_out_toks=256
-#max_out_toks=128
-##max_out_toks=16
-#gpt2_embd_pdrop=0.1
-#gpt2_attn_pdrop=0.1
-#gpt2_resid_pdrop=0.1
+train_root_path=$data_path/train_mllm_genmixemb_qna
+train_ds_type=qna
+# model_name=gpt2
+model_name=gpt2-large
+train_agg_model=true
+toks_agg_type=cnv
+ctx_que_prompt_type=cq
+cnv_n_levels=6
+cnv_n_layers_per_level=1
+cnv_conv_kernel_size=3
+cnv_pool_kernel_size=2
+cnv_pool_stride=2
+# cnv_share_layer_weights=false
+cnv_share_layer_weights=true
+n_toks_min=20
+max_inp_toks=1024
+# max_inp_toks=512
+#max_inp_toks=128
+#max_inp_toks=64
+#max_out_toks=256
+max_out_toks=128
+#max_out_toks=16
+gpt2_embd_pdrop=0.1
+gpt2_attn_pdrop=0.1
+gpt2_resid_pdrop=0.1
 
 
 device=cpu
@@ -297,6 +297,7 @@ batch_size=5
 
 
 # gen_pretrained_model_path=$train_root_path/genmixemb-20250726_122548-bertbaseuncased-d768-mxi384-mxo50-dsQna-ttidF
+gen_pretrained_model_path=$data_path/train_mllm_genmixemb_wki/genmixemb-20251203_211942-gpt2large-d1280-dp0.1-mxi1024-mxo128-aggCnv-lvl6-lrs1-cksz3-pksz2-pst2-shlT-dsWki-tragT-sstNxttok
 
 
 device=cuda
@@ -305,8 +306,8 @@ train_epoch_steps=500
 val_epoch_steps=50
 #batch_size=30
 #batch_size=25
-# batch_size=20
-batch_size=15
+batch_size=20
+# batch_size=15
 # batch_size=8
 # batch_size=5
 #batch_size=1
