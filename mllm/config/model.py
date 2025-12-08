@@ -464,6 +464,13 @@ class GenmixembCfg(BaseModel):
         return self.model_name.startswith('gpt2')
 
 
+class EncGraphDecCfg(BaseModel):
+    enc_name: str
+    enc_out_emb_dim: int
+    dec_inp_emb_dim: int
+    dec_name: str
+
+
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
 
 
