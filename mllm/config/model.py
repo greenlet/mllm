@@ -464,11 +464,29 @@ class GenmixembCfg(BaseModel):
         return self.model_name.startswith('gpt2')
 
 
-class EncGraphDecCfg(BaseModel):
-    enc_name: str
-    enc_out_emb_dim: int
-    dec_inp_emb_dim: int
-    dec_name: str
+class GraphEncoderCfg(BaseModel):
+    model_name: str
+    d_model: int
+    max_inp_toks: int
+    max_out_toks: int
+    toks_agg_type: TokensAggType
+    bert_agg_model_name: str = 'bert-base-uncased'
+    bert_agg_type: BertAggType = BertAggType.Sep
+    bert_agg_n_subseq_toks: int
+    pyr_agg_type: HgReductType = HgReductType.Decim
+    pyr_agg_step: int = 0
+    pyr_agg_n_levels: int
+    pyr_agg_n_layers_per_level: int
+    pyr_share_layer_weights: bool = False
+
+
+class GraphDecoderCfg(BaseModel):
+    model_name: str
+
+
+class GraphEncoderDecoderCfg(BaseModel):
+    enc: GraphEncoderCfg
+    dec: GraphDecoderCfg
 
 
 MLP_LAYERS_PAT = re.compile(r'^(?P<size>\d+)(?P<bias>b)?|(?P<act>[a-z]\w+)$')
