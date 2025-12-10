@@ -642,6 +642,160 @@ class EncdecBertAgg(nn.Module):
         return vocab_loss
 
 
+
+
+class EncdecBertGraph(nn.Module):
+    cfg: EncdecBertGraphCfg
+    tkz: PreTrainedTokenizer
+    model: EncdecBert
+    enforce_enc_mask_understanding: bool
+    next_tok_pred: bool
+    masked_loss_for_encoder: bool
+    emb_loss_weight: float
+    vocab_loss_weight: float
+    total_loss_weight: float
+
+    def __init__(
+            self, cfg: EncdecBertCfg, tkz: PreTrainedTokenizer, enforce_enc_mask_understanding: bool, next_tok_pred: bool,
+            masked_loss_for_encoder: bool, emb_loss_weight: float = 1.0, vocab_loss_weight: float = 1.0,
+        ):
+        super().__init__()
+        self.cfg = cfg
+        self.tkz = tkz
+        self.model = EncdecBert(cfg, enc_only=False)
+        self.enforce_enc_mask_understanding = enforce_enc_mask_understanding
+        self.next_tok_pred = next_tok_pred
+        self.masked_loss_for_encoder = masked_loss_for_encoder
+        self.emb_loss_weight = emb_loss_weight
+        self.vocab_loss_weight = vocab_loss_weight
+        self.total_loss_weight = self.emb_loss_weight + self.vocab_loss_weight
+        self.vocab_loss_fn = EncdecMaskPadItemLoss(
+            msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
+            reg_weight=1, msk_weight=5, spc_weight=0.1,
+        )
+        if self.enforce_enc_mask_understanding:
+            self.emb_loss_fn = nn.CosineEmbeddingLoss()
+            # self.emb_loss_fn = nn.L1Loss()
+            # self.emb_loss_fn = nn.MSELoss()
+            # self.emb_loss_fn = R2Loss()
+
+    def load_pretrained(self, pretrained_model_path: Optional[Path]):
+        if pretrained_model_path and pretrained_model_path.exists():
+            print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
+            pretrained_checkpoint = torch.load(pretrained_model_path)
+            checkpt_dict = pretrained_checkpoint['model']
+
+            checkpt_dict_renamed = {}
+            for key, val in checkpt_dict.items():
+                if key.startswith('model.'):
+                    key = key[6:]
+                if self.model.enc_only and key.startswith('dec_pyr.'):
+                    continue
+                if key.startswith('vocab_loss_fn.') or key.startswith('emb_loss_fn.'):
+                    continue
+                checkpt_dict_renamed[key] = val
+            checkpt_dict = checkpt_dict_renamed
+
+            self.model.load_state_dict(checkpt_dict, strict=True)
+
+    def create_causal_mask(self, size: int, device: torch.device) -> Tensor:
+        # (size, size)
+        mask = torch.tril(torch.ones((size, size), device=device)).to(torch.int32)
+        return mask
+
+    # inp_masked_toks: (batch_size, inp_len)
+    # inp_toks: (batch_size, inp_len)
+    def forward(self, inp_masked_toks, inp_toks: Tensor) -> dict[str, Tensor]:
+        if self.next_tok_pred:
+            assert not self.enforce_enc_mask_understanding, 'Next token prediction together with enforcing encoder masked token understanding is not supported yet'
+            batch_size, inp_len = inp_toks.shape
+            device = inp_toks.device
+            # (inp_len, inp_len)
+            causal_mask = self.create_causal_mask(inp_len, device)
+            # (1, inp_len, inp_len)
+            causal_mask = causal_mask.unsqueeze(0)
+            # out_enc_causal: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
+            # out_dec_causal: (batch_size, inp_len, n_vocab)
+            out_enc_causal, out_dec_causal = self.model(inp_toks, causal_mask, enc_only=False)
+
+            # tgt_toks: (batch_size, inp_len - 1)
+            tgt_toks = inp_toks[:, 1:].contiguous()
+            # logits: (batch_size, inp_len - 1, n_vocab)
+            logits = out_dec_causal[:, :-1, :].contiguous()
+
+            loss = torch.tensor(0.0, device=device)
+            for ib in range(batch_size):
+                n_nonpad = (tgt_toks[ib, :] != self.tkz.pad_token_id).sum().item()
+                tgt_toks_i = tgt_toks[ib, :n_nonpad]
+                logits_i = logits[ib, :n_nonpad, :]
+                loss_i = F.cross_entropy(logits_i, tgt_toks_i, reduction='mean')
+                loss += loss_i
+            loss /= batch_size
+            return {'loss': loss}
+
+        if self.enforce_enc_mask_understanding:
+            # (batch_size, inp_len)
+            inp_att_mask = inp_toks != self.tkz.pad_token_id
+            
+            # out_enc: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
+            # out_dec: (batch_size, inp_len, n_vocab)
+            out_enc, out_dec = self.model(inp_toks, inp_att_mask, enc_only=True)
+            # out_enc_last_hidden_state: (batch_size, inp_len, d_model)
+            # out_enc_pooler: (batch_size, d_model)
+            out_enc_last_hidden_state, out_enc_pooler = out_enc
+            # out_enc: (batch_size, d_model)
+            out_enc_emb = out_enc_last_hidden_state[:, 0]
+            
+            # (batch_size, inp_len)
+            inp_masked_att_mask = inp_masked_toks != self.tkz.pad_token_id
+            # out_enc_masked: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
+            # out_dec_masked: (batch_size, inp_len, n_vocab)
+            out_enc_masked, out_dec_masked = self.model(inp_masked_toks, inp_masked_att_mask, enc_only=False)
+            # out_enc_masked_last_hidden_state: (batch_size, inp_len, d_model)
+            # out_enc_masked_pooler: (batch_size, d_model)
+            out_enc_masked_last_hidden_state, out_enc_masked_pooler = out_enc_masked
+            # out_enc_masked_emb: (batch_size, d_model)
+            out_enc_masked_emb = out_enc_masked_last_hidden_state[:, 0]
+            
+            vocab_loss_dict = self.vocab_loss_fn(out_dec_masked, inp_masked_toks, inp_toks)
+            # (1,)
+            vocab_loss = vocab_loss_dict['loss']
+
+            # emb_loss = self.emb_loss_fn(out_enc_masked_emb, out_enc_emb)
+            emb_loss = self.emb_loss_fn(out_enc_masked_emb, out_enc_emb, torch.ones((out_enc_emb.shape[0],), device=out_enc.device))
+
+            # loss = (self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss) / self.total_loss_weight
+            loss = self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss
+            vocab_loss_dict = {f'vocab_{k}': v for k, v in vocab_loss_dict.items()}
+            return {'loss': loss, 'emb_loss': emb_loss, **vocab_loss_dict}
+        
+        # (batch_size, inp_len)
+        inp_masked_att_mask = inp_masked_toks != self.tkz.pad_token_id
+        # out_enc: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
+        # out_dec: (batch_size, inp_len, n_vocab)
+        out_enc, out_dec = self.model(inp_masked_toks, inp_masked_att_mask)
+        # out_enc_last_hidden_state: (batch_size, inp_len, d_model)
+        # out_enc_pooler: (batch_size, d_model)
+        out_enc_last_hidden_state, out_enc_pooler = out_enc
+        # out_enc_emb: (batch_size, d_model)
+        out_enc_emb = out_enc_last_hidden_state[:, 0]
+
+        if self.masked_loss_for_encoder:
+            # (batch_size, inp_len - 1, n_vocab)
+            out_logits = self.model.dec_pyr.vocab_decoder(out_enc_last_hidden_state[:, 1:])
+            # (1,)
+            enc_loss = self.vocab_loss_fn(out_logits, inp_masked_toks[:, 1:], inp_toks[:, 1:])
+            dec_loss = self.vocab_loss_fn(out_dec, inp_masked_toks, inp_toks)
+            loss = (enc_loss['loss'] + dec_loss['loss']) / 2
+            encdec_loss = join_losses_dicts(['enc', 'dec'], [enc_loss, dec_loss])
+            return {'loss': loss, **encdec_loss}
+
+        # (1,)
+        vocab_loss = self.vocab_loss_fn(out_dec, inp_masked_toks, inp_toks)
+        return vocab_loss
+
+
+
 class DecoderRankHg(nn.Module):
     cfg: DecRankHgCfg
     # w: nn.Linear

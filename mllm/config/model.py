@@ -12,9 +12,11 @@ from jsonschema.validators import create
 from pydantic import BaseModel, Field
 from torchtext.datasets import dataset_module
 
+from mllm.model.bert.configuration_bert import BertConfig
+from mllm.model.bert.modeling_bert import BertModel
 from mllm.train.mask_utils import MaskCfg
 from mllm.utils.utils import coalesce
-from transformers import BertModel, BertConfig, AutoTokenizer, GPT2LMHeadModel, GPT2Config
+from transformers import AutoTokenizer, GPT2LMHeadModel, GPT2Config
 
 T = TypeVar('T')
 MS = Union[T, tuple[T, ...]]
@@ -279,6 +281,16 @@ class EncdecBertCfg(BaseModel):
     dec_pyr: DecPyrCfg
 
 
+class EmbGraphCfg(BaseModel):
+    n_layers: int
+
+
+class EncdecBertGraphCfg(BaseModel):
+    enc_bert: EncBertCfg
+    dec_pyr: DecPyrCfg
+    emb_graph: EmbGraphCfg
+
+
 class DecRankHgCfg(BaseModel):
     d_model: int
     mlp_layers: str = ''
@@ -464,20 +476,10 @@ class GenmixembCfg(BaseModel):
         return self.model_name.startswith('gpt2')
 
 
+
+
 class GraphEncoderCfg(BaseModel):
-    model_name: str
-    d_model: int
-    max_inp_toks: int
-    max_out_toks: int
-    toks_agg_type: TokensAggType
-    bert_agg_model_name: str = 'bert-base-uncased'
-    bert_agg_type: BertAggType = BertAggType.Sep
-    bert_agg_n_subseq_toks: int
-    pyr_agg_type: HgReductType = HgReductType.Decim
-    pyr_agg_step: int = 0
-    pyr_agg_n_levels: int
-    pyr_agg_n_layers_per_level: int
-    pyr_share_layer_weights: bool = False
+    bert: BertConfig
 
 
 class GraphDecoderCfg(BaseModel):
@@ -548,7 +550,7 @@ def create_encdec_hg_cfg(
     return cfg_encdec_hg
 
 
-def create_encdec_bert_cfg(
+def create_encdec_bert_graph_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
         inp_len = 128, dec_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
         dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
@@ -603,6 +605,68 @@ def create_encdec_bert_cfg(
     )
 
     cfg_encdec_bert = EncdecBertCfg(enc_bert=cfg_enc, dec_pyr=cfg_dec)
+    return cfg_encdec_bert
+
+
+def create_encdec_bert_graph_cfg(
+        pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
+        inp_len = 128, dec_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
+        dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
+        n_graph_layers: int = 1,
+) -> EncdecBertGraphCfg:
+    model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
+    bert_cfg: BertConfig = model.config
+    # BertConfig
+    # {
+    #     "_name_or_path": "bert-base-uncased",
+    #     "architectures": [
+    #         "BertForMaskedLM"
+    #     ],
+    #     "attention_probs_dropout_prob": 0.1,
+    #     "classifier_dropout": null,
+    #     "gradient_checkpointing": false,
+    #     "hidden_act": "gelu",
+    #     "hidden_dropout_prob": 0.1,
+    #     "hidden_size": 768,
+    #     "initializer_range": 0.02,
+    #     "intermediate_size": 3072,
+    #     "layer_norm_eps": 1e-12,
+    #     "max_position_embeddings": 512,
+    #     "model_type": "bert",
+    #     "num_attention_heads": 12,
+    #     "num_hidden_layers": 12,
+    #     "pad_token_id": 0,
+    #     "position_embedding_type": "absolute",
+    #     "transformers_version": "4.42.4",
+    #     "type_vocab_size": 2,
+    #     "use_cache": true,
+    #     "vocab_size": 30522
+    # }
+    d_model = bert_cfg.hidden_size
+    n_heads = bert_cfg.num_attention_heads
+    n_vocab = bert_cfg.vocab_size
+    pad_token_id = bert_cfg.pad_token_id
+
+    tokenizer_name = tokenizer_name or pretrained_model_name
+    cfg_enc = EncBertCfg(
+        inp_len=inp_len, d_model=d_model, pad_token_id=pad_token_id, pretrained_model_name=pretrained_model_name,
+        tokenizer_name=tokenizer_name, emb_type=emb_type,
+    )
+    step = 2
+    if dec_n_layers == 0:
+        dec_n_layers = math.ceil(math.log(inp_len, step))
+    d_inner = d_model * 4
+    d_k = d_v = d_model // n_heads
+    assert dec_n_layers > 0, f'n_layers (={dec_n_layers}) must be > 0'
+    cfg_dec = DecPyrCfg(
+        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_n_layers, dropout_rate=dec_dropout_rate, n_vocab=n_vocab,
+        n_similar_layers=dec_n_similar_layers, enhance_type=dec_enhance_type, temperature=dec_temperature,
+    )
+    cfg_graph = EmbGraphCfg(
+        n_layers=n_graph_layers,
+    )
+
+    cfg_encdec_bert = EncdecBertGraphCfg(enc_bert=cfg_enc, dec_pyr=cfg_dec, emb_graph=cfg_graph)
     return cfg_encdec_bert
 
 
@@ -977,7 +1041,7 @@ def copy_override_encdec_bert_cfg(
     dec_dropout_rate = coalesce(dec_dropout_rate, dec.dropout_rate)
     dec_temperature = coalesce(dec_temperature, dec.temperature)
 
-    return create_encdec_bert_cfg(
+    return create_encdec_bert_graph_cfg(
         pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
         inp_len=inp_len, dec_enhance_type=dec_enhance_type, dec_n_layers=dec_n_layers, dec_n_similar_layers=dec_n_similar_layers,
         dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature,
