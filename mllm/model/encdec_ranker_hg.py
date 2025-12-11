@@ -644,8 +644,8 @@ class EncdecBertAgg(nn.Module):
 
 
 
-class EncdecBertGraph(nn.Module):
-    cfg: EncdecBertGraphCfg
+class EncdecGraphBert(nn.Module):
+    cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
     model: EncdecBert
     enforce_enc_mask_understanding: bool

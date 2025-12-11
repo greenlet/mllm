@@ -23,10 +23,10 @@ pydantic-yaml
 scikit-learn
 scipy
 tensorboard
-torch==2.3.0
-# torch==2.7.0
-# torch==2.9.1
-torchtext==0.18.0
+torch==2.2.2
+torchtext==0.17.2
+# torch==2.3.0
+# torchtext==0.18.0
 torchvision
 transformers
 tqdm
