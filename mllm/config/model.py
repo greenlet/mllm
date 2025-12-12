@@ -1032,6 +1032,31 @@ def copy_override_encdec_bert_cfg(
     )
 
 
+def copy_override_encdec_graph_bert_cfg(
+        cfg: EncdecGraphBertCfg, pretrained_model_name: Optional[str], emb_type: Optional[BertEmbType] = None, inp_len: Optional[int] = None,
+        dec_enhance_type: Optional[HgEnhanceType] = None, dec_n_layers: Optional[int] = None, dec_n_similar_layers: Optional[int] = None,
+        dec_dropout_rate: Optional[float] = None, dec_temperature: Optional[float] = None, graph_n_layers: Optional[int] = None,
+) -> EncdecGraphBertCfg:
+    enc = cfg.enc_bert
+    dec = cfg.dec_pyr
+    pretrained_model_name = coalesce(pretrained_model_name, enc.pretrained_model_name)
+    tokenizer_name = pretrained_model_name
+    emb_type = coalesce(emb_type, cfg.enc_bert.emb_type)
+    inp_len = coalesce(inp_len, enc.inp_len)
+    dec_enhance_type = coalesce(dec_enhance_type, dec.enhance_type)
+    dec_n_layers = coalesce(dec_n_layers, dec.n_layers)
+    dec_n_similar_layers = coalesce(dec_n_similar_layers, dec.n_similar_layers)
+    dec_dropout_rate = coalesce(dec_dropout_rate, dec.dropout_rate)
+    dec_temperature = coalesce(dec_temperature, dec.temperature)
+    graph_n_layers = coalesce(graph_n_layers, cfg.emb_graph.n_layers)
+
+    return create_encdec_graph_bert_cfg(
+        pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
+        inp_len=inp_len, dec_enhance_type=dec_enhance_type, dec_n_layers=dec_n_layers, dec_n_similar_layers=dec_n_similar_layers,
+        dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature, graph_n_layers=graph_n_layers,
+    )
+
+
 def copy_override_ranker_hg_cfg(
         cfg: RankerHgCfg, inp_len: int = 0, n_similar_layers: int = 1, reduct_type: HgReductType = HgReductType.Matmul,
         pos_enc_type: PosEncType = PosEncType.Num, dec_mlp_layers: Optional[str] = None, temperature: float = -1, dropout_rate: float = -1,
@@ -1256,6 +1281,56 @@ def gen_prefpostfix_encdec_bert(
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix
+
+
+def gen_prefpostfix_encdec_graph_bert(
+        model_cfg: EncdecGraphBertCfg, mask_cfg: Optional[MaskCfg],
+        pretrained_model_path: Optional[Path] = None, next_tok_pred: bool = False,
+    ) -> tuple[str, str]:
+    prefix, postfix_parts = f'encdecgraphbert', []
+    enc, dec, graph = model_cfg.enc_bert, model_cfg.dec_pyr, model_cfg.emb_graph
+
+    if pretrained_model_path is not None:
+        dname = pretrained_model_path.parent.name
+        m = checkpoint_fname_pat.match(dname)
+        assert m is not None, f'Cannot parse checkpoint filename "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
+        postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
+
+    brt_str = enc.pretrained_model_name.replace('-', '')
+    tkz_name = enc.tokenizer_name.replace('-', '')
+    if brt_str != tkz_name:
+        brt_str = f'{brt_str}-{tkz_name}'
+    postfix_parts.append(brt_str)
+
+    postfix_parts.append(f'd{enc.d_model}')
+    postfix_parts.append(f'emb{enc.emb_type.value.capitalize()}')
+    postfix_parts.append(f'inp{dec.inp_len}')
+    postfix_parts.append(f'lrs{dec.n_layers}x{dec.n_similar_layers}')
+    postfix_parts.append(f'enh{dec.enhance_type.value.capitalize()}')
+    postfix_parts.append(f'step{dec.step}')
+    postfix_parts.append(f'h{dec.n_heads}')
+
+    if mask_cfg is not None:
+        sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)
+        seq_freq, seq_max_frac = np.round(mask_cfg.seq_freq, 2), np.round(mask_cfg.seq_max_frac, 2)
+        postfix_parts.append(f'msk_sep_{sep_freq}x{sep_frac}_seq_{seq_freq}x{seq_max_frac}x{mask_cfg.seq_max_len}_last_{mask_cfg.n_last_toks}')
+
+    if next_tok_pred:
+        postfix_parts.append('ntp')
+
+    dp_rate = np.round(dec.dropout_rate, 2)
+    if dp_rate < 1e-6:
+        dp_rate = 0
+    postfix_parts.append(f'dp{dp_rate}')
+
+    temp = np.round(dec.temperature, 2)
+    postfix_parts.append(f't{temp}')
+
+    postfix_parts.append(f'graph_lrs{graph.n_layers}')
+
+    postfix = '-'.join(postfix_parts)
+    return prefix, postfix
+
 
 def gen_prefpostfix_ranker_hg(model_cfg: RankerHgCfg) -> tuple[str, str]:
     prefix = f'rankerhg'
