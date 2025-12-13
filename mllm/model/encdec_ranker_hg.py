@@ -17,7 +17,7 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 
-from mllm.config.model import EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+from mllm.config.model import EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
     parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
@@ -642,8 +642,6 @@ class EncdecBertAgg(nn.Module):
         return vocab_loss
 
 
-
-
 class EncdecGraphBert(nn.Module):
     cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
@@ -697,6 +695,11 @@ class EncdecGraphBert(nn.Module):
             checkpt_dict = checkpt_dict_renamed
 
             self.model.load_state_dict(checkpt_dict, strict=True)
+
+
+    def run_on_texts(self, texts: list[str]) -> dict[str, Tensor]:
+        enc_inputs = self.tkz(texts, padding=False)
+        
 
     def create_causal_mask(self, size: int, device: torch.device) -> Tensor:
         # (size, size)
