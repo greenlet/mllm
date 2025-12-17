@@ -30,6 +30,7 @@ torchtext==0.17.2
 torchvision
 transformers
 tqdm
+windows-curses
 
 
 # torch-scatter
