@@ -15,9 +15,10 @@ if '..' not in sys.path: sys.path.append('..')
 import numpy as np
 import torch
 from torch import nn, Tensor
+from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
-from mllm.config.model import EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+from mllm.config.model import EmbGraphCfg, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
     parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
@@ -642,20 +643,40 @@ class EncdecBertAgg(nn.Module):
         return vocab_loss
 
 
+class EmbGraph(nn.Module):
+    cfg: EmbGraphCfg
+
+    def __init__(self, cfg: EmbGraphCfg):
+        super().__init__()
+        self.cfg = cfg
+        layers = []
+        for i in range(cfg.n_layers):
+            dim_in = cfg.d_model if i == 0 else cfg.gnn_hidden_dim
+            dim_out = cfg.gnn_hidden_dim if i < cfg.n_layers - 1 else cfg.d_model
+            layer = GCNConv(dim_in, dim_out)
+            layers.append(layer)
+            if i < cfg.n_layers - 1:
+                layers.append(nn.ReLU())
+        self.graph = nn.Sequential(*layers)
+
+    def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
+        out = x
+        for layer in self.graph:
+            if isinstance(layer, GCNConv):
+                out = layer(out, edge_index)
+            else:
+                out = layer(out)
+        return out
+
+
 class EncdecGraphBert(nn.Module):
     cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
-    model: EncdecBert
-    enforce_enc_mask_understanding: bool
-    next_tok_pred: bool
-    masked_loss_for_encoder: bool
-    emb_loss_weight: float
-    vocab_loss_weight: float
-    total_loss_weight: float
+    enc: EncoderBert
+    dec: DecoderPyramid
 
     def __init__(
-            self, cfg: EncdecBertCfg, tkz: PreTrainedTokenizer, enforce_enc_mask_understanding: bool, next_tok_pred: bool,
-            masked_loss_for_encoder: bool, emb_loss_weight: float = 1.0, vocab_loss_weight: float = 1.0,
+            self, cfg: EncdecGraphBertCfg, tkz: PreTrainedTokenizer,
         ):
         super().__init__()
         self.cfg = cfg

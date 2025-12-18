@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, BinaryIO, Union, Generator
+from typing import Optional, BinaryIO, Union, Generator, Tuple, List, Any, Dict, Callable
 
 import numpy as np
 import pandas as pd
@@ -154,4 +155,86 @@ def split_df(df: pd.DataFrame, val_ratio: float) -> tuple[pd.DataFrame, pd.DataF
     n_val = int(n_total * val_ratio)
     n_train = n_total - n_val
     return df.iloc[:n_train], df.iloc[n_train:]
+
+
+@dataclass(kw_only=True)
+class TokensSubset:
+    toks_src: list[int]
+    inp_beg_ind: int
+    inp_end_ind: int
+    toks_inp: list[int]
+    cite_beg_ind: int = -1
+    cite_end_ind: int = -1
+    toks_cite: Optional[list[int]] = None
+
+
+class RandomInputTokenizer:
+    def __init__(self, tkz: PreTrainedTokenizer, max_len: int):
+        self.tkz = tkz
+        self.cite_beg_word, self.cite_end_word = '<cite>', '</cite>'
+        self.cite_beg_toks, self.cite_end_toks = self.tkz([self.cite_beg_word, self.cite_end_word], add_special_tokens=False).input_ids
+        self.max_len = max_len
+        self.n_inp_toks = self.max_len - 2  # -2 for CLS and SEP
+        self.n_cite_toks = self.n_inp_toks - len(self.cite_beg_toks) - len(self.cite_end_toks)
+        assert self.n_cite_toks > 0, f'max_len={self.max_len} must be greater then total size: {self.cite_beg_word}={len(self.cite_beg_toks)} + ' \
+            f'{self.cite_end_word}={len(self.cite_end_toks)} + {self.tkz.cls_token}=1 + {self.tkz.sep_token}=1'
+    
+    def __call__(self, texts: list[str], n_items_to_cite: int = 1) -> List[TokensSubset]:
+        batch_size = len(texts)
+        input_ids = self.tkz(texts, add_special_tokens=False).input_ids
+        batch: list[TokensSubset] = []
+        cite_inds = None
+        if n_items_to_cite > 0:
+            cite_inds = np.random.choice(batch_size, size=n_items_to_cite, replace=False)
+
+        for i in range(batch_size):
+            to_cite = (cite_inds is not None) and (i in cite_inds) or (n_items_to_cite < 0)
+            cur_len = len(input_ids[i])
+            n_inp_toks = self.n_inp_toks if not to_cite else self.n_cite_toks
+            if cur_len <= n_inp_toks:
+                inp_beg_ind = 0
+                inp_end_ind = cur_len
+            else:
+                max_beg_ind = cur_len - n_inp_toks
+                inp_beg_ind = np.random.randint(0, max_beg_ind + 1)
+                inp_end_ind = inp_beg_ind + n_inp_toks
+            toks_inp = input_ids[i][inp_beg_ind:inp_end_ind]
+            cite_beg_ind, cite_end_ind, toks_cite = -1, -1, None
+            if to_cite:
+                n_cite_toks = np.random.randint(1, len(toks_inp) + 1)
+                sub_off = np.random.randint(0, len(toks_inp) - n_cite_toks + 1)
+                toks_inp = [self.tkz.cls_token_id] + toks_inp[:sub_off] + self.cite_beg_toks + \
+                    toks_inp[sub_off:sub_off + n_cite_toks] + self.cite_end_toks + \
+                    toks_inp[sub_off + n_cite_toks:] + [self.tkz.sep_token_id]
+                cite_beg_ind = inp_beg_ind + sub_off
+                cite_end_ind = cite_beg_ind + n_cite_toks
+                toks_cite = input_ids[i][cite_beg_ind:cite_end_ind]
+            else:
+                toks_inp = [self.tkz.cls_token_id, *toks_inp, self.tkz.sep_token_id]
+            toks_sub = TokensSubset(
+                toks_src=input_ids[i],
+                inp_beg_ind=inp_beg_ind,
+                inp_end_ind=inp_end_ind,
+                toks_inp=toks_inp,
+                cite_beg_ind=cite_beg_ind,
+                cite_end_ind=cite_end_ind,
+                toks_cite=toks_cite,
+            )
+            batch.append(toks_sub)
+        return batch
+
+
+def batch_to_tensors(batch: List[TokensSubset], pad_token_id: int, device: Optional[torch.device] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    if device is None:
+        device = torch.device('cpu')
+    batch_size = len(batch)
+    max_len = max(len(item.toks_inp) for item in batch)
+    input_ids = torch.full((batch_size, max_len), pad_token_id, dtype=torch.long, device=device)
+    attention_mask = torch.zeros((batch_size, max_len), dtype=torch.long, device=device)
+    for i in range(batch_size):
+        cur_len = len(batch[i].toks_inp)
+        input_ids[i, :cur_len] = torch.tensor(batch[i].toks_inp, dtype=torch.long, device=device)
+        attention_mask[i, :cur_len] = 1
+    return input_ids, attention_mask
+
 

@@ -37,5 +37,5 @@ windows-curses
 # torch-sparse
 # torch-cluster
 # torch-spline-conv
-# torch-geometric
+torch-geometric
 
