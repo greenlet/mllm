@@ -4,6 +4,7 @@ from typing import Optional, cast
 
 from transformers import PreTrainedTokenizer
 
+from mllm.data.utils import RandomInputTokenizer, TokensSubset
 from mllm.model.bert import BertModel
 from mllm.model.bert_generation.modeling_bert_generation import BertGenerationEmbeddings
 from mllm.model.losses import EncdecMaskPadItemLoss, R2Loss, join_losses_dicts
@@ -649,23 +650,20 @@ class EmbGraph(nn.Module):
     def __init__(self, cfg: EmbGraphCfg):
         super().__init__()
         self.cfg = cfg
+        self.act = nn.ReLU()
         layers = []
         for i in range(cfg.n_layers):
             dim_in = cfg.d_model if i == 0 else cfg.gnn_hidden_dim
             dim_out = cfg.gnn_hidden_dim if i < cfg.n_layers - 1 else cfg.d_model
             layer = GCNConv(dim_in, dim_out)
             layers.append(layer)
-            if i < cfg.n_layers - 1:
-                layers.append(nn.ReLU())
         self.graph = nn.Sequential(*layers)
 
     def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
         out = x
         for layer in self.graph:
-            if isinstance(layer, GCNConv):
-                out = layer(out, edge_index)
-            else:
-                out = layer(out)
+            out = layer(out, edge_index)
+            out = self.act(out)
         return out
 
 
@@ -673,6 +671,7 @@ class EncdecGraphBert(nn.Module):
     cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
     enc: EncoderBert
+    emb_graph: EmbGraph
     dec: DecoderPyramid
 
     def __init__(
@@ -681,22 +680,10 @@ class EncdecGraphBert(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.tkz = tkz
-        self.model = EncdecBert(cfg, enc_only=False)
-        self.enforce_enc_mask_understanding = enforce_enc_mask_understanding
-        self.next_tok_pred = next_tok_pred
-        self.masked_loss_for_encoder = masked_loss_for_encoder
-        self.emb_loss_weight = emb_loss_weight
-        self.vocab_loss_weight = vocab_loss_weight
-        self.total_loss_weight = self.emb_loss_weight + self.vocab_loss_weight
-        self.vocab_loss_fn = EncdecMaskPadItemLoss(
-            msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
-            reg_weight=1, msk_weight=5, spc_weight=0.1,
-        )
-        if self.enforce_enc_mask_understanding:
-            self.emb_loss_fn = nn.CosineEmbeddingLoss()
-            # self.emb_loss_fn = nn.L1Loss()
-            # self.emb_loss_fn = nn.MSELoss()
-            # self.emb_loss_fn = R2Loss()
+        self.enc = EncoderBert(cfg.enc_bert)
+        self.emb_graph = EmbGraph(cfg.emb_graph)
+        self.dec = DecoderPyramid(cfg.dec_pyr)
+        self.rnd_tkz = RandomInputTokenizer(tkz, max_len=cfg.enc_bert.inp_len)
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
         if pretrained_model_path and pretrained_model_path.exists():
@@ -717,9 +704,11 @@ class EncdecGraphBert(nn.Module):
 
             self.model.load_state_dict(checkpt_dict, strict=True)
 
+    def create_cite_graph_edges(self, batch: list[TokensSubset]) -> Tensor:
+        pass
 
-    def run_on_texts(self, texts: list[str]) -> dict[str, Tensor]:
-        enc_inputs = self.tkz(texts, padding=False)
+    def run_cite_one_text(self, texts: list[str]) -> dict[str, Tensor]:
+        batch = self.rnd_tkz(texts, n_items_to_cite=1)
         
 
     def create_causal_mask(self, size: int, device: torch.device) -> Tensor:
@@ -730,93 +719,7 @@ class EncdecGraphBert(nn.Module):
     # inp_masked_toks: (batch_size, inp_len)
     # inp_toks: (batch_size, inp_len)
     def forward(self, inp_masked_toks, inp_toks: Tensor) -> dict[str, Tensor]:
-        if self.next_tok_pred:
-            assert not self.enforce_enc_mask_understanding, 'Next token prediction together with enforcing encoder masked token understanding is not supported yet'
-            batch_size, inp_len = inp_toks.shape
-            device = inp_toks.device
-            # (inp_len, inp_len)
-            causal_mask = self.create_causal_mask(inp_len, device)
-            # (1, inp_len, inp_len)
-            causal_mask = causal_mask.unsqueeze(0)
-            # out_enc_causal: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
-            # out_dec_causal: (batch_size, inp_len, n_vocab)
-            out_enc_causal, out_dec_causal = self.model(inp_toks, causal_mask, enc_only=False)
-
-            # tgt_toks: (batch_size, inp_len - 1)
-            tgt_toks = inp_toks[:, 1:].contiguous()
-            # logits: (batch_size, inp_len - 1, n_vocab)
-            logits = out_dec_causal[:, :-1, :].contiguous()
-
-            loss = torch.tensor(0.0, device=device)
-            for ib in range(batch_size):
-                n_nonpad = (tgt_toks[ib, :] != self.tkz.pad_token_id).sum().item()
-                tgt_toks_i = tgt_toks[ib, :n_nonpad]
-                logits_i = logits[ib, :n_nonpad, :]
-                loss_i = F.cross_entropy(logits_i, tgt_toks_i, reduction='mean')
-                loss += loss_i
-            loss /= batch_size
-            return {'loss': loss}
-
-        if self.enforce_enc_mask_understanding:
-            # (batch_size, inp_len)
-            inp_att_mask = inp_toks != self.tkz.pad_token_id
-            
-            # out_enc: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
-            # out_dec: (batch_size, inp_len, n_vocab)
-            out_enc, out_dec = self.model(inp_toks, inp_att_mask, enc_only=True)
-            # out_enc_last_hidden_state: (batch_size, inp_len, d_model)
-            # out_enc_pooler: (batch_size, d_model)
-            out_enc_last_hidden_state, out_enc_pooler = out_enc
-            # out_enc: (batch_size, d_model)
-            out_enc_emb = out_enc_last_hidden_state[:, 0]
-            
-            # (batch_size, inp_len)
-            inp_masked_att_mask = inp_masked_toks != self.tkz.pad_token_id
-            # out_enc_masked: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
-            # out_dec_masked: (batch_size, inp_len, n_vocab)
-            out_enc_masked, out_dec_masked = self.model(inp_masked_toks, inp_masked_att_mask, enc_only=False)
-            # out_enc_masked_last_hidden_state: (batch_size, inp_len, d_model)
-            # out_enc_masked_pooler: (batch_size, d_model)
-            out_enc_masked_last_hidden_state, out_enc_masked_pooler = out_enc_masked
-            # out_enc_masked_emb: (batch_size, d_model)
-            out_enc_masked_emb = out_enc_masked_last_hidden_state[:, 0]
-            
-            vocab_loss_dict = self.vocab_loss_fn(out_dec_masked, inp_masked_toks, inp_toks)
-            # (1,)
-            vocab_loss = vocab_loss_dict['loss']
-
-            # emb_loss = self.emb_loss_fn(out_enc_masked_emb, out_enc_emb)
-            emb_loss = self.emb_loss_fn(out_enc_masked_emb, out_enc_emb, torch.ones((out_enc_emb.shape[0],), device=out_enc.device))
-
-            # loss = (self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss) / self.total_loss_weight
-            loss = self.emb_loss_weight * emb_loss + self.vocab_loss_weight * vocab_loss
-            vocab_loss_dict = {f'vocab_{k}': v for k, v in vocab_loss_dict.items()}
-            return {'loss': loss, 'emb_loss': emb_loss, **vocab_loss_dict}
-        
-        # (batch_size, inp_len)
-        inp_masked_att_mask = inp_masked_toks != self.tkz.pad_token_id
-        # out_enc: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
-        # out_dec: (batch_size, inp_len, n_vocab)
-        out_enc, out_dec = self.model(inp_masked_toks, inp_masked_att_mask)
-        # out_enc_last_hidden_state: (batch_size, inp_len, d_model)
-        # out_enc_pooler: (batch_size, d_model)
-        out_enc_last_hidden_state, out_enc_pooler = out_enc
-        # out_enc_emb: (batch_size, d_model)
-        out_enc_emb = out_enc_last_hidden_state[:, 0]
-
-        if self.masked_loss_for_encoder:
-            # (batch_size, inp_len - 1, n_vocab)
-            out_logits = self.model.dec_pyr.vocab_decoder(out_enc_last_hidden_state[:, 1:])
-            # (1,)
-            enc_loss = self.vocab_loss_fn(out_logits, inp_masked_toks[:, 1:], inp_toks[:, 1:])
-            dec_loss = self.vocab_loss_fn(out_dec, inp_masked_toks, inp_toks)
-            loss = (enc_loss['loss'] + dec_loss['loss']) / 2
-            encdec_loss = join_losses_dicts(['enc', 'dec'], [enc_loss, dec_loss])
-            return {'loss': loss, **encdec_loss}
-
-        # (1,)
-        vocab_loss = self.vocab_loss_fn(out_dec, inp_masked_toks, inp_toks)
-        return vocab_loss
+      pass
 
 
 
