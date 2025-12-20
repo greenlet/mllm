@@ -224,6 +224,69 @@ class RandomInputTokenizer:
         return batch
 
 
+@dataclass(kw_only=True)
+class TokensSubsetV2:
+    toks_src: list[int]
+    inp_beg_ind: int
+    inp_end_ind: int
+    toks_inp: list[int]
+    cite_beg_ind: int = -1
+    cite_end_ind: int = -1
+    toks_cite: Optional[list[int]] = None
+
+
+class RandomInputTokenizerV2:
+    def __init__(self, tkz: PreTrainedTokenizer, max_len: int,n_random_toks: int, n_special_toks: int = 1000):
+        self.tkz = tkz
+        self.max_len = max_len
+        self.n_random_toks = n_random_toks
+        self.n_special_toks = n_special_toks
+        self.shuffled_tok_ids = np.random.permutation(np.arange(self.n_special_toks, len(tkz)))  # Exclude special tokens
+        self.shuffled_tok_cur_ind = 0
+        self.n_input_toks = self.max_len - 2  # -2 for CLS and SEP
+        self.n_cite_toks = self.n_input_toks - self.n_random_toks
+        assert self.n_cite_toks > 0, f'max_len={self.max_len} must be greater then total size: n_random_toks*2={self.n_random_toks * 2} + ' \
+            f'{self.tkz.cls_token}=1 + {self.tkz.sep_token}=1
+
+    
+    def _next_random_tokens(self) -> list[int]:
+        toks = self.shuffled_tok_ids[self.shuffled_tok_cur_ind:self.shuffled_tok_cur_ind + self.n_random_toks].tolist()
+        self.shuffled_tok_cur_ind += len(toks)
+        if self.shuffled_tok_cur_ind == len(self.shuffled_tok_ids):
+            if len(toks) < self.n_random_toks:
+                n = self.n_random_toks - len(toks)
+                toks += self.shuffled_tok_ids[:n].tolist()
+            np.random.shuffle(self.shuffled_tok_ids)
+            self.shuffled_tok_cur_ind = 0
+        return toks
+
+    
+    def __call__(self, texts: list[str]) -> List[TokensSubset]:
+        batch_size = len(texts)
+        input_ids = self.tkz(texts, add_special_tokens=False).input_ids
+        batch: list[TokensSubset] = []
+
+        for i in range(batch_size):
+            cur_len = len(input_ids[i])
+            if cur_len <= self.n_inp_toks:
+                inp_beg_ind = 0
+                inp_end_ind = cur_len
+            else:
+                max_beg_ind = cur_len - self.n_inp_toks
+                inp_beg_ind = np.random.randint(0, max_beg_ind + 1)
+                inp_end_ind = inp_beg_ind + self.n_inp_toks
+            toks_inp = input_ids[i][inp_beg_ind:inp_end_ind]
+            toks_inp = [self.tkz.cls_token_id] + toks_inp + [self.tkz.sep_token_id]
+            toks_sub = TokensSubset(
+                toks_src=input_ids[i],
+                inp_beg_ind=inp_beg_ind,
+                inp_end_ind=inp_end_ind,
+                toks_inp=toks_inp,
+            )
+            batch.append(toks_sub)
+        return batch
+
+
 def batch_to_tensors(batch: List[TokensSubset], pad_token_id: int, device: Optional[torch.device] = None) -> Tuple[torch.Tensor, torch.Tensor]:
     if device is None:
         device = torch.device('cpu')
