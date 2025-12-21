@@ -230,23 +230,25 @@ class TokensSubsetV2:
     inp_beg_ind: int
     inp_end_ind: int
     toks_inp: list[int]
-    cite_beg_ind: int = -1
-    cite_end_ind: int = -1
-    toks_cite: Optional[list[int]] = None
+    cite_beg_ind: int
+    cite_end_ind: int
+    toks_cite: list[int]
+    toks_cite_beg: list[int]
+    toks_cite_end: list[int]
 
 
 class RandomInputTokenizerV2:
-    def __init__(self, tkz: PreTrainedTokenizer, max_len: int,n_random_toks: int, n_special_toks: int = 1000):
+    def __init__(self, tkz: PreTrainedTokenizer, max_len: int, n_random_toks: int, n_special_toks: int = 1000):
         self.tkz = tkz
         self.max_len = max_len
         self.n_random_toks = n_random_toks
         self.n_special_toks = n_special_toks
         self.shuffled_tok_ids = np.random.permutation(np.arange(self.n_special_toks, len(tkz)))  # Exclude special tokens
         self.shuffled_tok_cur_ind = 0
-        self.n_input_toks = self.max_len - 2  # -2 for CLS and SEP
-        self.n_cite_toks = self.n_input_toks - self.n_random_toks
+        self.n_inp_toks = self.max_len - 2  # -2 for CLS and SEP
+        self.n_cite_toks = self.n_inp_toks - 2 * self.n_random_toks
         assert self.n_cite_toks > 0, f'max_len={self.max_len} must be greater then total size: n_random_toks*2={self.n_random_toks * 2} + ' \
-            f'{self.tkz.cls_token}=1 + {self.tkz.sep_token}=1
+            f'{self.tkz.cls_token}=1 + {self.tkz.sep_token}=1'
 
     
     def _next_random_tokens(self) -> list[int]:
@@ -268,20 +270,37 @@ class RandomInputTokenizerV2:
 
         for i in range(batch_size):
             cur_len = len(input_ids[i])
-            if cur_len <= self.n_inp_toks:
+            n_inp_toks = self.n_cite_toks
+            if cur_len <= n_inp_toks:
                 inp_beg_ind = 0
                 inp_end_ind = cur_len
             else:
-                max_beg_ind = cur_len - self.n_inp_toks
+                max_beg_ind = cur_len - n_inp_toks
                 inp_beg_ind = np.random.randint(0, max_beg_ind + 1)
-                inp_end_ind = inp_beg_ind + self.n_inp_toks
+                inp_end_ind = inp_beg_ind + n_inp_toks
             toks_inp = input_ids[i][inp_beg_ind:inp_end_ind]
-            toks_inp = [self.tkz.cls_token_id] + toks_inp + [self.tkz.sep_token_id]
-            toks_sub = TokensSubset(
+
+            n_cite_toks = np.random.randint(1, len(toks_inp) + 1)
+            sub_off = np.random.randint(0, len(toks_inp) - n_cite_toks + 1)
+            toks_cite_beg = self._next_random_tokens()
+            toks_cite_end = self._next_random_tokens()
+            toks_inp = [self.tkz.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
+                toks_inp[sub_off:sub_off + n_cite_toks] + toks_cite_end + \
+                toks_inp[sub_off + n_cite_toks:] + [self.tkz.sep_token_id]
+            cite_beg_ind = inp_beg_ind + sub_off
+            cite_end_ind = cite_beg_ind + n_cite_toks
+            toks_cite = input_ids[i][cite_beg_ind:cite_end_ind]
+
+            toks_sub = TokensSubsetV2(
                 toks_src=input_ids[i],
                 inp_beg_ind=inp_beg_ind,
                 inp_end_ind=inp_end_ind,
                 toks_inp=toks_inp,
+                cite_beg_ind=cite_beg_ind,
+                cite_end_ind=cite_end_ind,
+                toks_cite=toks_cite,
+                toks_cite_beg=toks_cite_beg,
+                toks_cite_end=toks_cite_end,
             )
             batch.append(toks_sub)
         return batch
