@@ -235,6 +235,8 @@ class TokensSubsetV2:
     toks_cite: list[int]
     toks_cite_beg: list[int]
     toks_cite_end: list[int]
+    prompt: str
+    toks_prompt: list[int]
 
 
 class RandomInputTokenizerV2:
@@ -249,6 +251,11 @@ class RandomInputTokenizerV2:
         self.n_cite_toks = self.n_inp_toks - 2 * self.n_random_toks
         assert self.n_cite_toks > 0, f'max_len={self.max_len} must be greater then total size: n_random_toks*2={self.n_random_toks * 2} + ' \
             f'{self.tkz.cls_token}=1 + {self.tkz.sep_token}=1'
+        self.prompt_template = 'Cite tag begin: "{}". Cite tag end: "{}". Produce output text between these tags.'
+        prompt = self.prompt_template.format('a b c', 'd e f')
+        toks_prompt = self.tkz(prompt, add_special_tokens=True).input_ids
+        assert len(toks_prompt) < self.max_len, f'Prompt length {len(toks_prompt)} must be less than max_len={self.max_len}. Prompt template: {self.prompt_template} ' \
+            f'(example: {prompt}) = {len(toks_prompt)} tokens >= max tokens = {self.max_len})'
 
     
     def _next_random_tokens(self) -> list[int]:
@@ -291,6 +298,12 @@ class RandomInputTokenizerV2:
             cite_end_ind = cite_beg_ind + n_cite_toks
             toks_cite = input_ids[i][cite_beg_ind:cite_end_ind]
 
+            prompt = self.prompt_template.format(
+                ' '.join(self.tkz.convert_ids_to_tokens(toks_cite_beg)),
+                ' '.join(self.tkz.convert_ids_to_tokens(toks_cite_end))
+            )
+            toks_prompt = self.tkz(prompt, add_special_tokens=True).input_ids
+
             toks_sub = TokensSubsetV2(
                 toks_src=input_ids[i],
                 inp_beg_ind=inp_beg_ind,
@@ -301,12 +314,14 @@ class RandomInputTokenizerV2:
                 toks_cite=toks_cite,
                 toks_cite_beg=toks_cite_beg,
                 toks_cite_end=toks_cite_end,
+                prompt=prompt,
+                toks_prompt=toks_prompt,
             )
             batch.append(toks_sub)
         return batch
 
 
-def batch_to_tensors(batch: List[TokensSubset], pad_token_id: int, device: Optional[torch.device] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+def tokens_subsets_to_tensors(batch: List[TokensSubset], pad_token_id: int, device: Optional[torch.device] = None) -> Tuple[torch.Tensor, torch.Tensor]:
     if device is None:
         device = torch.device('cpu')
     batch_size = len(batch)
@@ -318,5 +333,22 @@ def batch_to_tensors(batch: List[TokensSubset], pad_token_id: int, device: Optio
         input_ids[i, :cur_len] = torch.tensor(batch[i].toks_inp, dtype=torch.long, device=device)
         attention_mask[i, :cur_len] = 1
     return input_ids, attention_mask
+
+
+def tokens_subsets_v2_to_tensors(batch: List[TokensSubset], tkz: PreTrainedTokenizer, device: Optional[torch.device] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    if device is None:
+        device = torch.device('cpu')
+    batch_size = len(batch)
+    max_len = max(max(len(item.toks_inp), len(item.toks_prompt)) for item in batch)
+    input_ids = torch.full((batch_size * 2, max_len), tkz.pad_token_id, dtype=torch.long, device=device)
+    attention_mask = torch.zeros((batch_size * 2, max_len), dtype=torch.long, device=device)
+    for i in range(batch_size):
+        toks_inp_len, toks_prompt_len = len(batch[i].toks_inp), len(batch[i].toks_prompt)
+        input_ids[i, :toks_inp_len] = torch.tensor(batch[i].toks_inp, dtype=torch.long, device=device)
+        attention_mask[i, :toks_inp_len] = 1
+        input_ids[batch_size + i, :toks_prompt_len] = torch.tensor(batch[i].toks_prompt, dtype=torch.long, device=device)
+        attention_mask[batch_size + i, :toks_prompt_len] = 1
+    return input_ids, attention_mask
+
 
 
