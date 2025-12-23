@@ -335,7 +335,7 @@ def tokens_subsets_to_tensors(batch: List[TokensSubset], pad_token_id: int, devi
     return input_ids, attention_mask
 
 
-def tokens_subsets_v2_to_tensors(batch: List[TokensSubset], tkz: PreTrainedTokenizer, device: Optional[torch.device] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+def tokens_subsets_v2_to_tensors(batch: List[TokensSubsetV2], tkz: PreTrainedTokenizer, device: Optional[torch.device] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if device is None:
         device = torch.device('cpu')
     batch_size = len(batch)
@@ -348,7 +348,12 @@ def tokens_subsets_v2_to_tensors(batch: List[TokensSubset], tkz: PreTrainedToken
         attention_mask[i, :toks_inp_len] = 1
         input_ids[batch_size + i, :toks_prompt_len] = torch.tensor(batch[i].toks_prompt, dtype=torch.long, device=device)
         attention_mask[batch_size + i, :toks_prompt_len] = 1
-    return input_ids, attention_mask
 
+    edge_inds = torch.stack([
+        torch.arange(batch_size, device=device),
+        torch.full((batch_size,), batch_size, device=device),
+    ])
+
+    return input_ids, attention_mask, edge_inds
 
 
