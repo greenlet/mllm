@@ -1,10 +1,10 @@
 import sys
 from pathlib import Path
-from typing import Optional, cast
+from typing import List, Optional, cast
 
 from transformers import PreTrainedTokenizer
 
-from mllm.data.utils import RandomInputTokenizer, TokensSubset
+from mllm.data.utils import RandomInputTokenizer, TokensSubset, TokensSubsetV2, tokens_subsets_v2_to_tensors
 from mllm.model.bert import BertModel
 from mllm.model.bert_generation.modeling_bert_generation import BertGenerationEmbeddings
 from mllm.model.losses import EncdecMaskPadItemLoss, R2Loss, join_losses_dicts
@@ -471,7 +471,7 @@ class EncdecBert(nn.Module):
     # inp: [batch_size, inp_len]
     # mask: [batch_size, inp_len]
     def forward(self, inp: Tensor, mask: Tensor, enc_only: bool = False) -> tuple[Tensor, Optional[Tensor]]:
-        # out_dec: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
+        # out_enc: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
         out_enc = self.enc_bert(inp, mask)
         # out_enc_last_hidden_state: (batch_size, inp_len, d_model)
         # out_enc_pooler: (batch_size, d_model)
@@ -670,19 +670,21 @@ class EmbGraph(nn.Module):
 class EncdecGraphBert(nn.Module):
     cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
+    device: torch.device
     enc: EncoderBert
     emb_graph: EmbGraph
     dec: DecoderPyramid
 
     def __init__(
-            self, cfg: EncdecGraphBertCfg, tkz: PreTrainedTokenizer,
+            self, cfg: EncdecGraphBertCfg, tkz: PreTrainedTokenizer, device: Optional[torch.device] = None,
         ):
         super().__init__()
         self.cfg = cfg
         self.tkz = tkz
-        self.enc = EncoderBert(cfg.enc_bert)
-        self.emb_graph = EmbGraph(cfg.emb_graph)
-        self.dec = DecoderPyramid(cfg.dec_pyr)
+        self.device = device if device is not None else torch.device('cpu')
+        self.enc = EncoderBert(cfg.enc_bert).to(self.device)
+        self.emb_graph = EmbGraph(cfg.emb_graph).to(self.device)
+        self.dec = DecoderPyramid(cfg.dec_pyr).to(self.device)
         self.rnd_tkz = RandomInputTokenizer(tkz, max_len=cfg.enc_bert.inp_len)
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
@@ -704,11 +706,42 @@ class EncdecGraphBert(nn.Module):
 
             self.model.load_state_dict(checkpt_dict, strict=True)
 
-    def create_cite_graph_edges(self, batch: list[TokensSubset]) -> Tensor:
-        pass
+    # inp: (batch_size, inp_len)
+    # inp_mask: (batch_size, inp_len)
+    # returns: (batch_size, inp_len, d_model)
+    def run_enc(self, inp: Tensor, inp_mask: Tensor) -> Tensor:
+        # out_enc: tuple[(batch_size, inp_len, d_model), (batch_size, d_model)]
+        out_enc = self.enc(inp, inp_mask)
+        # out_enc_last_hidden_state: (batch_size, inp_len, d_model)
+        # out_enc_pooler: (batch_size, d_model)
+        out_enc_last_hidden_state, out_enc_pooler = out_enc
+        return out_enc_last_hidden_state
 
-    def run_cite_one_text(self, texts: list[str]) -> dict[str, Tensor]:
-        batch = self.rnd_tkz(texts, n_items_to_cite=1)
+    def run_on_text_citation(self, batch: List[TokensSubsetV2]) -> dict[str, Tensor]:
+        batch_size = len(batch)
+        # input_ids: (2 * batch_size, inp_len)
+        # attention_mask: (2 * batch_size, inp_len)
+        # edge_inds: (2, batch_size + 1)
+        input_ids, attention_mask, edge_inds = tokens_subsets_v2_to_tensors(batch, tkz=self.tkz, device=self.device)
+        # enc_last_hidden_state: (2 * batch_size, inp_len, d_model)
+        enc_last_hidden_state = self.run_enc(input_ids, attention_mask)
+        # text_enc_embs: (batch_size, d_model)
+        text_enc_embs = enc_last_hidden_state[:batch_size, 0]
+        # prompt_enc_embs: (batch_size, d_model)
+        prompt_enc_embs = enc_last_hidden_state[batch_size:, 0]
+        out_graph_embs = []
+        for ib in range(batch_size):
+            graph_vert_embs = torch.concatenate([text_enc_embs, prompt_enc_embs[ib:ib + 1]], dim=0)
+            # graph_out: (batch_size + 1, d_model)
+            graph_embs = self.emb_graph(graph_vert_embs, edge_inds)
+            # graph_emb: (d_model,)
+            graph_emb = graph_embs[-1, :]
+            out_graph_embs.append(graph_emb)
+        # out_graph_embs: (batch_size, d_model)
+        out_graph_embs = torch.stack(out_graph_embs, dim=0)
+        # out_logits: (batch_size, inp_len, n_vocab)
+        out_logits = self.dec(out_graph_embs)
+        
         
 
     def create_causal_mask(self, size: int, device: torch.device) -> Tensor:
