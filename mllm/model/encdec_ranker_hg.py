@@ -717,7 +717,7 @@ class EncdecGraphBert(nn.Module):
         out_enc_last_hidden_state, out_enc_pooler = out_enc
         return out_enc_last_hidden_state
 
-    def run_on_text_citation(self, batch: List[TokensSubsetV2]) -> dict[str, Tensor]:
+    def run_on_text_citation(self, batch: List[TokensSubsetV2]) -> Tensor:
         batch_size = len(batch)
         # input_ids: (2 * batch_size, inp_len)
         # attention_mask: (2 * batch_size, inp_len)
@@ -741,7 +741,7 @@ class EncdecGraphBert(nn.Module):
         out_graph_embs = torch.stack(out_graph_embs, dim=0)
         # out_logits: (batch_size, inp_len, n_vocab)
         out_logits = self.dec(out_graph_embs)
-        
+        return out_logits
         
 
     def create_causal_mask(self, size: int, device: torch.device) -> Tensor:
