@@ -598,7 +598,7 @@ def create_encdec_graph_bert_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
         inp_len = 128, dec_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
         dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
-        n_graph_layers: int = 1, gnn_hidden_dim: int = 712,
+        n_graph_layers: int = 1, gnn_hidden_dim: int = 0,
 ) -> EncdecGraphBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -648,6 +648,7 @@ def create_encdec_graph_bert_cfg(
         d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_n_layers, dropout_rate=dec_dropout_rate, n_vocab=n_vocab,
         n_similar_layers=dec_n_similar_layers, enhance_type=dec_enhance_type, temperature=dec_temperature,
     )
+    gnn_hidden_dim = gnn_hidden_dim if gnn_hidden_dim > 0 else d_model
     cfg_graph = EmbGraphCfg(
         n_layers=n_graph_layers, d_model=d_model, gnn_hidden_dim=gnn_hidden_dim,
     )

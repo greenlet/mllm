@@ -4,8 +4,6 @@ from typing import Any, Optional
 import shutil
 
 from datasets import Dataset
-import numpy as np
-import pandas as pd
 from pydantic import BaseModel, Field
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
@@ -14,8 +12,6 @@ import torch.utils.tensorboard as tb
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.nn as nn
-from torch.utils.data import DataLoader, DistributedSampler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
@@ -23,16 +19,12 @@ from transformers import AutoTokenizer
 from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
     gen_prefpostfix_encdec_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, masked_loss_for_encoder_ARG
-from mllm.model.encdec_ranker_hg import EncdecBert, EncdecBertAgg
-from mllm.model.losses import EncdecMaskPadBatchLoss, EncdecPadBatchLoss, EncdecMaskPadItemLoss, LossesStats, accum_losses, log_losses_to_tb, losses_to_str
+from mllm.model.encdec_ranker_hg import EncdecBertAgg
+from mllm.model.losses import LossesStats
 from mllm.train.mask_utils import MaskCfg
-from mllm.train.utils import find_create_train_path, log_weights_grads_stats, get_wiki_ds_batch_iterators2
-from mllm.train.encdec_bert import create_dataloader, create_dataloader_iter, load_masked_wiki_dataset
-
-
-enforce_encoder_mask_understanding_ARG = '--enforce-encoder-mask-understanding', 'Enforce encoder embeddings for both unmasked and masked inputs '
-'to be similar'
-
+from mllm.train.utils import find_create_train_path, log_weights_grads_stats
+from mllm.train.encdec_bert import create_dataloader_iter, load_masked_wiki_dataset
+from mllm.utils.utils import rethrow
 
 
 class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
@@ -92,6 +84,22 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Number of consecutive similar attention layers for each decoder level.',
         cli=('--dec-n-similar-layers',),
     )
+    dec_dropout_rate: float = Field(
+        0.0,
+        required=False,
+        description='Decoder dropout rate.',
+        cli=('--dec-dropout-rate',),
+    )
+    n_graph_layers: int = Field(
+        1,
+        description='Number of graph layers.',
+        cli=('--n-graph-layers',),
+    )
+    gnn_hidden_dim: int = Field(
+        -1,
+        description='Hidden dimension size for GNN layers. If set to -1, defaults to model dimension.',
+        cli=('--gnn-hidden-dim',),
+    )
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
@@ -142,12 +150,6 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     def masked_loss_for_encoder(self) -> bool:
         return is_arg_true(masked_loss_for_encoder_ARG[0], self.masked_loss_for_encoder_STR)
 
-    dec_dropout_rate: float = Field(
-        0.0,
-        required=False,
-        description='Decoder dropout rate.',
-        cli=('--dec-dropout-rate',),
-    )
     docs_batch_size: int = Field(
         3,
         description='Documents batch size. Must be greater or equal than 2.',
@@ -188,12 +190,6 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Path to EncdecHg model train directory.',
         cli=('--pretrained-model-path',),
     )
-
-    enforce_encoder_mask_understanding_STR: str = create_bool_str_field(*enforce_encoder_mask_understanding_ARG)
-    @property
-    def enforce_encoder_mask_understanding(self) -> bool:
-        return is_arg_true(enforce_encoder_mask_understanding_ARG[0], self.enforce_encoder_mask_understanding_STR)
-
     world_size: int = Field(
         1,
         description='Number of GPU instances to use for distributed training.',
@@ -447,9 +443,7 @@ def main(args: ArgsEncdecGraphBertMultigpuTrain) -> int:
 
 
 if __name__ == '__main__':
-    def rethrow(e):
-        raise e
     run_and_exit(
-        ArgsEncdecGraphBertMultigpuTrain, main, 'Train Encoder-Decoder Hourglass model multi GPU training.', exception_handler=rethrow,
+        ArgsEncdecGraphBertMultigpuTrain, main, 'Train Encoder-Graph-Decoder BERT model multi GPU training.', exception_handler=rethrow,
     )
 
