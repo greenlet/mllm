@@ -12,7 +12,7 @@ from mllm.data.dsqrels import DsQrels
 from mllm.data.fever.dsfever import load_dsqrels_fever
 from mllm.data.msmarco.dsmsmarco import load_dsqrels_msmarco
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer
-from mllm.train.mask_utils import mask_random_tokens, mask_random_words
+from mllm.train.mask_utils import MaskCfg, mask_random_tokens, mask_random_words, mask_random_words_v2
 
 
 def load_qrels_datasets(
@@ -240,7 +240,7 @@ class TokensSubsetV2:
 
 
 class RandomInputTokenizerV2:
-    def __init__(self, tkz: PreTrainedTokenizer, max_len: int, n_random_toks: int, n_special_toks: int = 1000):
+    def __init__(self, tkz: PreTrainedTokenizer, max_len: int, n_random_toks: int, n_special_toks: int = 1000, mask_cfg: Optional[MaskCfg] = None):
         self.tkz = tkz
         self.max_len = max_len
         self.n_random_toks = n_random_toks
@@ -256,6 +256,7 @@ class RandomInputTokenizerV2:
         toks_prompt = self.tkz(prompt, add_special_tokens=True).input_ids
         assert len(toks_prompt) < self.max_len, f'Prompt length {len(toks_prompt)} must be less than max_len={self.max_len}. Prompt template: {self.prompt_template} ' \
             f'(example: {prompt}) = {len(toks_prompt)} tokens >= max tokens = {self.max_len})'
+        self.mask_cfg = mask_cfg
 
     
     def _next_random_tokens(self) -> list[int]:
@@ -270,10 +271,10 @@ class RandomInputTokenizerV2:
         return toks
 
     
-    def __call__(self, texts: list[str]) -> List[TokensSubset]:
+    def __call__(self, texts: list[str]) -> List[TokensSubsetV2]:
         batch_size = len(texts)
         input_ids = self.tkz(texts, add_special_tokens=False).input_ids
-        batch: list[TokensSubset] = []
+        batch: list[TokensSubsetV2] = []
 
         for i in range(batch_size):
             cur_len = len(input_ids[i])
@@ -291,12 +292,16 @@ class RandomInputTokenizerV2:
             sub_off = np.random.randint(0, len(toks_inp) - n_cite_toks + 1)
             toks_cite_beg = self._next_random_tokens()
             toks_cite_end = self._next_random_tokens()
+            toks_cite = input_ids[i][cite_beg_ind:cite_end_ind]
+
+            toks_cite_masked, _ = mask_random_words_v2(np.array(toks_cite), self.tkz, self.mask_cfg)
+            toks_cite_masked = toks_cite_masked.tolist()
+            
             toks_inp = [self.tkz.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
-                toks_inp[sub_off:sub_off + n_cite_toks] + toks_cite_end + \
+                toks_cite_masked + toks_cite_end + \
                 toks_inp[sub_off + n_cite_toks:] + [self.tkz.sep_token_id]
             cite_beg_ind = inp_beg_ind + sub_off
             cite_end_ind = cite_beg_ind + n_cite_toks
-            toks_cite = input_ids[i][cite_beg_ind:cite_end_ind]
 
             prompt = self.prompt_template.format(
                 ' '.join(self.tkz.convert_ids_to_tokens(toks_cite_beg)),

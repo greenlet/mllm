@@ -28,14 +28,36 @@ from mllm.train.mask_utils import MaskCfg, mask_random_words_v2
 @dataclass(kw_only=True)
 class MaskedCiteBatch:
     tokens_subsets: List[TokensSubsetV2]
-    # (2 * batch_size, seq_len)
-    input_ids: torch.Tensor
-    attention_mask: torch.Tensor
+    # (batch_size, seq_len)
+    inp_toks: torch.Tensor
+    # (batch_size, seq_len)
+    prompts_toks: torch.Tensor
+    # (batch_size, seq_len)
+    cites_toks: torch.Tensor
+    # (batch_size, seq_len)
+    inp_att_mask: torch.Tensor
+    # (batch_size, seq_len)
+    prompts_att_mask: torch.Tensor
+    # (batch_size, seq_len)
+    cites_att_mask: torch.Tensor
+    # (2, batch_size + 1)
     edge_inds: torch.Tensor
 
 
 class MaskedCiteDataset:
-    def __init__(self, dataset: Dataset, tkz: PreTrainedTokenizer, max_seq_len: int, mask_cfg: Optional[MaskCfg] = None):
+    def __init__(
+            self, dataset: Dataset, tkz: PreTrainedTokenizer, max_seq_len: int, n_special_toks: int = 1000, mask_cfg: Optional[MaskCfg] = None,
+            device: Optional[torch.device] = None,
+        ):
+        '''Dataset for masked citation prediction with random input tokens.
+         Args:
+            dataset: HuggingFace dataset with 'text' field.
+            tkz: PreTrainedTokenizer for tokenization.
+            max_seq_len: Maximum sequence length.
+            n_special_toks: Number of special tokens reserved in tokenizer. 1000 is the number of first BERT token ids reserved for special or unused tokens.
+            mask_cfg: Optional MaskCfg for citation masking.
+            device: Optional torch.device to move batches to.
+        '''
         self.dataset = dataset
         self.tkz = tkz
         self.size = len(self.dataset)
@@ -43,47 +65,25 @@ class MaskedCiteDataset:
         self.max_seq_len = max_seq_len
         self.mask_token_id = tkz.mask_token_id
         self.mask_cfg = mask_cfg
+        self.device = device if device is not None else torch.device('cpu')
         self.inds = np.arange(self.size)
-        n_special_toks = 1000  # first 1000 BERT tokens reserved for special or unused tokens
         self.random_inp_tkz = RandomInputTokenizerV2(
-            tkz, max_len=max_seq_len, n_random_toks=3, n_special_toks=n_special_toks,
+            tkz, max_len=max_seq_len, n_random_toks=3, n_special_toks=n_special_toks, mask_cfg=mask_cfg,
         )
 
     def __len__(self):
         return self.size
 
-    def extract_masked_input(self, item: Dict) -> Dict[str, Any]:
-        toks = self.tkz(item['text'], add_special_tokens=True).input_ids
-        cur_len = len(toks)
-        max_seq_len = min(cur_len, self.max_seq_len)
-        input_ids = toks
-        if max_seq_len < cur_len:
-            ind_off_max = cur_len - max_seq_len + 1
-            ind_off = np.random.randint(0, ind_off_max)
-            input_ids = input_ids[ind_off:ind_off + max_seq_len]
-        
-        # Use mask_cfg if provided, otherwise use original ids
-        if self.mask_cfg is not None:
-            input_ids_masked, _ = mask_random_words_v2(np.array(input_ids), self.tkz, self.mask_cfg)
-            input_ids_masked = input_ids_masked.tolist()
-        else:
-            input_ids_masked = input_ids
-        
-        n = len(input_ids)
-        assert n == len(input_ids_masked), f'Size mismatch: {n} vs {len(input_ids_masked)}'
- 
-        return {
-            **item,
-            'input_ids': input_ids,
-            'input_ids_masked': input_ids_masked,
-        }
-
-    def _get_item(self, ind: int) -> dict[str, Any]:
-        ind = self.inds[ind % self.size]
-        ind = ind.item()
-        item = self.dataset[ind]
-        item = self.extract_masked_input(item)
-        return item
+    def toks_to_tensor(self, toks_list: List[List[int]]) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_size = len(toks_list)
+        max_len = max(len(toks) for toks in toks_list)
+        toks_tensor = torch.full((batch_size, max_len), self.pad_token_id, dtype=torch.long, device=self.device)
+        att_mask = torch.zeros((batch_size, max_len), dtype=torch.long, device=self.device)
+        for i in range(batch_size):
+            cur_len = len(toks_list[i])
+            toks_tensor[i, :cur_len] = torch.tensor(toks_list[i], dtype=torch.long, device=self.device)
+            att_mask[i, :cur_len] = 1
+        return toks_tensor, att_mask
 
     def get_batch(self, inds: List[int]) -> MaskedCiteBatch:
         texts = []
@@ -91,6 +91,27 @@ class MaskedCiteDataset:
             item = self.dataset[i]
             texts.append(item['text'])
         tokens_subsets = self.random_inp_tkz(texts)
+
+        batch_size = len(inds)
+        inp_toks, inp_att_mask = self.toks_to_tensor([item.toks_inp for item in tokens_subsets])
+        prompts_toks, prompts_att_mask = self.toks_to_tensor([item.toks_prompt for item in tokens_subsets])
+        cites_toks, cites_att_mask = self.toks_to_tensor([item.toks_cite for item in tokens_subsets])
+
+        edge_inds = torch.stack([
+            torch.arange(batch_size, device=self.device),
+            torch.full((batch_size,), batch_size, device=self.device),
+        ])
+
+        return MaskedCiteBatch(
+            tokens_subsets=tokens_subsets,
+            inp_toks=inp_toks,
+            prompts_toks=prompts_toks,
+            cites_toks=cites_toks,
+            inp_att_mask=inp_att_mask,
+            prompts_att_mask=prompts_att_mask,
+            cites_att_mask=cites_att_mask,
+            edge_inds=edge_inds,
+        )
 
     def shuffle(self, seed: Optional[int] = None) -> 'MaskedDataset':
         if seed is not None:
@@ -103,7 +124,7 @@ class MaskedCiteDataset:
 
 def load_masked_wiki_dataset(
         data_path: Path, tkz: PreTrainedTokenizer, max_seq_len: int, val_split_ratio: float,
-        mask_cfg: Optional[MaskCfg] = None, random_seed: Optional[int] = 55,
+        mask_cfg: Optional[MaskCfg] = None, random_seed: Optional[int] = 55, n_special_toks: int = 1000, device: Optional[torch.device] = None,
     ) -> Tuple[Dataset, Dataset]:
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
     dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path), trust_remote_code=True)['train']
@@ -117,50 +138,36 @@ def load_masked_wiki_dataset(
     ds_train = dataset.select(range(n_train))
     ds_val = dataset.select(range(n_train, n_train + n_val))
 
-    ds_train = MaskedDataset(ds_train, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
-    ds_val = MaskedDataset(ds_val, tkz, max_seq_len=max_seq_len, mask_cfg=mask_cfg)
+    ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=max_seq_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
+    ds_val = MaskedCiteDataset(ds_val, tkz, max_seq_len=max_seq_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
     
-    train_sz_str = f'!={n_train}' if len(ds_train) != n_train else ''
-    val_sz_str = f'!={n_val}' if len(ds_val) != n_val else ''
-    print(f'Loaded masked Wiki dataset. Total size: {len(dataset)}. Train: {len(ds_train)}{train_sz_str}. Val: {len(ds_val)}{val_sz_str}.')
+    print(f'Loaded masked Wiki dataset. Total size: {len(dataset)}. Train: {len(ds_train)}. Val: {len(ds_val)}.')
     
     return ds_train, ds_val
 
 
-def create_dataloader(
-        dataset: Dataset, batch_size: int, num_workers: int, distributed: bool, drop_last: bool = False,
-    ) -> DataLoader:
-    if distributed:
-        sampler = DistributedSampler(dataset, shuffle=False)
-    else:
-        sampler = None
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        prefetch_factor=2,
-        drop_last=drop_last,
-        sampler=sampler,
-        pin_memory=True,
-    )
-    return dataloader
-
-
-def create_dataloader_iter(
-        dataset: Dataset, batch_size: int, num_workers: int, distributed: bool, drop_last: bool = False,
-    ) -> Generator[Dict[str, Any], None, None]:
+def create_masked_cite_dataloader(
+        dataset: MaskedCiteDataset, batch_size: int, shuffle: bool = True,
+    ) -> Generator[MaskedCiteBatch, None, None]:
+    '''Create DataLoader for MaskedCiteDataset.
+     Args:
+        dataset: MaskedCiteDataset instance.
+        batch_size: Batch size.
+        shuffle: Whether to shuffle the data when reaching the end of the dataset.
+        Returns:
+            Generator yielding MaskedCiteBatch instances.
+    '''
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    print(f'R{rank}. Create MaskedCiteDataset dataloader. batch_size={batch_size}. shuffle={shuffle}.')
+    start_ind = 0
     while True:
-        rank = dist.get_rank() if distributed else 0
-        print(f'R{rank}. Create dataloader. batch_size={batch_size}. num_workers={num_workers}. distributed={distributed}. drop_last={drop_last}.')
-        dataloader = create_dataloader(
-            dataset, batch_size=batch_size, num_workers=num_workers, distributed=distributed, drop_last=drop_last,
-        )
-        n = 0
-        for batch in dataloader:
-            yield batch
-            n += 1
-        print(f'R{rank}. Dataloader cycle finished. Processed {n} batches. Shuffling dataset for next cycle.')
-        dataset.shuffle()
-
+        end_ind = min(start_ind + batch_size, len(dataset))
+        inds = dataset.inds[start_ind:end_ind].tolist()
+        if len(inds) < batch_size:
+            inds += dataset.inds[:(batch_size - len(inds))].tolist()
+            print(f'R{rank}. Shuffle dataset')
+            dataset.shuffle()
+        batch = dataset.get_batch(inds)
+        yield batch
+        start_ind = end_ind % len(dataset)
 
