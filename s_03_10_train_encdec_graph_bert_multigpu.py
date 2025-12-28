@@ -16,11 +16,12 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
 
-from mllm.config.model import HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, \
-    gen_prefpostfix_encdec_bert
+from mllm.config.model import EncdecGraphBertCfg, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
+    gen_prefpostfix_encdec_bert, gen_prefpostfix_encdec_graph_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, masked_loss_for_encoder_ARG
-from mllm.model.encdec_ranker_hg import EncdecBertAgg
+from mllm.model.encdec_ranker_hg import EncdecBertAgg, EncdecGraphBert
 from mllm.model.losses import LossesStats
+from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_masked_cite_wiki_dataset, load_split_wiki_dataset
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.train.encdec_bert import create_dataloader_iter, load_masked_wiki_dataset
@@ -228,10 +229,11 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
 
     device = torch.device(f'cuda:{rank}')
 
-    model_cfg = parse_yaml_file_as(EncdecBertCfg, args.model_cfg_fpath)
-    model_cfg = copy_override_encdec_bert_cfg(
+    model_cfg = parse_yaml_file_as(EncdecGraphBertCfg, args.model_cfg_fpath)
+    model_cfg = copy_override_encdec_graph_bert_cfg(
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
+        n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim,
     )
 
     mask_cfg = None
@@ -240,7 +242,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
             sep_freq=args.mask_sep_freq, sep_frac=args.mask_sep_frac, seq_freq=args.mask_seq_freq, seq_max_frac=args.mask_seq_max_frac,
             seq_max_len=args.mask_seq_max_len, n_last_toks=args.mask_n_last_toks,
         )
-    prefix, suffix = gen_prefpostfix_encdec_bert(
+    prefix, suffix = gen_prefpostfix_encdec_graph_bert(
         model_cfg, mask_cfg=mask_cfg, pretrained_model_path=pretrained_model_path, next_tok_pred=args.next_tok_pred
     )
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir, create=(rank == 0))
@@ -263,13 +265,10 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         if rank == 0:
             to_yaml_file(train_path / ENCDEC_BERT_MODEL_CFG_FNAME, model_cfg)
 
-    tkz = AutoTokenizer.from_pretrained(model_cfg.enc_bert.pretrained_model_name)
+    tkz = AutoTokenizer.from_pretrained(args.bert_model_name)
 
     log(model_cfg)
-    model = EncdecBertAgg(
-        model_cfg, tkz, enforce_enc_mask_understanding=args.enforce_encoder_mask_understanding,
-        next_tok_pred=args.next_tok_pred, masked_loss_for_encoder=args.masked_loss_for_encoder,
-    )
+    model = EncdecGraphBert(model_cfg, tkz)
 
     if checkpoint is None:
         model.load_pretrained(pretrained_model_path)
@@ -290,12 +289,11 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
     params = ddp_model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
-    train_batch_it = create_dataloader_iter(
-        ds_train, batch_size=args.docs_batch_size, num_workers=2, distributed=True, drop_last=False,
-    )
-    val_batch_it = create_dataloader_iter(
-        ds_val, batch_size=args.docs_batch_size, num_workers=2, distributed=True, drop_last=False,
-    )
+    n_special_toks = 1000
+    ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
+    ds_val = MaskedCiteDataset(ds_val, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
+    train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
+    val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
 
     sched_wait_steps = 0
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
@@ -429,7 +427,7 @@ def main(args: ArgsEncdecGraphBertMultigpuTrain) -> int:
         )
 
     tkz = AutoTokenizer.from_pretrained(args.bert_model_name)
-    ds_train, ds_val = load_masked_wiki_dataset(
+    ds_train, ds_val = load_split_wiki_dataset(
         data_path=args.data_path, tkz=tkz, max_seq_len=args.inp_len, val_split_ratio=0.05,
         mask_cfg=mask_cfg, random_seed=args.random_seed,
     )

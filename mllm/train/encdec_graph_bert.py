@@ -122,9 +122,9 @@ class MaskedCiteDataset:
         return self
     
 
-def load_masked_wiki_dataset(
+def load_split_wiki_dataset(
         data_path: Path, tkz: PreTrainedTokenizer, max_seq_len: int, val_split_ratio: float,
-        mask_cfg: Optional[MaskCfg] = None, random_seed: Optional[int] = 55, n_special_toks: int = 1000, device: Optional[torch.device] = None,
+        mask_cfg: Optional[MaskCfg] = None, random_seed: Optional[int] = 55,
     ) -> Tuple[Dataset, Dataset]:
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
     dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path), trust_remote_code=True)['train']
@@ -138,9 +138,6 @@ def load_masked_wiki_dataset(
     ds_train = dataset.select(range(n_train))
     ds_val = dataset.select(range(n_train, n_train + n_val))
 
-    ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=max_seq_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
-    ds_val = MaskedCiteDataset(ds_val, tkz, max_seq_len=max_seq_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
-    
     print(f'Loaded masked Wiki dataset. Total size: {len(dataset)}. Train: {len(ds_train)}. Val: {len(ds_val)}.')
     
     return ds_train, ds_val

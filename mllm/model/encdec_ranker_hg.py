@@ -9,13 +9,14 @@ from mllm.model.bert import BertModel
 from mllm.model.bert_generation.modeling_bert_generation import BertGenerationEmbeddings
 from mllm.model.losses import EncdecMaskPadItemLoss, R2Loss, join_losses_dicts
 from mllm.model.utils import get_top_vects
+from mllm.train.encdec_graph_bert import MaskedCiteBatch
 from mllm.train.utils import get_activation_module
 
 if '..' not in sys.path: sys.path.append('..')
 
 import numpy as np
 import torch
-from torch import nn, Tensor
+from torch import dist, nn, Tensor
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
@@ -670,41 +671,39 @@ class EmbGraph(nn.Module):
 class EncdecGraphBert(nn.Module):
     cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
-    device: torch.device
     enc: EncoderBert
     emb_graph: EmbGraph
     dec: DecoderPyramid
 
     def __init__(
-            self, cfg: EncdecGraphBertCfg, tkz: PreTrainedTokenizer, device: Optional[torch.device] = None,
+            self, cfg: EncdecGraphBertCfg, tkz: PreTrainedTokenizer,
         ):
         super().__init__()
         self.cfg = cfg
         self.tkz = tkz
-        self.device = device if device is not None else torch.device('cpu')
         self.enc = EncoderBert(cfg.enc_bert).to(self.device)
-        self.emb_graph = EmbGraph(cfg.emb_graph).to(self.device)
-        self.dec = DecoderPyramid(cfg.dec_pyr).to(self.device)
+        self.emb_graph = EmbGraph(cfg.emb_graph)
+        self.dec = DecoderPyramid(cfg.dec_pyr)
         self.rnd_tkz = RandomInputTokenizer(tkz, max_len=cfg.enc_bert.inp_len)
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
         if pretrained_model_path and pretrained_model_path.exists():
-            print(f'Loading checkpoint with pretrained model from {pretrained_model_path}')
+            print(f'R{dist.get_rank()}. Loading checkpoint with pretrained model from {pretrained_model_path}')
             pretrained_checkpoint = torch.load(pretrained_model_path)
             checkpt_dict = pretrained_checkpoint['model']
 
-            checkpt_dict_renamed = {}
-            for key, val in checkpt_dict.items():
-                if key.startswith('model.'):
-                    key = key[6:]
-                if self.model.enc_only and key.startswith('dec_pyr.'):
-                    continue
-                if key.startswith('vocab_loss_fn.') or key.startswith('emb_loss_fn.'):
-                    continue
-                checkpt_dict_renamed[key] = val
-            checkpt_dict = checkpt_dict_renamed
+            # checkpt_dict_renamed = {}
+            # for key, val in checkpt_dict.items():
+            #     if key.startswith('model.'):
+            #         key = key[6:]
+            #     if self.model.enc_only and key.startswith('dec_pyr.'):
+            #         continue
+            #     if key.startswith('vocab_loss_fn.') or key.startswith('emb_loss_fn.'):
+            #         continue
+            #     checkpt_dict_renamed[key] = val
+            # checkpt_dict = checkpt_dict_renamed
 
-            self.model.load_state_dict(checkpt_dict, strict=True)
+            self.load_state_dict(checkpt_dict, strict=True)
 
     # inp: (batch_size, inp_len)
     # inp_mask: (batch_size, inp_len)
@@ -717,7 +716,7 @@ class EncdecGraphBert(nn.Module):
         out_enc_last_hidden_state, out_enc_pooler = out_enc
         return out_enc_last_hidden_state
 
-    def run_on_text_citation(self, batch: List[TokensSubsetV2]) -> Tensor:
+    def run_on_text_citation_old(self, batch: List[TokensSubsetV2]) -> Tensor:
         batch_size = len(batch)
         # input_ids: (2 * batch_size, inp_len)
         # attention_mask: (2 * batch_size, inp_len)
@@ -731,6 +730,7 @@ class EncdecGraphBert(nn.Module):
         prompt_enc_embs = enc_last_hidden_state[batch_size:, 0]
         out_graph_embs = []
         for ib in range(batch_size):
+            # graph_vert_embs: (batch_size + 1, d_model)
             graph_vert_embs = torch.concatenate([text_enc_embs, prompt_enc_embs[ib:ib + 1]], dim=0)
             # graph_out: (batch_size + 1, d_model)
             graph_embs = self.emb_graph(graph_vert_embs, edge_inds)
@@ -743,6 +743,27 @@ class EncdecGraphBert(nn.Module):
         out_logits = self.dec(out_graph_embs)
         return out_logits
         
+    def run_on_text_citation(self, batch: MaskedCiteBatch) -> Tensor:
+        batch_size = batch.inp_toks.shape[0]
+        # inp_enc_embs: (batch_size, inp_len, d_model)
+        inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
+        # prompt_enc_embs: (batch_size, inp_len, d_model)
+        prompt_enc_embs = self.run_enc(batch.prompt_toks, batch.prompt_att_mask)
+        out_graph_embs = []
+        for ib in range(batch_size):
+            # graph_vert_embs: (batch_size + 1, d_model)
+            graph_vert_embs = torch.concatenate([inp_enc_embs, prompt_enc_embs[ib:ib + 1]], dim=0)
+            # graph_out: (batch_size + 1, d_model)
+            graph_embs = self.emb_graph(graph_vert_embs, batch.edge_inds)
+            # graph_emb: (d_model,)
+            graph_emb = graph_embs[-1, :]
+            out_graph_embs.append(graph_emb)
+        # out_graph_embs: (batch_size, d_model)
+        out_graph_embs = torch.stack(out_graph_embs, dim=0)
+        # out_logits: (batch_size, inp_len, n_vocab)
+        out_logits = self.dec(out_graph_embs)
+        return out_logits
+
 
     def create_causal_mask(self, size: int, device: torch.device) -> Tensor:
         # (size, size)
