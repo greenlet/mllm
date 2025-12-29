@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from typing import List, Optional, cast
+from typing import Dict, List, Optional, Tuple, cast
 
 from transformers import PreTrainedTokenizer
 
@@ -685,6 +685,10 @@ class EncdecGraphBert(nn.Module):
         self.emb_graph = EmbGraph(cfg.emb_graph)
         self.dec = DecoderPyramid(cfg.dec_pyr)
         self.rnd_tkz = RandomInputTokenizer(tkz, max_len=cfg.enc_bert.inp_len)
+        self.vocab_loss_fn = EncdecMaskPadItemLoss(
+            msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
+            reg_weight=1, msk_weight=5, spc_weight=0.1,
+        )
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
         if pretrained_model_path and pretrained_model_path.exists():
@@ -715,35 +719,8 @@ class EncdecGraphBert(nn.Module):
         # out_enc_pooler: (batch_size, d_model)
         out_enc_last_hidden_state, out_enc_pooler = out_enc
         return out_enc_last_hidden_state
-
-    def run_on_text_citation_old(self, batch: List[TokensSubsetV2]) -> Tensor:
-        batch_size = len(batch)
-        # input_ids: (2 * batch_size, inp_len)
-        # attention_mask: (2 * batch_size, inp_len)
-        # edge_inds: (2, batch_size + 1)
-        input_ids, attention_mask, edge_inds = tokens_subsets_v2_to_tensors(batch, tkz=self.tkz, device=self.device)
-        # enc_last_hidden_state: (2 * batch_size, inp_len, d_model)
-        enc_last_hidden_state = self.run_enc(input_ids, attention_mask)
-        # text_enc_embs: (batch_size, d_model)
-        text_enc_embs = enc_last_hidden_state[:batch_size, 0]
-        # prompt_enc_embs: (batch_size, d_model)
-        prompt_enc_embs = enc_last_hidden_state[batch_size:, 0]
-        out_graph_embs = []
-        for ib in range(batch_size):
-            # graph_vert_embs: (batch_size + 1, d_model)
-            graph_vert_embs = torch.concatenate([text_enc_embs, prompt_enc_embs[ib:ib + 1]], dim=0)
-            # graph_out: (batch_size + 1, d_model)
-            graph_embs = self.emb_graph(graph_vert_embs, edge_inds)
-            # graph_emb: (d_model,)
-            graph_emb = graph_embs[-1, :]
-            out_graph_embs.append(graph_emb)
-        # out_graph_embs: (batch_size, d_model)
-        out_graph_embs = torch.stack(out_graph_embs, dim=0)
-        # out_logits: (batch_size, inp_len, n_vocab)
-        out_logits = self.dec(out_graph_embs)
-        return out_logits
         
-    def run_on_text_citation(self, batch: MaskedCiteBatch) -> Tensor:
+    def run_on_text_citation(self, batch: MaskedCiteBatch) -> Tuple[Dict[str, Tensor], Tensor]:
         batch_size = batch.inp_toks.shape[0]
         # inp_enc_embs: (batch_size, inp_len, d_model)
         inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
@@ -762,13 +739,9 @@ class EncdecGraphBert(nn.Module):
         out_graph_embs = torch.stack(out_graph_embs, dim=0)
         # out_logits: (batch_size, inp_len, n_vocab)
         out_logits = self.dec(out_graph_embs)
-        return out_logits
 
-
-    def create_causal_mask(self, size: int, device: torch.device) -> Tensor:
-        # (size, size)
-        mask = torch.tril(torch.ones((size, size), device=device)).to(torch.int32)
-        return mask
+        vocab_loss = self.vocab_loss_fn(out_logits, batch.cites_masked_toks, batch.cites_toks)
+        return vocab_loss, out_logits
 
     # inp_masked_toks: (batch_size, inp_len)
     # inp_toks: (batch_size, inp_len)

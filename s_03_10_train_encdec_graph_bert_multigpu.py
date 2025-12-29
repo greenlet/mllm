@@ -318,14 +318,10 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         else:
             pbar = range(args.train_epoch_steps)
         for _ in pbar:
-            item = next(train_batch_it)
-            # log(type(item))
-            # for k, v in item.items():
-            #     log(f'  {k}: {v.shape}')
-            tokens_inp, tokens_inp_aug = item['input_ids'], item['input_ids_masked']
+            batch = next(train_batch_it)
 
             optimizer.zero_grad()
-            loss_dict = ddp_model(tokens_inp_aug, tokens_inp)
+            loss_dict = ddp_model.run_on_text_citation(batch)
             loss = loss_dict['loss']
             loss.backward()
 

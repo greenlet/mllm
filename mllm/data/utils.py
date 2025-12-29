@@ -232,6 +232,7 @@ class TokensSubsetV2:
     toks_inp: list[int]
     cite_beg_ind: int
     cite_end_ind: int
+    toks_cite_masked: list[int]
     toks_cite: list[int]
     toks_cite_beg: list[int]
     toks_cite_end: list[int]
@@ -316,6 +317,7 @@ class RandomInputTokenizerV2:
                 toks_inp=toks_inp,
                 cite_beg_ind=cite_beg_ind,
                 cite_end_ind=cite_end_ind,
+                toks_cite_masked=toks_cite_masked,
                 toks_cite=toks_cite,
                 toks_cite_beg=toks_cite_beg,
                 toks_cite_end=toks_cite_end,
