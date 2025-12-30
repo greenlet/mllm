@@ -681,7 +681,7 @@ class EncdecGraphBert(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.tkz = tkz
-        self.enc = EncoderBert(cfg.enc_bert).to(self.device)
+        self.enc = EncoderBert(cfg.enc_bert)
         self.emb_graph = EmbGraph(cfg.emb_graph)
         self.dec = DecoderPyramid(cfg.dec_pyr)
         self.rnd_tkz = RandomInputTokenizer(tkz, max_len=cfg.enc_bert.inp_len)

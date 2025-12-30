@@ -1,15 +1,16 @@
 
 code_path=$HOME/prog
 data_path=$HOME/data
-code_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH
-data_path=$code_path/data
-mllm_src_path=$code_path
+mllm_src_path=$code_path/mllm
+# code_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH
+# data_path=$code_path/data
+# mllm_src_path=$code_path
 
 #wiki_ds_name=20200501.en
 wiki_ds_name=20220301.en
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
-model_cfg_fname=encdec_bert_cfg_01.yaml
+model_cfg_fname=encdec_graph_bert_cfg_01.yaml
 
 config_dir_path=$mllm_src_path/mllm/config/cfg
 model_cfg_fpath=$config_dir_path/$model_cfg_fname
@@ -30,7 +31,8 @@ mask_sep_frac=0.15
 mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
-
+mask_n_last_toks=0
+next_tok_pred=false
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 # pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
@@ -41,25 +43,26 @@ epochs=5
 train_epoch_steps=20
 val_epoch_steps=20
 docs_batch_size=5
+world_size=1
 
 # device=cuda
 # epochs=700
 # train_epoch_steps=500
 # val_epoch_steps=50
 # docs_batch_size=60
+# world_size=4
 
 
 learning_rate=0.0001
 # learning_rate=0.00005
 #learning_rate=0.00001
 random_seed=200
-world_size=4
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
 #echo "
-python s_03_09_train_encdec_graph_bert_multigpu.py \
+python s_03_10_train_encdec_graph_bert_multigpu.py \
   --data-path $data_path \
   --wiki-ds-name $wiki_ds_name \
   --train-root-path $train_root_path \
@@ -82,7 +85,6 @@ python s_03_09_train_encdec_graph_bert_multigpu.py \
   --mask-seq-max-len $mask_seq_max_len \
   --mask-n-last-toks $mask_n_last_toks \
   --next-tok-pred $next_tok_pred \
-  --masked-loss-for-encoder $masked_loss_for_encoder \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

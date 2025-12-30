@@ -1038,7 +1038,7 @@ def copy_override_encdec_bert_cfg(
 def copy_override_encdec_graph_bert_cfg(
         cfg: EncdecGraphBertCfg, pretrained_model_name: Optional[str], emb_type: Optional[BertEmbType] = None, inp_len: Optional[int] = None,
         dec_enhance_type: Optional[HgEnhanceType] = None, dec_n_layers: Optional[int] = None, dec_n_similar_layers: Optional[int] = None,
-        dec_dropout_rate: Optional[float] = None, dec_temperature: Optional[float] = None, graph_n_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None,
+        dec_dropout_rate: Optional[float] = None, dec_temperature: Optional[float] = None, n_graph_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None,
 ) -> EncdecGraphBertCfg:
     enc = cfg.enc_bert
     dec = cfg.dec_pyr
@@ -1051,13 +1051,13 @@ def copy_override_encdec_graph_bert_cfg(
     dec_n_similar_layers = coalesce(dec_n_similar_layers, dec.n_similar_layers)
     dec_dropout_rate = coalesce(dec_dropout_rate, dec.dropout_rate)
     dec_temperature = coalesce(dec_temperature, dec.temperature)
-    graph_n_layers = coalesce(graph_n_layers, cfg.emb_graph.n_layers)
+    n_graph_layers = coalesce(n_graph_layers, cfg.emb_graph.n_layers)
     gnn_hidden_dim = coalesce(gnn_hidden_dim, cfg.emb_graph.gnn_hidden_dim)
 
     return create_encdec_graph_bert_cfg(
         pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
         inp_len=inp_len, dec_enhance_type=dec_enhance_type, dec_n_layers=dec_n_layers, dec_n_similar_layers=dec_n_similar_layers,
-        dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature, graph_n_layers=graph_n_layers, gnn_hidden_dim=gnn_hidden_dim,
+        dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature, n_graph_layers=n_graph_layers, gnn_hidden_dim=gnn_hidden_dim,
     )
 
 

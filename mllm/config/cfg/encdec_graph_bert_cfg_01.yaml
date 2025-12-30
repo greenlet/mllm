@@ -13,6 +13,8 @@ dec_pyr:
   step: 2
   temperature: 0.0
 emb_graph:
+  d_model: 768
+  gnn_hidden_dim: 768
   n_layers: 2
 enc_bert:
   d_model: 768

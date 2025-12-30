@@ -18,10 +18,10 @@ from transformers import AutoTokenizer
 
 from mllm.config.model import EncdecGraphBertCfg, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
     gen_prefpostfix_encdec_bert, gen_prefpostfix_encdec_graph_bert
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, masked_loss_for_encoder_ARG
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG
 from mllm.model.encdec_ranker_hg import EncdecBertAgg, EncdecGraphBert
 from mllm.model.losses import LossesStats
-from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_masked_cite_wiki_dataset, load_split_wiki_dataset
+from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.train.encdec_bert import create_dataloader_iter, load_masked_wiki_dataset
@@ -146,11 +146,6 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     def next_tok_pred(self) -> bool:
         return is_arg_true(next_tok_pred_ARG[0], self.next_tok_pred_STR)
 
-    masked_loss_for_encoder_STR: str = create_bool_str_field(*masked_loss_for_encoder_ARG)
-    @property
-    def masked_loss_for_encoder(self) -> bool:
-        return is_arg_true(masked_loss_for_encoder_ARG[0], self.masked_loss_for_encoder_STR)
-
     docs_batch_size: int = Field(
         3,
         description='Documents batch size. Must be greater or equal than 2.',
@@ -200,13 +195,15 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
 
 
 def setup(rank, world_size):
+    if world_size <= 1:
+        return
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
 
     # # We want to be able to train our model on an `accelerator <https://pytorch.org/docs/stable/torch.html#accelerators>`__
     # # such as CUDA, MPS, MTIA, or XPU.
     # acc = torch.accelerator.current_accelerator()
-    # backend = torch.distributed.get_default_backend_for_device(acc)
+    backend = torch.distributed.get_default_backend_for_device(acc)
     backend = 'nccl'
     # backend = 'c10d'
     # initialize the process group
@@ -214,6 +211,8 @@ def setup(rank, world_size):
 
 
 def cleanup():
+    if not dist.is_initialized():
+        return
     dist.destroy_process_group()
 
 
@@ -227,7 +226,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
 
     pretrained_model_path = get_pretrained_model_path(args.pretrained_model_path)
 
-    device = torch.device(f'cuda:{rank}')
+    device = torch.device(f'cuda:{rank}') if torch.cuda.is_available() else torch.device('cpu')
+    log(f'Using device {device}.')
 
     model_cfg = parse_yaml_file_as(EncdecGraphBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_encdec_graph_bert_cfg(
@@ -283,9 +283,13 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         shuffle = True
 
     model.to(device)
-    # find_unused_parameters = False
-    find_unused_parameters = True
-    ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=find_unused_parameters)
+    if args.world_size > 1:
+        # find_unused_parameters = False
+        find_unused_parameters = True
+        ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=find_unused_parameters)
+    else:
+        ddp_model = model
+
     params = ddp_model.parameters()
     optimizer = torch.optim.Adam(params, lr=args.learning_rate)
 
@@ -308,7 +312,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         if prev_train_steps > 0:
             grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
     
-    dist.barrier()
+    if args.world_size > 1:
+        dist.barrier()
     for epoch in range(last_epoch + 1, args.epochs):
         ddp_model.train()
         train_losses = LossesStats()
@@ -321,7 +326,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
             batch = next(train_batch_it)
 
             optimizer.zero_grad()
-            loss_dict = ddp_model.run_on_text_citation(batch)
+            loss_dict, _ = ddp_model.run_on_text_citation(batch)
             loss = loss_dict['loss']
             loss.backward()
 
@@ -360,7 +365,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
             tokens_inp, tokens_inp_aug = item['input_ids'], item['input_ids_masked']
 
             with torch.no_grad():
-                loss_dict = ddp_model(tokens_inp_aug, tokens_inp)
+                loss_dict, _ = ddp_model(tokens_inp_aug, tokens_inp)
             loss = loss_dict['loss']
 
             val_loss += loss.item()
