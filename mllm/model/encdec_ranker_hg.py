@@ -722,10 +722,18 @@ class EncdecGraphBert(nn.Module):
         
     def run_on_text_citation(self, batch: MaskedCiteBatch) -> Tuple[Dict[str, Tensor], Tensor]:
         batch_size = batch.inp_toks.shape[0]
+        
+        assert torch.all(batch.inp_toks[:, 0] == self.tkz.cls_token_id), 'Input tokens must start with CLS token'
+        assert torch.all(batch.prompts_toks[:, 0] == self.tkz.cls_token_id), 'Prompt tokens must start with CLS token'
         # inp_enc_embs: (batch_size, inp_len, d_model)
         inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
+        # inp_enc_embs: (batch_size, d_model)
+        inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
         # prompt_enc_embs: (batch_size, inp_len, d_model)
-        prompt_enc_embs = self.run_enc(batch.prompt_toks, batch.prompt_att_mask)
+        prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
+        # prompt_enc_embs: (batch_size, d_model)
+        prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
+        
         out_graph_embs = []
         for ib in range(batch_size):
             # graph_vert_embs: (batch_size + 1, d_model)

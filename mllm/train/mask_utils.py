@@ -153,6 +153,9 @@ class MaskCfg:
 
 def mask_random_words_v2(toks: np.ndarray, tkz: PreTrainedTokenizer, mcfg: MaskCfg) -> tuple[np.ndarray, Optional[np.ndarray]]:
     masked_toks = toks.copy()
+    mask = None
+    if mcfg is None:
+        return masked_toks, mask
     mask = mcfg.gen_mask(len(toks))
     if mask is not None:
         toks_str = tkz.convert_ids_to_tokens(toks)

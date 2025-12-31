@@ -361,11 +361,10 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         else:
             pbar = range(args.val_epoch_steps)
         for _ in pbar:
-            item = next(val_batch_it)
-            tokens_inp, tokens_inp_aug = item['input_ids'], item['input_ids_masked']
+            batch = next(val_batch_it)
 
             with torch.no_grad():
-                loss_dict, _ = ddp_model(tokens_inp_aug, tokens_inp)
+                loss_dict, _ = ddp_model.run_on_text_citation(batch)
             loss = loss_dict['loss']
 
             val_loss += loss.item()

@@ -293,6 +293,8 @@ class RandomInputTokenizerV2:
             sub_off = np.random.randint(0, len(toks_inp) - n_cite_toks + 1)
             toks_cite_beg = self._next_random_tokens()
             toks_cite_end = self._next_random_tokens()
+            cite_beg_ind = inp_beg_ind + sub_off
+            cite_end_ind = cite_beg_ind + n_cite_toks
             toks_cite = input_ids[i][cite_beg_ind:cite_end_ind]
 
             toks_cite_masked, _ = mask_random_words_v2(np.array(toks_cite), self.tkz, self.mask_cfg)
@@ -301,8 +303,6 @@ class RandomInputTokenizerV2:
             toks_inp = [self.tkz.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
                 toks_cite_masked + toks_cite_end + \
                 toks_inp[sub_off + n_cite_toks:] + [self.tkz.sep_token_id]
-            cite_beg_ind = inp_beg_ind + sub_off
-            cite_end_ind = cite_beg_ind + n_cite_toks
 
             prompt = self.prompt_template.format(
                 ' '.join(self.tkz.convert_ids_to_tokens(toks_cite_beg)),
