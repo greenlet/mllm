@@ -18,7 +18,8 @@ from transformers import AutoTokenizer
 
 from mllm.config.model import EncdecGraphBertCfg, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
     gen_prefpostfix_encdec_bert, gen_prefpostfix_encdec_graph_bert
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG
+from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, \
+    share_enc_dec_proj_weights_ARG
 from mllm.model.encdec_ranker_hg import EncdecBertAgg, EncdecGraphBert
 from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
@@ -146,6 +147,11 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     def next_tok_pred(self) -> bool:
         return is_arg_true(next_tok_pred_ARG[0], self.next_tok_pred_STR)
 
+    share_enc_dec_proj_weights_STR: str = create_bool_str_field(*share_enc_dec_proj_weights_ARG)
+    @property
+    def share_enc_dec_proj_weights(self) -> bool:
+        return is_arg_true(share_enc_dec_proj_weights_ARG[0], self.share_enc_dec_proj_weights_STR)
+
     docs_batch_size: int = Field(
         3,
         description='Documents batch size. Must be greater or equal than 2.',
@@ -234,6 +240,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
         n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim,
+        share_enc_dec_proj_weights=args.share_enc_dec_proj_weights,
     )
 
     mask_cfg = None

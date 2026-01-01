@@ -24,3 +24,4 @@ enc_bert:
   pad_token_id: 0
   pretrained_model_name: bert-base-uncased
   tokenizer_name: bert-base-uncased
+share_enc_dec_proj_weights: false

@@ -402,17 +402,36 @@ class EmbDecoder(nn.Module):
 class VocabDecoder(nn.Module):
     d_model: int
     n_vocab: int
-    word_prj: nn.Linear
+    # word_prj: nn.Linear
 
-    def __init__(self, d_model: int, n_vocab: int):
+    def __init__(self, d_model: int, n_vocab: int, word_embeddings: Optional[nn.Embedding] = None):
         super().__init__()
         self.d_model = d_model
         self.n_vocab = n_vocab
-        self.word_prj = nn.Linear(d_model, n_vocab, bias=False)
+        if word_embeddings is not None:
+            assert word_embeddings.weight.shape[0] == n_vocab
+            assert word_embeddings.weight.shape[1] == d_model
+            self.word_prj = None
+            self.word_emb = word_embeddings
+        else:
+            self.word_prj = nn.Linear(d_model, n_vocab, bias=False)
+            self.word_emb = None
 
+    # inp: (batch_size, seq_len, d_model)
     def forward(self, inp: Tensor) -> Tensor:
-        out_logit = self.word_prj(inp)
-        return out_logit
+        # print(f'VocabDecoder inp shape: {inp.shape}')
+        # out_logits: (batch_size, seq_len, n_vocab)
+        if self.word_emb is not None:
+            # print(f'word_emb shape: {self.word_emb.weight.shape}')
+            # inp: (batch_size, seq_len, d_model)
+            inp = inp.transpose(1, 2)
+            # out_logits: (batch_size, n_vocab, seq_len)
+            out_logits = torch.matmul(self.word_emb.weight, inp)
+            # out_logits: (batch_size, seq_len, n_vocab)
+            out_logits = out_logits.transpose(1, 2)
+        else:
+            out_logits = self.word_prj(inp)
+        return out_logits
 
 
 class DecoderRankSimple(nn.Module):

@@ -33,6 +33,7 @@ mask_seq_max_frac=0.2
 mask_seq_max_len=20
 mask_n_last_toks=0
 next_tok_pred=false
+share_enc_dec_proj_weights=true
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 # pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
@@ -85,6 +86,7 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --mask-seq-max-len $mask_seq_max_len \
   --mask-n-last-toks $mask_n_last_toks \
   --next-tok-pred $next_tok_pred \
+  --share-enc-dec-proj-weights $share_enc_dec_proj_weights \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

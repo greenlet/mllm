@@ -372,7 +372,7 @@ class DecoderPyramid(nn.Module):
     inp_chunk_len: int
     vocab_decoder: VocabDecoder
 
-    def __init__(self, cfg: DecPyrCfg):
+    def __init__(self, cfg: DecPyrCfg, word_embeddings: Optional[nn.Embedding] = None):
         super().__init__()
         self.cfg = cfg
         self.enc_layers = nn.ModuleList([
@@ -391,7 +391,9 @@ class DecoderPyramid(nn.Module):
             self.enh_beg_layer = nn.Linear(in_features=cfg.d_model, out_features=cfg.d_model * cfg.inp_len, bias=bias)
         else:
             raise Exception(f'Enhance type {cfg.enhance_type} is not supported')
-        self.vocab_decoder = VocabDecoder(d_model=self.cfg.d_model, n_vocab=self.cfg.n_vocab)
+        self.vocab_decoder = VocabDecoder(
+            d_model=self.cfg.d_model, n_vocab=self.cfg.n_vocab, word_embeddings=word_embeddings,
+        )
 
     # Tensor with embeddings: [batch_size, d_model]
     def forward(self, inp: Tensor) -> Tensor:
@@ -683,7 +685,10 @@ class EncdecGraphBert(nn.Module):
         self.tkz = tkz
         self.enc = EncoderBert(cfg.enc_bert)
         self.emb_graph = EmbGraph(cfg.emb_graph)
-        self.dec = DecoderPyramid(cfg.dec_pyr)
+        word_embeddings = None
+        if self.cfg.share_enc_dec_proj_weights:
+            word_embeddings = self.enc.bert_model.embeddings.word_embeddings
+        self.dec = DecoderPyramid(cfg.dec_pyr, word_embeddings=word_embeddings)
         self.rnd_tkz = RandomInputTokenizer(tkz, max_len=cfg.enc_bert.inp_len)
         self.vocab_loss_fn = EncdecMaskPadItemLoss(
             msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
