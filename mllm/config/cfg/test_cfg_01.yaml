@@ -1,0 +1,10 @@
+d_model: 256
+graph:
+  conv_name: GATConv
+  conv_params:
+    dropout: 0.1
+    num_heads: 4
+  d_model: 256
+  gnn_hidden_dim: 512
+  n_layers: 2
+n_vocab: 1000

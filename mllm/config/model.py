@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TypeVar, Union, Optional
+from typing import Any, Dict, TypeVar, Union, Optional
 
 import numpy as np
 import torch
@@ -280,10 +280,57 @@ class EncdecBertCfg(BaseModel):
     dec_pyr: DecPyrCfg
 
 
+# https://pytorch-geometric.readthedocs.io/en/latest/modules/nn.html#convolutional-layers
+class GnnConvCfg(BaseModel):
+    cls_name: str
+    params: Dict[str, Any]
+
+
+gnn_conv_param_to_short_str = {
+    'improved': 'impr',
+    'cached': 'cach',
+    'normalize': 'norm',
+    'normalization': 'norm',
+    'add_self_loops': 'asl',
+}
+
+gnn_conv_name_to_defaults = {
+    # https://pytorch-geometric.readthedocs.io/en/latest/generated/torch_geometric.nn.conv.GCNConv.html#torch_geometric.nn.conv.GCNConv
+    'GCNConv': {
+        'improved': False,
+        'cached': False,
+        'add_self_loops': None,
+        'normalize': True,
+        'bias': True,
+    },
+    # https://pytorch-geometric.readthedocs.io/en/latest/generated/torch_geometric.nn.conv.ChebConv.html#torch_geometric.nn.conv.ChebConv
+    'ChebConv': {
+        'K': 1,
+        'normalization': 'sym',
+        'bias': True,
+    },
+}
+
+def gnn_conv_cfg_to_str(conv_cfg: GnnConvCfg) -> str:
+    parts = [conv_cfg.cls_name]
+    for param_name, param_value in conv_cfg.params.items():
+        param_short_name = gnn_conv_param_to_short_str.get(param_name, param_name)
+        if param_value is None:
+            parts.append(f'{param_short_name}None')
+        elif isinstance(param_value, bool):
+            parts.append(bool_param_to_str(param_short_name, param_value))
+        elif isinstance(param_value, str):
+            parts.append(f'{param_short_name}{param_value.capitalize()}')
+        else:
+            parts.append(f'{param_short_name}{param_value}')
+    return '-'.join(parts)
+
+
 class EmbGraphCfg(BaseModel):
     n_layers: int
     d_model: int
-    gnn_hidden_dim: int
+    hidden_dim: int
+    gnn_conv: GnnConvCfg
 
 
 class EncdecGraphBertCfg(BaseModel):
@@ -599,7 +646,8 @@ def create_encdec_graph_bert_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
         inp_len = 128, dec_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
         dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
-        n_graph_layers: int = 1, gnn_hidden_dim: int = 0, share_enc_dec_proj_weights: bool = False,
+        share_enc_dec_proj_weights: bool = False,
+        n_graph_layers: int = 1, gnn_hidden_dim: int = 0, gnn_conv_name: str = 'GCNConv', gnn_conv_params: Optional[Dict[str, Any]] = None,
 ) -> EncdecGraphBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -649,9 +697,18 @@ def create_encdec_graph_bert_cfg(
         d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_n_layers, dropout_rate=dec_dropout_rate, n_vocab=n_vocab,
         n_similar_layers=dec_n_similar_layers, enhance_type=dec_enhance_type, temperature=dec_temperature,
     )
-    gnn_hidden_dim = gnn_hidden_dim if gnn_hidden_dim > 0 else d_model
+    gnn_conv_params = create_gnn_conv_cfg(gnn_conv_name, gnn_conv_params or {
+        'in_channels': d_model,
+        'out_channels': d_model,
+    })
+    gnn_conv_params
+    cfg_gnn_conv = GnnConvCfg(
+        cls_name=gnn_conv_name,
+        params=gnn_conv_params,
+    )
     cfg_graph = EmbGraphCfg(
-        n_layers=n_graph_layers, d_model=d_model, gnn_hidden_dim=gnn_hidden_dim,
+        n_layers=n_graph_layers, d_model=d_model, hidden_dim=gnn_hidden_dim,
+        gnn_conv_name=gnn_conv_name, gnn_conv_params=gnn_conv_params,
     )
 
     cfg_encdec_bert = EncdecGraphBertCfg(
