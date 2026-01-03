@@ -311,6 +311,12 @@ gnn_conv_name_to_defaults = {
     },
 }
 
+def create_gnn_conv_params(conv_name: str, override_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    params = gnn_conv_name_to_defaults[conv_name].copy()
+    if override_params:
+        params.update(override_params)
+    return params
+
 def gnn_conv_cfg_to_str(conv_cfg: GnnConvCfg) -> str:
     parts = [conv_cfg.cls_name]
     for param_name, param_value in conv_cfg.params.items():
@@ -697,18 +703,16 @@ def create_encdec_graph_bert_cfg(
         d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, inp_len=inp_len, step=step, n_layers=dec_n_layers, dropout_rate=dec_dropout_rate, n_vocab=n_vocab,
         n_similar_layers=dec_n_similar_layers, enhance_type=dec_enhance_type, temperature=dec_temperature,
     )
-    gnn_conv_params = create_gnn_conv_cfg(gnn_conv_name, gnn_conv_params or {
-        'in_channels': d_model,
-        'out_channels': d_model,
-    })
-    gnn_conv_params
+    gnn_conv_params = create_gnn_conv_params(gnn_conv_name, gnn_conv_params)
     cfg_gnn_conv = GnnConvCfg(
         cls_name=gnn_conv_name,
         params=gnn_conv_params,
     )
+    if gnn_hidden_dim <= 0:
+        gnn_hidden_dim = d_model
     cfg_graph = EmbGraphCfg(
         n_layers=n_graph_layers, d_model=d_model, hidden_dim=gnn_hidden_dim,
-        gnn_conv_name=gnn_conv_name, gnn_conv_params=gnn_conv_params,
+        gnn_conv=cfg_gnn_conv,
     )
 
     cfg_encdec_bert = EncdecGraphBertCfg(
@@ -1089,7 +1093,7 @@ def copy_override_encdec_bert_cfg(
     dec_dropout_rate = coalesce(dec_dropout_rate, dec.dropout_rate)
     dec_temperature = coalesce(dec_temperature, dec.temperature)
 
-    return create_encdec_graph_bert_cfg(
+    return create_encdec_bert_cfg(
         pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
         inp_len=inp_len, dec_enhance_type=dec_enhance_type, dec_n_layers=dec_n_layers, dec_n_similar_layers=dec_n_similar_layers,
         dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature,
@@ -1099,8 +1103,8 @@ def copy_override_encdec_bert_cfg(
 def copy_override_encdec_graph_bert_cfg(
         cfg: EncdecGraphBertCfg, pretrained_model_name: Optional[str], emb_type: Optional[BertEmbType] = None, inp_len: Optional[int] = None,
         dec_enhance_type: Optional[HgEnhanceType] = None, dec_n_layers: Optional[int] = None, dec_n_similar_layers: Optional[int] = None,
-        dec_dropout_rate: Optional[float] = None, dec_temperature: Optional[float] = None, n_graph_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None,
-        share_enc_dec_proj_weights: Optional[bool] = None,
+        dec_dropout_rate: Optional[float] = None, dec_temperature: Optional[float] = None, share_enc_dec_proj_weights: Optional[bool] = None,
+        n_graph_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None, gnn_conv_name: Optional[str] = None, gnn_conv_params: Optional[Dict[str, Any]] = None,
 ) -> EncdecGraphBertCfg:
     enc = cfg.enc_bert
     dec = cfg.dec_pyr
@@ -1113,15 +1117,17 @@ def copy_override_encdec_graph_bert_cfg(
     dec_n_similar_layers = coalesce(dec_n_similar_layers, dec.n_similar_layers)
     dec_dropout_rate = coalesce(dec_dropout_rate, dec.dropout_rate)
     dec_temperature = coalesce(dec_temperature, dec.temperature)
-    n_graph_layers = coalesce(n_graph_layers, cfg.emb_graph.n_layers)
-    gnn_hidden_dim = coalesce(gnn_hidden_dim, cfg.emb_graph.gnn_hidden_dim)
     share_enc_dec_proj_weights = coalesce(share_enc_dec_proj_weights, cfg.share_enc_dec_proj_weights)
+    n_graph_layers = coalesce(n_graph_layers, cfg.emb_graph.n_layers)
+    gnn_hidden_dim = coalesce(gnn_hidden_dim, cfg.emb_graph.hidden_dim)
+    gnn_conv_name = coalesce(gnn_conv_name, cfg.emb_graph.gnn_conv.cls_name)
+    gnn_conv_params = coalesce(gnn_conv_params, cfg.emb_graph.gnn_conv.params)
 
     return create_encdec_graph_bert_cfg(
         pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
         inp_len=inp_len, dec_enhance_type=dec_enhance_type, dec_n_layers=dec_n_layers, dec_n_similar_layers=dec_n_similar_layers,
-        dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature, n_graph_layers=n_graph_layers, gnn_hidden_dim=gnn_hidden_dim,
-        share_enc_dec_proj_weights=share_enc_dec_proj_weights,
+        dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature, share_enc_dec_proj_weights=share_enc_dec_proj_weights,
+        n_graph_layers=n_graph_layers, gnn_hidden_dim=gnn_hidden_dim, gnn_conv_name=gnn_conv_name, gnn_conv_params=gnn_conv_params,
     )
 
 
@@ -1373,8 +1379,8 @@ def gen_prefpostfix_encdec_graph_bert(
     postfix_parts.append(f'd{enc.d_model}')
     postfix_parts.append(f'emb{enc.emb_type.value.capitalize()}')
     postfix_parts.append(f'inp{dec.inp_len}')
-    postfix_parts.append(f'lrs{dec.n_layers}x{dec.n_similar_layers}')
     postfix_parts.append(f'enh{dec.enhance_type.value.capitalize()}')
+    postfix_parts.append(f'lrs{dec.n_layers}x{dec.n_similar_layers}')
     postfix_parts.append(f'step{dec.step}')
     postfix_parts.append(f'h{dec.n_heads}')
     postfix_parts.append(bool_param_to_str('sw', model_cfg.share_enc_dec_proj_weights))
@@ -1392,12 +1398,15 @@ def gen_prefpostfix_encdec_graph_bert(
         dp_rate = 0
     postfix_parts.append(f'dp{dp_rate}')
 
-    temp = np.round(dec.temperature, 2)
-    postfix_parts.append(f't{temp}')
+    if dec.temperature > 0:
+        temp = np.round(dec.temperature, 2)
+        postfix_parts.append(f't{temp}')
 
     graph_parts = [f'graph_lrs{graph.n_layers}']
-    if graph.gnn_hidden_dim != enc.d_model:
-        graph_parts.append(f'hid{graph.gnn_hidden_dim}')
+    if graph.hidden_dim != enc.d_model:
+        graph_parts.append(f'hid{graph.hidden_dim}')
+    gnn_str = gnn_conv_cfg_to_str(graph.gnn_conv)
+    graph_parts.append(gnn_str)
     postfix_parts.append('_'.join(graph_parts))
 
     postfix = '-'.join(postfix_parts)

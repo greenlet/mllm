@@ -31,9 +31,11 @@ mask_sep_frac=0.15
 mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
+share_enc_dec_proj_weights=true
 mask_n_last_toks=0
 next_tok_pred=false
-share_enc_dec_proj_weights=true
+gnn_conv_name='GCNConv'
+gnn_conv_params='{"normalize": true, "bias": true}'
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 # pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
@@ -78,6 +80,8 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --dec-dropout-rate $dec_dropout_rate \
   --n-graph-layers $n_graph_layers \
   --gnn-hidden-dim $gnn_hidden_dim \
+  --gnn-conv-name $gnn_conv_name \
+  --gnn-conv-params "$gnn_conv_params" \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

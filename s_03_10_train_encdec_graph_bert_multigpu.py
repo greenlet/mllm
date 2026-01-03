@@ -1,10 +1,12 @@
+import json
 import os
 from pathlib import Path
+from pprint import pprint
 from typing import Any, Optional
 import shutil
 
 from datasets import Dataset
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
 import torch
@@ -102,6 +104,30 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Hidden dimension size for GNN layers. If set to -1, defaults to model dimension.',
         cli=('--gnn-hidden-dim',),
     )
+    gnn_conv_name: str = Field(
+        'GCNConv',
+        description='GNN convolution layer name. Must be one of the layers supported by PyTorch Geometric library ' \
+            f'(https://pytorch-geometric.readthedocs.io/en/latest/modules/nn.html#convolutional-layers).',
+        cli=('--gnn-conv-name',),
+    )
+    gnn_conv_params: dict = Field(
+        {},
+        description='GNN convolution layer parameters as a dictionary. Parameters must be compatible with the selected GNN layer.',
+        cli=('--gnn-conv-params',),
+    )
+
+    @validator('gnn_conv_params', pre=True)
+    def parse_gnn_conv_params(cls, v):
+        # print(f'Parsing gnn_conv_params: {v}. Type: {type(v)}')
+        try:
+            v = json.loads(v)
+        except Exception as e:
+            try:
+                v = eval(v)
+            except Exception as e2:
+                raise ValueError(f'Cannot parse gnn_conv_params from string: {v}. JSON load error: {e}. Python eval error: {e2}')
+        # print(f'Parsed gnn_conv_params: {v}. Type: {type(v)}')
+        return v
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
@@ -239,9 +265,10 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
     model_cfg = copy_override_encdec_graph_bert_cfg(
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
-        n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim,
-        share_enc_dec_proj_weights=args.share_enc_dec_proj_weights,
+        share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim,
+        gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
     )
+    pprint(model_cfg.dict())
 
     mask_cfg = None
     if args.mask_tokens:
