@@ -1,3 +1,4 @@
+from importlib import import_module
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, cast
@@ -16,7 +17,8 @@ if '..' not in sys.path: sys.path.append('..')
 
 import numpy as np
 import torch
-from torch import dist, nn, Tensor
+from torch import nn, Tensor
+import torch.distributed as dist
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
@@ -654,11 +656,18 @@ class EmbGraph(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.act = nn.ReLU()
+        geom_nn_conv_module = import_module('torch_geometric.nn.conv')
+        conv_cls = getattr(geom_nn_conv_module, cfg.gnn_conv.cls_name)
         layers = []
         for i in range(cfg.n_layers):
-            dim_in = cfg.d_model if i == 0 else cfg.gnn_hidden_dim
-            dim_out = cfg.gnn_hidden_dim if i < cfg.n_layers - 1 else cfg.d_model
-            layer = GCNConv(dim_in, dim_out)
+            in_channels = cfg.d_model if i == 0 else cfg.hidden_dim
+            out_channels = cfg.hidden_dim if i < cfg.n_layers - 1 else cfg.d_model
+            conv_params = {
+                **cfg.gnn_conv.params,
+                'in_channels': in_channels,
+                'out_channels': out_channels,
+            }
+            layer = conv_cls(**conv_params)
             layers.append(layer)
         self.graph = nn.Sequential(*layers)
 
@@ -696,23 +705,30 @@ class EncdecGraphBert(nn.Module):
         )
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
+        rank = dist.get_rank()
+        print(f'R{rank}. load_pretrained: {pretrained_model_path}. Exists: {pretrained_model_path.exists() if pretrained_model_path else "N/A"}')
         if pretrained_model_path and pretrained_model_path.exists():
-            print(f'R{dist.get_rank()}. Loading checkpoint with pretrained model from {pretrained_model_path}')
+            print(f'R{rank}. Loading checkpoint with pretrained model from {pretrained_model_path}')
             pretrained_checkpoint = torch.load(pretrained_model_path)
             checkpt_dict = pretrained_checkpoint['model']
+            # print(list(checkpt_dict.keys()))
 
-            # checkpt_dict_renamed = {}
-            # for key, val in checkpt_dict.items():
-            #     if key.startswith('model.'):
-            #         key = key[6:]
-            #     if self.model.enc_only and key.startswith('dec_pyr.'):
-            #         continue
-            #     if key.startswith('vocab_loss_fn.') or key.startswith('emb_loss_fn.'):
-            #         continue
-            #     checkpt_dict_renamed[key] = val
-            # checkpt_dict = checkpt_dict_renamed
+            enc_checkpt_dict, dec_checkpt_dict = {}, {}
+            for key, val in checkpt_dict.items():
+                if key.startswith('module.'):
+                    key = key[7:]
+                if key.startswith('model.'):
+                    key = key[6:]
+                if key.startswith('enc_bert.'):
+                    new_key = key[9:]
+                    enc_checkpt_dict[new_key] = val
+                elif key.startswith('dec_pyr.'):
+                    new_key = key[8:]
+                    dec_checkpt_dict[new_key] = val
 
-            self.load_state_dict(checkpt_dict, strict=True)
+            # self.load_state_dict(checkpt_dict, strict=True)
+            self.enc.load_state_dict(enc_checkpt_dict, strict=True)
+            self.dec.load_state_dict(dec_checkpt_dict, strict=True)
 
     # inp: (batch_size, inp_len)
     # inp_mask: (batch_size, inp_len)

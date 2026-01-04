@@ -1,10 +1,10 @@
 
-code_path=$HOME/prog
-data_path=$HOME/data
-mllm_src_path=$code_path/mllm
-# code_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH
-# data_path=$code_path/data
-# mllm_src_path=$code_path
+# code_path=$HOME/prog
+# data_path=$HOME/data
+# mllm_src_path=$code_path/mllm
+code_path=$AZUREML_CR_EXECUTION_WORKING_DIR_PATH
+data_path=$code_path/data
+mllm_src_path=$code_path
 
 #wiki_ds_name=20200501.en
 wiki_ds_name=20220301.en
@@ -31,29 +31,30 @@ mask_sep_frac=0.15
 mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
-share_enc_dec_proj_weights=true
+share_enc_dec_proj_weights=false
 mask_n_last_toks=0
 next_tok_pred=false
 gnn_conv_name='GCNConv'
 gnn_conv_params='{"normalize": true, "bias": true}'
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
-# pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
+pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
+pretrained_model_path=$train_root_path/encdecbert-20251123_125450-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5x0.04_seq_0.5x0.05x5_last_0-dp0-t0.0
 
 
-device=cpu
-epochs=5
-train_epoch_steps=20
-val_epoch_steps=20
-docs_batch_size=5
-world_size=1
+# device=cpu
+# epochs=5
+# train_epoch_steps=20
+# val_epoch_steps=20
+# docs_batch_size=5
+# world_size=1
 
-# device=cuda
-# epochs=700
-# train_epoch_steps=500
-# val_epoch_steps=50
-# docs_batch_size=60
-# world_size=4
+device=cuda
+epochs=700
+train_epoch_steps=500
+val_epoch_steps=50
+docs_batch_size=60
+world_size=4
 
 
 learning_rate=0.0001

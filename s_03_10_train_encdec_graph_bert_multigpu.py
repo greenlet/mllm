@@ -235,7 +235,7 @@ def setup(rank, world_size):
     # # We want to be able to train our model on an `accelerator <https://pytorch.org/docs/stable/torch.html#accelerators>`__
     # # such as CUDA, MPS, MTIA, or XPU.
     # acc = torch.accelerator.current_accelerator()
-    backend = torch.distributed.get_default_backend_for_device(acc)
+    # backend = torch.distributed.get_default_backend_for_device(acc)
     backend = 'nccl'
     # backend = 'c10d'
     # initialize the process group
@@ -268,7 +268,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim,
         gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
     )
-    pprint(model_cfg.dict())
+    if rank == 0:
+        pprint(model_cfg.dict())
 
     mask_cfg = None
     if args.mask_tokens:
@@ -334,7 +335,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
     val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
 
     sched_wait_steps = 0
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=7, threshold=1e-6, min_lr=1e-8)
     lr = optimizer.param_groups[0]['lr']
     log(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
     if rank == 0:
@@ -360,7 +361,10 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
             batch = next(train_batch_it)
 
             optimizer.zero_grad()
-            loss_dict, _ = ddp_model.run_on_text_citation(batch)
+            if args.world_size > 1:
+                loss_dict, _ = ddp_model.module.run_on_text_citation(batch)
+            else:
+                loss_dict, _ = ddp_model.run_on_text_citation(batch)
             loss = loss_dict['loss']
             loss.backward()
 
@@ -398,7 +402,10 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
             batch = next(val_batch_it)
 
             with torch.no_grad():
-                loss_dict, _ = ddp_model.run_on_text_citation(batch)
+                if args.world_size > 1:
+                    loss_dict, _ = ddp_model.module.run_on_text_citation(batch)
+                else:
+                    loss_dict, _ = ddp_model.run_on_text_citation(batch)
             loss = loss_dict['loss']
 
             val_loss += loss.item()
