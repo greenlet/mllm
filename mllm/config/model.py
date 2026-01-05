@@ -292,6 +292,8 @@ gnn_conv_param_to_short_str = {
     'normalize': 'norm',
     'normalization': 'norm',
     'add_self_loops': 'asl',
+    'root_weight': 'rw',
+    'project': 'prj',
 }
 
 gnn_conv_name_to_defaults = {
@@ -309,6 +311,22 @@ gnn_conv_name_to_defaults = {
         'normalization': 'sym',
         'bias': True,
     },
+    # https://pytorch-geometric.readthedocs.io/en/latest/generated/torch_geometric.nn.conv.SAGEConv.html#torch_geometric.nn.conv.SAGEConv
+    'SAGEConv': {
+        'aggr': 'mean',
+        'normalize': False,
+        'root_weight': True,
+        'project': False,
+        'bias': True,
+    },
+    # https://pytorch-geometric.readthedocs.io/en/latest/generated/torch_geometric.nn.conv.CuGraphSAGEConv.html#torch_geometric.nn.conv.CuGraphSAGEConv
+    'CuGraphSAGEConv': {
+        'aggr': 'mean',
+        'normalize': False,
+        'root_weight': True,
+        'project': False,
+        'bias': True,
+    }
 }
 
 def create_gnn_conv_params(conv_name: str, override_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

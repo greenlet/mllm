@@ -1,4 +1,5 @@
 from importlib import import_module
+import itertools as it
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, cast
@@ -673,9 +674,10 @@ class EmbGraph(nn.Module):
 
     def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
         out = x
-        for layer in self.graph:
+        for i, layer in enumerate(self.graph):
             out = layer(out, edge_index)
-            out = self.act(out)
+            if i < len(self.graph) - 1:
+                out = self.act(out)
         return out
 
 
@@ -703,6 +705,11 @@ class EncdecGraphBert(nn.Module):
             msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
             reg_weight=1, msk_weight=5, spc_weight=0.1,
         )
+        # named_params = list(it.chain(self.emb_graph.named_parameters(), self.dec.named_parameters()))
+        named_params = self.dec.named_parameters()
+        for n, p in named_params:
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
         rank = dist.get_rank()

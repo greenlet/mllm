@@ -53,7 +53,7 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=60
+docs_batch_size=20
 world_size=4
 
 
