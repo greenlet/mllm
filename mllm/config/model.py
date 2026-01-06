@@ -280,6 +280,11 @@ class EncdecBertCfg(BaseModel):
     dec_pyr: DecPyrCfg
 
 
+class EncdecMiddleType(str, Enum):
+    Graph = 'graph'
+    Attn = 'attn'
+
+
 # https://pytorch-geometric.readthedocs.io/en/latest/modules/nn.html#convolutional-layers
 class GnnConvCfg(BaseModel):
     cls_name: str
@@ -357,11 +362,23 @@ class EmbGraphCfg(BaseModel):
     gnn_conv: GnnConvCfg
 
 
+class EmbAttnCfg(BaseModel):
+    d_model: int
+    n_heads: int
+    d_k: int
+    d_v: int
+    d_inner: int
+    n_layers: int
+    dropout_rate: float
+
+
 class EncdecGraphBertCfg(BaseModel):
     enc_bert: EncBertCfg
     dec_pyr: DecPyrCfg
-    emb_graph: EmbGraphCfg
     share_enc_dec_proj_weights: bool
+    middle_type: EncdecMiddleType
+    emb_graph: EmbGraphCfg
+    emb_attn: EmbAttnCfg
 
 
 class DecRankHgCfg(BaseModel):
@@ -670,8 +687,9 @@ def create_encdec_graph_bert_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
         inp_len = 128, dec_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
         dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
-        share_enc_dec_proj_weights: bool = False,
+        share_enc_dec_proj_weights: bool = False, middle_type: EncdecMiddleType = EncdecMiddleType.Graph,
         n_graph_layers: int = 1, gnn_hidden_dim: int = 0, gnn_conv_name: str = 'GCNConv', gnn_conv_params: Optional[Dict[str, Any]] = None,
+        n_emb_attn_layers: int = 2,
 ) -> EncdecGraphBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -733,9 +751,13 @@ def create_encdec_graph_bert_cfg(
         gnn_conv=cfg_gnn_conv,
     )
 
+    cfg_attn = EmbAttnCfg(
+        d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, n_layers=n_emb_attn_layers, dropout_rate=dec_dropout_rate,
+    )
+
     cfg_encdec_bert = EncdecGraphBertCfg(
-        enc_bert=cfg_enc, dec_pyr=cfg_dec, emb_graph=cfg_graph,
-        share_enc_dec_proj_weights=share_enc_dec_proj_weights,
+        enc_bert=cfg_enc, dec_pyr=cfg_dec, share_enc_dec_proj_weights=share_enc_dec_proj_weights,
+        middle_type=middle_type, emb_graph=cfg_graph, emb_attn=cfg_attn,
     )
     return cfg_encdec_bert
 
@@ -1122,7 +1144,9 @@ def copy_override_encdec_graph_bert_cfg(
         cfg: EncdecGraphBertCfg, pretrained_model_name: Optional[str], emb_type: Optional[BertEmbType] = None, inp_len: Optional[int] = None,
         dec_enhance_type: Optional[HgEnhanceType] = None, dec_n_layers: Optional[int] = None, dec_n_similar_layers: Optional[int] = None,
         dec_dropout_rate: Optional[float] = None, dec_temperature: Optional[float] = None, share_enc_dec_proj_weights: Optional[bool] = None,
+        middle_type: Optional[EncdecMiddleType] = None,
         n_graph_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None, gnn_conv_name: Optional[str] = None, gnn_conv_params: Optional[Dict[str, Any]] = None,
+        n_emb_attn_layers: Optional[int] = None,
 ) -> EncdecGraphBertCfg:
     enc = cfg.enc_bert
     dec = cfg.dec_pyr
@@ -1136,16 +1160,20 @@ def copy_override_encdec_graph_bert_cfg(
     dec_dropout_rate = coalesce(dec_dropout_rate, dec.dropout_rate)
     dec_temperature = coalesce(dec_temperature, dec.temperature)
     share_enc_dec_proj_weights = coalesce(share_enc_dec_proj_weights, cfg.share_enc_dec_proj_weights)
+    middle_type = coalesce(middle_type, cfg.middle_type)
     n_graph_layers = coalesce(n_graph_layers, cfg.emb_graph.n_layers)
     gnn_hidden_dim = coalesce(gnn_hidden_dim, cfg.emb_graph.hidden_dim)
     gnn_conv_name = coalesce(gnn_conv_name, cfg.emb_graph.gnn_conv.cls_name)
     gnn_conv_params = coalesce(gnn_conv_params, cfg.emb_graph.gnn_conv.params)
+    n_emb_attn_layers = coalesce(n_emb_attn_layers, cfg.emb_attn.n_layers)
 
     return create_encdec_graph_bert_cfg(
         pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
         inp_len=inp_len, dec_enhance_type=dec_enhance_type, dec_n_layers=dec_n_layers, dec_n_similar_layers=dec_n_similar_layers,
         dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature, share_enc_dec_proj_weights=share_enc_dec_proj_weights,
+        middle_type=middle_type,
         n_graph_layers=n_graph_layers, gnn_hidden_dim=gnn_hidden_dim, gnn_conv_name=gnn_conv_name, gnn_conv_params=gnn_conv_params,
+        n_emb_attn_layers=n_emb_attn_layers,
     )
 
 
@@ -1380,7 +1408,7 @@ def gen_prefpostfix_encdec_graph_bert(
         pretrained_model_path: Optional[Path] = None, next_tok_pred: bool = False,
     ) -> tuple[str, str]:
     prefix, postfix_parts = f'encdecgraphbert', []
-    enc, dec, graph = model_cfg.enc_bert, model_cfg.dec_pyr, model_cfg.emb_graph
+    enc, dec, graph, attn = model_cfg.enc_bert, model_cfg.dec_pyr, model_cfg.emb_graph, model_cfg.emb_attn
 
     if pretrained_model_path is not None:
         dname = pretrained_model_path.parent.name
@@ -1420,12 +1448,17 @@ def gen_prefpostfix_encdec_graph_bert(
         temp = np.round(dec.temperature, 2)
         postfix_parts.append(f't{temp}')
 
-    graph_parts = [f'graph_lrs{graph.n_layers}']
-    if graph.hidden_dim != enc.d_model:
-        graph_parts.append(f'hid{graph.hidden_dim}')
-    gnn_str = gnn_conv_cfg_to_str(graph.gnn_conv)
-    graph_parts.append(gnn_str)
-    postfix_parts.append('_'.join(graph_parts))
+    if model_cfg.middle_type == EncdecMiddleType.Graph:
+        graph_parts = [f'graph_lrs{graph.n_layers}']
+        if graph.hidden_dim != enc.d_model:
+            graph_parts.append(f'hid{graph.hidden_dim}')
+        gnn_str = gnn_conv_cfg_to_str(graph.gnn_conv)
+        graph_parts.append(gnn_str)
+        postfix_parts.append('_'.join(graph_parts))
+    elif model_cfg.middle_type == EncdecMiddleType.EmbAttn:
+        postfix_parts.append(f'embattn_lrs{attn.n_layers}')
+    else:
+        raise Exception(f'Unsupported middle_type = {model_cfg.middle_type}')
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix

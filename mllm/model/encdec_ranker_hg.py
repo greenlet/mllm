@@ -657,6 +657,7 @@ class EmbGraph(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.act = nn.ReLU()
+        # self.act = nn.Tanh()
         geom_nn_conv_module = import_module('torch_geometric.nn.conv')
         conv_cls = getattr(geom_nn_conv_module, cfg.gnn_conv.cls_name)
         layers = []
@@ -678,6 +679,7 @@ class EmbGraph(nn.Module):
             out = layer(out, edge_index)
             if i < len(self.graph) - 1:
                 out = self.act(out)
+        out = out + x # residual connection
         return out
 
 
@@ -705,8 +707,8 @@ class EncdecGraphBert(nn.Module):
             msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
             reg_weight=1, msk_weight=5, spc_weight=0.1,
         )
-        # named_params = list(it.chain(self.emb_graph.named_parameters(), self.dec.named_parameters()))
-        named_params = self.dec.named_parameters()
+        named_params = list(it.chain(self.emb_graph.named_parameters(), self.dec.named_parameters()))
+        # named_params = self.dec.named_parameters()
         for n, p in named_params:
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
@@ -770,6 +772,7 @@ class EncdecGraphBert(nn.Module):
             graph_embs = self.emb_graph(graph_vert_embs, batch.edge_inds)
             # graph_emb: (d_model,)
             graph_emb = graph_embs[-1, :]
+            # graph_emb = graph_embs.mean(dim=0)
             out_graph_embs.append(graph_emb)
         # out_graph_embs: (batch_size, d_model)
         out_graph_embs = torch.stack(out_graph_embs, dim=0)

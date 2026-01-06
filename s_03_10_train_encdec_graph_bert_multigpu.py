@@ -326,7 +326,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         ddp_model = model
 
     params = ddp_model.parameters()
-    optimizer = torch.optim.Adam(params, lr=args.learning_rate)
+    # optimizer = torch.optim.Adam(params, lr=args.learning_rate)
+    optimizer = torch.optim.AdamW(params, lr=args.learning_rate)
 
     n_special_toks = 1000
     ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
@@ -335,7 +336,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
     val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
 
     sched_wait_steps = 0
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=7, threshold=1e-6, min_lr=1e-8)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
     lr = optimizer.param_groups[0]['lr']
     log(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
     if rank == 0:

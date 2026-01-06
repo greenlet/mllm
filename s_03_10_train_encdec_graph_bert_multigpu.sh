@@ -23,8 +23,6 @@ dec_n_layers=0
 dec_n_similar_layers=1
 dec_enhance_type=mmbb
 dec_dropout_rate=0
-n_graph_layers=2
-gnn_hidden_dim=-1
 mask_tokens=false
 mask_sep_freq=0.5
 mask_sep_frac=0.15
@@ -34,8 +32,15 @@ mask_seq_max_len=20
 share_enc_dec_proj_weights=false
 mask_n_last_toks=0
 next_tok_pred=false
+n_graph_layers=2
+gnn_hidden_dim=-1
 gnn_conv_name='GCNConv'
-gnn_conv_params='{"normalize": true, "bias": true}'
+gnn_conv_params='{"normalize": true, "bias": false}'
+# n_graph_layers=2
+# # gnn_hidden_dim=1536
+# gnn_hidden_dim=-1
+# gnn_conv_name='ChebConv'
+# gnn_conv_params='{"K": 3, "bias": true}'
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
@@ -58,7 +63,7 @@ world_size=4
 
 
 learning_rate=0.0001
-# learning_rate=0.00005
+learning_rate=0.00005
 #learning_rate=0.00001
 random_seed=200
 

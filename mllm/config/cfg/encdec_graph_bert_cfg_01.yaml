@@ -12,6 +12,14 @@ dec_pyr:
   n_vocab: 30522
   step: 2
   temperature: 0.0
+emb_attn:
+  d_inner: 3072
+  d_k: 64
+  d_model: 768
+  d_v: 64
+  dropout_rate: 0.0
+  n_heads: 12
+  n_layers: 1
 emb_graph:
   d_model: 768
   gnn_conv:
@@ -32,4 +40,5 @@ enc_bert:
   pad_token_id: 0
   pretrained_model_name: bert-base-uncased
   tokenizer_name: bert-base-uncased
+middle_type: graph
 share_enc_dec_proj_weights: false
