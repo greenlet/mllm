@@ -18,7 +18,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
 
-from mllm.config.model import EncdecGraphBertCfg, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
+from mllm.config.model import EncdecGraphBertCfg, EncdecMiddleType, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
     gen_prefpostfix_encdec_bert, gen_prefpostfix_encdec_graph_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, \
     share_enc_dec_proj_weights_ARG
@@ -94,6 +94,17 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Decoder dropout rate.',
         cli=('--dec-dropout-rate',),
     )
+
+    share_enc_dec_proj_weights_STR: str = create_bool_str_field(*share_enc_dec_proj_weights_ARG)
+    @property
+    def share_enc_dec_proj_weights(self) -> bool:
+        return is_arg_true(share_enc_dec_proj_weights_ARG[0], self.share_enc_dec_proj_weights_STR)
+
+    emb_middle_type: EncdecMiddleType = Field(
+        EncdecMiddleType.Graph,
+        description=f'Embedding processing model middle type. Can have values: {list(x.value for x in EncdecMiddleType)}',
+        cli=('--emb-middle-type',),
+    )
     n_graph_layers: int = Field(
         1,
         description='Number of graph layers.',
@@ -114,6 +125,11 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         {},
         description='GNN convolution layer parameters as a dictionary. Parameters must be compatible with the selected GNN layer.',
         cli=('--gnn-conv-params',),
+    )
+    n_emb_attn_layers: int = Field(
+        1,
+        description='Number of embedding attention layers in the middle model.',
+        cli=('--n-emb-attn-layers',),
     )
 
     @validator('gnn_conv_params', pre=True)
@@ -172,11 +188,6 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     @property
     def next_tok_pred(self) -> bool:
         return is_arg_true(next_tok_pred_ARG[0], self.next_tok_pred_STR)
-
-    share_enc_dec_proj_weights_STR: str = create_bool_str_field(*share_enc_dec_proj_weights_ARG)
-    @property
-    def share_enc_dec_proj_weights(self) -> bool:
-        return is_arg_true(share_enc_dec_proj_weights_ARG[0], self.share_enc_dec_proj_weights_STR)
 
     docs_batch_size: int = Field(
         3,
@@ -265,8 +276,10 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
     model_cfg = copy_override_encdec_graph_bert_cfg(
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
-        share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim,
+        share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, middle_type=args.emb_middle_type,
+        n_emb_attn_layers=args.n_emb_attn_layers, n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim,
         gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
+        n_emb_attn_layers=args.n_emb_attn_layers,
     )
     if rank == 0:
         pprint(model_cfg.dict())

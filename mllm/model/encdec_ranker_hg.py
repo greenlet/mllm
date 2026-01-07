@@ -23,7 +23,7 @@ import torch.distributed as dist
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
-from mllm.config.model import EmbGraphCfg, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+from mllm.config.model import EmbAttnCfg, EmbGraphCfg, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
     parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
@@ -679,6 +679,26 @@ class EmbGraph(nn.Module):
             out = layer(out, edge_index)
             if i < len(self.graph) - 1:
                 out = self.act(out)
+        out = out + x # residual connection
+        return out
+
+
+class EmbAttn(nn.Module):
+    cfg: EmbAttnCfg
+
+    def __init__(self, cfg: EmbAttnCfg):
+        super().__init__()
+        self.cfg = cfg
+        layers = [
+            nn.MultiheadAttention(
+                embed_dim=cfg.d_model, num_heads=cfg.n_heads, dropout=cfg.dropout_rate, batch_first=True,
+            )
+            for _ in range(cfg.n_layers)
+        ]
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
+        out, _ = self.attn(x, x, x, attn_mask=attn_mask)
         out = out + x # residual connection
         return out
 

@@ -29,9 +29,10 @@ mask_sep_frac=0.15
 mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
-share_enc_dec_proj_weights=false
 mask_n_last_toks=0
 next_tok_pred=false
+share_enc_dec_proj_weights=false
+emb_middle_type=graph
 n_graph_layers=2
 gnn_hidden_dim=-1
 gnn_conv_name='GCNConv'
@@ -41,6 +42,8 @@ gnn_conv_params='{"normalize": true, "bias": false}'
 # gnn_hidden_dim=-1
 # gnn_conv_name='ChebConv'
 # gnn_conv_params='{"K": 3, "bias": true}'
+emb_middle_type=attn
+n_emb_attn_layers=2
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
@@ -84,10 +87,13 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --dec-n-layers $dec_n_layers \
   --dec-n-similar-layers $dec_n_similar_layers \
   --dec-dropout-rate $dec_dropout_rate \
+  --share-enc-dec-proj-weights $share_enc_dec_proj_weights \
+  --emb-middle-type $emb_middle_type \
   --n-graph-layers $n_graph_layers \
   --gnn-hidden-dim $gnn_hidden_dim \
   --gnn-conv-name $gnn_conv_name \
   --gnn-conv-params "$gnn_conv_params" \
+  --n-emb-attn-layers $n_emb_attn_layers \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \
@@ -96,7 +102,6 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --mask-seq-max-len $mask_seq_max_len \
   --mask-n-last-toks $mask_n_last_toks \
   --next-tok-pred $next_tok_pred \
-  --share-enc-dec-proj-weights $share_enc_dec_proj_weights \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \
