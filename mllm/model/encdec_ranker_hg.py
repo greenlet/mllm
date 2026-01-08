@@ -23,7 +23,7 @@ import torch.distributed as dist
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
-from mllm.config.model import EmbAttnCfg, EmbGraphCfg, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+from mllm.config.model import EmbAttnCfg, EmbGraphCfg, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
     parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
@@ -672,6 +672,14 @@ class EmbGraph(nn.Module):
             layer = conv_cls(**conv_params)
             layers.append(layer)
         self.graph = nn.Sequential(*layers)
+        self.init_weights()
+
+    def init_weights(self):
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
 
     def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:
         out = x
@@ -689,17 +697,26 @@ class EmbAttn(nn.Module):
     def __init__(self, cfg: EmbAttnCfg):
         super().__init__()
         self.cfg = cfg
-        layers = [
-            nn.MultiheadAttention(
-                embed_dim=cfg.d_model, num_heads=cfg.n_heads, dropout=cfg.dropout_rate, batch_first=True,
-            )
-            for _ in range(cfg.n_layers)
-        ]
-        self.layers = nn.Sequential(*layers)
+        temperature = cfg.d_k ** 0.5
+        self.layers = nn.ModuleList([
+            EncoderLayer(
+                n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner, d_k=cfg.d_k, d_v=cfg.d_v,
+                dropout_rate=cfg.dropout_rate, temperature=temperature,
+            ) for _ in range(cfg.n_layers)
+        ])
+        self.init_weights()
+
+    def init_weights(self):
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
 
     def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
-        out, _ = self.attn(x, x, x, attn_mask=attn_mask)
-        out = out + x # residual connection
+        out = x
+        for layer in self.layers:
+            out, _ = layer(out, slf_attn_mask=attn_mask)
         return out
 
 
@@ -717,7 +734,12 @@ class EncdecGraphBert(nn.Module):
         self.cfg = cfg
         self.tkz = tkz
         self.enc = EncoderBert(cfg.enc_bert)
-        self.emb_graph = EmbGraph(cfg.emb_graph)
+        if self.cfg.middle_type == EncdecMiddleType.EmbGraph:
+            self.emb_graph = EmbGraph(cfg.emb_graph)
+        elif self.cfg.middle_type == EncdecMiddleType.EmbAttn:
+            self.emb_attn = EmbAttn(cfg.emb_attn)
+        else:
+            raise Exception(f'Graph middle type {self.cfg.middle_type} is not supported')
         word_embeddings = None
         if self.cfg.share_enc_dec_proj_weights:
             word_embeddings = self.enc.bert_model.embeddings.word_embeddings
@@ -727,11 +749,6 @@ class EncdecGraphBert(nn.Module):
             msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
             reg_weight=1, msk_weight=5, spc_weight=0.1,
         )
-        named_params = list(it.chain(self.emb_graph.named_parameters(), self.dec.named_parameters()))
-        # named_params = self.dec.named_parameters()
-        for n, p in named_params:
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
 
     def load_pretrained(self, pretrained_model_path: Optional[Path]):
         rank = dist.get_rank()
@@ -794,10 +811,10 @@ class EncdecGraphBert(nn.Module):
             graph_emb = graph_embs[-1, :]
             # graph_emb = graph_embs.mean(dim=0)
             out_graph_embs.append(graph_emb)
-        # out_graph_embs: (batch_size, d_model)
-        out_graph_embs = torch.stack(out_graph_embs, dim=0)
+        # out_embs: (batch_size, d_model)
+        out_embs = torch.stack(out_graph_embs, dim=0)
         # out_logits: (batch_size, inp_len, n_vocab)
-        out_logits = self.dec(out_graph_embs)
+        out_logits = self.dec(out_embs)
 
         vocab_loss = self.vocab_loss_fn(out_logits, batch.cites_masked_toks, batch.cites_toks)
         return vocab_loss, out_logits
