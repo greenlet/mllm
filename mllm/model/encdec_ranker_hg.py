@@ -801,18 +801,38 @@ class EncdecGraphBert(nn.Module):
         # prompt_enc_embs: (batch_size, d_model)
         prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
         
-        out_graph_embs = []
-        for ib in range(batch_size):
-            # graph_vert_embs: (batch_size + 1, d_model)
-            graph_vert_embs = torch.concatenate([inp_enc_embs, prompt_enc_embs[ib:ib + 1]], dim=0)
-            # graph_out: (batch_size + 1, d_model)
-            graph_embs = self.emb_graph(graph_vert_embs, batch.edge_inds)
-            # graph_emb: (d_model,)
-            graph_emb = graph_embs[-1, :]
-            # graph_emb = graph_embs.mean(dim=0)
-            out_graph_embs.append(graph_emb)
-        # out_embs: (batch_size, d_model)
-        out_embs = torch.stack(out_graph_embs, dim=0)
+        if self.middle_type == EncdecMiddleType.EmbGraph:
+            out_graph_embs = []
+            for ib in range(batch_size):
+                # graph_vert_embs: (batch_size + 1, d_model)
+                graph_vert_embs = torch.concatenate([inp_enc_embs, prompt_enc_embs[ib:ib + 1]], dim=0)
+                # graph_out: (batch_size + 1, d_model)
+                graph_embs = self.emb_graph(graph_vert_embs, batch.edge_inds)
+                # graph_emb: (d_model,)
+                graph_emb = graph_embs[-1, :]
+                # graph_emb = graph_embs.mean(dim=0)
+                out_graph_embs.append(graph_emb)
+            # out_embs: (batch_size, d_model)
+            out_embs = torch.stack(out_graph_embs, dim=0)
+        elif self.middle_type == EncdecMiddleType.EmbAttn:
+            out_attn_embs = []
+            for ib in range(batch_size):
+                # prompt_embs: (1, d_model)
+                prompt_embs = prompt_enc_embs[ib:ib + 1, :]
+                # combined_embs: (batch_size + 1, d_model)
+                combined_embs = torch.concatenate([prompt_embs, inp_enc_embs])
+                # combined_embs: (1, batch_size + 1, d_model)
+                combined_embs = combined_embs.unsqueeze(0)
+                # out_embs: (1, batch_size + 1, d_model)
+                out_embs = self.emb_attn(combined_embs)
+                # out_embs: (d_model,)
+                out_embs = out_embs[0, 0, :]  # take prompt embedding only
+                out_attn_embs.append(out_embs)
+            # out_embs: (batch_size, d_model)
+            out_embs = torch.stack(out_attn_embs, dim=0)
+        else:
+            raise
+
         # out_logits: (batch_size, inp_len, n_vocab)
         out_logits = self.dec(out_embs)
 
