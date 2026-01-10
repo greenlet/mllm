@@ -1455,7 +1455,7 @@ def gen_prefpostfix_encdec_graph_bert(
         gnn_str = gnn_conv_cfg_to_str(graph.gnn_conv)
         graph_parts.append(gnn_str)
         postfix_parts.append('_'.join(graph_parts))
-    elif model_cfg.middle_type == EncdecMiddleType.EmbAttn:
+    elif model_cfg.middle_type == EncdecMiddleType.Attn:
         postfix_parts.append(f'embattn_lrs{attn.n_layers}')
     else:
         raise Exception(f'Unsupported middle_type = {model_cfg.middle_type}')

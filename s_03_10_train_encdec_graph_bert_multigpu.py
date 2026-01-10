@@ -277,8 +277,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
         share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, middle_type=args.emb_middle_type,
-        n_emb_attn_layers=args.n_emb_attn_layers, n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim,
-        gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
+        n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim, gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
         n_emb_attn_layers=args.n_emb_attn_layers,
     )
     if rank == 0:

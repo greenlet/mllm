@@ -292,7 +292,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecBertMul
     find_unused_parameters = True
     ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=find_unused_parameters)
     params = ddp_model.parameters()
-    optimizer = torch.optim.Adam(params, lr=args.learning_rate)
+    optimizer = torch.optim.AdamW(params, lr=args.learning_rate)
 
     train_batch_it = create_dataloader_iter(
         ds_train, batch_size=args.docs_batch_size, num_workers=2, distributed=True, drop_last=False,
@@ -388,9 +388,12 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecBertMul
         if epoch >= sched_wait_steps:
             scheduler.step(val_loss)
         
+        last_lr = scheduler.get_last_lr()[0]
+        tbsw.add_scalar(f'R{rank}. {scheduler.__class__.__name__} lr', last_lr, epoch)
+
         if rank == 0:
-            last_lr = scheduler.get_last_lr()[0]
-            tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
+            # last_lr = scheduler.get_last_lr()[0]
+            # tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
             print(f'Train mean loss: {train_loss:.6f}. Val mean loss: {val_loss:.6f}')
             train_losses_str = train_losses.to_cli_str(aggregate=True)

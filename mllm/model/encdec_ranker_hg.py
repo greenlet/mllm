@@ -734,9 +734,9 @@ class EncdecGraphBert(nn.Module):
         self.cfg = cfg
         self.tkz = tkz
         self.enc = EncoderBert(cfg.enc_bert)
-        if self.cfg.middle_type == EncdecMiddleType.EmbGraph:
+        if self.cfg.middle_type == EncdecMiddleType.Graph:
             self.emb_graph = EmbGraph(cfg.emb_graph)
-        elif self.cfg.middle_type == EncdecMiddleType.EmbAttn:
+        elif self.cfg.middle_type == EncdecMiddleType.Attn:
             self.emb_attn = EmbAttn(cfg.emb_attn)
         else:
             raise Exception(f'Graph middle type {self.cfg.middle_type} is not supported')
@@ -801,7 +801,7 @@ class EncdecGraphBert(nn.Module):
         # prompt_enc_embs: (batch_size, d_model)
         prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
         
-        if self.middle_type == EncdecMiddleType.EmbGraph:
+        if self.cfg.middle_type == EncdecMiddleType.Graph:
             out_graph_embs = []
             for ib in range(batch_size):
                 # graph_vert_embs: (batch_size + 1, d_model)
@@ -814,7 +814,7 @@ class EncdecGraphBert(nn.Module):
                 out_graph_embs.append(graph_emb)
             # out_embs: (batch_size, d_model)
             out_embs = torch.stack(out_graph_embs, dim=0)
-        elif self.middle_type == EncdecMiddleType.EmbAttn:
+        elif self.cfg.middle_type == EncdecMiddleType.Attn:
             out_attn_embs = []
             for ib in range(batch_size):
                 # prompt_embs: (1, d_model)
