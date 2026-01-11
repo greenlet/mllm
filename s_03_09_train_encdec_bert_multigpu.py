@@ -388,20 +388,18 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecBertMul
         if epoch >= sched_wait_steps:
             scheduler.step(val_loss)
         
+        dist.barrier()
         last_lr = scheduler.get_last_lr()[0]
-        tbsw.add_scalar(f'R{rank}. {scheduler.__class__.__name__} lr', last_lr, epoch)
+        print(f'R{rank}. Train mean loss: {train_loss:.6f}. Val mean loss: {val_loss:.6f}')
+        train_losses_str = train_losses.to_cli_str(aggregate=True)
+        val_losses_str = val_losses.to_cli_str(aggregate=True)
+        print(f'R{rank}. Train mean losses: {train_losses_str}')
+        print(f'R{rank}. Val mean losses: {val_losses_str}')
+        print(f'R{rank}. Current lr: {last_lr:.10f}.')
 
         if rank == 0:
-            # last_lr = scheduler.get_last_lr()[0]
-            # tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
+            tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
-            print(f'Train mean loss: {train_loss:.6f}. Val mean loss: {val_loss:.6f}')
-            train_losses_str = train_losses.to_cli_str(aggregate=True)
-            val_losses_str = val_losses.to_cli_str(aggregate=True)
-            print(f'Train mean losses: {train_losses_str}')
-            print(f'Val mean losses: {val_losses_str}')
-            print(f'Current lr: {last_lr:.10f}.')
-            
             best = False
             if val_loss_min is None or val_loss < val_loss_min:
                 val_loss_str = f'{val_loss_min}' if val_loss_min is None else f'{val_loss_min:.6f}'

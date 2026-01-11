@@ -45,12 +45,11 @@ gnn_conv_params='{"normalize": true, "bias": false}'
 # gnn_conv_params='{"K": 3, "bias": true}'
 
 emb_middle_type=attn
-n_emb_attn_layers=2
+n_emb_attn_layers=8
 
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
-pretrained_model_path=$train_root_path/encdecbert-20251004_224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
-pretrained_model_path=$train_root_path/encdecbert-20251123_125450-pre_encdecbert20251004224422-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-msk_sep_0.5x0.04_seq_0.5x0.05x5_last_0-dp0-t0.0
+pretrained_model_path=$train_root_path/encdecbert-20260110_193915-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
 
 
 # device=cpu

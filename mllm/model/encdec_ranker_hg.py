@@ -745,6 +745,8 @@ class EncdecGraphBert(nn.Module):
             word_embeddings = self.enc.bert_model.embeddings.word_embeddings
         self.dec = DecoderPyramid(cfg.dec_pyr, word_embeddings=word_embeddings)
         self.rnd_tkz = RandomInputTokenizer(tkz, max_len=cfg.enc_bert.inp_len)
+        self.emb_loss_fn = nn.CosineEmbeddingLoss()
+        self.emb_loss_fn = R2Loss()
         self.vocab_loss_fn = EncdecMaskPadItemLoss(
             msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
             reg_weight=1, msk_weight=5, spc_weight=0.1,
@@ -788,18 +790,20 @@ class EncdecGraphBert(nn.Module):
         return out_enc_last_hidden_state
         
     def run_on_text_citation(self, batch: MaskedCiteBatch) -> Tuple[Dict[str, Tensor], Tensor]:
+        self.enc.eval()
         batch_size = batch.inp_toks.shape[0]
         
         assert torch.all(batch.inp_toks[:, 0] == self.tkz.cls_token_id), 'Input tokens must start with CLS token'
         assert torch.all(batch.prompts_toks[:, 0] == self.tkz.cls_token_id), 'Prompt tokens must start with CLS token'
-        # inp_enc_embs: (batch_size, inp_len, d_model)
-        inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
-        # inp_enc_embs: (batch_size, d_model)
-        inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
-        # prompt_enc_embs: (batch_size, inp_len, d_model)
-        prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
-        # prompt_enc_embs: (batch_size, d_model)
-        prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
+        with torch.no_grad():
+            # inp_enc_embs: (batch_size, inp_len, d_model)
+            inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
+            # inp_enc_embs: (batch_size, d_model)
+            inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
+            # prompt_enc_embs: (batch_size, inp_len, d_model)
+            prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
+            # prompt_enc_embs: (batch_size, d_model)
+            prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
         
         if self.cfg.middle_type == EncdecMiddleType.Graph:
             out_graph_embs = []
@@ -832,11 +836,23 @@ class EncdecGraphBert(nn.Module):
             out_embs = torch.stack(out_attn_embs, dim=0)
         else:
             raise
+        
+        # emb_loss = self.emb_loss_fn(out_embs, inp_enc_embs, torch.ones((batch_size,), device=out_embs.device))
+        emb_loss = self.emb_loss_fn(out_embs, inp_enc_embs)
 
-        # out_logits: (batch_size, inp_len, n_vocab)
-        out_logits = self.dec(out_embs)
+        # # out_logits: (batch_size, inp_len, n_vocab)
+        # out_logits = self.dec(out_embs)
+        # # vocab_loss = self.vocab_loss_fn(out_logits, batch.cites_masked_toks, batch.cites_toks)
+        # vocab_loss = self.vocab_loss_fn(out_logits, batch.inp_toks, batch.inp_toks)
+        # # vocab_loss['loss'] = (9 * vocab_loss['loss'] + emb_loss) / 10
+        # # vocab_loss['loss'] = (vocab_loss['loss'] + 9 * emb_loss) / 10
 
-        vocab_loss = self.vocab_loss_fn(out_logits, batch.cites_masked_toks, batch.cites_toks)
+        out_logits = self.dec(inp_enc_embs)
+        vocab_loss = self.vocab_loss_fn(out_logits, batch.inp_toks, batch.inp_toks)
+
+        vocab_loss['loss'] = (vocab_loss['loss'] + emb_loss) / 2
+        vocab_loss['emb_loss'] = emb_loss
+
         return vocab_loss, out_logits
 
     # inp_masked_toks: (batch_size, inp_len)
