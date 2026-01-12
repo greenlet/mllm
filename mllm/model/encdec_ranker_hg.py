@@ -790,30 +790,41 @@ class EncdecGraphBert(nn.Module):
         return out_enc_last_hidden_state
         
     def run_on_text_citation(self, batch: MaskedCiteBatch) -> Tuple[Dict[str, Tensor], Tensor]:
-        self.enc.eval()
+        # self.enc.eval()
         batch_size = batch.inp_toks.shape[0]
         
         assert torch.all(batch.inp_toks[:, 0] == self.tkz.cls_token_id), 'Input tokens must start with CLS token'
         assert torch.all(batch.prompts_toks[:, 0] == self.tkz.cls_token_id), 'Prompt tokens must start with CLS token'
-        with torch.no_grad():
-            # inp_enc_embs: (batch_size, inp_len, d_model)
-            inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
-            # inp_enc_embs: (batch_size, d_model)
-            inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
-            # prompt_enc_embs: (batch_size, inp_len, d_model)
-            prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
-            # prompt_enc_embs: (batch_size, d_model)
-            prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
+        # with torch.no_grad():
+        #     # inp_enc_embs: (batch_size, inp_len, d_model)
+        #     inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
+        #     # inp_enc_embs: (batch_size, d_model)
+        #     inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
+        #     # prompt_enc_embs: (batch_size, inp_len, d_model)
+        #     prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
+        #     # prompt_enc_embs: (batch_size, d_model)
+        #     prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
+        
+        # inp_enc_embs: (batch_size, inp_len, d_model)
+        inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
+        # inp_enc_embs: (batch_size, d_model)
+        inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
+        # prompt_enc_embs: (batch_size, inp_len, d_model)
+        prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
+        # prompt_enc_embs: (batch_size, d_model)
+        prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
         
         if self.cfg.middle_type == EncdecMiddleType.Graph:
             out_graph_embs = []
             for ib in range(batch_size):
+                # prompt_embs: (1, d_model)
+                prompt_embs = prompt_enc_embs[ib:ib + 1, :]
                 # graph_vert_embs: (batch_size + 1, d_model)
-                graph_vert_embs = torch.concatenate([inp_enc_embs, prompt_enc_embs[ib:ib + 1]], dim=0)
+                graph_vert_embs = torch.concatenate([inp_enc_embs, prompt_embs], dim=0)
                 # graph_out: (batch_size + 1, d_model)
                 graph_embs = self.emb_graph(graph_vert_embs, batch.edge_inds)
                 # graph_emb: (d_model,)
-                graph_emb = graph_embs[-1, :]
+                graph_emb = graph_embs[-1]
                 # graph_emb = graph_embs.mean(dim=0)
                 out_graph_embs.append(graph_emb)
             # out_embs: (batch_size, d_model)
@@ -824,13 +835,13 @@ class EncdecGraphBert(nn.Module):
                 # prompt_embs: (1, d_model)
                 prompt_embs = prompt_enc_embs[ib:ib + 1, :]
                 # combined_embs: (batch_size + 1, d_model)
-                combined_embs = torch.concatenate([prompt_embs, inp_enc_embs])
+                combined_embs = torch.concatenate([inp_enc_embs, prompt_embs], dim=0)
                 # combined_embs: (1, batch_size + 1, d_model)
                 combined_embs = combined_embs.unsqueeze(0)
                 # out_embs: (1, batch_size + 1, d_model)
                 out_embs = self.emb_attn(combined_embs)
                 # out_embs: (d_model,)
-                out_embs = out_embs[0, 0, :]  # take prompt embedding only
+                out_embs = out_embs[0, -1]  # take prompt embedding only
                 out_attn_embs.append(out_embs)
             # out_embs: (batch_size, d_model)
             out_embs = torch.stack(out_attn_embs, dim=0)

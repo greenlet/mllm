@@ -34,15 +34,15 @@ next_tok_pred=false
 share_enc_dec_proj_weights=false
 
 emb_middle_type=graph
-n_graph_layers=2
-gnn_hidden_dim=-1
-gnn_conv_name='GCNConv'
-gnn_conv_params='{"normalize": true, "bias": false}'
 # n_graph_layers=2
-# # gnn_hidden_dim=1536
 # gnn_hidden_dim=-1
-# gnn_conv_name='ChebConv'
-# gnn_conv_params='{"K": 3, "bias": true}'
+# gnn_conv_name='GCNConv'
+# gnn_conv_params='{"normalize": true, "bias": false}'
+n_graph_layers=8
+# gnn_hidden_dim=1536
+gnn_hidden_dim=-1
+gnn_conv_name='ChebConv'
+gnn_conv_params='{"K": 3, "bias": true}'
 
 emb_middle_type=attn
 n_emb_attn_layers=8

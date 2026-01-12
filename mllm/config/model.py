@@ -283,12 +283,36 @@ class EncdecBertCfg(BaseModel):
 class EncdecMiddleType(str, Enum):
     Graph = 'graph'
     Attn = 'attn'
+    Mlp = 'mlp'
 
 
-# https://pytorch-geometric.readthedocs.io/en/latest/modules/nn.html#convolutional-layers
-class GnnConvCfg(BaseModel):
+class PyClassCfg(BaseModel):
+    module_path: str
     cls_name: str
     params: Dict[str, Any]
+
+
+def create_cls_params(cls_name: str, cls_name_to_defaults: Dict[str, Any], override_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    params = cls_name_to_defaults[cls_name].copy()
+    if override_params:
+        params.update(override_params)
+    return params
+
+
+def cls_cfg_to_str(cls_cfg: PyClassCfg, param_to_short_str: Optional[Dict[str, str]] = None) -> str:
+    parts = [cls_cfg.cls_name]
+    param_to_short_str = param_to_short_str or {}
+    for param_name, param_value in cls_cfg.params.items():
+        param_short_name = param_to_short_str.get(param_name, param_name)
+        if param_value is None:
+            parts.append(f'{param_short_name}None')
+        elif isinstance(param_value, bool):
+            parts.append(bool_param_to_str(param_short_name, param_value))
+        elif isinstance(param_value, str):
+            parts.append(f'{param_short_name}{param_value.capitalize()}')
+        else:
+            parts.append(f'{param_short_name}{param_value}')
+    return '-'.join(parts)
 
 
 gnn_conv_param_to_short_str = {
@@ -334,26 +358,6 @@ gnn_conv_name_to_defaults = {
     }
 }
 
-def create_gnn_conv_params(conv_name: str, override_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    params = gnn_conv_name_to_defaults[conv_name].copy()
-    if override_params:
-        params.update(override_params)
-    return params
-
-def gnn_conv_cfg_to_str(conv_cfg: GnnConvCfg) -> str:
-    parts = [conv_cfg.cls_name]
-    for param_name, param_value in conv_cfg.params.items():
-        param_short_name = gnn_conv_param_to_short_str.get(param_name, param_name)
-        if param_value is None:
-            parts.append(f'{param_short_name}None')
-        elif isinstance(param_value, bool):
-            parts.append(bool_param_to_str(param_short_name, param_value))
-        elif isinstance(param_value, str):
-            parts.append(f'{param_short_name}{param_value.capitalize()}')
-        else:
-            parts.append(f'{param_short_name}{param_value}')
-    return '-'.join(parts)
-
 
 class EmbGraphCfg(BaseModel):
     n_layers: int
@@ -372,6 +376,35 @@ class EmbAttnCfg(BaseModel):
     dropout_rate: float
 
 
+class EmbMlpCfg(BaseModel):
+    d_model: int
+    d_out: int
+    act_fn: str = 'gelu'
+
+
+class EncdecCiteToksTargetType(str, Enum):
+    All = 'all'
+    Cite = 'cite'
+
+
+class EncdecCiteEmbsTargetType(str, Enum):
+    Cos = 'cos'
+    Mse = 'mse'
+    R2 = 'r2'
+
+
+class EncdecTrainCfg(BaseModel):
+    mask_cfg: Optional[MaskCfg] = None
+    cite_toks_target_weight: float = 1.0
+    cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All
+    cite_embs_target_weight: float = 1.0
+    cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2
+    input_toks_target_weight: float = 1.0
+    optimizer: Dict[str, Any] = {}
+    learning_rate: float = 1e-4
+    learning_rate_scheduler: Dict[str, Any] = {}
+
+
 class EncdecGraphBertCfg(BaseModel):
     enc_bert: EncBertCfg
     dec_pyr: DecPyrCfg
@@ -379,6 +412,8 @@ class EncdecGraphBertCfg(BaseModel):
     middle_type: EncdecMiddleType
     emb_graph: EmbGraphCfg
     emb_attn: EmbAttnCfg
+    emb_mlp: EmbMlpCfg
+    train_cfg: EncdecTrainCfg
 
 
 class DecRankHgCfg(BaseModel):
