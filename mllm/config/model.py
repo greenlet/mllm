@@ -312,7 +312,7 @@ def cls_cfg_to_str(cls_cfg: PyClassCfg, param_to_short_str: Optional[Dict[str, s
             parts.append(f'{param_short_name}{param_value.capitalize()}')
         else:
             parts.append(f'{param_short_name}{param_value}')
-    return '-'.join(parts)
+    return '_'.join(parts)
 
 
 gnn_conv_param_to_short_str = {
@@ -358,7 +358,7 @@ gnn_conv_name_to_defaults = {
     }
 }
 
-optimzer_param_to_short_str = {}
+optimizer_param_to_short_str = {}
 lrs_param_to_short_str = {}
 
 
@@ -408,6 +408,7 @@ class EncdecTrainCfg(BaseModel):
     learning_rate: float = 1e-4
     optimizer: Optional[PyClassCfg] = None
     learning_rate_scheduler: Optional[PyClassCfg] = None
+    batch_size: int = 10
 
 
 class EncdecGraphBertCfg(BaseModel):
@@ -735,7 +736,7 @@ def create_encdec_graph_bert_cfg(
         cite_embs_target_weight: float = 1.0, cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2,
         input_toks_target_weight: float = 1.0, learning_rate: float = 1e-4, optimizer_name: str = 'AdamW',
         optimizer_params: Optional[Dict[str, Any]] = None, lrs_name: str = 'ReduceLROnPlateau',
-        lrs_params: Optional[Dict[str, Any]] = None,
+        lrs_params: Optional[Dict[str, Any]] = None, batch_size: int = 10,
 ) -> EncdecGraphBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -820,6 +821,7 @@ def create_encdec_graph_bert_cfg(
             cls_name=lrs_name,
             params=lrs_params or {},
         ),
+        batch_size=batch_size,
     )
 
     cfg_encdec_bert = EncdecGraphBertCfg(
@@ -1219,7 +1221,7 @@ def copy_override_encdec_graph_bert_cfg(
         cite_embs_target_weight: Optional[float] = None, cite_embs_target_type: Optional[EncdecCiteEmbsTargetType] = None,
         input_toks_target_weight: Optional[float] = None, learning_rate: Optional[float] = None,
         optimizer_name: Optional[str] = None, optimizer_params: Optional[Dict[str, Any]] = None,
-        lrs_name: Optional[str] = None, lrs_params: Optional[Dict[str, Any]] = None,
+        lrs_name: Optional[str] = None, lrs_params: Optional[Dict[str, Any]] = None, batch_size: Optional[int] = None,
 ) -> EncdecGraphBertCfg:
     enc = cfg.enc_bert
     dec = cfg.dec_pyr
@@ -1253,6 +1255,7 @@ def copy_override_encdec_graph_bert_cfg(
     optimizer_params = coalesce(optimizer_params, cfg.train_cfg.optimizer_params)
     lrs_name = coalesce(lrs_name, cfg.train_cfg.lrs_name)
     lrs_params = coalesce(lrs_params, cfg.train_cfg.lrs_params)
+    batch_size = coalesce(batch_size, cfg.train_cfg.batch_size)
 
 
     return create_encdec_graph_bert_cfg(
@@ -1267,6 +1270,7 @@ def copy_override_encdec_graph_bert_cfg(
         cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type,
         input_toks_target_weight=input_toks_target_weight, learning_rate=learning_rate,
         optimizer_name=optimizer_name, optimizer_params=optimizer_params, lrs_name=lrs_name, lrs_params=lrs_params,
+        batch_size=batch_size,
     )
 
 
@@ -1497,17 +1501,25 @@ def gen_prefpostfix_encdec_bert(
 
 
 def gen_prefpostfix_encdec_graph_bert(
-        model_cfg: EncdecGraphBertCfg, mask_cfg: Optional[MaskCfg],
-        pretrained_model_path: Optional[Path] = None, next_tok_pred: bool = False,
+        model_cfg: EncdecGraphBertCfg,,
     ) -> tuple[str, str]:
     prefix, postfix_parts = f'encdecgraphbert', []
-    enc, dec, graph, attn = model_cfg.enc_bert, model_cfg.dec_pyr, model_cfg.emb_graph, model_cfg.emb_attn
+    enc, dec, graph, attn, mlp = model_cfg.enc_bert, model_cfg.dec_pyr, model_cfg.emb_graph, model_cfg.emb_attn, model_cfg.emb_mlp
+    train = model_cfg.train_cfg
 
-    if pretrained_model_path is not None:
-        dname = pretrained_model_path.parent.name
+    pretrained_model_path, checkpoint_path = None, None
+    if train is not None:
+        pretrained_model_path, checkpoint_path, mask_cfg = train.pretrained_model_path, train.checkpoint_path, train.mask_cfg
+
+    chpath = checkpoint_path or pretrained_model_path
+    if chpath is not None:
+        dname = chpath.parent.name
         m = checkpoint_fname_pat.match(dname)
         assert m is not None, f'Cannot parse checkpoint filename "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
-        postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
+        if checkpoint_path is not None:
+            postfix_parts.append(f'chk_{m.group(2)}{m.group(3)}')
+        else:
+            postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
 
     brt_str = enc.pretrained_model_name.replace('-', '')
     tkz_name = enc.tokenizer_name.replace('-', '')
@@ -1529,9 +1541,6 @@ def gen_prefpostfix_encdec_graph_bert(
         seq_freq, seq_max_frac = np.round(mask_cfg.seq_freq, 2), np.round(mask_cfg.seq_max_frac, 2)
         postfix_parts.append(f'msk_sep_{sep_freq}x{sep_frac}_seq_{seq_freq}x{seq_max_frac}x{mask_cfg.seq_max_len}_last_{mask_cfg.n_last_toks}')
 
-    if next_tok_pred:
-        postfix_parts.append('ntp')
-
     dp_rate = np.round(dec.dropout_rate, 2)
     if dp_rate < 1e-6:
         dp_rate = 0
@@ -1550,8 +1559,41 @@ def gen_prefpostfix_encdec_graph_bert(
         postfix_parts.append('_'.join(graph_parts))
     elif model_cfg.middle_type == EncdecMiddleType.Attn:
         postfix_parts.append(f'embattn_lrs{attn.n_layers}')
+    elif model_cfg.middle_type == EncdecMiddleType.Mlp:
+        postfix_parts.append(f'embmlp_act{mlp.act_fn}')
     else:
         raise Exception(f'Unsupported middle_type = {model_cfg.middle_type}')
+
+    if train is not None:
+        train_parts = ['trn']
+        if train.cite_toks_target_weight > 0:
+            ctok = np.round(train.cite_toks_target_weight, 2)
+            train_parts.append(f'ctok{train.cite_toks_target_type.value.capitalize()}_w{ctok}')
+        if train.cite_embs_target_weight > 0:
+            cemb = np.round(train.cite_embs_target_weight, 2)
+            train_parts.append(f'cemb{train.cite_embs_target_type.value.capitalize()}_w{cemb}')
+        if train.input_toks_target_weight > 0:
+            itok = np.round(train.input_toks_target_weight, 2)
+            train_parts.append(f'itok_w{itok}')
+
+        lr = np.round(train.learning_rate, 9)
+        train_parts.append(f'lr{lr}')
+
+        if train.optimizer is not None:
+            opt_parts = ['opt']
+            opt_str = cls_cfg_to_str(train.optimizer, optimizer_param_to_short_str)
+            opt_parts.append(opt_str)
+            train_parts.append('_'.join(opt_parts))
+        
+        if train.learning_rate_scheduler is not None:
+            lrs_parts = ['lrs']
+            lrs_str = cls_cfg_to_str(train.learning_rate_scheduler, lrs_param_to_short_str)
+            lrs_parts.append(lrs_str)
+            train_parts.append('_'.join(lrs_parts))
+        
+        train_parts.append(f'bs{train.batch_size}')
+        
+        postfix_parts.append('_'.join(train_parts))
 
     postfix = '-'.join(postfix_parts)
     return prefix, postfix
