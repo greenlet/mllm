@@ -30,7 +30,6 @@ mask_seq_freq=0.5
 mask_seq_max_frac=0.2
 mask_seq_max_len=20
 mask_n_last_toks=0
-next_tok_pred=false
 share_enc_dec_proj_weights=false
 
 emb_middle_type=graph
@@ -52,12 +51,14 @@ n_emb_attn_layers=8
 cite_toks_target_weight=1
 cite_toks_target_type='all'
 cite_embs_target_weight=1
-cite_embs_target_type='all'
+cite_embs_target_type='cos'
 input_toks_target_weight=1
 
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 pretrained_model_path=$train_root_path/encdecbert-20260110_193915-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
+
+
 
 
 # device=cpu
@@ -79,6 +80,12 @@ learning_rate=0.0001
 learning_rate=0.00005
 #learning_rate=0.00001
 random_seed=200
+
+optimizer_name='AdamW'
+optimizer_params='{}'
+learning_rate_scheduler_name='ReduceLROnPlateau'
+learning_rate_scheduler_params='{"mode": "min", "factor": 0.5, "patience": 10, "threshold": 1e-6, "min_lr": 1e-8}'
+
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
@@ -111,11 +118,19 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --mask-seq-max-frac $mask_seq_max_frac \
   --mask-seq-max-len $mask_seq_max_len \
   --mask-n-last-toks $mask_n_last_toks \
-  --next-tok-pred $next_tok_pred \
+  --cite-toks-target-weight $cite_toks_target_weight \
+  --cite-toks-target-type $cite_toks_target_type \
+  --cite-embs-target-weight $cite_embs_target_weight \
+  --cite-embs-target-type $cite_embs_target_type \
+  --input-toks-target-weight $input_toks_target_weight \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \
   --learning-rate $learning_rate \
+  --optimizer-name $optimizer_name \
+  --optimizer-params "$optimizer_params" \
+  --learning-rate-scheduler-name $learning_rate_scheduler_name \
+  --learning-rate-scheduler-params "$learning_rate_scheduler_params" \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed \

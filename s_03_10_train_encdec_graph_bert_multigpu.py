@@ -18,7 +18,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
 
-from mllm.config.model import EncdecGraphBertCfg, EncdecMiddleType, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
+from mllm.config.model import EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecMiddleType, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
     gen_prefpostfix_encdec_bert, gen_prefpostfix_encdec_graph_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, \
     share_enc_dec_proj_weights_ARG
@@ -117,13 +117,13 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     )
     gnn_conv_name: str = Field(
         'GCNConv',
-        description='GNN convolution layer name. Must be one of the layers supported by PyTorch Geometric library ' \
+        description='GNN convolution layer class name. Must be one of the layers supported by PyTorch Geometric library ' \
             f'(https://pytorch-geometric.readthedocs.io/en/latest/modules/nn.html#convolutional-layers).',
         cli=('--gnn-conv-name',),
     )
     gnn_conv_params: dict = Field(
         {},
-        description='GNN convolution layer parameters as a dictionary. Parameters must be compatible with the selected GNN layer.',
+        description='GNN convolution layer parameters as a dictionary.',
         cli=('--gnn-conv-params',),
     )
     n_emb_attn_layers: int = Field(
@@ -183,12 +183,31 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Number of last tokens to always mask. When 0, no tokens are masked.',
         cli=('--mask-n-last-toks',),
     )
-
-    next_tok_pred_STR: str = create_bool_str_field(*next_tok_pred_ARG)
-    @property
-    def next_tok_pred(self) -> bool:
-        return is_arg_true(next_tok_pred_ARG[0], self.next_tok_pred_STR)
-
+    cite_toks_target_weight: float = Field(
+        1.0,
+        description='Citation tokens target weight in the loss function.',
+        cli=('--cite-toks-target-weight',),
+    )
+    cite_toks_target_type: EncdecCiteToksTargetType = Field(
+        EncdecCiteToksTargetType.All,
+        description=f'Citation tokens target type in the loss function. Can have values: {list(x.value for x in EncdecCiteToksTargetType)}',
+        cli=('--cite-toks-target-type',),
+    )
+    cite_embs_target_weight: float = Field(
+        1.0,
+        description='Citation embeddings target weight in the loss function.',
+        cli=('--cite-embs-target-weight',),
+    )
+    cite_embs_target_type: EncdecCiteEmbsTargetType = Field(
+        EncdecCiteEmbsTargetType.Cos,
+        description=f'Citation embeddings target type in the loss function. Can have values: {list(x.value for x in EncdecCiteEmbsTargetType)}',
+        cli=('--cite-embs-target-type',),
+    )
+    input_toks_target_weight: float = Field(
+        1.0,
+        description='Input tokens target weight in the loss function.',
+        cli=('--input-toks-target-weight',),
+    )
     docs_batch_size: int = Field(
         3,
         description='Documents batch size. Must be greater or equal than 2.',
@@ -204,11 +223,53 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Number of training epochs.',
         cli=('--epochs',),
     )
+
     learning_rate: float = Field(
         0.001,
         description='Initial learning rate of the training process.',
         cli=('--learning-rate',)
     )
+    optimizer_name: str = Field(
+        'AdamW',
+        description='Optimizer class name. Must be a valid PyTorch optimizer.',
+        cli=('--optimizer-name',),
+    )
+    optimizer_params: dict = Field(
+        {},
+        description='Optimizer class parameters as a dictionary.',
+        cli=('--optimizer-params',),
+    )
+    @validator('optimizer_params', pre=True)
+    def parse_optimizer_params(cls, v):
+        try:
+            v = json.loads(v)
+        except Exception as e:
+            try:
+                v = eval(v)
+            except Exception as e2:
+                raise ValueError(f'Cannot parse optimizer_params from string: {v}. JSON load error: {e}. Python eval error: {e2}')
+        return v
+    learning_rate_scheduler_name: str = Field(
+        'ReduceLROnPlateau',
+        description='Learning rate scheduler class name. Must be a valid PyTorch learning rate scheduler.',
+        cli=('--learning-rate-scheduler-name',),
+    )
+    learning_rate_scheduler_params: dict = Field(
+        {},
+        description='Learning rate scheduler class parameters as a dictionary.',
+        cli=('--learning-rate-scheduler-params',),
+    )
+    @validator('learning_rate_scheduler_params', pre=True)
+    def parse_learning_rate_scheduler_params(cls, v):
+        try:
+            v = json.loads(v)
+        except Exception as e:
+            try:
+                v = eval(v)
+            except Exception as e2:
+                raise ValueError(f'Cannot parse learning_rate_scheduler_params from string: {v}. JSON load error: {e}. Python eval error: {e2}')
+        return v
+
     train_epoch_steps: Optional[int] = Field(
         None,
         description='Number of training steps per epoch.',
