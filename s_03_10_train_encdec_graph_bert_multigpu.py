@@ -28,7 +28,7 @@ from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_d
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.train.encdec_bert import create_dataloader_iter, load_masked_wiki_dataset
-from mllm.utils.utils import rethrow
+from mllm.utils.utils import instantiate_torch_optimizer, rethrow
 
 
 class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
@@ -333,6 +333,13 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
     device = torch.device(f'cuda:{rank}') if torch.cuda.is_available() else torch.device('cpu')
     log(f'Using device {device}.')
 
+    mask_cfg = None
+    if args.mask_tokens:
+        mask_cfg = MaskCfg(
+            sep_freq=args.mask_sep_freq, sep_frac=args.mask_sep_frac, seq_freq=args.mask_seq_freq, seq_max_frac=args.mask_seq_max_frac,
+            seq_max_len=args.mask_seq_max_len, n_last_toks=args.mask_n_last_toks,
+        )
+
     model_cfg = parse_yaml_file_as(EncdecGraphBertCfg, args.model_cfg_fpath)
     model_cfg = copy_override_encdec_graph_bert_cfg(
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
@@ -340,16 +347,17 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, middle_type=args.emb_middle_type,
         n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim, gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
         n_emb_attn_layers=args.n_emb_attn_layers,
+        pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
+        cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type,
+        cite_embs_target_weight=args.cite_embs_target_weight, cite_embs_target_type=args.cite_embs_target_type,
+        input_toks_target_weight=args.input_toks_target_weight, learning_rate=args.learning_rate,
+        optimizer_name=args.optimizer_name, optimizer_params=args.optimizer_params,
+        lrs_name=args.learning_rate_scheduler_name, lrs_params=args.learning_rate_scheduler_params,
+        batch_size=args.docs_batch_size,
     )
     if rank == 0:
         pprint(model_cfg.dict())
 
-    mask_cfg = None
-    if args.mask_tokens:
-        mask_cfg = MaskCfg(
-            sep_freq=args.mask_sep_freq, sep_frac=args.mask_sep_frac, seq_freq=args.mask_seq_freq, seq_max_frac=args.mask_seq_max_frac,
-            seq_max_len=args.mask_seq_max_len, n_last_toks=args.mask_n_last_toks,
-        )
     prefix, suffix = gen_prefpostfix_encdec_graph_bert(
         model_cfg, mask_cfg=mask_cfg, pretrained_model_path=pretrained_model_path, next_tok_pred=args.next_tok_pred
     )
@@ -378,17 +386,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
     log(model_cfg)
     model = EncdecGraphBert(model_cfg, tkz)
 
-    if checkpoint is None:
-        model.load_pretrained(pretrained_model_path)
-
-    last_epoch, val_loss_min, shuffle = -1, None, False
-    if checkpoint is not None:
-        model.load_state_dict(checkpoint['model'], strict=False)
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        last_epoch = checkpoint['last_epoch']
-        val_loss_min = checkpoint['val_loss_min']
-        del checkpoint
-        shuffle = True
+    model.load_pretrained(checkpoint)
 
     model.to(device)
     if args.world_size > 1:
@@ -399,8 +397,14 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         ddp_model = model
 
     params = ddp_model.parameters()
-    # optimizer = torch.optim.Adam(params, lr=args.learning_rate)
-    optimizer = torch.optim.AdamW(params, lr=args.learning_rate)
+    optimizer = instantiate_torch_optimizer(args.optimizer_name, params, **args.optimizer_params)
+
+    last_epoch, val_loss_min, shuffle = -1, None, False
+    if checkpoint is not None:
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        last_epoch = checkpoint['last_epoch']
+        val_loss_min = checkpoint['val_loss_min']
+        del checkpoint
 
     n_special_toks = 1000
     ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)

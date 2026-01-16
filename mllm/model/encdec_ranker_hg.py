@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, cast
 
-from transformers import PreTrainedTokenizer
+from transformers import Any, PreTrainedTokenizer
 
 from mllm.data.utils import RandomInputTokenizer, TokensSubset, TokensSubsetV2, tokens_subsets_v2_to_tensors
 from mllm.model.bert import BertModel
@@ -752,31 +752,35 @@ class EncdecGraphBert(nn.Module):
             reg_weight=1, msk_weight=5, spc_weight=0.1,
         )
 
-    def load_pretrained(self, pretrained_model_path: Optional[Path]):
-        rank = dist.get_rank()
-        print(f'R{rank}. load_pretrained: {pretrained_model_path}. Exists: {pretrained_model_path.exists() if pretrained_model_path else "N/A"}')
-        if pretrained_model_path and pretrained_model_path.exists():
-            print(f'R{rank}. Loading checkpoint with pretrained model from {pretrained_model_path}')
-            pretrained_checkpoint = torch.load(pretrained_model_path)
-            checkpt_dict = pretrained_checkpoint['model']
-            # print(list(checkpt_dict.keys()))
+    def load_pretrained(self, checkpoint: Optional[Dict[str, Any]] = None):
+        if checkpoint is not None:
+            self.load_state_dict(checkpoint['model'], strict=True)
+        else:
+            pretrained_model_path = self.cfg.train_cfg.pretrained_model_path
+            rank = dist.get_rank()
+            print(f'R{rank}. load_pretrained: {pretrained_model_path}. Exists: {pretrained_model_path.exists() if pretrained_model_path else "N/A"}')
+            if pretrained_model_path and pretrained_model_path.exists():
+                print(f'R{rank}. Loading checkpoint with pretrained model from {pretrained_model_path}')
+                pretrained_checkpoint = torch.load(pretrained_model_path)
+                checkpt_dict = pretrained_checkpoint['model']
+                # print(list(checkpt_dict.keys()))
 
-            enc_checkpt_dict, dec_checkpt_dict = {}, {}
-            for key, val in checkpt_dict.items():
-                if key.startswith('module.'):
-                    key = key[7:]
-                if key.startswith('model.'):
-                    key = key[6:]
-                if key.startswith('enc_bert.'):
-                    new_key = key[9:]
-                    enc_checkpt_dict[new_key] = val
-                elif key.startswith('dec_pyr.'):
-                    new_key = key[8:]
-                    dec_checkpt_dict[new_key] = val
+                enc_checkpt_dict, dec_checkpt_dict = {}, {}
+                for key, val in checkpt_dict.items():
+                    if key.startswith('module.'):
+                        key = key[7:]
+                    if key.startswith('model.'):
+                        key = key[6:]
+                    if key.startswith('enc_bert.'):
+                        new_key = key[9:]
+                        enc_checkpt_dict[new_key] = val
+                    elif key.startswith('dec_pyr.'):
+                        new_key = key[8:]
+                        dec_checkpt_dict[new_key] = val
 
-            # self.load_state_dict(checkpt_dict, strict=True)
-            self.enc.load_state_dict(enc_checkpt_dict, strict=True)
-            self.dec.load_state_dict(dec_checkpt_dict, strict=True)
+                # self.load_state_dict(checkpt_dict, strict=True)
+                self.enc.load_state_dict(enc_checkpt_dict, strict=True)
+                self.dec.load_state_dict(dec_checkpt_dict, strict=True)
 
     # inp: (batch_size, inp_len)
     # inp_mask: (batch_size, inp_len)

@@ -1,9 +1,11 @@
 import csv
 from datetime import datetime
+from importlib import import_module
 from pathlib import Path
-from typing import Optional, Union, TypeVar
+from typing import Any, Dict, Optional, Union, TypeVar
 
 import pandas as pd
+from torch import optim
 
 
 DT_PAT = '%Y%m%d_%H%M%S'
@@ -144,3 +146,17 @@ def bool_to_str(val: bool, first: bool = True, cap: bool = True) -> str:
 
 def rethrow(e):
     raise e
+
+
+def instantiate_class(module_path: str, cls_name: str, args: list[Any], kwargs: Dict[str, Any]) -> object:
+    module = import_module(module_path)
+    cls = getattr(module, cls_name)
+    instance = cls(*args, **kwargs)
+    return instance
+
+
+def instantiate_torch_optimizer(cls_name: str, params: Any, **kwargs) -> optim.Optimizer:
+    opt_cls = getattr(optim, cls_name)
+    optimizer = opt_cls(params, **kwargs)
+    return optimizer
+
