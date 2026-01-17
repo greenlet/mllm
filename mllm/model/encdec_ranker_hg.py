@@ -23,7 +23,7 @@ import torch.distributed as dist
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
-from mllm.config.model import EmbAttnCfg, EmbGraphCfg, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+from mllm.config.model import EmbAttnCfg, EmbGraphCfg, EmbMlpCfg, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
     parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
@@ -720,6 +720,40 @@ class EmbAttn(nn.Module):
         return out
 
 
+class EmbMlp(nn.Module):
+    cfg: EmbMlpCfg
+
+    def __init__(self, cfg: EmbMlpCfg):
+        super().__init__()
+        self.cfg = cfg
+        bias = True
+        if self.cfg.act_type != 'gelu':
+            raise Exception(f'Activation type {self.cfg.act_type} is not supported')
+        act_fn = nn.GELU()
+        layers = [
+            nn.Linear(in_features=cfg.d_model * cfg.window_size, out_features=cfg.d_out * cfg.window_size, bias=bias),
+            act_fn,
+            nn.Linear(in_features=cfg.d_out * cfg.window_size, out_features=cfg.d_out, bias=bias),
+        ]
+        self.mlp = nn.Sequential(*layers)
+        self.init_weights()
+
+    def init_weights(self):
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
+
+    # inp: (batch_size, seq_len, d_model)
+    def forward(self, inp: Tensor) -> Tensor:
+        # out: (batch_size, seq_len // window_size, d_model * window_size)
+        out = inp.reshape((-1, -1, self.cfg.d_model * self.cfg.window_size))
+        # out: (batch_size, seq_len // window_size, d_out)
+        out = self.mlp(out)
+        return out
+
+
 class EncdecGraphBert(nn.Module):
     cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
@@ -849,8 +883,9 @@ class EncdecGraphBert(nn.Module):
                 out_attn_embs.append(out_embs)
             # out_embs: (batch_size, d_model)
             out_embs = torch.stack(out_attn_embs, dim=0)
-        else:
-            raise
+        elif self.cfg.middle_type == EncdecMiddleType.Mlp:
+            combined_embs = torch.concatenate([inp_enc_embs, prompt_enc_embs], dim=1)
+            out_embs = self.emb_mlp(combined_embs)
         
         # emb_loss = self.emb_loss_fn(out_embs, inp_enc_embs, torch.ones((batch_size,), device=out_embs.device))
         emb_loss = self.emb_loss_fn(out_embs, inp_enc_embs)

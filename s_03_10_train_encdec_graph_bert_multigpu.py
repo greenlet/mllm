@@ -28,7 +28,7 @@ from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_d
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.train.encdec_bert import create_dataloader_iter, load_masked_wiki_dataset
-from mllm.utils.utils import instantiate_torch_optimizer, rethrow
+from mllm.utils.utils import instantiate_class, instantiate_torch_lr_scheduler, instantiate_torch_optimizer, rethrow
 
 
 class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
@@ -126,12 +126,6 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='GNN convolution layer parameters as a dictionary.',
         cli=('--gnn-conv-params',),
     )
-    n_emb_attn_layers: int = Field(
-        1,
-        description='Number of embedding attention layers in the middle model.',
-        cli=('--n-emb-attn-layers',),
-    )
-
     @validator('gnn_conv_params', pre=True)
     def parse_gnn_conv_params(cls, v):
         # print(f'Parsing gnn_conv_params: {v}. Type: {type(v)}')
@@ -144,6 +138,22 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
                 raise ValueError(f'Cannot parse gnn_conv_params from string: {v}. JSON load error: {e}. Python eval error: {e2}')
         # print(f'Parsed gnn_conv_params: {v}. Type: {type(v)}')
         return v
+    n_emb_attn_layers: int = Field(
+        1,
+        description='Number of embedding attention layers in the middle model.',
+        cli=('--n-emb-attn-layers',),
+    )
+
+    emb_mlp_window_size: int = Field(
+        3,
+        description='Window size for MLP as the middle embedding model.',
+        cli=('--emb-mlp-window-size',),
+    )
+    emb_mlp_act_fn: str = Field(
+        'gelu',
+        description='Activation function for MLP as the middle embedding model.',
+        cli=('--emb-mlp-act-fn',),
+    )
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
@@ -346,7 +356,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
         share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, middle_type=args.emb_middle_type,
         n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim, gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
-        n_emb_attn_layers=args.n_emb_attn_layers,
+        n_emb_attn_layers=args.n_emb_attn_layers, emb_mlp_window_size=args.emb_mlp_window_size, emb_mlp_act_fn=args.emb_mlp_act_fn,
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type,
         cite_embs_target_weight=args.cite_embs_target_weight, cite_embs_target_type=args.cite_embs_target_type,
@@ -398,10 +408,12 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
 
     params = ddp_model.parameters()
     optimizer = instantiate_torch_optimizer(args.optimizer_name, params, **args.optimizer_params)
+    scheduler = instantiate_torch_lr_scheduler(args.learning_rate_scheduler_name, optimizer, **args.learning_rate_scheduler_params)
 
     last_epoch, val_loss_min, shuffle = -1, None, False
     if checkpoint is not None:
         optimizer.load_state_dict(checkpoint['optimizer'])
+        scheduler.load_state_dict(checkpoint['scheduler'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
         del checkpoint
@@ -412,8 +424,6 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
     train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
     val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
 
-    sched_wait_steps = 0
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, threshold=1e-6, min_lr=1e-8)
     lr = optimizer.param_groups[0]['lr']
     log(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
     if rank == 0:
@@ -522,6 +532,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
             checkpoint = {
                 'model': ddp_model.state_dict(),
                 'optimizer': optimizer.state_dict(),
+                'scheduler': scheduler.state_dict(),
                 'last_epoch': epoch,
                 'val_loss_min': val_loss_min,
             }

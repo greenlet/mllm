@@ -148,7 +148,7 @@ def rethrow(e):
     raise e
 
 
-def instantiate_class(module_path: str, cls_name: str, args: list[Any], kwargs: Dict[str, Any]) -> object:
+def instantiate_class(module_path: str, cls_name: str, *args: list[Any], **kwargs: Dict[str, Any]) -> object:
     module = import_module(module_path)
     cls = getattr(module, cls_name)
     instance = cls(*args, **kwargs)
@@ -160,3 +160,8 @@ def instantiate_torch_optimizer(cls_name: str, params: Any, **kwargs) -> optim.O
     optimizer = opt_cls(params, **kwargs)
     return optimizer
 
+
+def instantiate_torch_lr_scheduler(cls_name: str, optimizer: optim.Optimizer, **kwargs) -> optim.lr_scheduler._LRScheduler:
+    sched_cls = getattr(optim.lr_scheduler, cls_name)
+    scheduler = sched_cls(optimizer, **kwargs)
+    return scheduler

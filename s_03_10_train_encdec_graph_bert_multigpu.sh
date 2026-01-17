@@ -47,6 +47,8 @@ emb_middle_type=attn
 n_emb_attn_layers=8
 
 # emb_middle_type=mlp
+# emb_mlp_window_size=5
+# emb_mlp_act_fn='gelu'
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
@@ -111,6 +113,8 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --gnn-conv-name $gnn_conv_name \
   --gnn-conv-params "$gnn_conv_params" \
   --n-emb-attn-layers $n_emb_attn_layers \
+  --emb-mlp-window-size $emb_mlp_window_size \
+  --emb-mlp-act-fn $emb_mlp_act_fn \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \
