@@ -731,9 +731,9 @@ class EmbMlp(nn.Module):
             raise Exception(f'Activation type {self.cfg.act_type} is not supported')
         act_fn = nn.GELU()
         layers = [
-            nn.Linear(in_features=cfg.d_model * cfg.window_size, out_features=cfg.d_out * cfg.window_size, bias=bias),
+            nn.Linear(in_features=cfg.window_size * cfg.d_model, out_features=cfg.window_size * self.cfg.d_out, bias=bias),
             act_fn,
-            nn.Linear(in_features=cfg.d_out * cfg.window_size, out_features=cfg.d_out, bias=bias),
+            nn.Linear(in_features=cfg.window_size * self.cfg.d_out, out_features=cfg.d_out, bias=bias),
         ]
         self.mlp = nn.Sequential(*layers)
         self.init_weights()
@@ -745,11 +745,12 @@ class EmbMlp(nn.Module):
             else:
                 nn.init.uniform_(p, -0.1, 0.1)
 
-    # inp: (batch_size, seq_len, d_model)
+    # inp: (batch_size, window_size, d_model)
+    # returns: (batch_size, d_out)
     def forward(self, inp: Tensor) -> Tensor:
-        # out: (batch_size, seq_len // window_size, d_model * window_size)
-        out = inp.reshape((-1, -1, self.cfg.d_model * self.cfg.window_size))
-        # out: (batch_size, seq_len // window_size, d_out)
+        # out: (batch_size, window_size * d_model)
+        out = inp.reshape((-1, self.cfg.window_size * self.cfg.d_model))
+        # out: (batch_size, d_out)
         out = self.mlp(out)
         return out
 
@@ -772,6 +773,9 @@ class EncdecGraphBert(nn.Module):
             self.emb_graph = EmbGraph(cfg.emb_graph)
         elif self.cfg.middle_type == EncdecMiddleType.Attn:
             self.emb_attn = EmbAttn(cfg.emb_attn)
+        elif self.cfg.middle_type == EncdecMiddleType.Mlp:
+            assert self.cfg.emb_mlp.window_size <= self.cfg.train_cfg.batch_size, f'Graph MLP window size {self.cfg.emb_mlp.window_size} > batch size {self.cfg.train_cfg.batch_size}'
+            self.emb_mlp = EmbMlp(cfg.emb_mlp)
         else:
             raise Exception(f'Graph middle type {self.cfg.middle_type} is not supported')
         word_embeddings = None
@@ -826,7 +830,88 @@ class EncdecGraphBert(nn.Module):
         # out_enc_pooler: (batch_size, d_model)
         out_enc_last_hidden_state, out_enc_pooler = out_enc
         return out_enc_last_hidden_state
-        
+    
+    # inp_enc_embs: (batch_size, d_model)
+    # prompt_enc_embs: (batch_size, d_model)
+    # returns: (batch_size, d_model)
+    def run_middle_graph(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor) -> Tensor:
+        batch_size = inp_enc_embs.shape[0]
+        out_graph_embs = []
+        for ib in range(batch_size):
+            # prompt_embs: (1, d_model)
+            prompt_embs = prompt_enc_embs[ib:ib + 1, :]
+            # graph_vert_embs: (batch_size + 1, d_model)
+            graph_vert_embs = torch.concatenate([inp_enc_embs, prompt_embs], dim=0)
+            # graph_out: (batch_size + 1, d_model)
+            graph_embs = self.emb_graph(graph_vert_embs, batch.edge_inds)
+            # graph_emb: (d_model,)
+            graph_emb = graph_embs[-1]
+            # graph_emb = graph_embs.mean(dim=0)
+            out_graph_embs.append(graph_emb)
+        # out_embs: (batch_size, d_model)
+        out_embs = torch.stack(out_graph_embs, dim=0)
+        return out_embs
+
+    # inp_enc_embs: (batch_size, d_model)
+    # prompt_enc_embs: (batch_size, d_model)
+    # returns: (batch_size, d_model)
+    def run_middle_attn(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor) -> Tensor:
+        batch_size = inp_enc_embs.shape[0]
+        out_attn_embs = []
+        for ib in range(batch_size):
+            # prompt_embs: (1, d_model)
+            prompt_embs = prompt_enc_embs[ib:ib + 1, :]
+            # combined_embs: (batch_size + 1, d_model)
+            combined_embs = torch.concatenate([inp_enc_embs, prompt_embs], dim=0)
+            # combined_embs: (1, batch_size + 1, d_model)
+            combined_embs = combined_embs.unsqueeze(0)
+            # out_embs: (1, batch_size + 1, d_model)
+            out_embs = self.emb_attn(combined_embs)
+            # out_embs: (d_model,)
+            out_embs = out_embs[0, -1]  # take prompt embedding only
+            out_attn_embs.append(out_embs)
+        # out_embs: (batch_size, d_model)
+        out_embs = torch.stack(out_attn_embs, dim=0)
+        return out_embs
+    
+    # inp_enc_embs: (batch_size, d_model)
+    # prompt_enc_embs: (batch_size, d_model)
+    # returns: (batch_size, d_model)
+    def run_middle_mlp(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor) -> Tensor:
+        batch_size = inp_enc_embs.shape[0]
+        n_enc_embs = self.cfg.emb_mlp.window_size - 1
+        out_embs = []
+        for ib in range(batch_size):
+            i1 = max(0, ib + 1 - n_enc_embs)
+            # enc_embs: (n_enc_embs, d_model)
+            enc_embs = inp_enc_embs[i1:i1 + n_enc_embs]
+            # prompt_emb: (1, d_model)
+            prompt_emb = prompt_enc_embs[ib:ib + 1]
+            # combined_embs: (window_size, d_model)
+            combined_embs = torch.concatenate([enc_embs, prompt_emb], dim=0)
+            # combined_embs: (1, window_size, d_model)
+            combined_embs = combined_embs.unsqueeze(0)
+            # out_emb: (1, d_model)
+            out_emb = self.emb_mlp(combined_embs)
+            out_embs.append(out_emb[0])
+        # out_embs: (batch_size, d_model)
+        out_embs = torch.concatenate(out_embs, dim=0)
+        return out_embs
+
+    # inp_enc_embs: (batch_size, d_model)
+    # prompt_enc_embs: (batch_size, d_model)
+    # returns: (batch_size, d_model)
+    def run_middle(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor) -> Tensor:
+        if self.cfg.middle_type == EncdecMiddleType.Graph:
+            out_embs = self.run_middle_graph(inp_enc_embs, prompt_enc_embs)
+        elif self.cfg.middle_type == EncdecMiddleType.Attn:
+            out_embs = self.run_middle_attn(inp_enc_embs, prompt_enc_embs)
+        elif self.cfg.middle_type == EncdecMiddleType.Mlp:
+            out_embs = self.run_middle_mlp(inp_enc_embs, prompt_enc_embs)
+        else:
+            raise
+        return out_embs
+
     def run_on_text_citation(self, batch: MaskedCiteBatch) -> Tuple[Dict[str, Tensor], Tensor]:
         # self.enc.eval()
         batch_size = batch.inp_toks.shape[0]
@@ -852,40 +937,8 @@ class EncdecGraphBert(nn.Module):
         # prompt_enc_embs: (batch_size, d_model)
         prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
         
-        if self.cfg.middle_type == EncdecMiddleType.Graph:
-            out_graph_embs = []
-            for ib in range(batch_size):
-                # prompt_embs: (1, d_model)
-                prompt_embs = prompt_enc_embs[ib:ib + 1, :]
-                # graph_vert_embs: (batch_size + 1, d_model)
-                graph_vert_embs = torch.concatenate([inp_enc_embs, prompt_embs], dim=0)
-                # graph_out: (batch_size + 1, d_model)
-                graph_embs = self.emb_graph(graph_vert_embs, batch.edge_inds)
-                # graph_emb: (d_model,)
-                graph_emb = graph_embs[-1]
-                # graph_emb = graph_embs.mean(dim=0)
-                out_graph_embs.append(graph_emb)
-            # out_embs: (batch_size, d_model)
-            out_embs = torch.stack(out_graph_embs, dim=0)
-        elif self.cfg.middle_type == EncdecMiddleType.Attn:
-            out_attn_embs = []
-            for ib in range(batch_size):
-                # prompt_embs: (1, d_model)
-                prompt_embs = prompt_enc_embs[ib:ib + 1, :]
-                # combined_embs: (batch_size + 1, d_model)
-                combined_embs = torch.concatenate([inp_enc_embs, prompt_embs], dim=0)
-                # combined_embs: (1, batch_size + 1, d_model)
-                combined_embs = combined_embs.unsqueeze(0)
-                # out_embs: (1, batch_size + 1, d_model)
-                out_embs = self.emb_attn(combined_embs)
-                # out_embs: (d_model,)
-                out_embs = out_embs[0, -1]  # take prompt embedding only
-                out_attn_embs.append(out_embs)
-            # out_embs: (batch_size, d_model)
-            out_embs = torch.stack(out_attn_embs, dim=0)
-        elif self.cfg.middle_type == EncdecMiddleType.Mlp:
-            combined_embs = torch.concatenate([inp_enc_embs, prompt_enc_embs], dim=1)
-            out_embs = self.emb_mlp(combined_embs)
+        # out_embs: (batch_size, d_model)
+        out_embs = self.run_middle(inp_enc_embs, prompt_enc_embs)
         
         # emb_loss = self.emb_loss_fn(out_embs, inp_enc_embs, torch.ones((batch_size,), device=out_embs.device))
         emb_loss = self.emb_loss_fn(out_embs, inp_enc_embs)
@@ -908,8 +961,7 @@ class EncdecGraphBert(nn.Module):
     # inp_masked_toks: (batch_size, inp_len)
     # inp_toks: (batch_size, inp_len)
     def forward(self, inp_masked_toks, inp_toks: Tensor) -> dict[str, Tensor]:
-      pass
-
+      raise NotImplementedError('Use run_on_text_citation method for EncdecGraphBert model')
 
 
 class DecoderRankHg(nn.Module):
