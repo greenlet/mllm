@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from importlib import import_module
 import itertools as it
 import sys
@@ -23,7 +24,7 @@ import torch.distributed as dist
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
-from mllm.config.model import EmbAttnCfg, EmbGraphCfg, EmbMlpCfg, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+from mllm.config.model import EmbAttnCfg, EmbGraphCfg, EmbMlpCfg, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
     parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
@@ -783,12 +784,27 @@ class EncdecGraphBert(nn.Module):
             word_embeddings = self.enc.bert_model.embeddings.word_embeddings
         self.dec = DecoderPyramid(cfg.dec_pyr, word_embeddings=word_embeddings)
         self.rnd_tkz = RandomInputTokenizer(tkz, max_len=cfg.enc_bert.inp_len)
-        self.emb_loss_fn = nn.CosineEmbeddingLoss()
-        self.emb_loss_fn = R2Loss()
-        self.vocab_loss_fn = EncdecMaskPadItemLoss(
-            msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
-            reg_weight=1, msk_weight=5, spc_weight=0.1,
-        )
+        
+        if self.cfg.train_cfg.cite_embs_target_weight > 0:
+            if self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Cos:
+                self.emb_loss_fn = nn.CosineEmbeddingLoss()
+            elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Mse:
+                self.emb_loss_fn = nn.MSELoss()
+            elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.R2:
+                self.emb_loss_fn = R2Loss()
+            else:
+                raise Exception(f'Target type {self.cfg.train_cfg.cite_embs_target_type} is not supported')
+        
+        if self.cfg.train_cfg.cite_toks_target_weight > 0 or self.cfg.train_cfg.input_toks_target_weight > 0:
+            self.vocab_loss_fn = EncdecMaskPadItemLoss(
+                msk_tok_id=cast(int, tkz.mask_token_id), spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
+                reg_weight=1, msk_weight=5, spc_weight=0.1,
+            )
+        
+        grad_ctx = torch.no_grad()
+        if self.cfg.train_cfg.input_toks_target_weight > 0 or self.cfg.train_cfg.cite_toks_target_weight > 0:
+            grad_ctx = nullcontext()
+        self.grad_ctx = grad_ctx
 
     def load_pretrained(self, checkpoint: Optional[Dict[str, Any]] = None):
         if checkpoint is not None:
@@ -912,36 +928,54 @@ class EncdecGraphBert(nn.Module):
             raise
         return out_embs
 
+    # inp_enc_embs: (batch_size, inp_len, d_model)
+    # middle_embs: (batch_size, d_model)
+    # dec_logits: (batch_size, inp_len, n_vocab)
+    def calc_loss(self, inp_enc_embs: Tensor, middle_embs: Tensor, dec_logits: Tensor, batch: MaskedCiteBatch) -> Dict[str, Tensor]:
+        if self.cfg.train_cfg.cite_toks_target_weight > 0:
+            if self.cfg.train_cfg.cite_toks_target_type == EncdecCiteToksTargetType.All:
+                target_toks = batch.inp_toks
+            elif self.cfg.train_cfg.cite_toks_target_type == EncdecCiteToksTargetType.Cite:
+                target_toks = batch.cites_toks
+            else:
+                raise Exception(f'Target type {self.cfg.train_cfg.cite_toks_target_type} is not supported')
+            vocab_loss = self.vocab_loss_fn(dec_logits, batch.inp_toks, target_toks)
+                vocab_loss = self.vocab_loss_fn(dec_logits, batch.inp_toks, batch.inp_toks)
+
+        return total_loss
+
     def run_on_text_citation(self, batch: MaskedCiteBatch) -> Tuple[Dict[str, Tensor], Tensor]:
         # self.enc.eval()
         batch_size = batch.inp_toks.shape[0]
         
         assert torch.all(batch.inp_toks[:, 0] == self.tkz.cls_token_id), 'Input tokens must start with CLS token'
         assert torch.all(batch.prompts_toks[:, 0] == self.tkz.cls_token_id), 'Prompt tokens must start with CLS token'
-        # with torch.no_grad():
-        #     # inp_enc_embs: (batch_size, inp_len, d_model)
-        #     inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
-        #     # inp_enc_embs: (batch_size, d_model)
-        #     inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
-        #     # prompt_enc_embs: (batch_size, inp_len, d_model)
-        #     prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
-        #     # prompt_enc_embs: (batch_size, d_model)
-        #     prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
         
-        # inp_enc_embs: (batch_size, inp_len, d_model)
-        inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
-        # inp_enc_embs: (batch_size, d_model)
-        inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
-        # prompt_enc_embs: (batch_size, inp_len, d_model)
-        prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
-        # prompt_enc_embs: (batch_size, d_model)
-        prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
+        with self.grad_ctx:
+            # inp_enc_embs: (batch_size, inp_len, d_model)
+            inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
+            # inp_enc_embs: (batch_size, d_model)
+            inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
+            # prompt_enc_embs: (batch_size, inp_len, d_model)
+            prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
+            # prompt_enc_embs: (batch_size, d_model)
+            prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
         
-        # out_embs: (batch_size, d_model)
-        out_embs = self.run_middle(inp_enc_embs, prompt_enc_embs)
-        
+        # middle_embs: (batch_size, d_model)
+        middle_embs = self.run_middle(inp_enc_embs, prompt_enc_embs)
+
+        # dec_logits: (batch_size, inp_len, n_vocab)
+        dec_logits = self.dec(middle_embs)
+
+        loss_dict = self.calc_loss(inp_enc_embs, middle_embs, dec_logits)
+
+
+        total_weight = 0.0
+        if self.cfg.train_cfg.cite_embs_target_weight > 0:
+
+            emb_loss = torch.tensor(0.0, device=middle_embs.device)
         # emb_loss = self.emb_loss_fn(out_embs, inp_enc_embs, torch.ones((batch_size,), device=out_embs.device))
-        emb_loss = self.emb_loss_fn(out_embs, inp_enc_embs)
+        emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs)
 
         # # out_logits: (batch_size, inp_len, n_vocab)
         # out_logits = self.dec(out_embs)
@@ -950,7 +984,7 @@ class EncdecGraphBert(nn.Module):
         # # vocab_loss['loss'] = (9 * vocab_loss['loss'] + emb_loss) / 10
         # # vocab_loss['loss'] = (vocab_loss['loss'] + 9 * emb_loss) / 10
 
-        out_logits = self.dec(inp_enc_embs)
+        out_logits = self.dec(middle_embs)
         vocab_loss = self.vocab_loss_fn(out_logits, batch.inp_toks, batch.inp_toks)
 
         vocab_loss['loss'] = (vocab_loss['loss'] + emb_loss) / 2

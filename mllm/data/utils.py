@@ -230,10 +230,11 @@ class TokensSubsetV2:
     inp_beg_ind: int
     inp_end_ind: int
     toks_inp: list[int]
+    toks_inp_masked: list[int]
     cite_beg_ind: int
     cite_end_ind: int
-    toks_cite_masked: list[int]
     toks_cite: list[int]
+    toks_cite_masked: list[int]
     toks_cite_beg: list[int]
     toks_cite_end: list[int]
     prompt: str
@@ -300,9 +301,10 @@ class RandomInputTokenizerV2:
             toks_cite_masked, _ = mask_random_words_v2(np.array(toks_cite), self.tkz, self.mask_cfg)
             toks_cite_masked = toks_cite_masked.tolist()
             
-            toks_inp = [self.tkz.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
-                toks_cite_masked + toks_cite_end + \
-                toks_inp[sub_off + n_cite_toks:] + [self.tkz.sep_token_id]
+            toks_inp_nonmasked = [self.tkz.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
+                toks_cite + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz.sep_token_id]
+            toks_inp_masked = [self.tkz.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
+                toks_cite_masked + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz.sep_token_id]
 
             prompt = self.prompt_template.format(
                 ' '.join(self.tkz.convert_ids_to_tokens(toks_cite_beg)),
@@ -314,11 +316,11 @@ class RandomInputTokenizerV2:
                 toks_src=input_ids[i],
                 inp_beg_ind=inp_beg_ind,
                 inp_end_ind=inp_end_ind,
-                toks_inp=toks_inp,
-                cite_beg_ind=cite_beg_ind,
+                toks_inp=toks_inp_nonmasked,
+                toks_inp_masked=toks_inp_masked,
                 cite_end_ind=cite_end_ind,
-                toks_cite_masked=toks_cite_masked,
                 toks_cite=toks_cite,
+                toks_cite_masked=toks_cite_masked,
                 toks_cite_beg=toks_cite_beg,
                 toks_cite_end=toks_cite_end,
                 prompt=prompt,

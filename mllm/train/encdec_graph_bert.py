@@ -31,17 +31,17 @@ class MaskedCiteBatch:
     # (batch_size, seq_len)
     inp_toks: torch.Tensor
     # (batch_size, seq_len)
+    inp_masked_toks: torch.Tensor
+    # (batch_size, seq_len)
     prompts_toks: torch.Tensor
     # (batch_size, seq_len)
-    cites_masked_toks: torch.Tensor
-    # (batch_size, seq_len)
     cites_toks: torch.Tensor
+    # (batch_size, seq_len)
+    cites_masked_toks: torch.Tensor
     # (batch_size, seq_len)
     inp_att_mask: torch.Tensor
     # (batch_size, seq_len)
     prompts_att_mask: torch.Tensor
-    # (batch_size, seq_len)
-    cites_masked_att_mask: torch.Tensor
     # (batch_size, seq_len)
     cites_att_mask: torch.Tensor
     # (2, batch_size + 1)
@@ -78,15 +78,18 @@ class MaskedCiteDataset:
     def __len__(self):
         return self.size
 
-    def toks_to_tensor(self, toks_list: List[List[int]]) -> Tuple[torch.Tensor, torch.Tensor]:
+    def toks_to_tensor(self, toks_list: List[List[int]], with_att_mask: bool) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         batch_size = len(toks_list)
         max_len = max(len(toks) for toks in toks_list)
         toks_tensor = torch.full((batch_size, max_len), self.pad_token_id, dtype=torch.long, device=self.device)
-        att_mask = torch.zeros((batch_size, max_len), dtype=torch.long, device=self.device)
+        att_mask = None
+        if with_att_mask:
+            att_mask = torch.zeros((batch_size, max_len), dtype=torch.long, device=self.device)
         for i in range(batch_size):
             cur_len = len(toks_list[i])
             toks_tensor[i, :cur_len] = torch.tensor(toks_list[i], dtype=torch.long, device=self.device)
-            att_mask[i, :cur_len] = 1
+            if att_mask is not None:
+                att_mask[i, :cur_len] = 1
         return toks_tensor, att_mask
 
     def get_batch(self, inds: List[int]) -> MaskedCiteBatch:
@@ -97,11 +100,11 @@ class MaskedCiteDataset:
         tokens_subsets = self.random_inp_tkz(texts)
 
         batch_size = len(inds)
-        inp_toks, inp_att_mask = self.toks_to_tensor([item.toks_inp for item in tokens_subsets])
-        prompts_toks, prompts_att_mask = self.toks_to_tensor([item.toks_prompt for item in tokens_subsets])
-        cites_masked_toks, cites_masked_att_mask = self.toks_to_tensor([item.toks_cite_masked for item in tokens_subsets])
-        cites_toks, cites_att_mask = self.toks_to_tensor([item.toks_cite for item in tokens_subsets])
-
+        inp_toks, inp_att_mask = self.toks_to_tensor([item.toks_inp for item in tokens_subsets], with_att_mask=True)
+        inp_masked_toks, _ = self.toks_to_tensor([item.toks_inp_masked for item in tokens_subsets], with_att_mask=False)
+        prompts_toks, prompts_att_mask = self.toks_to_tensor([item.toks_prompt for item in tokens_subsets], with_att_mask=True)
+        cites_masked_toks, _ = self.toks_to_tensor([item.toks_cite_masked for item in tokens_subsets], with_att_mask=False)
+        cites_toks, cites_att_mask = self.toks_to_tensor([item.toks_cite for item in tokens_subsets], with_att_mask=True)
         edge_inds = torch.stack([
             torch.arange(batch_size, device=self.device),
             torch.full((batch_size,), batch_size, device=self.device),
@@ -110,12 +113,12 @@ class MaskedCiteDataset:
         return MaskedCiteBatch(
             tokens_subsets=tokens_subsets,
             inp_toks=inp_toks,
+            inp_masked_toks=inp_masked_toks,
             prompts_toks=prompts_toks,
             cites_masked_toks=cites_masked_toks,
             cites_toks=cites_toks,
             inp_att_mask=inp_att_mask,
             prompts_att_mask=prompts_att_mask,
-            cites_masked_att_mask=cites_masked_att_mask,
             cites_att_mask=cites_att_mask,
             edge_inds=edge_inds,
         )
