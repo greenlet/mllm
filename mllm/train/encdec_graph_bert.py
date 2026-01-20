@@ -103,8 +103,8 @@ class MaskedCiteDataset:
         inp_toks, inp_att_mask = self.toks_to_tensor([item.toks_inp for item in tokens_subsets], with_att_mask=True)
         inp_masked_toks, _ = self.toks_to_tensor([item.toks_inp_masked for item in tokens_subsets], with_att_mask=False)
         prompts_toks, prompts_att_mask = self.toks_to_tensor([item.toks_prompt for item in tokens_subsets], with_att_mask=True)
-        cites_masked_toks, _ = self.toks_to_tensor([item.toks_cite_masked for item in tokens_subsets], with_att_mask=False)
         cites_toks, cites_att_mask = self.toks_to_tensor([item.toks_cite for item in tokens_subsets], with_att_mask=True)
+        cites_masked_toks, _ = self.toks_to_tensor([item.toks_cite_masked for item in tokens_subsets], with_att_mask=False)
         edge_inds = torch.stack([
             torch.arange(batch_size, device=self.device),
             torch.full((batch_size,), batch_size, device=self.device),

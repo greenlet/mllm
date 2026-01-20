@@ -508,8 +508,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
             pbar.close()
             val_losses.log_to_tb('Val', epoch, tbsw)
 
-        if epoch >= sched_wait_steps:
-            scheduler.step(val_loss)
+        scheduler.step(val_loss)
         
         if rank == 0:
             last_lr = scheduler.get_last_lr()[0]

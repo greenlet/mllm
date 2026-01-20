@@ -496,8 +496,10 @@ class EncdecMaskPadItemLoss(nn.Module):
     # tokens_tgt: (batch_size, inp_len)
     def forward(self, logits_pred: torch.Tensor, tokens_inp: torch.Tensor, tokens_tgt: torch.Tensor, **kwargs) -> LossDict:
         # (batch_size, inp_len, 1)
-        toks_inp = tokens_inp.to(torch.int64).unsqueeze(-1)
-        toks_tgt = tokens_tgt.to(torch.int64).unsqueeze(-1)
+        # toks_inp = tokens_inp.to(torch.int64).unsqueeze(-1)
+        # toks_tgt = tokens_tgt.to(torch.int64).unsqueeze(-1)
+        toks_inp = tokens_inp.unsqueeze(-1)
+        toks_tgt = tokens_tgt.unsqueeze(-1)
 
         # (batch_size, inp_len, 1)
         mask_msk = toks_inp == self.msk_tok_id
