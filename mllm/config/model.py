@@ -787,6 +787,7 @@ def create_encdec_graph_bert_cfg(
     )
     gnn_conv_params = create_cls_params(gnn_conv_name, gnn_conv_name_to_defaults, gnn_conv_params)
     cfg_gnn_conv = PyClassCfg(
+        module_path='torch_geometric.nn.conv',
         cls_name=gnn_conv_name,
         params=gnn_conv_params,
     )
@@ -812,10 +813,12 @@ def create_encdec_graph_bert_cfg(
         input_toks_target_weight=input_toks_target_weight,
         learning_rate=learning_rate,
         optimizer=PyClassCfg(
+            module_path='torch.optim',
             cls_name=optimizer_name,
             params=optimizer_params or {},
         ),
         learning_rate_scheduler=PyClassCfg(
+            module_path='torch.optim.lr_scheduler',
             cls_name=lrs_name,
             params=lrs_params or {},
         ),
