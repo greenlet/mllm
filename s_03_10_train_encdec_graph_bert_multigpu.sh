@@ -46,9 +46,9 @@ gnn_conv_params='{"K": 3, "bias": true}'
 emb_middle_type=attn
 n_emb_attn_layers=8
 
-# emb_middle_type=mlp
-# emb_mlp_window_size=5
-# emb_mlp_act_fn='gelu'
+emb_middle_type=mlp
+emb_mlp_window_size=5
+emb_mlp_act_fn='gelu'
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
@@ -78,7 +78,7 @@ docs_batch_size=20
 world_size=4
 
 
-learning_rate=0.0001
+# learning_rate=0.0001
 learning_rate=0.00005
 #learning_rate=0.00001
 random_seed=200

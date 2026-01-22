@@ -3,9 +3,9 @@ from importlib import import_module
 import itertools as it
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
-from transformers import Any, PreTrainedTokenizer
+from transformers import PreTrainedTokenizer
 
 from mllm.data.utils import RandomInputTokenizer, TokensSubset, TokensSubsetV2, tokens_subsets_v2_to_tensors
 from mllm.model.bert import BertModel
@@ -728,8 +728,8 @@ class EmbMlp(nn.Module):
         super().__init__()
         self.cfg = cfg
         bias = True
-        if self.cfg.act_type != 'gelu':
-            raise Exception(f'Activation type {self.cfg.act_type} is not supported')
+        if self.cfg.act_fn != 'gelu':
+            raise Exception(f'Activation type {self.cfg.act_fn} is not supported')
         act_fn = nn.GELU()
         layers = [
             nn.Linear(in_features=cfg.window_size * cfg.d_model, out_features=cfg.window_size * self.cfg.d_out, bias=bias),
@@ -911,7 +911,7 @@ class EncdecGraphBert(nn.Module):
             out_emb = self.emb_mlp(combined_embs)
             out_embs.append(out_emb[0])
         # out_embs: (batch_size, d_model)
-        out_embs = torch.concatenate(out_embs, dim=0)
+        out_embs = torch.stack(out_embs, dim=0)
         return out_embs
 
     # inp_enc_embs: (batch_size, d_model)
@@ -947,16 +947,19 @@ class EncdecGraphBert(nn.Module):
             cite_loss = self.vocab_loss_fn(dec_logits, input_toks, target_toks)
         
         if self.cfg.train_cfg.cite_embs_target_weight > 0:
-            emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs)
+            kwargs = {}
+            if self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Cos:
+                kwargs['target'] = torch.tensor((middle_embs.shape[0],), dtype=torch.long, device=middle_embs.device)
+            emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs, **kwargs)
         
         if self.cfg.train_cfg.input_toks_target_weight > 0:
             input_toks, target_toks = batch.inp_masked_toks, batch.inp_toks
             input_loss = self.vocab_loss_fn(inp_logits, input_toks, target_toks)
 
         res = {}
-        loss, total_weight = torch.tensor(0.0, device=middle_embs.device), 0.0
+        loss, total_weight = torch.tensor((0.0,), device=middle_embs.device), 0.0
         if cite_loss is not None:
-            res += {f'cite_{k}': v for k, v in cite_loss.items()}
+            res.update({f'cite_{k}': v for k, v in cite_loss.items()})
             loss += self.cfg.train_cfg.cite_toks_target_weight * cite_loss['loss']
             total_weight += self.cfg.train_cfg.cite_toks_target_weight
         if emb_loss is not None:
@@ -964,7 +967,7 @@ class EncdecGraphBert(nn.Module):
             total_weight += self.cfg.train_cfg.cite_embs_target_weight
             res['emb_loss'] = emb_loss
         if input_loss is not None:
-            res += {f'input_{k}': v for k, v in input_loss.items()}
+            res.update({f'input_{k}': v for k, v in input_loss.items()})
             loss += self.cfg.train_cfg.input_toks_target_weight * input_loss['loss']
             total_weight += self.cfg.train_cfg.input_toks_target_weight
         loss = loss / total_weight

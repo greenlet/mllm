@@ -368,9 +368,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
     if rank == 0:
         pprint(model_cfg.dict())
 
-    prefix, suffix = gen_prefpostfix_encdec_graph_bert(
-        model_cfg, mask_cfg=mask_cfg, pretrained_model_path=pretrained_model_path, next_tok_pred=args.next_tok_pred
-    )
+    prefix, suffix = gen_prefpostfix_encdec_graph_bert(model_cfg)
     train_path = find_create_train_path(args.train_root_path, prefix, suffix, args.train_subdir, create=(rank == 0))
     log(f'train_path: {train_path}')
 
@@ -407,7 +405,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         ddp_model = model
 
     params = ddp_model.parameters()
-    optimizer = instantiate_torch_optimizer(args.optimizer_name, params, **args.optimizer_params)
+    optimizer = instantiate_torch_optimizer(args.optimizer_name, params, lr=args.learning_rate, **args.optimizer_params)
     scheduler = instantiate_torch_lr_scheduler(args.learning_rate_scheduler_name, optimizer, **args.learning_rate_scheduler_params)
 
     last_epoch, val_loss_min, shuffle = -1, None, False

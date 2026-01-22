@@ -1251,12 +1251,13 @@ def copy_override_encdec_graph_bert_cfg(
     cite_embs_target_type = coalesce(cite_embs_target_type, cfg.train_cfg.cite_embs_target_type)
     input_toks_target_weight = coalesce(input_toks_target_weight, cfg.train_cfg.input_toks_target_weight)
     learning_rate = coalesce(learning_rate, cfg.train_cfg.learning_rate)
-    optimizer_name = coalesce(optimizer_name, cfg.train_cfg.optimizer_name)
-    optimizer_params = coalesce(optimizer_params, cfg.train_cfg.optimizer_params)
-    lrs_name = coalesce(lrs_name, cfg.train_cfg.lrs_name)
-    lrs_params = coalesce(lrs_params, cfg.train_cfg.lrs_params)
+    if cfg.train_cfg.optimizer is not None:
+        optimizer_name = coalesce(optimizer_name, cfg.train_cfg.optimizer.cls_name)
+        optimizer_params = {**(cfg.train_cfg.optimizer.params or {}), **(optimizer_params or {})}
+    if cfg.train_cfg.learning_rate_scheduler is not None:
+        lrs_name = coalesce(lrs_name, cfg.train_cfg.learning_rate_scheduler.cls_name)
+        lrs_params = {**(cfg.train_cfg.learning_rate_scheduler.params or {}), **(lrs_params or {})}
     batch_size = coalesce(batch_size, cfg.train_cfg.batch_size)
-
 
     return create_encdec_graph_bert_cfg(
         pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
@@ -1573,17 +1574,17 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
         lr = np.round(train.learning_rate, 9)
         train_parts.append(f'lr{lr}')
 
-        if train.optimizer is not None:
-            opt_parts = ['opt']
-            opt_str = cls_cfg_to_str(train.optimizer, optimizer_param_to_short_str)
-            opt_parts.append(opt_str)
-            train_parts.append('_'.join(opt_parts))
+        # if train.optimizer is not None:
+        #     opt_parts = ['opt']
+        #     opt_str = cls_cfg_to_str(train.optimizer, optimizer_param_to_short_str)
+        #     opt_parts.append(opt_str)
+        #     train_parts.append('_'.join(opt_parts))
         
-        if train.learning_rate_scheduler is not None:
-            lrs_parts = ['lrs']
-            lrs_str = cls_cfg_to_str(train.learning_rate_scheduler, lrs_param_to_short_str)
-            lrs_parts.append(lrs_str)
-            train_parts.append('_'.join(lrs_parts))
+        # if train.learning_rate_scheduler is not None:
+        #     lrs_parts = ['lrs']
+        #     lrs_str = cls_cfg_to_str(train.learning_rate_scheduler, lrs_param_to_short_str)
+        #     lrs_parts.append(lrs_str)
+        #     train_parts.append('_'.join(lrs_parts))
         
         train_parts.append(f'bs{train.batch_size}')
         

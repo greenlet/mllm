@@ -318,6 +318,7 @@ class RandomInputTokenizerV2:
                 inp_end_ind=inp_end_ind,
                 toks_inp=toks_inp_nonmasked,
                 toks_inp_masked=toks_inp_masked,
+                cite_beg_ind=cite_beg_ind,
                 cite_end_ind=cite_end_ind,
                 toks_cite=toks_cite,
                 toks_cite_masked=toks_cite_masked,
