@@ -394,6 +394,7 @@ class EncdecCiteToksTargetType(str, Enum):
 class EncdecCiteEmbsTargetType(str, Enum):
     Cos = 'cos'
     Mse = 'mse'
+    Sqrt = 'sqrt'
     R2 = 'r2'
 
 
@@ -404,6 +405,7 @@ class EncdecTrainCfg(BaseModel):
     cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All
     cite_embs_target_weight: float = 1.0
     cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2
+    cite_embs_target_multiplier: float = 1.0
     input_toks_target_weight: float = 1.0
     learning_rate: float = 1e-4
     optimizer: Optional[PyClassCfg] = None
@@ -732,7 +734,7 @@ def create_encdec_graph_bert_cfg(
         n_graph_layers: int = 1, gnn_hidden_dim: int = 0, gnn_conv_name: str = 'GCNConv', gnn_conv_params: Optional[Dict[str, Any]] = None,
         n_emb_attn_layers: int = 2, emb_mlp_window_size: int = 3, emb_mlp_act_fn: str = 'gelu', pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: float = 1.0, cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All,
-        cite_embs_target_weight: float = 1.0, cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2,
+        cite_embs_target_weight: float = 1.0, cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2, cite_embs_target_multiplier: float = 1.0,
         input_toks_target_weight: float = 1.0, learning_rate: float = 1e-4, optimizer_name: str = 'AdamW',
         optimizer_params: Optional[Dict[str, Any]] = None, lrs_name: str = 'ReduceLROnPlateau',
         lrs_params: Optional[Dict[str, Any]] = None, batch_size: int = 10,
@@ -809,7 +811,7 @@ def create_encdec_graph_bert_cfg(
     cfg_train = EncdecTrainCfg(
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
         cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type,
-        cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type,
+        cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_multiplier=cite_embs_target_multiplier,
         input_toks_target_weight=input_toks_target_weight,
         learning_rate=learning_rate,
         optimizer=PyClassCfg(
@@ -1218,7 +1220,7 @@ def copy_override_encdec_graph_bert_cfg(
         n_graph_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None, gnn_conv_name: Optional[str] = None, gnn_conv_params: Optional[Dict[str, Any]] = None,
         n_emb_attn_layers: Optional[int] = None, emb_mlp_window_size: Optional[int] = None, emb_mlp_act_fn: Optional[str] = None,
         pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
-        cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None,
+        cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None, cite_embs_target_multiplier: Optional[float] = None,
         cite_embs_target_weight: Optional[float] = None, cite_embs_target_type: Optional[EncdecCiteEmbsTargetType] = None,
         input_toks_target_weight: Optional[float] = None, learning_rate: Optional[float] = None,
         optimizer_name: Optional[str] = None, optimizer_params: Optional[Dict[str, Any]] = None,
@@ -1249,6 +1251,7 @@ def copy_override_encdec_graph_bert_cfg(
     cite_toks_target_type = coalesce(cite_toks_target_type, cfg.train_cfg.cite_toks_target_type)
     cite_embs_target_weight = coalesce(cite_embs_target_weight, cfg.train_cfg.cite_embs_target_weight)
     cite_embs_target_type = coalesce(cite_embs_target_type, cfg.train_cfg.cite_embs_target_type)
+    cite_embs_target_multiplier = coalesce(cite_embs_target_multiplier, cfg.train_cfg.cite_embs_target_multiplier)
     input_toks_target_weight = coalesce(input_toks_target_weight, cfg.train_cfg.input_toks_target_weight)
     learning_rate = coalesce(learning_rate, cfg.train_cfg.learning_rate)
     if cfg.train_cfg.optimizer is not None:
@@ -1268,7 +1271,7 @@ def copy_override_encdec_graph_bert_cfg(
         n_emb_attn_layers=n_emb_attn_layers, emb_mlp_window_size=emb_mlp_window_size, emb_mlp_act_fn=emb_mlp_act_fn,
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
         cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type,
-        cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type,
+        cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_multiplier=cite_embs_target_multiplier,
         input_toks_target_weight=input_toks_target_weight, learning_rate=learning_rate,
         optimizer_name=optimizer_name, optimizer_params=optimizer_params, lrs_name=lrs_name, lrs_params=lrs_params,
         batch_size=batch_size,
@@ -1566,7 +1569,7 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
             train_parts.append(f'ctok{train.cite_toks_target_type.value.capitalize()}_w{ctok}')
         if train.cite_embs_target_weight > 0:
             cemb = np.round(train.cite_embs_target_weight, 2)
-            train_parts.append(f'cemb{train.cite_embs_target_type.value.capitalize()}_w{cemb}')
+            train_parts.append(f'cemb{train.cite_embs_target_type.value.capitalize()}_mlt{train.cite_embs_target_multiplier}_w{cemb}')
         if train.input_toks_target_weight > 0:
             itok = np.round(train.input_toks_target_weight, 2)
             train_parts.append(f'itok_w{itok}')

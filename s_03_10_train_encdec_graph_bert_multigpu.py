@@ -213,6 +213,11 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description=f'Citation embeddings target type in the loss function. Can have values: {list(x.value for x in EncdecCiteEmbsTargetType)}',
         cli=('--cite-embs-target-type',),
     )
+    cite_embs_target_multiplier: float = Field(
+        1.0,
+        description='Citation embeddings target multiplier in the loss function.',
+        cli=('--cite-embs-target-multiplier',),
+    )
     input_toks_target_weight: float = Field(
         1.0,
         description='Input tokens target weight in the loss function.',
@@ -358,7 +363,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim, gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
         n_emb_attn_layers=args.n_emb_attn_layers, emb_mlp_window_size=args.emb_mlp_window_size, emb_mlp_act_fn=args.emb_mlp_act_fn,
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
-        cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type,
+        cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_embs_target_multiplier=args.cite_embs_target_multiplier,
         cite_embs_target_weight=args.cite_embs_target_weight, cite_embs_target_type=args.cite_embs_target_type,
         input_toks_target_weight=args.input_toks_target_weight, learning_rate=args.learning_rate,
         optimizer_name=args.optimizer_name, optimizer_params=args.optimizer_params,

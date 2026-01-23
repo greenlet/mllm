@@ -790,6 +790,8 @@ class EncdecGraphBert(nn.Module):
                 self.emb_loss_fn = nn.CosineEmbeddingLoss()
             elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Mse:
                 self.emb_loss_fn = nn.MSELoss()
+            elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Sqrt:
+                self.emb_loss_fn = nn.MSELoss()
             elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.R2:
                 self.emb_loss_fn = R2Loss()
             else:
@@ -898,7 +900,13 @@ class EncdecGraphBert(nn.Module):
         n_enc_embs = self.cfg.emb_mlp.window_size - 1
         out_embs = []
         for ib in range(batch_size):
-            i1 = max(0, ib + 1 - n_enc_embs)
+            if ib < n_enc_embs:
+                i1 = 0
+            elif ib > batch_size - n_enc_embs:
+                i1 = batch_size - n_enc_embs
+            else:
+                off = np.random.randint(0, n_enc_embs)
+                i1 = ib - off
             # enc_embs: (n_enc_embs, d_model)
             enc_embs = inp_enc_embs[i1:i1 + n_enc_embs]
             # prompt_emb: (1, d_model)
@@ -947,10 +955,19 @@ class EncdecGraphBert(nn.Module):
             cite_loss = self.vocab_loss_fn(dec_logits, input_toks, target_toks)
         
         if self.cfg.train_cfg.cite_embs_target_weight > 0:
-            kwargs = {}
             if self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Cos:
-                kwargs['target'] = torch.tensor((middle_embs.shape[0],), dtype=torch.long, device=middle_embs.device)
-            emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs, **kwargs)
+                kwargs = {
+                    'target': torch.ones(middle_embs.shape[0], dtype=torch.long, device=middle_embs.device)
+                }
+                emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs, **kwargs)
+            elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Mse:
+                emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs)
+            elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Sqrt:
+                emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs)
+                emb_loss = torch.sqrt(emb_loss + 1e-8)
+            else:
+                emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs)
+            emb_loss = self.cfg.train_cfg.cite_embs_target_multiplier * emb_loss
         
         if self.cfg.train_cfg.input_toks_target_weight > 0:
             input_toks, target_toks = batch.inp_masked_toks, batch.inp_toks

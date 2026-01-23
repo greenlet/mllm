@@ -53,7 +53,14 @@ emb_mlp_act_fn='gelu'
 cite_toks_target_weight=1
 cite_toks_target_type='all'
 cite_embs_target_weight=1
-cite_embs_target_type='cos'
+# cite_embs_target_type='cos'
+# cite_embs_target_multiplier=20.0
+# cite_embs_target_type='mse'
+# cite_embs_target_multiplier=100.0
+cite_embs_target_type='sqrt'
+cite_embs_target_multiplier=10.0
+# cite_embs_target_type='r2'
+# cite_embs_target_multiplier=1.0
 input_toks_target_weight=1
 
 
@@ -74,7 +81,7 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=20
+docs_batch_size=30
 world_size=4
 
 
@@ -85,9 +92,10 @@ random_seed=200
 
 optimizer_name='AdamW'
 optimizer_params='{}'
-learning_rate_scheduler_name='ReduceLROnPlateau'
-learning_rate_scheduler_params='{"mode": "min", "factor": 0.5, "patience": 10, "threshold": 1e-6, "min_lr": 1e-8}'
-
+# learning_rate_scheduler_name='ReduceLROnPlateau'
+# learning_rate_scheduler_params='{"mode": "min", "factor": 0.5, "patience": 5, "threshold": 1e-6, "min_lr": 1e-8}'
+learning_rate_scheduler_name='CosineAnnealingLR'
+learning_rate_scheduler_params='{"T_max": 100, "eta_min": 1e-8}'
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
@@ -126,6 +134,7 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --cite-toks-target-type $cite_toks_target_type \
   --cite-embs-target-weight $cite_embs_target_weight \
   --cite-embs-target-type $cite_embs_target_type \
+  --cite-embs-target-multiplier $cite_embs_target_multiplier \
   --input-toks-target-weight $input_toks_target_weight \
   --docs-batch-size $docs_batch_size \
   --device $device \
