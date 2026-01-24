@@ -382,7 +382,9 @@ class EmbAttnCfg(BaseModel):
 class EmbMlpCfg(BaseModel):
     d_model: int
     d_out: int
-    window_size: int = 1  # Number of embeddings to process together in a sliding window
+    window_size: int = 3  # Number of embeddings to process together in a sliding window
+    n_window_layers: int = 1
+    n_out_layers: int = 1
     act_fn: str = 'gelu'
 
 
@@ -732,7 +734,8 @@ def create_encdec_graph_bert_cfg(
         dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
         share_enc_dec_proj_weights: bool = False, middle_type: EncdecMiddleType = EncdecMiddleType.Graph,
         n_graph_layers: int = 1, gnn_hidden_dim: int = 0, gnn_conv_name: str = 'GCNConv', gnn_conv_params: Optional[Dict[str, Any]] = None,
-        n_emb_attn_layers: int = 2, emb_mlp_window_size: int = 3, emb_mlp_act_fn: str = 'gelu', pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
+        n_emb_attn_layers: int = 2, emb_mlp_window_size: int = 3, emb_mlp_n_window_layers: int = 1, emb_mlp_n_out_layers: int = 1,
+        emb_mlp_act_fn: str = 'gelu', pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: float = 1.0, cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All,
         cite_embs_target_weight: float = 1.0, cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2, cite_embs_target_multiplier: float = 1.0,
         input_toks_target_weight: float = 1.0, learning_rate: float = 1e-4, optimizer_name: str = 'AdamW',
@@ -805,7 +808,8 @@ def create_encdec_graph_bert_cfg(
     )
 
     cfg_mlp = EmbMlpCfg(
-        d_model=d_model, d_out=cfg_dec.d_model, window_size=emb_mlp_window_size, act_fn=emb_mlp_act_fn,
+        d_model=d_model, d_out=cfg_dec.d_model, window_size=emb_mlp_window_size,
+        n_window_layers=emb_mlp_n_window_layers, n_out_layers=emb_mlp_n_out_layers, act_fn=emb_mlp_act_fn,
     )
 
     cfg_train = EncdecTrainCfg(
@@ -1218,7 +1222,8 @@ def copy_override_encdec_graph_bert_cfg(
         dec_dropout_rate: Optional[float] = None, dec_temperature: Optional[float] = None, share_enc_dec_proj_weights: Optional[bool] = None,
         middle_type: Optional[EncdecMiddleType] = None,
         n_graph_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None, gnn_conv_name: Optional[str] = None, gnn_conv_params: Optional[Dict[str, Any]] = None,
-        n_emb_attn_layers: Optional[int] = None, emb_mlp_window_size: Optional[int] = None, emb_mlp_act_fn: Optional[str] = None,
+        n_emb_attn_layers: Optional[int] = None, emb_mlp_window_size: Optional[int] = None, emb_mlp_n_window_layers: Optional[int] = None, emb_mlp_n_out_layers: Optional[int] = None,
+        emb_mlp_act_fn: Optional[str] = None,
         pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None, cite_embs_target_multiplier: Optional[float] = None,
         cite_embs_target_weight: Optional[float] = None, cite_embs_target_type: Optional[EncdecCiteEmbsTargetType] = None,
@@ -1245,6 +1250,8 @@ def copy_override_encdec_graph_bert_cfg(
     gnn_conv_params = coalesce(gnn_conv_params, cfg.emb_graph.gnn_conv.params)
     n_emb_attn_layers = coalesce(n_emb_attn_layers, cfg.emb_attn.n_layers)
     emb_mlp_window_size = coalesce(emb_mlp_window_size, cfg.emb_mlp.window_size)
+    emb_mlp_n_window_layers = coalesce(emb_mlp_n_window_layers, cfg.emb_mlp.n_window_layers)
+    emb_mlp_n_out_layers = coalesce(emb_mlp_n_out_layers, cfg.emb_mlp.n_out_layers)
     emb_mlp_act_fn = coalesce(emb_mlp_act_fn, cfg.emb_mlp.act_fn)
     pretrained_model_path = coalesce(pretrained_model_path, cfg.train_cfg.pretrained_model_path)
     cite_toks_target_weight = coalesce(cite_toks_target_weight, cfg.train_cfg.cite_toks_target_weight)
@@ -1268,7 +1275,8 @@ def copy_override_encdec_graph_bert_cfg(
         dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature, share_enc_dec_proj_weights=share_enc_dec_proj_weights,
         middle_type=middle_type,
         n_graph_layers=n_graph_layers, gnn_hidden_dim=gnn_hidden_dim, gnn_conv_name=gnn_conv_name, gnn_conv_params=gnn_conv_params,
-        n_emb_attn_layers=n_emb_attn_layers, emb_mlp_window_size=emb_mlp_window_size, emb_mlp_act_fn=emb_mlp_act_fn,
+        n_emb_attn_layers=n_emb_attn_layers, emb_mlp_window_size=emb_mlp_window_size, emb_mlp_n_window_layers=emb_mlp_n_window_layers,
+        emb_mlp_n_out_layers=emb_mlp_n_out_layers, emb_mlp_act_fn=emb_mlp_act_fn,
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
         cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type,
         cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_multiplier=cite_embs_target_multiplier,
@@ -1558,7 +1566,7 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
     elif model_cfg.middle_type == EncdecMiddleType.Attn:
         postfix_parts.append(f'embattn_lrs{attn.n_layers}')
     elif model_cfg.middle_type == EncdecMiddleType.Mlp:
-        postfix_parts.append(f'embmlp_win{mlp.window_size}_act{mlp.act_fn}')
+        postfix_parts.append(f'embmlp_win{mlp.window_size}_wlrs{mlp.n_window_layers}_olrs{mlp.n_out_layers}_act{mlp.act_fn}')
     else:
         raise Exception(f'Unsupported middle_type = {model_cfg.middle_type}')
 

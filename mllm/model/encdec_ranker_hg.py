@@ -728,14 +728,27 @@ class EmbMlp(nn.Module):
         super().__init__()
         self.cfg = cfg
         bias = True
-        if self.cfg.act_fn != 'gelu':
-            raise Exception(f'Activation type {self.cfg.act_fn} is not supported')
-        act_fn = nn.GELU()
-        layers = [
-            nn.Linear(in_features=cfg.window_size * cfg.d_model, out_features=cfg.window_size * self.cfg.d_out, bias=bias),
-            act_fn,
-            nn.Linear(in_features=cfg.window_size * self.cfg.d_out, out_features=cfg.d_out, bias=bias),
-        ]
+        act_fn = get_activation_module(self.cfg.act_fn)
+        
+        assert cfg.n_window_layers >= 1, f'At least one window layer is required. cfg.n_window_layers = {cfg.n_window_layers}'
+        assert cfg.n_out_layers >= 1, f'At least one output layer is required. cfg.n_out_layers = {cfg.n_out_layers}'
+        
+        layers = []
+        # Window layers: from window_size * d_model to window_size * d_out
+        for i in range(cfg.n_window_layers):
+            in_features = cfg.window_size * cfg.d_model if i == 0 else cfg.window_size * cfg.d_out
+            out_features = cfg.window_size * cfg.d_out
+            layers.append(nn.Linear(in_features=in_features, out_features=out_features, bias=bias))
+            layers.append(act_fn())
+        
+        # Output layers: from window_size * d_out to d_out
+        for i in range(cfg.n_out_layers):
+            in_features = cfg.window_size * cfg.d_out if i == 0 else cfg.d_out
+            out_features = cfg.d_out
+            layers.append(nn.Linear(in_features=in_features, out_features=out_features, bias=bias))
+            if i < cfg.n_out_layers - 1:
+                layers.append(act_fn())
+        
         self.mlp = nn.Sequential(*layers)
         self.init_weights()
 

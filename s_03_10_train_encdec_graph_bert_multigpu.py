@@ -149,6 +149,16 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Window size for MLP as the middle embedding model.',
         cli=('--emb-mlp-window-size',),
     )
+    emb_mlp_n_window_layers: int = Field(
+        1,
+        description='Number of window layers for MLP as the middle embedding model.',
+        cli=('--emb-mlp-n-window-layers',),
+    )
+    emb_mlp_n_out_layers: int = Field(
+        1,
+        description='Number of output layers for MLP as the middle embedding model.',
+        cli=('--emb-mlp-n-out-layers',),
+    )
     emb_mlp_act_fn: str = Field(
         'gelu',
         description='Activation function for MLP as the middle embedding model.',
@@ -361,7 +371,9 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
         share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, middle_type=args.emb_middle_type,
         n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim, gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
-        n_emb_attn_layers=args.n_emb_attn_layers, emb_mlp_window_size=args.emb_mlp_window_size, emb_mlp_act_fn=args.emb_mlp_act_fn,
+        n_emb_attn_layers=args.n_emb_attn_layers, emb_mlp_window_size=args.emb_mlp_window_size,
+        emb_mlp_n_window_layers=args.emb_mlp_n_window_layers, emb_mlp_n_out_layers=args.emb_mlp_n_out_layers,
+        emb_mlp_act_fn=args.emb_mlp_act_fn,
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_embs_target_multiplier=args.cite_embs_target_multiplier,
         cite_embs_target_weight=args.cite_embs_target_weight, cite_embs_target_type=args.cite_embs_target_type,
