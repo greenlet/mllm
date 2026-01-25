@@ -47,23 +47,25 @@ emb_middle_type=attn
 n_emb_attn_layers=8
 
 emb_middle_type=mlp
-emb_mlp_window_size=5
+emb_mlp_window_size=10
 emb_mlp_n_window_layers=1
 emb_mlp_n_out_layers=1
 emb_mlp_act_fn='gelu'
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
+cite_toks_target_scale=1
 cite_embs_target_weight=1
 # cite_embs_target_type='cos'
-# cite_embs_target_multiplier=20.0
+# cite_embs_target_scale=20.0
 # cite_embs_target_type='mse'
-# cite_embs_target_multiplier=100.0
+# cite_embs_target_scale=100.0
 cite_embs_target_type='sqrt'
-cite_embs_target_multiplier=10.0
+cite_embs_target_scale=10.0
 # cite_embs_target_type='r2'
-# cite_embs_target_multiplier=1.0
-input_toks_target_weight=1
+# cite_embs_target_scale=1.0
+input_toks_target_weight=10
+input_toks_target_scale=1
 
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
@@ -83,7 +85,7 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=30
+docs_batch_size=40
 world_size=4
 
 
@@ -136,10 +138,12 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --mask-n-last-toks $mask_n_last_toks \
   --cite-toks-target-weight $cite_toks_target_weight \
   --cite-toks-target-type $cite_toks_target_type \
+  --cite-toks-target-scale $cite_toks_target_scale \
   --cite-embs-target-weight $cite_embs_target_weight \
   --cite-embs-target-type $cite_embs_target_type \
-  --cite-embs-target-multiplier $cite_embs_target_multiplier \
+  --cite-embs-target-multiplier $cite_embs_target_scale \
   --input-toks-target-weight $input_toks_target_weight \
+  --input-toks-target-scale $input_toks_target_scale \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \

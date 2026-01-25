@@ -966,6 +966,8 @@ class EncdecGraphBert(nn.Module):
             else:
                 raise Exception(f'Target type {self.cfg.train_cfg.cite_toks_target_type} is not supported')
             cite_loss = self.vocab_loss_fn(dec_logits, input_toks, target_toks)
+            cite_loss = {k: self.cfg.train_cfg.cite_toks_target_scale * v for k, v in cite_loss.items()}
+            cite_loss['loss'] = self.cfg.train_cfg.cite_toks_target_scale * cite_loss['loss']
         
         if self.cfg.train_cfg.cite_embs_target_weight > 0:
             if self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Cos:
@@ -980,11 +982,12 @@ class EncdecGraphBert(nn.Module):
                 emb_loss = torch.sqrt(emb_loss + 1e-8)
             else:
                 emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs)
-            emb_loss = self.cfg.train_cfg.cite_embs_target_multiplier * emb_loss
+            emb_loss = self.cfg.train_cfg.cite_embs_target_scale * emb_loss
         
         if self.cfg.train_cfg.input_toks_target_weight > 0:
             input_toks, target_toks = batch.inp_masked_toks, batch.inp_toks
             input_loss = self.vocab_loss_fn(inp_logits, input_toks, target_toks)
+            input_loss = {k: self.cfg.train_cfg.input_toks_target_scale * v for k, v in input_loss.items()}
 
         res = {}
         loss, total_weight = torch.tensor((0.0,), device=middle_embs.device), 0.0

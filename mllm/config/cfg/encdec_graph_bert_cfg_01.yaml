@@ -37,6 +37,8 @@ emb_mlp:
   act_fn: gelu
   d_model: 768
   d_out: 768
+  n_out_layers: 1
+  n_window_layers: 1
   window_size: 3
 enc_bert:
   d_model: 768
@@ -50,10 +52,13 @@ middle_type: graph
 share_enc_dec_proj_weights: false
 train_cfg:
   batch_size: 10
+  cite_embs_target_scale: 1.0
   cite_embs_target_type: r2
   cite_embs_target_weight: 1.0
+  cite_toks_target_scale: 1.0
   cite_toks_target_type: all
   cite_toks_target_weight: 1.0
+  input_toks_target_scale: 1.0
   input_toks_target_weight: 1.0
   learning_rate: 0.0001
   learning_rate_scheduler:

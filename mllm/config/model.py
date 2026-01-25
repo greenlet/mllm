@@ -405,10 +405,12 @@ class EncdecTrainCfg(BaseModel):
     mask_cfg: Optional[MaskCfg] = None
     cite_toks_target_weight: float = 1.0
     cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All
+    cite_toks_target_scale: float = 1.0
     cite_embs_target_weight: float = 1.0
     cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2
-    cite_embs_target_multiplier: float = 1.0
+    cite_embs_target_scale: float = 1.0
     input_toks_target_weight: float = 1.0
+    input_toks_target_scale: float = 1.0
     learning_rate: float = 1e-4
     optimizer: Optional[PyClassCfg] = None
     learning_rate_scheduler: Optional[PyClassCfg] = None
@@ -736,9 +738,9 @@ def create_encdec_graph_bert_cfg(
         n_graph_layers: int = 1, gnn_hidden_dim: int = 0, gnn_conv_name: str = 'GCNConv', gnn_conv_params: Optional[Dict[str, Any]] = None,
         n_emb_attn_layers: int = 2, emb_mlp_window_size: int = 3, emb_mlp_n_window_layers: int = 1, emb_mlp_n_out_layers: int = 1,
         emb_mlp_act_fn: str = 'gelu', pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
-        cite_toks_target_weight: float = 1.0, cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All,
-        cite_embs_target_weight: float = 1.0, cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2, cite_embs_target_multiplier: float = 1.0,
-        input_toks_target_weight: float = 1.0, learning_rate: float = 1e-4, optimizer_name: str = 'AdamW',
+        cite_toks_target_weight: float = 1.0, cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All, cite_toks_target_scale: float = 1.0,
+        cite_embs_target_weight: float = 1.0, cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2, cite_embs_target_scale: float = 1.0,
+        input_toks_target_weight: float = 1.0, input_toks_target_scale: float = 1.0, learning_rate: float = 1e-4, optimizer_name: str = 'AdamW',
         optimizer_params: Optional[Dict[str, Any]] = None, lrs_name: str = 'ReduceLROnPlateau',
         lrs_params: Optional[Dict[str, Any]] = None, batch_size: int = 10,
 ) -> EncdecGraphBertCfg:
@@ -814,9 +816,9 @@ def create_encdec_graph_bert_cfg(
 
     cfg_train = EncdecTrainCfg(
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
-        cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type,
-        cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_multiplier=cite_embs_target_multiplier,
-        input_toks_target_weight=input_toks_target_weight,
+        cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type, cite_toks_target_scale=cite_toks_target_scale,
+        cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_scale=cite_embs_target_scale,
+        input_toks_target_weight=input_toks_target_weight, input_toks_target_scale=input_toks_target_scale,
         learning_rate=learning_rate,
         optimizer=PyClassCfg(
             module_path='torch.optim',
@@ -1225,9 +1227,9 @@ def copy_override_encdec_graph_bert_cfg(
         n_emb_attn_layers: Optional[int] = None, emb_mlp_window_size: Optional[int] = None, emb_mlp_n_window_layers: Optional[int] = None, emb_mlp_n_out_layers: Optional[int] = None,
         emb_mlp_act_fn: Optional[str] = None,
         pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
-        cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None, cite_embs_target_multiplier: Optional[float] = None,
-        cite_embs_target_weight: Optional[float] = None, cite_embs_target_type: Optional[EncdecCiteEmbsTargetType] = None,
-        input_toks_target_weight: Optional[float] = None, learning_rate: Optional[float] = None,
+        cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None, cite_toks_target_scale: Optional[float] = None,
+        cite_embs_target_weight: Optional[float] = None, cite_embs_target_type: Optional[EncdecCiteEmbsTargetType] = None, cite_embs_target_scale: Optional[float] = None,
+        input_toks_target_weight: Optional[float] = None, input_toks_target_scale: Optional[float] = None, learning_rate: Optional[float] = None,
         optimizer_name: Optional[str] = None, optimizer_params: Optional[Dict[str, Any]] = None,
         lrs_name: Optional[str] = None, lrs_params: Optional[Dict[str, Any]] = None, batch_size: Optional[int] = None,
 ) -> EncdecGraphBertCfg:
@@ -1256,10 +1258,12 @@ def copy_override_encdec_graph_bert_cfg(
     pretrained_model_path = coalesce(pretrained_model_path, cfg.train_cfg.pretrained_model_path)
     cite_toks_target_weight = coalesce(cite_toks_target_weight, cfg.train_cfg.cite_toks_target_weight)
     cite_toks_target_type = coalesce(cite_toks_target_type, cfg.train_cfg.cite_toks_target_type)
+    cite_toks_target_scale = coalesce(cite_toks_target_scale, cfg.train_cfg.cite_toks_target_scale)
     cite_embs_target_weight = coalesce(cite_embs_target_weight, cfg.train_cfg.cite_embs_target_weight)
     cite_embs_target_type = coalesce(cite_embs_target_type, cfg.train_cfg.cite_embs_target_type)
-    cite_embs_target_multiplier = coalesce(cite_embs_target_multiplier, cfg.train_cfg.cite_embs_target_multiplier)
+    cite_embs_target_scale = coalesce(cite_embs_target_scale, cfg.train_cfg.cite_embs_target_scale)
     input_toks_target_weight = coalesce(input_toks_target_weight, cfg.train_cfg.input_toks_target_weight)
+    input_toks_target_scale = coalesce(input_toks_target_scale, cfg.train_cfg.input_toks_target_scale)
     learning_rate = coalesce(learning_rate, cfg.train_cfg.learning_rate)
     if cfg.train_cfg.optimizer is not None:
         optimizer_name = coalesce(optimizer_name, cfg.train_cfg.optimizer.cls_name)
@@ -1278,9 +1282,9 @@ def copy_override_encdec_graph_bert_cfg(
         n_emb_attn_layers=n_emb_attn_layers, emb_mlp_window_size=emb_mlp_window_size, emb_mlp_n_window_layers=emb_mlp_n_window_layers,
         emb_mlp_n_out_layers=emb_mlp_n_out_layers, emb_mlp_act_fn=emb_mlp_act_fn,
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
-        cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type,
-        cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_multiplier=cite_embs_target_multiplier,
-        input_toks_target_weight=input_toks_target_weight, learning_rate=learning_rate,
+        cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type, cite_toks_target_scale=cite_toks_target_scale,
+        cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_scale=cite_embs_target_scale,
+        input_toks_target_weight=input_toks_target_weight, input_toks_target_scale=input_toks_target_scale, learning_rate=learning_rate,
         optimizer_name=optimizer_name, optimizer_params=optimizer_params, lrs_name=lrs_name, lrs_params=lrs_params,
         batch_size=batch_size,
     )
@@ -1574,13 +1578,13 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
         train_parts = ['trn']
         if train.cite_toks_target_weight > 0:
             ctok = np.round(train.cite_toks_target_weight, 2)
-            train_parts.append(f'ctok{train.cite_toks_target_type.value.capitalize()}_w{ctok}')
+            train_parts.append(f'ctok{train.cite_toks_target_type.value.capitalize()}_scl{train.cite_toks_target_scale}_w{ctok}')
         if train.cite_embs_target_weight > 0:
             cemb = np.round(train.cite_embs_target_weight, 2)
-            train_parts.append(f'cemb{train.cite_embs_target_type.value.capitalize()}_mlt{train.cite_embs_target_multiplier}_w{cemb}')
+            train_parts.append(f'cemb{train.cite_embs_target_type.value.capitalize()}_scl{train.cite_embs_target_scale}_w{cemb}')
         if train.input_toks_target_weight > 0:
             itok = np.round(train.input_toks_target_weight, 2)
-            train_parts.append(f'itok_w{itok}')
+            train_parts.append(f'itok_scl{train.input_toks_target_scale}_w{itok}')
 
         lr = np.round(train.learning_rate, 9)
         train_parts.append(f'lr{lr}')
