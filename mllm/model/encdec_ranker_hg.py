@@ -24,7 +24,7 @@ import torch.distributed as dist
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
-from mllm.config.model import EmbAttnCfg, EmbGraphCfg, EmbMlpCfg, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+from mllm.config.model import EmbAttnCfg, EmbGraphCfg, EmbMlpCfg, EmbRnnCfg, EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
     parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
@@ -769,6 +769,80 @@ class EmbMlp(nn.Module):
         return out
 
 
+class EmbRnn(nn.Module):
+    """Recurrent middle model that processes prompt and context embeddings through RNN/LSTM/GRU"""
+    cfg: EmbRnnCfg
+
+    def __init__(self, cfg: EmbRnnCfg):
+        super().__init__()
+        self.cfg = cfg
+        
+        # Get the RNN cell class from torch.nn
+        rnn_module = import_module(cfg.rnn_cell.module_path)
+        rnn_cls = getattr(rnn_module, cfg.rnn_cell.cls_name)
+        
+        # Create the RNN with the configured parameters
+        rnn_params = {
+            **cfg.rnn_cell.params,
+            'input_size': cfg.d_model,
+            'hidden_size': cfg.hidden_dim,
+            'num_layers': cfg.n_layers,
+        }
+        self.rnn = rnn_cls(**rnn_params)
+        
+        # Output projection layer if hidden_dim != d_model
+        if cfg.hidden_dim != cfg.d_model:
+            self.out_proj = nn.Linear(cfg.hidden_dim, cfg.d_model)
+        else:
+            self.out_proj = nn.Identity()
+        
+        self.init_weights()
+
+    def init_weights(self):
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
+
+    # context_embs: (batch_size, d_model) - context embeddings from documents
+    # prompt_embs: (batch_size, d_model) - prompt embeddings
+    # returns: (batch_size, n_out_embs, d_model)
+    def forward(self, context_embs: Tensor, prompt_embs: Tensor) -> Tensor:
+        batch_size = context_embs.shape[0]
+        
+        # Arrange embeddings according to input_order
+        # context_embs: (batch_size, d_model) -> (batch_size, 1, d_model)
+        # prompt_embs: (batch_size, d_model) -> (batch_size, 1, d_model)
+        context_embs = context_embs.unsqueeze(1)
+        prompt_embs = prompt_embs.unsqueeze(1)
+        
+        if self.cfg.input_order == EmbRnnInputOrder.ContextPrompts:
+            # context embeddings first, then prompts
+            # inp_seq: (batch_size, 2, d_model)
+            inp_seq = torch.cat([context_embs, prompt_embs], dim=1)
+        else:
+            # prompts first, then context embeddings
+            # inp_seq: (batch_size, 2, d_model)
+            inp_seq = torch.cat([prompt_embs, context_embs], dim=1)
+        
+        # Run through RNN
+        # rnn_out: (batch_size, seq_len, hidden_dim)
+        # For LSTM: hidden is tuple (h_n, c_n)
+        # For RNN/GRU: hidden is h_n
+        rnn_out, hidden = self.rnn(inp_seq)
+        
+        # Take the last n_out_embs outputs from the sequence
+        # out_embs: (batch_size, n_out_embs, hidden_dim)
+        out_embs = rnn_out[:, -self.cfg.n_out_embs:, :]
+        
+        # Project to output dimension if needed
+        # out_embs: (batch_size, n_out_embs, d_model)
+        out_embs = self.out_proj(out_embs)
+        
+        return out_embs
+
+
 class EncdecGraphBert(nn.Module):
     cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
@@ -790,6 +864,8 @@ class EncdecGraphBert(nn.Module):
         elif self.cfg.middle_type == EncdecMiddleType.Mlp:
             assert self.cfg.emb_mlp.window_size <= self.cfg.train_cfg.batch_size, f'Graph MLP window size {self.cfg.emb_mlp.window_size} > batch size {self.cfg.train_cfg.batch_size}'
             self.emb_mlp = EmbMlp(cfg.emb_mlp)
+        elif self.cfg.middle_type == EncdecMiddleType.Rnn:
+            self.emb_rnn = EmbRnn(cfg.emb_rnn)
         else:
             raise Exception(f'Graph middle type {self.cfg.middle_type} is not supported')
         word_embeddings = None
@@ -938,6 +1014,28 @@ class EncdecGraphBert(nn.Module):
     # inp_enc_embs: (batch_size, d_model)
     # prompt_enc_embs: (batch_size, d_model)
     # returns: (batch_size, d_model)
+    def run_middle_rnn(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
+        batch_size = inp_enc_embs.shape[0]
+        out_rnn_embs = []
+        for ib in range(batch_size):
+            # context_embs: (batch_size, d_model) - all input embeddings as context
+            context_embs = inp_enc_embs
+            # prompt_emb: (1, d_model)
+            prompt_emb = prompt_enc_embs[ib:ib + 1]
+            # Expand prompt to match batch_size for RNN processing
+            # out_embs: (batch_size, n_out_embs, d_model)
+            out_embs = self.emb_rnn(context_embs, prompt_emb.expand(batch_size, -1))
+            # Take the embedding for the current batch item (last output)
+            # out_emb: (d_model,)
+            out_emb = out_embs[ib, -1]  # Take last output embedding for current item
+            out_rnn_embs.append(out_emb)
+        # out_embs: (batch_size, d_model)
+        out_embs = torch.stack(out_rnn_embs, dim=0)
+        return out_embs
+
+    # inp_enc_embs: (batch_size, d_model)
+    # prompt_enc_embs: (batch_size, d_model)
+    # returns: (batch_size, d_model)
     def run_middle(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
         if self.cfg.middle_type == EncdecMiddleType.Graph:
             out_embs = self.run_middle_graph(inp_enc_embs, prompt_enc_embs, batch)
@@ -945,8 +1043,10 @@ class EncdecGraphBert(nn.Module):
             out_embs = self.run_middle_attn(inp_enc_embs, prompt_enc_embs, batch)
         elif self.cfg.middle_type == EncdecMiddleType.Mlp:
             out_embs = self.run_middle_mlp(inp_enc_embs, prompt_enc_embs, batch)
+        elif self.cfg.middle_type == EncdecMiddleType.Rnn:
+            out_embs = self.run_middle_rnn(inp_enc_embs, prompt_enc_embs, batch)
         else:
-            raise
+            raise Exception(f'Unsupported middle_type = {self.cfg.middle_type}')
         return out_embs
 
     # inp_enc_embs: (batch_size, inp_len, d_model)

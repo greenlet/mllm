@@ -18,7 +18,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
 
-from mllm.config.model import EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecMiddleType, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
+from mllm.config.model import EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecMiddleType, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
     gen_prefpostfix_encdec_bert, gen_prefpostfix_encdec_graph_bert
 from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, \
     share_enc_dec_proj_weights_ARG
@@ -164,6 +164,47 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Activation function for MLP as the middle embedding model.',
         cli=('--emb-mlp-act-fn',),
     )
+
+    emb_rnn_n_layers: int = Field(
+        1,
+        description='Number of stacked recurrent layers for RNN as the middle embedding model.',
+        cli=('--emb-rnn-n-layers',),
+    )
+    emb_rnn_hidden_dim: int = Field(
+        -1,
+        description='Hidden dimension size for RNN layers. If set to -1, defaults to model dimension.',
+        cli=('--emb-rnn-hidden-dim',),
+    )
+    emb_rnn_n_out_embs: int = Field(
+        1,
+        description='Number of output embeddings to produce from the RNN.',
+        cli=('--emb-rnn-n-out-embs',),
+    )
+    emb_rnn_input_order: str = Field(
+        'cp',
+        description='Order of input sequences for the RNN: "pc" for prompts-context or "cp" for context-prompts.',
+        cli=('--emb-rnn-input-order',),
+    )
+    emb_rnn_cell_name: str = Field(
+        'LSTM',
+        description='RNN cell class name. Must be one of: RNN, LSTM, GRU.',
+        cli=('--emb-rnn-cell-name',),
+    )
+    emb_rnn_cell_params: dict = Field(
+        {},
+        description='RNN cell parameters as a dictionary.',
+        cli=('--emb-rnn-cell-params',),
+    )
+    @validator('emb_rnn_cell_params', pre=True)
+    def parse_emb_rnn_cell_params(cls, v):
+        try:
+            v = json.loads(v)
+        except Exception as e:
+            try:
+                v = eval(v)
+            except Exception as e2:
+                raise ValueError(f'Cannot parse emb_rnn_cell_params from string: {v}. JSON load error: {e}. Python eval error: {e2}')
+        return v
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
@@ -384,6 +425,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         n_emb_attn_layers=args.n_emb_attn_layers, emb_mlp_window_size=args.emb_mlp_window_size,
         emb_mlp_n_window_layers=args.emb_mlp_n_window_layers, emb_mlp_n_out_layers=args.emb_mlp_n_out_layers,
         emb_mlp_act_fn=args.emb_mlp_act_fn,
+        emb_rnn_n_layers=args.emb_rnn_n_layers, emb_rnn_hidden_dim=args.emb_rnn_hidden_dim, emb_rnn_n_out_embs=args.emb_rnn_n_out_embs,
+        emb_rnn_input_order=EmbRnnInputOrder(args.emb_rnn_input_order), emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,
         cite_embs_target_weight=args.cite_embs_target_weight, cite_embs_target_type=args.cite_embs_target_type, cite_embs_target_scale=args.cite_embs_target_scale,

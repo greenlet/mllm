@@ -47,10 +47,18 @@ emb_middle_type=attn
 n_emb_attn_layers=8
 
 emb_middle_type=mlp
-emb_mlp_window_size=10
+emb_mlp_window_size=3
 emb_mlp_n_window_layers=1
 emb_mlp_n_out_layers=1
 emb_mlp_act_fn='gelu'
+
+emb_middle_type=rnn
+emb_rnn_n_layers=2
+emb_rnn_hidden_dim=-1
+emb_rnn_n_out_embs=1
+emb_rnn_input_order='cp'
+emb_rnn_cell_name='LSTM'
+emb_rnn_cell_params='{"bidirectional": false, "dropout": 0.0}'
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
@@ -64,7 +72,7 @@ cite_embs_target_type='sqrt'
 cite_embs_target_scale=10.0
 # cite_embs_target_type='r2'
 # cite_embs_target_scale=1.0
-input_toks_target_weight=10
+input_toks_target_weight=1
 input_toks_target_scale=1
 
 
@@ -129,6 +137,12 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --emb-mlp-n-window-layers $emb_mlp_n_window_layers \
   --emb-mlp-n-out-layers $emb_mlp_n_out_layers \
   --emb-mlp-act-fn $emb_mlp_act_fn \
+  --emb-rnn-n-layers $emb_rnn_n_layers \
+  --emb-rnn-hidden-dim $emb_rnn_hidden_dim \
+  --emb-rnn-n-out-embs $emb_rnn_n_out_embs \
+  --emb-rnn-input-order $emb_rnn_input_order \
+  --emb-rnn-cell-name $emb_rnn_cell_name \
+  --emb-rnn-cell-params "$emb_rnn_cell_params" \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \
