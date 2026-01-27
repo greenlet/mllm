@@ -1649,7 +1649,8 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
         rnn_parts = [f'embrnn_lrs{rnn.n_layers}']
         if rnn.hidden_dim != enc.d_model:
             rnn_parts.append(f'hid{rnn.hidden_dim}')
-        rnn_parts.append(f'out{rnn.n_out_embs}')
+        if rnn.n_out_embs > 1:
+            rnn_parts.append(f'out{rnn.n_out_embs}')
         rnn_parts.append(f'ord{rnn.input_order.value.upper()}')
         rnn_str = cls_cfg_to_str(rnn.rnn_cell, rnn_param_to_short_str)
         rnn_parts.append(rnn_str)

@@ -28,7 +28,7 @@ from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_d
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.train.encdec_bert import create_dataloader_iter, load_masked_wiki_dataset
-from mllm.utils.utils import instantiate_class, instantiate_torch_lr_scheduler, instantiate_torch_optimizer, rethrow
+from mllm.utils.utils import instantiate_class, instantiate_torch_lr_scheduler, instantiate_torch_optimizer, parse_dict_str, rethrow
 
 
 class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
@@ -128,16 +128,7 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     )
     @validator('gnn_conv_params', pre=True)
     def parse_gnn_conv_params(cls, v):
-        # print(f'Parsing gnn_conv_params: {v}. Type: {type(v)}')
-        try:
-            v = json.loads(v)
-        except Exception as e:
-            try:
-                v = eval(v)
-            except Exception as e2:
-                raise ValueError(f'Cannot parse gnn_conv_params from string: {v}. JSON load error: {e}. Python eval error: {e2}')
-        # print(f'Parsed gnn_conv_params: {v}. Type: {type(v)}')
-        return v
+        return parse_dict_str(v, 'gnn_conv_params')
     n_emb_attn_layers: int = Field(
         1,
         description='Number of embedding attention layers in the middle model.',
@@ -172,7 +163,7 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     )
     emb_rnn_hidden_dim: int = Field(
         -1,
-        description='Hidden dimension size for RNN layers. If set to -1, defaults to model dimension.',
+        description='Hidden dimension size for RNN layers. If non positive, defaults to model dimension.',
         cli=('--emb-rnn-hidden-dim',),
     )
     emb_rnn_n_out_embs: int = Field(
@@ -180,9 +171,9 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Number of output embeddings to produce from the RNN.',
         cli=('--emb-rnn-n-out-embs',),
     )
-    emb_rnn_input_order: str = Field(
-        'cp',
-        description='Order of input sequences for the RNN: "pc" for prompts-context or "cp" for context-prompts.',
+    emb_rnn_input_order: EmbRnnInputOrder = Field(
+        EmbRnnInputOrder.Cp,
+        description=f'Order of input sequences for the RNN: "{EmbRnnInputOrder.Emb}" for prompts-context or "{EmbRnnInputOrder.Cp}" for context-prompts.',
         cli=('--emb-rnn-input-order',),
     )
     emb_rnn_cell_name: str = Field(
@@ -197,14 +188,7 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     )
     @validator('emb_rnn_cell_params', pre=True)
     def parse_emb_rnn_cell_params(cls, v):
-        try:
-            v = json.loads(v)
-        except Exception as e:
-            try:
-                v = eval(v)
-            except Exception as e2:
-                raise ValueError(f'Cannot parse emb_rnn_cell_params from string: {v}. JSON load error: {e}. Python eval error: {e2}')
-        return v
+        return parse_dict_str(v, 'emb_rnn_cell_params')
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
@@ -317,14 +301,7 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     )
     @validator('optimizer_params', pre=True)
     def parse_optimizer_params(cls, v):
-        try:
-            v = json.loads(v)
-        except Exception as e:
-            try:
-                v = eval(v)
-            except Exception as e2:
-                raise ValueError(f'Cannot parse optimizer_params from string: {v}. JSON load error: {e}. Python eval error: {e2}')
-        return v
+        return parse_dict_str(v, 'optimizer_params')
     learning_rate_scheduler_name: str = Field(
         'ReduceLROnPlateau',
         description='Learning rate scheduler class name. Must be a valid PyTorch learning rate scheduler.',
@@ -337,14 +314,7 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     )
     @validator('learning_rate_scheduler_params', pre=True)
     def parse_learning_rate_scheduler_params(cls, v):
-        try:
-            v = json.loads(v)
-        except Exception as e:
-            try:
-                v = eval(v)
-            except Exception as e2:
-                raise ValueError(f'Cannot parse learning_rate_scheduler_params from string: {v}. JSON load error: {e}. Python eval error: {e2}')
-        return v
+        return parse_dict_str(v, 'learning_rate_scheduler_params')
 
     train_epoch_steps: Optional[int] = Field(
         None,
@@ -426,7 +396,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         emb_mlp_n_window_layers=args.emb_mlp_n_window_layers, emb_mlp_n_out_layers=args.emb_mlp_n_out_layers,
         emb_mlp_act_fn=args.emb_mlp_act_fn,
         emb_rnn_n_layers=args.emb_rnn_n_layers, emb_rnn_hidden_dim=args.emb_rnn_hidden_dim, emb_rnn_n_out_embs=args.emb_rnn_n_out_embs,
-        emb_rnn_input_order=EmbRnnInputOrder(args.emb_rnn_input_order), emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
+        emb_rnn_input_order=args.emb_rnn_input_order, emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,
         cite_embs_target_weight=args.cite_embs_target_weight, cite_embs_target_type=args.cite_embs_target_type, cite_embs_target_scale=args.cite_embs_target_scale,

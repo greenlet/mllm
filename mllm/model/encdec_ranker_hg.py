@@ -789,13 +789,7 @@ class EmbRnn(nn.Module):
             'num_layers': cfg.n_layers,
         }
         self.rnn = rnn_cls(**rnn_params)
-        
-        # Output projection layer if hidden_dim != d_model
-        if cfg.hidden_dim != cfg.d_model:
-            self.out_proj = nn.Linear(cfg.hidden_dim, cfg.d_model)
-        else:
-            self.out_proj = nn.Identity()
-        
+
         self.init_weights()
 
     def init_weights(self):
@@ -805,42 +799,16 @@ class EmbRnn(nn.Module):
             else:
                 nn.init.uniform_(p, -0.1, 0.1)
 
-    # context_embs: (batch_size, d_model) - context embeddings from documents
-    # prompt_embs: (batch_size, d_model) - prompt embeddings
-    # returns: (batch_size, n_out_embs, d_model)
-    def forward(self, context_embs: Tensor, prompt_embs: Tensor) -> Tensor:
-        batch_size = context_embs.shape[0]
-        
-        # Arrange embeddings according to input_order
-        # context_embs: (batch_size, d_model) -> (batch_size, 1, d_model)
-        # prompt_embs: (batch_size, d_model) -> (batch_size, 1, d_model)
-        context_embs = context_embs.unsqueeze(1)
-        prompt_embs = prompt_embs.unsqueeze(1)
-        
-        if self.cfg.input_order == EmbRnnInputOrder.ContextPrompts:
-            # context embeddings first, then prompts
-            # inp_seq: (batch_size, 2, d_model)
-            inp_seq = torch.cat([context_embs, prompt_embs], dim=1)
-        else:
-            # prompts first, then context embeddings
-            # inp_seq: (batch_size, 2, d_model)
-            inp_seq = torch.cat([prompt_embs, context_embs], dim=1)
-        
+    # context_embs: (batch_size, seq_len, d_model)
+    # returns: (batch_size, seq_len, hidden_dim)
+    def forward(self, embs: Tensor) -> Tensor:
         # Run through RNN
         # rnn_out: (batch_size, seq_len, hidden_dim)
         # For LSTM: hidden is tuple (h_n, c_n)
         # For RNN/GRU: hidden is h_n
-        rnn_out, hidden = self.rnn(inp_seq)
+        rnn_out, hidden = self.rnn(embs)
         
-        # Take the last n_out_embs outputs from the sequence
-        # out_embs: (batch_size, n_out_embs, hidden_dim)
-        out_embs = rnn_out[:, -self.cfg.n_out_embs:, :]
-        
-        # Project to output dimension if needed
-        # out_embs: (batch_size, n_out_embs, d_model)
-        out_embs = self.out_proj(out_embs)
-        
-        return out_embs
+        return rnn_out
 
 
 class EncdecGraphBert(nn.Module):
@@ -1018,13 +986,14 @@ class EncdecGraphBert(nn.Module):
         batch_size = inp_enc_embs.shape[0]
         out_rnn_embs = []
         for ib in range(batch_size):
-            # context_embs: (batch_size, d_model) - all input embeddings as context
-            context_embs = inp_enc_embs
-            # prompt_emb: (1, d_model)
-            prompt_emb = prompt_enc_embs[ib:ib + 1]
-            # Expand prompt to match batch_size for RNN processing
+            # prompt_embs: (1, d_model)
+            prompt_embs = prompt_enc_embs[ib:ib + 1, :]
+            # combined_embs: (batch_size + 1, d_model)
+            combined_embs = torch.concatenate([inp_enc_embs, prompt_embs], dim=0)
+            # combined_embs: (1, batch_size + 1, d_model)
+            combined_embs = combined_embs.unsqueeze(0)
             # out_embs: (batch_size, n_out_embs, d_model)
-            out_embs = self.emb_rnn(context_embs, prompt_emb.expand(batch_size, -1))
+            out_embs = self.emb_rnn(combined_embs)
             # Take the embedding for the current batch item (last output)
             # out_emb: (d_model,)
             out_emb = out_embs[ib, -1]  # Take last output embedding for current item

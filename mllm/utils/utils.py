@@ -148,6 +148,32 @@ def rethrow(e):
     raise e
 
 
+def parse_dict_str(v: Any, param_name: str = 'params') -> Dict[str, Any]:
+    """Parse a dictionary from a string (JSON or Python literal).
+    
+    Args:
+        v: Value to parse (string, dict, or other).
+        param_name: Name of the parameter for error messages.
+        
+    Returns:
+        Parsed dictionary.
+        
+    Raises:
+        ValueError: If the string cannot be parsed as JSON or Python literal.
+    """
+    if isinstance(v, dict):
+        return v
+    import json
+    try:
+        v = json.loads(v)
+    except Exception as e:
+        try:
+            v = eval(v)
+        except Exception as e2:
+            raise ValueError(f'Cannot parse {param_name} from string: {v}. JSON load error: {e}. Python eval error: {e2}')
+    return v
+
+
 def instantiate_class(module_path: str, cls_name: str, *args: list[Any], **kwargs: Dict[str, Any]) -> object:
     module = import_module(module_path)
     cls = getattr(module, cls_name)
