@@ -55,7 +55,6 @@ emb_mlp_act_fn='gelu'
 emb_middle_type=rnn
 emb_rnn_n_layers=2
 emb_rnn_hidden_dim=-1
-emb_rnn_n_out_embs=1
 emb_rnn_input_order='cp'
 emb_rnn_cell_name='LSTM'
 emb_rnn_cell_params='{"bidirectional": false, "dropout": 0.0}'
@@ -139,7 +138,6 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --emb-mlp-act-fn $emb_mlp_act_fn \
   --emb-rnn-n-layers $emb_rnn_n_layers \
   --emb-rnn-hidden-dim $emb_rnn_hidden_dim \
-  --emb-rnn-n-out-embs $emb_rnn_n_out_embs \
   --emb-rnn-input-order $emb_rnn_input_order \
   --emb-rnn-cell-name $emb_rnn_cell_name \
   --emb-rnn-cell-params "$emb_rnn_cell_params" \

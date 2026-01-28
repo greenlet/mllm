@@ -40,6 +40,18 @@ emb_mlp:
   n_out_layers: 1
   n_window_layers: 1
   window_size: 3
+emb_rnn:
+  d_model: 768
+  hidden_dim: 768
+  input_order: cp
+  n_layers: 1
+  rnn_cell:
+    cls_name: LSTM
+    module_path: torch.nn
+    params:
+      batch_first: true
+      bidirectional: false
+      dropout: 0.0
 enc_bert:
   d_model: 768
   emb2_tok_name: ''

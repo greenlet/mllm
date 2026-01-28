@@ -429,7 +429,6 @@ class EmbRnnCfg(BaseModel):
     d_model: int  # Input and output embedding dimension
     hidden_dim: int  # Hidden state dimension for the RNN
     n_layers: int = 1  # Number of stacked recurrent layers
-    n_out_embs: int = 1  # Number of output embeddings to produce
     input_order: EmbRnnInputOrder = EmbRnnInputOrder.ContextPrompts  # Order of input sequences
     rnn_cell: PyClassCfg  # RNN cell configuration (RNN, LSTM, GRU from torch.nn)
 
@@ -785,7 +784,7 @@ def create_encdec_graph_bert_cfg(
         n_graph_layers: int = 1, gnn_hidden_dim: int = 0, gnn_conv_name: str = 'GCNConv', gnn_conv_params: Optional[Dict[str, Any]] = None,
         n_emb_attn_layers: int = 2, emb_mlp_window_size: int = 3, emb_mlp_n_window_layers: int = 1, emb_mlp_n_out_layers: int = 1,
         emb_mlp_act_fn: str = 'gelu',
-        emb_rnn_n_layers: int = 1, emb_rnn_hidden_dim: int = 0, emb_rnn_n_out_embs: int = 1,
+        emb_rnn_n_layers: int = 1, emb_rnn_hidden_dim: int = 0,
         emb_rnn_input_order: EmbRnnInputOrder = EmbRnnInputOrder.ContextPrompts,
         emb_rnn_cell_name: str = 'LSTM', emb_rnn_cell_params: Optional[Dict[str, Any]] = None,
         pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
@@ -875,7 +874,7 @@ def create_encdec_graph_bert_cfg(
         emb_rnn_hidden_dim = d_model
     cfg_rnn = EmbRnnCfg(
         d_model=d_model, hidden_dim=emb_rnn_hidden_dim, n_layers=emb_rnn_n_layers,
-        n_out_embs=emb_rnn_n_out_embs, input_order=emb_rnn_input_order, rnn_cell=cfg_rnn_cell,
+        input_order=emb_rnn_input_order, rnn_cell=cfg_rnn_cell,
     )
 
     cfg_train = EncdecTrainCfg(
@@ -1290,7 +1289,7 @@ def copy_override_encdec_graph_bert_cfg(
         n_graph_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None, gnn_conv_name: Optional[str] = None, gnn_conv_params: Optional[Dict[str, Any]] = None,
         n_emb_attn_layers: Optional[int] = None, emb_mlp_window_size: Optional[int] = None, emb_mlp_n_window_layers: Optional[int] = None, emb_mlp_n_out_layers: Optional[int] = None,
         emb_mlp_act_fn: Optional[str] = None,
-        emb_rnn_n_layers: Optional[int] = None, emb_rnn_hidden_dim: Optional[int] = None, emb_rnn_n_out_embs: Optional[int] = None,
+        emb_rnn_n_layers: Optional[int] = None, emb_rnn_hidden_dim: Optional[int] = None,
         emb_rnn_input_order: Optional[EmbRnnInputOrder] = None, emb_rnn_cell_name: Optional[str] = None, emb_rnn_cell_params: Optional[Dict[str, Any]] = None,
         pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None, cite_toks_target_scale: Optional[float] = None,
@@ -1323,7 +1322,6 @@ def copy_override_encdec_graph_bert_cfg(
     emb_mlp_act_fn = coalesce(emb_mlp_act_fn, cfg.emb_mlp.act_fn)
     emb_rnn_n_layers = coalesce(emb_rnn_n_layers, cfg.emb_rnn.n_layers)
     emb_rnn_hidden_dim = coalesce(emb_rnn_hidden_dim, cfg.emb_rnn.hidden_dim)
-    emb_rnn_n_out_embs = coalesce(emb_rnn_n_out_embs, cfg.emb_rnn.n_out_embs)
     emb_rnn_input_order = coalesce(emb_rnn_input_order, cfg.emb_rnn.input_order)
     emb_rnn_cell_name = coalesce(emb_rnn_cell_name, cfg.emb_rnn.rnn_cell.cls_name)
     emb_rnn_cell_params = coalesce(emb_rnn_cell_params, cfg.emb_rnn.rnn_cell.params)
@@ -1353,7 +1351,7 @@ def copy_override_encdec_graph_bert_cfg(
         n_graph_layers=n_graph_layers, gnn_hidden_dim=gnn_hidden_dim, gnn_conv_name=gnn_conv_name, gnn_conv_params=gnn_conv_params,
         n_emb_attn_layers=n_emb_attn_layers, emb_mlp_window_size=emb_mlp_window_size, emb_mlp_n_window_layers=emb_mlp_n_window_layers,
         emb_mlp_n_out_layers=emb_mlp_n_out_layers, emb_mlp_act_fn=emb_mlp_act_fn,
-        emb_rnn_n_layers=emb_rnn_n_layers, emb_rnn_hidden_dim=emb_rnn_hidden_dim, emb_rnn_n_out_embs=emb_rnn_n_out_embs,
+        emb_rnn_n_layers=emb_rnn_n_layers, emb_rnn_hidden_dim=emb_rnn_hidden_dim,
         emb_rnn_input_order=emb_rnn_input_order, emb_rnn_cell_name=emb_rnn_cell_name, emb_rnn_cell_params=emb_rnn_cell_params,
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
         cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type, cite_toks_target_scale=cite_toks_target_scale,
@@ -1649,8 +1647,6 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
         rnn_parts = [f'embrnn_lrs{rnn.n_layers}']
         if rnn.hidden_dim != enc.d_model:
             rnn_parts.append(f'hid{rnn.hidden_dim}')
-        if rnn.n_out_embs > 1:
-            rnn_parts.append(f'out{rnn.n_out_embs}')
         rnn_parts.append(f'ord{rnn.input_order.value.upper()}')
         rnn_str = cls_cfg_to_str(rnn.rnn_cell, rnn_param_to_short_str)
         rnn_parts.append(rnn_str)

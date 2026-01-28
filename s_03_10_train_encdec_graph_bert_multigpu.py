@@ -166,11 +166,6 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Hidden dimension size for RNN layers. If non positive, defaults to model dimension.',
         cli=('--emb-rnn-hidden-dim',),
     )
-    emb_rnn_n_out_embs: int = Field(
-        1,
-        description='Number of output embeddings to produce from the RNN.',
-        cli=('--emb-rnn-n-out-embs',),
-    )
     emb_rnn_input_order: EmbRnnInputOrder = Field(
         EmbRnnInputOrder.Cp,
         description=f'Order of input sequences for the RNN: "{EmbRnnInputOrder.Emb}" for prompts-context or "{EmbRnnInputOrder.Cp}" for context-prompts.',
@@ -395,7 +390,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         n_emb_attn_layers=args.n_emb_attn_layers, emb_mlp_window_size=args.emb_mlp_window_size,
         emb_mlp_n_window_layers=args.emb_mlp_n_window_layers, emb_mlp_n_out_layers=args.emb_mlp_n_out_layers,
         emb_mlp_act_fn=args.emb_mlp_act_fn,
-        emb_rnn_n_layers=args.emb_rnn_n_layers, emb_rnn_hidden_dim=args.emb_rnn_hidden_dim, emb_rnn_n_out_embs=args.emb_rnn_n_out_embs,
+        emb_rnn_n_layers=args.emb_rnn_n_layers, emb_rnn_hidden_dim=args.emb_rnn_hidden_dim,
         emb_rnn_input_order=args.emb_rnn_input_order, emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
         pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,
