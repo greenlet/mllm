@@ -460,6 +460,7 @@ class EncdecTrainCfg(BaseModel):
     optimizer: Optional[PyClassCfg] = None
     learning_rate_scheduler: Optional[PyClassCfg] = None
     batch_size: int = 10
+    encdec_freeze_epochs: int = 0  # Number of epochs to freeze encoder and decoder (train only middle embedding model)
 
 
 class EncdecGraphBertCfg(BaseModel):
@@ -792,7 +793,7 @@ def create_encdec_graph_bert_cfg(
         cite_embs_target_weight: float = 1.0, cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2, cite_embs_target_scale: float = 1.0,
         input_toks_target_weight: float = 1.0, input_toks_target_scale: float = 1.0, learning_rate: float = 1e-4, optimizer_name: str = 'AdamW',
         optimizer_params: Optional[Dict[str, Any]] = None, lrs_name: str = 'ReduceLROnPlateau',
-        lrs_params: Optional[Dict[str, Any]] = None, batch_size: int = 10,
+        lrs_params: Optional[Dict[str, Any]] = None, batch_size: int = 10, encdec_freeze_epochs: int = 0,
 ) -> EncdecGraphBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -894,6 +895,7 @@ def create_encdec_graph_bert_cfg(
             params=lrs_params or {},
         ),
         batch_size=batch_size,
+        encdec_freeze_epochs=encdec_freeze_epochs,
     )
 
     cfg_encdec_bert = EncdecGraphBertCfg(
@@ -1297,6 +1299,7 @@ def copy_override_encdec_graph_bert_cfg(
         input_toks_target_weight: Optional[float] = None, input_toks_target_scale: Optional[float] = None, learning_rate: Optional[float] = None,
         optimizer_name: Optional[str] = None, optimizer_params: Optional[Dict[str, Any]] = None,
         lrs_name: Optional[str] = None, lrs_params: Optional[Dict[str, Any]] = None, batch_size: Optional[int] = None,
+        encdec_freeze_epochs: Optional[int] = None,
 ) -> EncdecGraphBertCfg:
     enc = cfg.enc_bert
     dec = cfg.dec_pyr
@@ -1342,6 +1345,7 @@ def copy_override_encdec_graph_bert_cfg(
         lrs_name = coalesce(lrs_name, cfg.train_cfg.learning_rate_scheduler.cls_name)
         lrs_params = {**(cfg.train_cfg.learning_rate_scheduler.params or {}), **(lrs_params or {})}
     batch_size = coalesce(batch_size, cfg.train_cfg.batch_size)
+    encdec_freeze_epochs = coalesce(encdec_freeze_epochs, cfg.train_cfg.encdec_freeze_epochs)
 
     return create_encdec_graph_bert_cfg(
         pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
@@ -1358,7 +1362,7 @@ def copy_override_encdec_graph_bert_cfg(
         cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_scale=cite_embs_target_scale,
         input_toks_target_weight=input_toks_target_weight, input_toks_target_scale=input_toks_target_scale, learning_rate=learning_rate,
         optimizer_name=optimizer_name, optimizer_params=optimizer_params, lrs_name=lrs_name, lrs_params=lrs_params,
-        batch_size=batch_size,
+        batch_size=batch_size, encdec_freeze_epochs=encdec_freeze_epochs,
     )
 
 
@@ -1682,6 +1686,9 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
         #     train_parts.append('_'.join(lrs_parts))
         
         train_parts.append(f'bs{train.batch_size}')
+
+        if train.encdec_freeze_epochs > 0:
+            train_parts.append(f'frz{train.encdec_freeze_epochs}')
         
         postfix_parts.append('_'.join(train_parts))
 

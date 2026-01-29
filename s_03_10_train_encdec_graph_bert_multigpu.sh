@@ -54,7 +54,7 @@ emb_mlp_act_fn='gelu'
 
 emb_middle_type=rnn
 emb_rnn_n_layers=2
-emb_rnn_hidden_dim=-1
+emb_rnn_hidden_dim=0
 emb_rnn_input_order='cp'
 emb_rnn_cell_name='LSTM'
 emb_rnn_cell_params='{"bidirectional": false, "dropout": 0.0}'
@@ -74,6 +74,9 @@ cite_embs_target_scale=10.0
 input_toks_target_weight=1
 input_toks_target_scale=1
 
+encdec_freeze_epochs=100
+cite_embs_target_type='sqrt'
+cite_embs_target_scale=100.0
 
 #pretrained_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 pretrained_model_path=$train_root_path/encdecbert-20260110_193915-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
@@ -156,8 +159,7 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --cite-embs-target-multiplier $cite_embs_target_scale \
   --input-toks-target-weight $input_toks_target_weight \
   --input-toks-target-scale $input_toks_target_scale \
-  --docs-batch-size $docs_batch_size \
-  --device $device \
+  --docs-batch-size $docs_batch_size \  --encdec-freeze-epochs $encdec_freeze_epochs \  --device $device \
   --epochs $epochs \
   --learning-rate $learning_rate \
   --optimizer-name $optimizer_name \

@@ -1077,14 +1077,18 @@ class EncdecGraphBert(nn.Module):
 
         return res
 
-    def run_on_text_citation(self, batch: MaskedCiteBatch) -> Tuple[Dict[str, Tensor], Tensor]:
+    def run_on_text_citation(self, batch: MaskedCiteBatch, epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
         # self.enc.eval()
         batch_size = batch.inp_toks.shape[0]
         
         assert torch.all(batch.inp_toks[:, 0] == self.tkz.cls_token_id), 'Input tokens must start with CLS token'
         assert torch.all(batch.prompts_toks[:, 0] == self.tkz.cls_token_id), 'Prompt tokens must start with CLS token'
         
-        with self.grad_ctx:
+        # Use no_grad for encoder when frozen during early epochs
+        encdec_frozen = epoch >= 0 and epoch < self.cfg.train_cfg.encdec_freeze_epochs
+        enc_ctx = torch.no_grad() if encdec_frozen else self.grad_ctx
+        
+        with enc_ctx:
             # inp_enc_embs: (batch_size, inp_len, d_model)
             inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
             # inp_enc_embs: (batch_size, d_model)
@@ -1097,13 +1101,16 @@ class EncdecGraphBert(nn.Module):
         # middle_embs: (batch_size, d_model)
         middle_embs = self.run_middle(inp_enc_embs, prompt_enc_embs, batch)
 
-        # dec_logits: (batch_size, inp_len, n_vocab)
-        dec_logits = self.dec(middle_embs)
+        # Use no_grad for decoder when frozen during early epochs
+        dec_ctx = torch.no_grad() if encdec_frozen else nullcontext()
+        with dec_ctx:
+            # dec_logits: (batch_size, inp_len, n_vocab)
+            dec_logits = self.dec(middle_embs)
 
-        inp_logits = None
-        if self.cfg.train_cfg.input_toks_target_weight > 0:
-            # inp_logits: (batch_size, inp_len, n_vocab)
-            inp_logits = self.dec(inp_enc_embs)
+            inp_logits = None
+            if self.cfg.train_cfg.input_toks_target_weight > 0:
+                # inp_logits: (batch_size, inp_len, n_vocab)
+                inp_logits = self.dec(inp_enc_embs)
 
         loss_dict = self.calc_loss(inp_enc_embs, middle_embs, dec_logits, batch, inp_logits=inp_logits)
 

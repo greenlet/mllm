@@ -167,8 +167,8 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         cli=('--emb-rnn-hidden-dim',),
     )
     emb_rnn_input_order: EmbRnnInputOrder = Field(
-        EmbRnnInputOrder.Cp,
-        description=f'Order of input sequences for the RNN: "{EmbRnnInputOrder.Emb}" for prompts-context or "{EmbRnnInputOrder.Cp}" for context-prompts.',
+        EmbRnnInputOrder.ContextPrompts,
+        description=f'Order of input sequences for the RNN: "{EmbRnnInputOrder.PromptsContext.value}" for prompts-context or "{EmbRnnInputOrder.ContextPrompts.value}" for context-prompts.',
         cli=('--emb-rnn-input-order',),
     )
     emb_rnn_cell_name: str = Field(
@@ -267,6 +267,11 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         3,
         description='Documents batch size. Must be greater or equal than 2.',
         cli=('--docs-batch-size',),
+    )
+    encdec_freeze_epochs: int = Field(
+        0,
+        description='Number of epochs to freeze encoder and decoder (train only middle embedding model).',
+        cli=('--encdec-freeze-epochs',),
     )
     device: str = Field(
         'cpu',
@@ -398,7 +403,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         input_toks_target_weight=args.input_toks_target_weight, input_toks_target_scale=args.input_toks_target_scale, learning_rate=args.learning_rate,
         optimizer_name=args.optimizer_name, optimizer_params=args.optimizer_params,
         lrs_name=args.learning_rate_scheduler_name, lrs_params=args.learning_rate_scheduler_params,
-        batch_size=args.docs_batch_size,
+        batch_size=args.docs_batch_size, encdec_freeze_epochs=args.encdec_freeze_epochs,
     )
     if rank == 0:
         pprint(model_cfg.dict())
@@ -483,9 +488,9 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
 
             optimizer.zero_grad()
             if args.world_size > 1:
-                loss_dict, _ = ddp_model.module.run_on_text_citation(batch)
+                loss_dict, _ = ddp_model.module.run_on_text_citation(batch, epoch=epoch)
             else:
-                loss_dict, _ = ddp_model.run_on_text_citation(batch)
+                loss_dict, _ = ddp_model.run_on_text_citation(batch, epoch=epoch)
             loss = loss_dict['loss']
             loss.backward()
 
@@ -541,7 +546,10 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
             pbar.close()
             val_losses.log_to_tb('Val', epoch, tbsw)
 
-        scheduler.step(val_loss)
+        if isinstance(scheduler, ReduceLROnPlateau):
+            scheduler.step(val_loss)
+        else:
+            scheduler.step()
         
         if rank == 0:
             last_lr = scheduler.get_last_lr()[0]

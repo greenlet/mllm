@@ -28,7 +28,7 @@ tensorboard
 torch==2.3.0
 torchtext==0.18.0
 torchvision
-transformers
+transformers<5.0.0
 tqdm
 # windows-curses
 
