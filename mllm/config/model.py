@@ -446,7 +446,8 @@ class EncdecCiteEmbsTargetType(str, Enum):
 
 
 class EncdecTrainCfg(BaseModel):
-    pretrained_model_path: Optional[Path] = None
+    pretrained_encdec_model_path: Optional[Path] = None
+    pretrained_encdecgraph_model_path: Optional[Path] = None
     mask_cfg: Optional[MaskCfg] = None
     cite_toks_target_weight: float = 1.0
     cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All
@@ -788,7 +789,8 @@ def create_encdec_graph_bert_cfg(
         emb_rnn_n_layers: int = 1, emb_rnn_hidden_dim: int = 0,
         emb_rnn_input_order: EmbRnnInputOrder = EmbRnnInputOrder.ContextPrompts,
         emb_rnn_cell_name: str = 'LSTM', emb_rnn_cell_params: Optional[Dict[str, Any]] = None,
-        pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
+        pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
+        mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: float = 1.0, cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All, cite_toks_target_scale: float = 1.0,
         cite_embs_target_weight: float = 1.0, cite_embs_target_type: EncdecCiteEmbsTargetType = EncdecCiteEmbsTargetType.R2, cite_embs_target_scale: float = 1.0,
         input_toks_target_weight: float = 1.0, input_toks_target_scale: float = 1.0, learning_rate: float = 1e-4, optimizer_name: str = 'AdamW',
@@ -879,7 +881,9 @@ def create_encdec_graph_bert_cfg(
     )
 
     cfg_train = EncdecTrainCfg(
-        pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
+        pretrained_encdec_model_path=pretrained_encdec_model_path,
+        pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
+        mask_cfg=mask_cfg,
         cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type, cite_toks_target_scale=cite_toks_target_scale,
         cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_scale=cite_embs_target_scale,
         input_toks_target_weight=input_toks_target_weight, input_toks_target_scale=input_toks_target_scale,
@@ -1293,7 +1297,8 @@ def copy_override_encdec_graph_bert_cfg(
         emb_mlp_act_fn: Optional[str] = None,
         emb_rnn_n_layers: Optional[int] = None, emb_rnn_hidden_dim: Optional[int] = None,
         emb_rnn_input_order: Optional[EmbRnnInputOrder] = None, emb_rnn_cell_name: Optional[str] = None, emb_rnn_cell_params: Optional[Dict[str, Any]] = None,
-        pretrained_model_path: Optional[Path] = None, mask_cfg: Optional[MaskCfg] = None,
+        pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
+        mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None, cite_toks_target_scale: Optional[float] = None,
         cite_embs_target_weight: Optional[float] = None, cite_embs_target_type: Optional[EncdecCiteEmbsTargetType] = None, cite_embs_target_scale: Optional[float] = None,
         input_toks_target_weight: Optional[float] = None, input_toks_target_scale: Optional[float] = None, learning_rate: Optional[float] = None,
@@ -1328,7 +1333,8 @@ def copy_override_encdec_graph_bert_cfg(
     emb_rnn_input_order = coalesce(emb_rnn_input_order, cfg.emb_rnn.input_order)
     emb_rnn_cell_name = coalesce(emb_rnn_cell_name, cfg.emb_rnn.rnn_cell.cls_name)
     emb_rnn_cell_params = coalesce(emb_rnn_cell_params, cfg.emb_rnn.rnn_cell.params)
-    pretrained_model_path = coalesce(pretrained_model_path, cfg.train_cfg.pretrained_model_path)
+    pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
+    pretrained_encdecgraph_model_path = coalesce(pretrained_encdecgraph_model_path, cfg.train_cfg.pretrained_encdecgraph_model_path)
     cite_toks_target_weight = coalesce(cite_toks_target_weight, cfg.train_cfg.cite_toks_target_weight)
     cite_toks_target_type = coalesce(cite_toks_target_type, cfg.train_cfg.cite_toks_target_type)
     cite_toks_target_scale = coalesce(cite_toks_target_scale, cfg.train_cfg.cite_toks_target_scale)
@@ -1357,7 +1363,8 @@ def copy_override_encdec_graph_bert_cfg(
         emb_mlp_n_out_layers=emb_mlp_n_out_layers, emb_mlp_act_fn=emb_mlp_act_fn,
         emb_rnn_n_layers=emb_rnn_n_layers, emb_rnn_hidden_dim=emb_rnn_hidden_dim,
         emb_rnn_input_order=emb_rnn_input_order, emb_rnn_cell_name=emb_rnn_cell_name, emb_rnn_cell_params=emb_rnn_cell_params,
-        pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
+        pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
+        mask_cfg=mask_cfg,
         cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type, cite_toks_target_scale=cite_toks_target_scale,
         cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_scale=cite_embs_target_scale,
         input_toks_target_weight=input_toks_target_weight, input_toks_target_scale=input_toks_target_scale, learning_rate=learning_rate,
@@ -1597,14 +1604,21 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
     enc, dec, graph, attn, mlp, rnn = model_cfg.enc_bert, model_cfg.dec_pyr, model_cfg.emb_graph, model_cfg.emb_attn, model_cfg.emb_mlp, model_cfg.emb_rnn
     train = model_cfg.train_cfg
 
-    pretrained_model_path = None
+    pretrained_encdec_model_path, pretrained_encdecgraph_model_path, mask_cfg = None, None, None
     if train is not None:
-        pretrained_model_path, mask_cfg = train.pretrained_model_path, train.mask_cfg
+        pretrained_encdec_model_path = train.pretrained_encdec_model_path
+        pretrained_encdecgraph_model_path = train.pretrained_encdecgraph_model_path
+        mask_cfg = train.mask_cfg
 
+    pretrained_model_path = None
+    if pretrained_encdecgraph_model_path is not None:
+        pretrained_model_path = pretrained_encdecgraph_model_path
+    elif pretrained_encdec_model_path is not None:
+        pretrained_model_path = pretrained_encdec_model_path
     if pretrained_model_path is not None:
         dname = pretrained_model_path.parent.name
         m = checkpoint_fname_pat.match(dname)
-        assert m is not None, f'Cannot parse checkpoint filename "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
+        assert m is not None, f'Cannot parse checkpoint folder name "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
         postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
 
     brt_str = enc.pretrained_model_name.replace('-', '')

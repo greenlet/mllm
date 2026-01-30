@@ -331,10 +331,15 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Random seed.',
         cli=('--random-seed',),
     )
-    pretrained_model_path: Optional[Path] = Field(
+    pretrained_encdec_model_path: Optional[Path] = Field(
         None,
-        description='Path to EncdecHg model train directory.',
-        cli=('--pretrained-model-path',),
+        description='Path to EncdecBert model train directory (loads encoder/decoder only).',
+        cli=('--pretrained-encdec-model-path',),
+    )
+    pretrained_encdecgraph_model_path: Optional[Path] = Field(
+        None,
+        description='Path to EncdecGraphBert model train directory (loads full model with strict mode).',
+        cli=('--pretrained-encdecgraph-model-path',),
     )
     world_size: int = Field(
         1,
@@ -374,7 +379,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
 
     setup(rank, args.world_size)
 
-    pretrained_model_path = get_pretrained_model_path(args.pretrained_model_path)
+    pretrained_encdec_model_path = get_pretrained_model_path(args.pretrained_encdec_model_path)
+    pretrained_encdecgraph_model_path = get_pretrained_model_path(args.pretrained_encdecgraph_model_path)
 
     device = torch.device(f'cuda:{rank}') if torch.cuda.is_available() else torch.device('cpu')
     log(f'Using device {device}.')
@@ -397,7 +403,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         emb_mlp_act_fn=args.emb_mlp_act_fn,
         emb_rnn_n_layers=args.emb_rnn_n_layers, emb_rnn_hidden_dim=args.emb_rnn_hidden_dim,
         emb_rnn_input_order=args.emb_rnn_input_order, emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
-        pretrained_model_path=pretrained_model_path, mask_cfg=mask_cfg,
+        pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
+        mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,
         cite_embs_target_weight=args.cite_embs_target_weight, cite_embs_target_type=args.cite_embs_target_type, cite_embs_target_scale=args.cite_embs_target_scale,
         input_toks_target_weight=args.input_toks_target_weight, input_toks_target_scale=args.input_toks_target_scale, learning_rate=args.learning_rate,

@@ -575,7 +575,7 @@ class EncdecMaskPadItemLoss(nn.Module):
 
 
 class R2Loss(nn.Module):
-    def __init__(self, n_history: int = 100):
+    def __init__(self, n_history: int = 10):
         super().__init__()
         self.n_history = n_history
         self.ss_tot_history = []

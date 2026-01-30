@@ -869,14 +869,31 @@ class EncdecGraphBert(nn.Module):
         if checkpoint is not None:
             self.load_state_dict(checkpoint['model'], strict=True)
         else:
-            pretrained_model_path = self.cfg.train_cfg.pretrained_model_path
+            pretrained_encdecgraph_model_path = self.cfg.train_cfg.pretrained_encdecgraph_model_path
+            pretrained_encdec_model_path = self.cfg.train_cfg.pretrained_encdec_model_path
             rank = dist.get_rank()
-            print(f'R{rank}. load_pretrained: {pretrained_model_path}. Exists: {pretrained_model_path.exists() if pretrained_model_path else "N/A"}')
-            if pretrained_model_path and pretrained_model_path.exists():
-                print(f'R{rank}. Loading checkpoint with pretrained model from {pretrained_model_path}')
-                pretrained_checkpoint = torch.load(pretrained_model_path)
+
+            if pretrained_encdecgraph_model_path and pretrained_encdecgraph_model_path.exists():
+                # Load full EncdecGraphBert model with strict mode
+                print(f'R{rank}. Loading EncdecGraphBert checkpoint with strict mode from {pretrained_encdecgraph_model_path}')
+                pretrained_checkpoint = torch.load(pretrained_encdecgraph_model_path)
                 checkpt_dict = pretrained_checkpoint['model']
-                # print(list(checkpt_dict.keys()))
+
+                # Clean module. and model. prefixes
+                cleaned_dict = {}
+                for key, val in checkpt_dict.items():
+                    if key.startswith('module.'):
+                        key = key[7:]
+                    if key.startswith('model.'):
+                        key = key[6:]
+                    cleaned_dict[key] = val
+
+                self.load_state_dict(cleaned_dict, strict=True)
+            elif pretrained_encdec_model_path and pretrained_encdec_model_path.exists():
+                # Load only encoder and decoder weights (existing behavior)
+                print(f'R{rank}. Loading encoder/decoder checkpoint from {pretrained_encdec_model_path}')
+                pretrained_checkpoint = torch.load(pretrained_encdec_model_path)
+                checkpt_dict = pretrained_checkpoint['model']
 
                 enc_checkpt_dict, dec_checkpt_dict = {}, {}
                 for key, val in checkpt_dict.items():
@@ -891,9 +908,10 @@ class EncdecGraphBert(nn.Module):
                         new_key = key[8:]
                         dec_checkpt_dict[new_key] = val
 
-                # self.load_state_dict(checkpt_dict, strict=True)
                 self.enc.load_state_dict(enc_checkpt_dict, strict=True)
                 self.dec.load_state_dict(dec_checkpt_dict, strict=True)
+            else:
+                print(f'R{rank}. No pretrained model path provided or file does not exist')
 
     # inp: (batch_size, inp_len)
     # inp_mask: (batch_size, inp_len)
