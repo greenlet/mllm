@@ -714,4 +714,63 @@ class RankerEmbLoss(nn.Module):
         return loss, loss_tgt, loss_nontgt
 
 
+class CosLR2LossType(Enum):
+    L2 = 'l2'
+    R2 = 'r2'
+
+
+class CosLR2Loss(nn.Module):
+    """Combined Cosine distance and L2/R2 distance loss.
+
+    Args:
+        cos_weight: Weight for cosine distance loss.
+        lr_weight: Weight for L2 or R2 loss.
+        lr_type: Type of distance loss ('l2' or 'r2').
+        eps: Small value added to R2 denominator for numerical stability.
+    """
+
+    def __init__(
+        self,
+        cos_weight: float = 1.0,
+        lr_weight: float = 1.0,
+        lr_type: CosLR2LossType = CosLR2LossType.R2,
+        eps: float = 1e-8,
+    ):
+        super().__init__()
+        self.cos_weight = cos_weight
+        self.lr_weight = lr_weight
+        self.total_weight = cos_weight + lr_weight
+        self.lr_type = lr_type
+        self.eps = eps
+        self.cos_sim = nn.CosineSimilarity(dim=1)
+
+    # y_pred: (batch_size, vec_dim)
+    # y_gt: (batch_size, vec_dim)
+    def forward(self, y_pred: torch.Tensor, y_gt: torch.Tensor) -> dict[str, torch.Tensor]:
+        # Cosine distance: 1 - cosine_similarity
+        # cos_sim: (batch_size,)
+        cos_sim = self.cos_sim(y_pred, y_gt)
+        cos_loss = torch.mean(1 - cos_sim)
+        # sqr_diff: (batch_size, vec_dim)
+        sqr_diff = (y_gt - y_pred) ** 2
+        # sqr_diff_sum: (batch_size,)
+        sqr_diff_sum = torch.sum(sqr_diff, dim=1)
+
+        if self.lr_type == CosLR2LossType.L2:
+            # L2 loss: mean squared error
+            lr2_loss = torch.mean(sqr_diff_sum)
+        else:
+            # R2 loss: 1 - R^2, using batch variance as denominator
+            # ss_res: residual sum of squares
+            ss_res = sqr_diff_sum
+            # y_gt_mean: (batch_size, 1)
+            y_gt_mean = torch.mean(y_gt, dim=1, keepdim=True)
+            # ss_tot: (batch_size,)
+            ss_tot = torch.sum((y_gt - y_gt_mean) ** 2, dim=1) + self.eps
+            lr2_loss = ss_res / ss_tot
+        
+        loss = self.cos_weight * cos_loss + self.lr_weight * lr2_loss
+        loss = loss / self.total_weight
+        return {'loss': loss, 'cos_loss': cos_loss, 'lr2_loss': lr2_loss}
+
 
