@@ -575,24 +575,21 @@ class EncdecMaskPadItemLoss(nn.Module):
 
 
 class R2Loss(nn.Module):
-    def __init__(self, n_history: int = 10):
+    def __init__(self, eps: float = 1e-8):
         super().__init__()
-        self.n_history = n_history
-        self.ss_tot_history = []
+        self.eps = eps
 
     # y_pred: (batch_size, d_model)
     # y_gt: (batch_size, d_model)
     def forward(self, y_pred: torch.Tensor, y_gt: torch.Tensor) -> torch.Tensor:
+        ss_res = torch.sum((y_gt - y_pred) ** 2)
+
         # y_gt_mean: (1, d_model)
         y_gt_mean = torch.mean(y_gt, dim=0, keepdim=True)
         # ss_tot: (batch_size, d_model)
         ss_tot = (y_gt - y_gt_mean) ** 2
-        # ss_tot_history: (batch_size..n_history+batch_size, d_model)
-        self.ss_tot_history.extend(ss_tot.cpu().tolist())
-        # ss_tot_history: (batch_size..n_history, d_model)
-        self.ss_tot_history = self.ss_tot_history[-self.n_history:]
-        ss_res = torch.mean((y_gt - y_pred) ** 2)
-        ss_tot = torch.mean(torch.tensor(self.ss_tot_history, dtype=torch.float32, device=y_pred.device))
+        ss_tot = torch.sum(ss_tot) + self.eps
+
         r2 = 1 - ss_res / ss_tot
         loss = 1 - r2
         return loss
@@ -762,15 +759,41 @@ class CosLR2Loss(nn.Module):
         else:
             # R2 loss: 1 - R^2, using batch variance as denominator
             # ss_res: residual sum of squares
-            ss_res = sqr_diff_sum
+            ss_res = torch.sum(sqr_diff_sum)
             # y_gt_mean: (batch_size, 1)
-            y_gt_mean = torch.mean(y_gt, dim=1, keepdim=True)
+            y_gt_mean = torch.mean(y_gt, dim=0, keepdim=True)
             # ss_tot: (batch_size,)
-            ss_tot = torch.sum((y_gt - y_gt_mean) ** 2, dim=1) + self.eps
+            ss_tot = torch.sum((y_gt - y_gt_mean) ** 2) + self.eps
             lr2_loss = ss_res / ss_tot
         
         loss = self.cos_weight * cos_loss + self.lr_weight * lr2_loss
         loss = loss / self.total_weight
         return {'loss': loss, 'cos_loss': cos_loss, 'lr2_loss': lr2_loss}
+
+
+class VecMseLoss(nn.Module):
+    """Vector MSE Loss that computes L2 norm per sample then averages across batch.
+
+    Args:
+        is_sqrt: If True, computes L2 norm (sqrt of sum of squares). If False, computes squared L2 norm.
+    """
+
+    def __init__(self, is_sqrt: bool = False):
+        super().__init__()
+        self.is_sqrt = is_sqrt
+
+    # y_pred: (batch_size, d_model)
+    # y_gt: (batch_size, d_model)
+    def forward(self, y_pred: torch.Tensor, y_gt: torch.Tensor) -> torch.Tensor:
+        # sqr_diff: (batch_size, d_model)
+        sqr_diff = (y_gt - y_pred) ** 2
+        # sqr_diff_sum: (batch_size,)
+        sqr_diff_sum = torch.sum(sqr_diff, dim=-1)
+        if self.is_sqrt:
+            # norm: (batch_size,)
+            sqr_diff_sum = torch.sqrt(sqr_diff_sum + 1e-8)
+        # loss: scalar
+        loss = torch.mean(sqr_diff_sum)
+        return loss
 
 

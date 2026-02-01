@@ -443,6 +443,8 @@ class EncdecCiteEmbsTargetType(str, Enum):
     Mse = 'mse'
     Sqrt = 'sqrt'
     R2 = 'r2'
+    CosL2 = 'cosl2'
+    CosR2 = 'cosr2'
 
 
 class EncdecTrainCfg(BaseModel):

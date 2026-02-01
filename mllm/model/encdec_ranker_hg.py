@@ -10,7 +10,7 @@ from transformers import PreTrainedTokenizer
 from mllm.data.utils import RandomInputTokenizer, TokensSubset, TokensSubsetV2, tokens_subsets_v2_to_tensors
 from mllm.model.bert import BertModel
 from mllm.model.bert_generation.modeling_bert_generation import BertGenerationEmbeddings
-from mllm.model.losses import EncdecMaskPadItemLoss, R2Loss, join_losses_dicts
+from mllm.model.losses import CosLR2Loss, CosLR2LossType, EncdecMaskPadItemLoss, R2Loss, VecMseLoss, join_losses_dicts
 from mllm.model.utils import get_top_vects
 from mllm.train.encdec_graph_bert import MaskedCiteBatch
 from mllm.train.utils import get_activation_module
@@ -846,11 +846,15 @@ class EncdecGraphBert(nn.Module):
             if self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Cos:
                 self.emb_loss_fn = nn.CosineEmbeddingLoss()
             elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Mse:
-                self.emb_loss_fn = nn.MSELoss()
+                self.emb_loss_fn = VecMseLoss(is_sqrt=False)
             elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Sqrt:
-                self.emb_loss_fn = nn.MSELoss()
+                self.emb_loss_fn = VecMseLoss(is_sqrt=True)
             elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.R2:
                 self.emb_loss_fn = R2Loss()
+            elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.CosL2:
+                self.emb_loss_fn = CosLR2Loss(lr_type=CosLR2LossType.L2)
+            elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.CosR2:
+                self.emb_loss_fn = CosLR2Loss(lr_type=CosLR2LossType.R2)
             else:
                 raise Exception(f'Target type {self.cfg.train_cfg.cite_embs_target_type} is not supported')
         
@@ -1066,7 +1070,11 @@ class EncdecGraphBert(nn.Module):
                 emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs)
             elif self.cfg.train_cfg.cite_embs_target_type == EncdecCiteEmbsTargetType.Sqrt:
                 emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs)
-                emb_loss = torch.sqrt(emb_loss + 1e-8)
+            elif self.cfg.train_cfg.cite_embs_target_type in (EncdecCiteEmbsTargetType.CosL2, EncdecCiteEmbsTargetType.CosR2):
+                emb_loss_dict = self.emb_loss_fn(middle_embs, inp_enc_embs)
+                emb_loss = emb_loss_dict['loss']
+                emb_cos_loss = emb_loss_dict['cos_loss']
+                emb_lr2_loss = emb_loss_dict['lr2_loss']
             else:
                 emb_loss = self.emb_loss_fn(middle_embs, inp_enc_embs)
             emb_loss = self.cfg.train_cfg.cite_embs_target_scale * emb_loss
@@ -1086,6 +1094,9 @@ class EncdecGraphBert(nn.Module):
             loss += self.cfg.train_cfg.cite_embs_target_weight * emb_loss
             total_weight += self.cfg.train_cfg.cite_embs_target_weight
             res['emb_loss'] = emb_loss
+            if self.cfg.train_cfg.cite_embs_target_type in (EncdecCiteEmbsTargetType.CosL2, EncdecCiteEmbsTargetType.CosR2):
+                res['emb_cos_loss'] = emb_cos_loss
+                res['emb_lr2_loss'] = emb_lr2_loss
         if input_loss is not None:
             res.update({f'input_{k}': v for k, v in input_loss.items()})
             loss += self.cfg.train_cfg.input_toks_target_weight * input_loss['loss']
