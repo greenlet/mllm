@@ -825,6 +825,12 @@ class EncdecGraphBert(nn.Module):
         self.cfg = cfg
         self.tkz = tkz
         self.enc = EncoderBert(cfg.enc_bert)
+        
+        # Create embedding unfold layer if emb_unfold_k > 0
+        if self.cfg.emb_unfold_k > 0:
+            d_model = cfg.enc_bert.d_model
+            self.emb_unfold = nn.Linear(d_model, d_model * self.cfg.emb_unfold_k, bias=True)
+        
         if self.cfg.middle_type == EncdecMiddleType.Graph:
             self.emb_graph = EmbGraph(cfg.emb_graph)
         elif self.cfg.middle_type == EncdecMiddleType.Attn:
@@ -927,6 +933,19 @@ class EncdecGraphBert(nn.Module):
         # out_enc_pooler: (batch_size, d_model)
         out_enc_last_hidden_state, out_enc_pooler = out_enc
         return out_enc_last_hidden_state
+
+    # embs: (n, d_model)
+    # returns: (n * k, d_model) if emb_unfold_k > 0, else (n, d_model)
+    def run_unfold(self, embs: Tensor) -> Tensor:
+        if self.cfg.emb_unfold_k <= 0:
+            return embs
+        n, d_model = embs.shape
+        k = self.cfg.emb_unfold_k
+        # expanded: (n, d_model * k)
+        expanded = self.emb_unfold(embs)
+        # unfolded: (n * k, d_model)
+        unfolded = expanded.reshape(n * k, d_model)
+        return unfolded
     
     # inp_enc_embs: (batch_size, d_model)
     # prompt_enc_embs: (batch_size, d_model)
@@ -1127,7 +1146,13 @@ class EncdecGraphBert(nn.Module):
             # prompt_enc_embs: (batch_size, d_model)
             prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
         
-        # middle_embs: (batch_size, d_model)
+        # Apply unfold transformation if emb_unfold_k > 0
+        # inp_enc_embs: (batch_size, d_model) -> (batch_size * k, d_model)
+        inp_enc_embs = self.run_unfold(inp_enc_embs)
+        # prompt_enc_embs: (batch_size, d_model) -> (batch_size * k, d_model)
+        prompt_enc_embs = self.run_unfold(prompt_enc_embs)
+        
+        # middle_embs: (batch_size * k, d_model) if unfold else (batch_size, d_model)
         middle_embs = self.run_middle(inp_enc_embs, prompt_enc_embs, batch)
 
         # Use no_grad for decoder when frozen during early epochs

@@ -68,7 +68,7 @@ cite_embs_target_weight=1
 # cite_embs_target_type='mse'
 # cite_embs_target_scale=100.0
 cite_embs_target_type='sqrt'
-cite_embs_target_scale=10.0
+cite_embs_target_scale=1.0
 # cite_embs_target_type='r2'
 # cite_embs_target_scale=1.0
 input_toks_target_weight=1
@@ -76,6 +76,7 @@ input_toks_target_scale=1
 
 encdec_freeze_epochs=25
 cite_embs_target_type='r2'
+cite_embs_target_type='cosl2'
 cite_embs_target_scale=1.0
 
 #pretrained_encdec_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
