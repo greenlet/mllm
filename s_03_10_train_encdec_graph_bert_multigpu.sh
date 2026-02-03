@@ -48,8 +48,8 @@ n_emb_attn_layers=8
 
 emb_middle_type=mlp
 emb_mlp_window_size=3
-emb_mlp_n_window_layers=1
-emb_mlp_n_out_layers=1
+emb_mlp_n_window_layers=6
+emb_mlp_n_out_layers=2
 emb_mlp_act_fn='gelu'
 
 # emb_middle_type=rnn

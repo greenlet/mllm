@@ -476,7 +476,6 @@ class EncdecGraphBertCfg(BaseModel):
     emb_mlp: EmbMlpCfg
     emb_rnn: EmbRnnCfg
     train_cfg: EncdecTrainCfg
-    emb_unfold_k: int = 0
 
 
 class DecRankHgCfg(BaseModel):
@@ -799,7 +798,6 @@ def create_encdec_graph_bert_cfg(
         input_toks_target_weight: float = 1.0, input_toks_target_scale: float = 1.0, learning_rate: float = 1e-4, optimizer_name: str = 'AdamW',
         optimizer_params: Optional[Dict[str, Any]] = None, lrs_name: str = 'ReduceLROnPlateau',
         lrs_params: Optional[Dict[str, Any]] = None, batch_size: int = 10, encdec_freeze_epochs: int = 0,
-        emb_unfold_k: int = 0,
 ) -> EncdecGraphBertCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -909,7 +907,6 @@ def create_encdec_graph_bert_cfg(
     cfg_encdec_bert = EncdecGraphBertCfg(
         enc_bert=cfg_enc, dec_pyr=cfg_dec, share_enc_dec_proj_weights=share_enc_dec_proj_weights,
         middle_type=middle_type, emb_graph=cfg_graph, emb_attn=cfg_attn, emb_mlp=cfg_mlp, emb_rnn=cfg_rnn, train_cfg=cfg_train,
-        emb_unfold_k=emb_unfold_k,
     )
     return cfg_encdec_bert
 
@@ -1310,7 +1307,6 @@ def copy_override_encdec_graph_bert_cfg(
         optimizer_name: Optional[str] = None, optimizer_params: Optional[Dict[str, Any]] = None,
         lrs_name: Optional[str] = None, lrs_params: Optional[Dict[str, Any]] = None, batch_size: Optional[int] = None,
         encdec_freeze_epochs: Optional[int] = None,
-        emb_unfold_k: Optional[int] = None,
 ) -> EncdecGraphBertCfg:
     enc = cfg.enc_bert
     dec = cfg.dec_pyr
@@ -1358,7 +1354,6 @@ def copy_override_encdec_graph_bert_cfg(
         lrs_params = {**(cfg.train_cfg.learning_rate_scheduler.params or {}), **(lrs_params or {})}
     batch_size = coalesce(batch_size, cfg.train_cfg.batch_size)
     encdec_freeze_epochs = coalesce(encdec_freeze_epochs, cfg.train_cfg.encdec_freeze_epochs)
-    emb_unfold_k = coalesce(emb_unfold_k, cfg.emb_unfold_k)
 
     return create_encdec_graph_bert_cfg(
         pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
@@ -1376,7 +1371,7 @@ def copy_override_encdec_graph_bert_cfg(
         cite_embs_target_weight=cite_embs_target_weight, cite_embs_target_type=cite_embs_target_type, cite_embs_target_scale=cite_embs_target_scale,
         input_toks_target_weight=input_toks_target_weight, input_toks_target_scale=input_toks_target_scale, learning_rate=learning_rate,
         optimizer_name=optimizer_name, optimizer_params=optimizer_params, lrs_name=lrs_name, lrs_params=lrs_params,
-        batch_size=batch_size, encdec_freeze_epochs=encdec_freeze_epochs, emb_unfold_k=emb_unfold_k,
+        batch_size=batch_size, encdec_freeze_epochs=encdec_freeze_epochs,
     )
 
 
