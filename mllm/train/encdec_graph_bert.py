@@ -172,6 +172,7 @@ def create_masked_cite_dataloader(
         inds = dataset.inds[start_ind:end_ind].tolist()
         if len(inds) < batch_size:
             inds += dataset.inds[:(batch_size - len(inds))].tolist()
+        if end_ind == len(dataset):
             print(f'R{rank}. Shuffle dataset')
             dataset.shuffle()
         batch = dataset.get_batch(inds)
