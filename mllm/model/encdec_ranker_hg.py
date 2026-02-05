@@ -869,6 +869,7 @@ class EncdecGraphBert(nn.Module):
         if self.cfg.train_cfg.input_toks_target_weight > 0 or self.cfg.train_cfg.cite_toks_target_weight > 0:
             grad_ctx = nullcontext()
         self.grad_ctx = grad_ctx
+        self._debug = True
 
     def load_pretrained(self, checkpoint: Optional[Dict[str, Any]] = None):
         if checkpoint is not None:

@@ -253,11 +253,20 @@ class RandomInputTokenizerV2:
         self.n_cite_toks = self.n_inp_toks - 2 * self.n_random_toks
         assert self.n_cite_toks > 0, f'max_len={self.max_len} must be greater then total size: n_random_toks*2={self.n_random_toks * 2} + ' \
             f'{self.tkz.cls_token}=1 + {self.tkz.sep_token}=1'
-        self.prompt_template = 'Cite tag begin: "{}". Cite tag end: "{}". Produce output text between these tags.'
-        prompt = self.prompt_template.format('a b c', 'd e f')
-        toks_prompt = self.tkz(prompt, add_special_tokens=True).input_ids
-        assert len(toks_prompt) < self.max_len, f'Prompt length {len(toks_prompt)} must be less than max_len={self.max_len}. Prompt template: {self.prompt_template} ' \
-            f'(example: {prompt}) = {len(toks_prompt)} tokens >= max tokens = {self.max_len})'
+        self.prompt_all_template_toks = {
+            'tag_begin': self.tkz('Cite tag begin: "', add_special_tokens=True).input_ids[:-1],
+            'tag_end': self.tkz('". Cite tag end: "', add_special_tokens=False).input_ids,
+            'rest': self.tkz('". Produce whole text containing these tags.', add_special_tokens=True).input_ids[1:],
+        }
+        self.prompt_cite_template_toks = {
+            'tag_begin': self.prompt_all_template_toks['tag_begin'],
+            'tag_end': self.prompt_all_template_toks['tag_end'],
+            'rest': self.tkz('". Produce output text between these tags.', add_special_tokens=True).input_ids[1:],
+        }
+        len_prompt_all_toks = sum(len(toks) for toks in self.prompt_all_template_toks.values()) + 2 * self.n_random_toks  # +2*n_random_toks for random tokens in prompt
+        len_prompt_cite_toks = sum(len(toks) for toks in self.prompt_cite_template_toks.values()) + 2 * self.n_random_toks
+        assert len_prompt_all_toks < self.max_len, f'Prompt all toks length {len_prompt_all_toks} must be less than max_len={self.max_len}'
+        assert len_prompt_cite_toks < self.max_len, f'Prompt cite toks length {len_prompt_cite_toks} must be less than max_len={self.max_len}'
         self.mask_cfg = mask_cfg
 
     
@@ -273,7 +282,7 @@ class RandomInputTokenizerV2:
         return toks
 
     
-    def __call__(self, texts: list[str]) -> List[TokensSubsetV2]:
+    def __call__(self, texts: list[str], prompt_all: bool = True) -> List[TokensSubsetV2]:
         batch_size = len(texts)
         input_ids = self.tkz(texts, add_special_tokens=False).input_ids
         batch: list[TokensSubsetV2] = []
@@ -306,11 +315,9 @@ class RandomInputTokenizerV2:
             toks_inp_masked = [self.tkz.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
                 toks_cite_masked + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz.sep_token_id]
 
-            prompt = self.prompt_template.format(
-                ' '.join(self.tkz.convert_ids_to_tokens(toks_cite_beg)),
-                ' '.join(self.tkz.convert_ids_to_tokens(toks_cite_end))
-            )
-            toks_prompt = self.tkz(prompt, add_special_tokens=True).input_ids
+            prompt_template_toks = self.prompt_all_template_toks if prompt_all else self.prompt_cite_template_toks
+            prompt_toks = prompt_template_toks['tag_begin'] + toks_cite_beg + prompt_template_toks['tag_end'] + toks_cite_end + prompt_template_toks['rest']
+            prompt = self.tkz.decode(prompt_toks, skip_special_tokens=False)
 
             toks_sub = TokensSubsetV2(
                 toks_src=input_ids[i],
@@ -325,7 +332,7 @@ class RandomInputTokenizerV2:
                 toks_cite_beg=toks_cite_beg,
                 toks_cite_end=toks_cite_end,
                 prompt=prompt,
-                toks_prompt=toks_prompt,
+                toks_prompt=prompt_toks,
             )
             batch.append(toks_sub)
         return batch
