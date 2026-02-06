@@ -55,7 +55,7 @@ emb_mlp_act_fn='gelu'
 # emb_middle_type=rnn
 emb_rnn_n_layers=2
 emb_rnn_hidden_dim=0
-emb_rnn_input_order='cp'
+emb_rnn_input_order='cp'  # 'cp' for context-prompts, 'pc' for prompts-context, 'ph0' for prompt as initial hidden state
 emb_rnn_cell_name='LSTM'
 emb_rnn_cell_params='{"bidirectional": false, "dropout": 0.0}'
 

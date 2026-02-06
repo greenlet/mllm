@@ -168,7 +168,8 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     )
     emb_rnn_input_order: EmbRnnInputOrder = Field(
         EmbRnnInputOrder.ContextPrompts,
-        description=f'Order of input sequences for the RNN: "{EmbRnnInputOrder.PromptsContext.value}" for prompts-context or "{EmbRnnInputOrder.ContextPrompts.value}" for context-prompts.',
+        description=f'Order of input sequences for the RNN: "{EmbRnnInputOrder.PromptsContext.value}" for prompts-context, '
+                    f'"{EmbRnnInputOrder.ContextPrompts.value}" for context-prompts, or "{EmbRnnInputOrder.PromptH0.value}" for prompt as initial hidden state.',
         cli=('--emb-rnn-input-order',),
     )
     emb_rnn_cell_name: str = Field(

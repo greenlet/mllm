@@ -422,6 +422,7 @@ class EmbRnnInputOrder(str, Enum):
     """Order of input sequences for the RNN: prompts first or context first"""
     PromptsContext = 'pc'  # prompts embeddings followed by context embeddings
     ContextPrompts = 'cp'  # context embeddings followed by prompts embeddings
+    PromptH0 = 'ph0'  # prompt embedding as initial hidden state, context as input sequence
 
 
 class EmbRnnCfg(BaseModel):

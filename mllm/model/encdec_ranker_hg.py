@@ -789,6 +789,13 @@ class EmbRnn(nn.Module):
             'num_layers': cfg.n_layers,
         }
         self.rnn = rnn_cls(**rnn_params)
+        
+        # For PromptH0 mode, create projection layer from d_model to hidden_dim
+        if cfg.input_order == EmbRnnInputOrder.PromptH0:
+            self.h0_proj = nn.Linear(cfg.d_model, cfg.hidden_dim * cfg.n_layers, bias=True)
+            # For LSTM, also need c0 projection
+            if cfg.rnn_cell.cls_name == 'LSTM':
+                self.c0_proj = nn.Linear(cfg.d_model, cfg.hidden_dim * cfg.n_layers, bias=True)
 
         self.init_weights()
 
@@ -800,13 +807,17 @@ class EmbRnn(nn.Module):
                 nn.init.uniform_(p, -0.1, 0.1)
 
     # context_embs: (batch_size, seq_len, d_model)
+    # h0: optional initial hidden state for PromptH0 mode (n_layers, batch_size, hidden_dim)
     # returns: (batch_size, seq_len, hidden_dim)
-    def forward(self, embs: Tensor) -> Tensor:
+    def forward(self, embs: Tensor, h0: Optional[Tensor] = None) -> Tensor:
         # Run through RNN
         # rnn_out: (batch_size, seq_len, hidden_dim)
         # For LSTM: hidden is tuple (h_n, c_n)
         # For RNN/GRU: hidden is h_n
-        rnn_out, hidden = self.rnn(embs)
+        if h0 is not None:
+            rnn_out, hidden = self.rnn(embs, h0)
+        else:
+            rnn_out, hidden = self.rnn(embs)
         
         return rnn_out
 
@@ -869,7 +880,6 @@ class EncdecGraphBert(nn.Module):
         if self.cfg.train_cfg.input_toks_target_weight > 0 or self.cfg.train_cfg.cite_toks_target_weight > 0:
             grad_ctx = nullcontext()
         self.grad_ctx = grad_ctx
-        self._debug = True
 
     def load_pretrained(self, checkpoint: Optional[Dict[str, Any]] = None):
         if checkpoint is not None:
@@ -1008,6 +1018,36 @@ class EncdecGraphBert(nn.Module):
     # returns: (batch_size, d_model)
     def run_middle_rnn(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
         batch_size = inp_enc_embs.shape[0]
+        
+        if self.cfg.emb_rnn.input_order == EmbRnnInputOrder.PromptH0:
+            # Use prompt embeddings as initial hidden state
+            # inp_enc_embs: (batch_size, d_model) -> (1, batch_size, d_model) as sequence
+            # We process each prompt with all input embeddings as context
+            out_rnn_embs = []
+            for ib in range(batch_size):
+                # prompt_emb: (1, d_model)
+                prompt_emb = prompt_enc_embs[ib:ib + 1, :]
+                # h0_proj: (1, hidden_dim * n_layers) -> (n_layers, 1, hidden_dim)
+                h0 = self.emb_rnn.h0_proj(prompt_emb)
+                h0 = h0.view(self.cfg.emb_rnn.n_layers, 1, self.cfg.emb_rnn.hidden_dim)
+                
+                if self.cfg.emb_rnn.rnn_cell.cls_name == 'LSTM':
+                    c0 = self.emb_rnn.c0_proj(prompt_emb)
+                    c0 = c0.view(self.cfg.emb_rnn.n_layers, 1, self.cfg.emb_rnn.hidden_dim)
+                    h0 = (h0, c0)
+                
+                # inp_enc_embs: (batch_size, d_model) -> (1, batch_size, d_model)
+                inp_seq = inp_enc_embs.unsqueeze(0)
+                # out_embs: (1, batch_size, hidden_dim)
+                out_embs = self.emb_rnn(inp_seq, h0=h0)
+                # Take the last output embedding
+                # out_emb: (hidden_dim,)
+                out_emb = out_embs[0, -1]
+                out_rnn_embs.append(out_emb)
+            # out_embs: (batch_size, d_model)
+            out_embs = torch.stack(out_rnn_embs, dim=0)
+            return out_embs
+        
         out_rnn_embs = []
         for ib in range(batch_size):
             # prompt_embs: (1, d_model)
