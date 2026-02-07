@@ -792,10 +792,11 @@ class EmbRnn(nn.Module):
         
         # For PromptH0 mode, create projection layer from d_model to hidden_dim
         if cfg.input_order == EmbRnnInputOrder.PromptH0:
-            self.h0_proj = nn.Linear(cfg.d_model, cfg.hidden_dim * cfg.n_layers, bias=True)
-            # For LSTM, also need c0 projection
+            self.h0_proj = nn.Linear(cfg.d_model, cfg.n_layers * cfg.hidden_dim, bias=True)
             if cfg.rnn_cell.cls_name == 'LSTM':
-                self.c0_proj = nn.Linear(cfg.d_model, cfg.hidden_dim * cfg.n_layers, bias=True)
+                # Always batch first
+                c0 = torch.zeros((1, cfg.n_layers, cfg.hidden_dim))
+                self.c0 = self.register_buffer('c0', c0)
 
         self.init_weights()
 
@@ -806,20 +807,44 @@ class EmbRnn(nn.Module):
             else:
                 nn.init.uniform_(p, -0.1, 0.1)
 
-    # context_embs: (batch_size, seq_len, d_model)
-    # h0: optional initial hidden state for PromptH0 mode (n_layers, batch_size, hidden_dim)
-    # returns: (batch_size, seq_len, hidden_dim)
-    def forward(self, embs: Tensor, h0: Optional[Tensor] = None) -> Tensor:
-        # Run through RNN
-        # rnn_out: (batch_size, seq_len, hidden_dim)
-        # For LSTM: hidden is tuple (h_n, c_n)
-        # For RNN/GRU: hidden is h_n
-        if h0 is not None:
-            rnn_out, hidden = self.rnn(embs, h0)
+    # input_embs: (batch_size, input_seq_len, d_model)
+    # prompt_embs: (batch_size, prompt_seq_len, d_model)
+    # returns: (batch_size, hidden_dim)
+    def forward(self, input_embs: Tensor, prompt_embs: Tensor) -> Tensor:
+        if self.cfg.input_order == EmbRnnInputOrder.PromptsContext:
+            embs = torch.cat([prompt_embs, input_embs], dim=1)
+            hc0 = None
+        elif self.cfg.input_order == EmbRnnInputOrder.ContextPrompts:
+            embs = torch.cat([input_embs, prompt_embs], dim=1)
+            hc0 = None
+        elif self.cfg.input_order == EmbRnnInputOrder.PromptH0:
+            embs = input_embs
+            assert prompt_embs.shape[1] == 1
+            # h0: (batch_size, hidden_dim * n_layers)
+            h0 = self.h0_proj(prompt_embs)
+            # h0: (batch_size, n_layers, hidden_dim)
+            h0 = hp.reshape(h0, (h0.shape[0], self.cfg.n_layers, self.cfg.hidden_dim))
+            if self.cfg.rnn_cell.cls_name == 'LSTM':
+                hc0 = (h0, c0)
+            else:
+                hc0 = h0
         else:
-            rnn_out, hidden = self.rnn(embs)
+            raise Exception(f'Input order {self.cfg.input_order} is not supported')
         
-        return rnn_out
+        # rnn_out: (batch_size, seq_len, hidden_dim)
+        # hcn: (batch_size, n_layers, hidden_dim) for RNN/GRU or tuple of (h_n, c_n) for LSTM
+        rnn_out, hcn = self.rnn(embs, hc0)
+        
+        # print('embs:', embs.shape, 'rnn_out:', rnn_out.shape,'h0:', hc0[0].shape if self.cfg.rnn_cell.cls_name == 'LSTM' else hc0.shape, 'hn:', hcn[0].shape if self.cfg.rnn_cell.cls_name == 'LSTM' else hcn.shape)
+
+        if self.cfg.rnn_cell.cls_name == 'LSTM':
+            h_n, c_n = hcn
+        else:
+            h_n = hcn
+        # Take the last layer's hidden state
+        out = h_n[:, -1]
+        
+        return out
 
 
 class EncdecGraphBert(nn.Module):
