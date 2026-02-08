@@ -20,8 +20,8 @@ from transformers import AutoTokenizer
 
 from mllm.config.model import EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecMiddleType, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
     gen_prefpostfix_encdec_bert, gen_prefpostfix_encdec_graph_bert
-from mllm.exp.args import ENCDEC_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, \
-    share_enc_dec_proj_weights_ARG
+from mllm.exp.args import ENCDEC_GRAPH_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, \
+    share_enc_dec_proj_weights_ARG, emb_rnn_next_tok_from_hidden_ARG
 from mllm.model.encdec_ranker_hg import EncdecBertAgg, EncdecGraphBert
 from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
@@ -172,6 +172,12 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
                     f'"{EmbRnnInputOrder.ContextPrompts.value}" for context-prompts, or "{EmbRnnInputOrder.PromptH0.value}" for prompt as initial hidden state.',
         cli=('--emb-rnn-input-order',),
     )
+
+    emb_rnn_next_tok_from_hidden_STR: str = create_bool_str_field(*emb_rnn_next_tok_from_hidden_ARG)
+    @property
+    def emb_rnn_next_tok_from_hidden(self) -> bool:
+        return is_arg_true(emb_rnn_next_tok_from_hidden_ARG[0], self.emb_rnn_next_tok_from_hidden_STR)
+
     emb_rnn_cell_name: str = Field(
         'LSTM',
         description='RNN cell class name. Must be one of: RNN, LSTM, GRU.',
@@ -403,7 +409,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         emb_mlp_n_window_layers=args.emb_mlp_n_window_layers, emb_mlp_n_out_layers=args.emb_mlp_n_out_layers,
         emb_mlp_act_fn=args.emb_mlp_act_fn,
         emb_rnn_n_layers=args.emb_rnn_n_layers, emb_rnn_hidden_dim=args.emb_rnn_hidden_dim,
-        emb_rnn_input_order=args.emb_rnn_input_order, emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
+        emb_rnn_input_order=args.emb_rnn_input_order, emb_rnn_next_tok_from_hidden=args.emb_rnn_next_tok_from_hidden,
+        emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,
@@ -431,12 +438,11 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         log(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         log(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        chkpt_model_cfg = parse_yaml_file_as(EncdecBertCfg, train_path / ENCDEC_BERT_MODEL_CFG_FNAME)
+        chkpt_model_cfg = parse_yaml_file_as(EncdecGraphBertCfg, train_path / ENCDEC_GRAPH_BERT_MODEL_CFG_FNAME)
         assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
         if rank == 0:
-            to_yaml_file(train_path / ENCDEC_BERT_MODEL_CFG_FNAME, model_cfg)
-
+            to_yaml_file(train_path / ENCDEC_GRAPH_BERT_MODEL_CFG_FNAME, model_cfg)
     tkz = AutoTokenizer.from_pretrained(args.bert_model_name)
 
     log(model_cfg)

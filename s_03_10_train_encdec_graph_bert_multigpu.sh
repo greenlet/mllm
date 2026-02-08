@@ -52,11 +52,13 @@ emb_mlp_n_window_layers=6
 emb_mlp_n_out_layers=2
 emb_mlp_act_fn='gelu'
 
-# emb_middle_type=rnn
+emb_middle_type=rnn
 emb_rnn_n_layers=2
 emb_rnn_hidden_dim=0
 emb_rnn_input_order='cp'  # 'cp' for context-prompts, 'pc' for prompts-context, 'ph0' for prompt as initial hidden state
-emb_rnn_cell_name='LSTM'
+emb_rnn_input_order='ph0'
+emb_rnn_next_tok_from_hidden=true  # true for hidden state output, false for last output sequence element
+emb_rnn_cell_name='GRU'
 emb_rnn_cell_params='{"bidirectional": false, "dropout": 0.0}'
 
 cite_toks_target_weight=1
@@ -74,7 +76,7 @@ cite_embs_target_scale=1.0
 input_toks_target_weight=1
 input_toks_target_scale=1
 
-encdec_freeze_epochs=25
+encdec_freeze_epochs=0
 cite_embs_target_type='r2'
 cite_embs_target_type='cosl2'
 cite_embs_target_scale=1.0
@@ -142,6 +144,7 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --emb-rnn-n-layers $emb_rnn_n_layers \
   --emb-rnn-hidden-dim $emb_rnn_hidden_dim \
   --emb-rnn-input-order $emb_rnn_input_order \
+  --emb-rnn-next-tok-from-hidden $emb_rnn_next_tok_from_hidden \
   --emb-rnn-cell-name $emb_rnn_cell_name \
   --emb-rnn-cell-params "$emb_rnn_cell_params" \
   --mask-tokens $mask_tokens \

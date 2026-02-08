@@ -19,6 +19,7 @@ mask_tokens_ARG = '--mask-tokens', 'Mask input tokens'
 next_tok_pred_ARG = '--next-tok-pred', 'Predict next token'
 masked_loss_for_encoder_ARG = '--masked-loss-for-encoder', 'Add masked loss for encoder'
 share_enc_dec_proj_weights_ARG = '--share-enc-dec-proj-weights', 'Share encoder and decoder token projection (d_model x vocab_size) weights'
+emb_rnn_next_tok_from_hidden_ARG = '--emb-rnn-next-tok-from-hidden', 'Use last hidden state for output instead of last element from output sequence'
 
 ARG_TRUE_VALUES = ('true', 't', 'yes', 'y', '1')
 ARG_FALSE_VALUES = ('false', 'f', 'no', 'n', '0')

@@ -795,8 +795,8 @@ class EmbRnn(nn.Module):
             self.h0_proj = nn.Linear(cfg.d_model, cfg.n_layers * cfg.hidden_dim, bias=True)
             if cfg.rnn_cell.cls_name == 'LSTM':
                 # Always batch first
-                c0 = torch.zeros((1, cfg.n_layers, cfg.hidden_dim))
-                self.c0 = self.register_buffer('c0', c0)
+                c0 = torch.zeros((cfg.n_layers, 1, cfg.hidden_dim))
+                self.register_buffer('c0', c0)
 
         self.init_weights()
 
@@ -823,26 +823,35 @@ class EmbRnn(nn.Module):
             # h0: (batch_size, hidden_dim * n_layers)
             h0 = self.h0_proj(prompt_embs)
             # h0: (batch_size, n_layers, hidden_dim)
-            h0 = hp.reshape(h0, (h0.shape[0], self.cfg.n_layers, self.cfg.hidden_dim))
+            h0 = torch.reshape(h0, (h0.shape[0], self.cfg.n_layers, self.cfg.hidden_dim))
+            # h0: (n_layers, batch_size, hidden_dim)
+            h0 = h0.transpose(0, 1)
             if self.cfg.rnn_cell.cls_name == 'LSTM':
-                hc0 = (h0, c0)
+                hc0 = (h0, self.c0)
             else:
                 hc0 = h0
         else:
             raise Exception(f'Input order {self.cfg.input_order} is not supported')
         
         # rnn_out: (batch_size, seq_len, hidden_dim)
-        # hcn: (batch_size, n_layers, hidden_dim) for RNN/GRU or tuple of (h_n, c_n) for LSTM
+        # hcn: (n_layers, batch_size, hidden_dim) for RNN/GRU or tuple of (h_n, c_n) for LSTM
         rnn_out, hcn = self.rnn(embs, hc0)
         
         # print('embs:', embs.shape, 'rnn_out:', rnn_out.shape,'h0:', hc0[0].shape if self.cfg.rnn_cell.cls_name == 'LSTM' else hc0.shape, 'hn:', hcn[0].shape if self.cfg.rnn_cell.cls_name == 'LSTM' else hcn.shape)
 
-        if self.cfg.rnn_cell.cls_name == 'LSTM':
-            h_n, c_n = hcn
+        if self.cfg.next_tok_from_hidden:
+            # Use last hidden state
+            if self.cfg.rnn_cell.cls_name == 'LSTM':
+                h_n, c_n = hcn
+            else:
+                h_n = hcn
+            # Take the last layer's hidden state
+            # out: (batch_size, hidden_dim)
+            out = h_n[-1]
         else:
-            h_n = hcn
-        # Take the last layer's hidden state
-        out = h_n[:, -1]
+            # Use last element from output sequence
+            # out: (batch_size, hidden_dim)
+            out = rnn_out[:, -1]
         
         return out
 
@@ -1043,49 +1052,15 @@ class EncdecGraphBert(nn.Module):
     # returns: (batch_size, d_model)
     def run_middle_rnn(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
         batch_size = inp_enc_embs.shape[0]
-        
-        if self.cfg.emb_rnn.input_order == EmbRnnInputOrder.PromptH0:
-            # Use prompt embeddings as initial hidden state
-            # inp_enc_embs: (batch_size, d_model) -> (1, batch_size, d_model) as sequence
-            # We process each prompt with all input embeddings as context
-            out_rnn_embs = []
-            for ib in range(batch_size):
-                # prompt_emb: (1, d_model)
-                prompt_emb = prompt_enc_embs[ib:ib + 1, :]
-                # h0_proj: (1, hidden_dim * n_layers) -> (n_layers, 1, hidden_dim)
-                h0 = self.emb_rnn.h0_proj(prompt_emb)
-                h0 = h0.view(self.cfg.emb_rnn.n_layers, 1, self.cfg.emb_rnn.hidden_dim)
-                
-                if self.cfg.emb_rnn.rnn_cell.cls_name == 'LSTM':
-                    c0 = self.emb_rnn.c0_proj(prompt_emb)
-                    c0 = c0.view(self.cfg.emb_rnn.n_layers, 1, self.cfg.emb_rnn.hidden_dim)
-                    h0 = (h0, c0)
-                
-                # inp_enc_embs: (batch_size, d_model) -> (1, batch_size, d_model)
-                inp_seq = inp_enc_embs.unsqueeze(0)
-                # out_embs: (1, batch_size, hidden_dim)
-                out_embs = self.emb_rnn(inp_seq, h0=h0)
-                # Take the last output embedding
-                # out_emb: (hidden_dim,)
-                out_emb = out_embs[0, -1]
-                out_rnn_embs.append(out_emb)
-            # out_embs: (batch_size, d_model)
-            out_embs = torch.stack(out_rnn_embs, dim=0)
-            return out_embs
-        
         out_rnn_embs = []
         for ib in range(batch_size):
             # prompt_embs: (1, d_model)
             prompt_embs = prompt_enc_embs[ib:ib + 1, :]
-            # combined_embs: (batch_size + 1, d_model)
-            combined_embs = torch.concatenate([inp_enc_embs, prompt_embs], dim=0)
-            # combined_embs: (1, batch_size + 1, d_model)
-            combined_embs = combined_embs.unsqueeze(0)
-            # out_embs: (1, batch_size + 1, hidden_dim)
-            out_embs = self.emb_rnn(combined_embs)
+            # out_embs: (1, hidden_dim)
+            out_embs = self.emb_rnn(inp_enc_embs.unsqueeze(0), prompt_embs.unsqueeze(0))
             # Take the embedding for the current batch item (last output)
             # out_emb: (hidden_dim,)
-            out_emb = out_embs[0, -1]  # Take last output embedding (prompt position)
+            out_emb = out_embs[0]  # Take last output embedding (prompt position)
             out_rnn_embs.append(out_emb)
         # out_embs: (batch_size, d_model)
         out_embs = torch.stack(out_rnn_embs, dim=0)
