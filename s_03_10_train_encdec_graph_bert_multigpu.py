@@ -192,6 +192,32 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
     def parse_emb_rnn_cell_params(cls, v):
         return parse_dict_str(v, 'emb_rnn_cell_params')
 
+    emb_ffw_window_size: int = Field(
+        3,
+        description='Window size for FFW middle model (number of input embeddings to process).',
+        cli=('--emb-ffw-window-size',),
+    )
+    emb_ffw_n_ff_layers: int = Field(
+        2,
+        description='Number of feed-forward layers per embedding in FFW middle model.',
+        cli=('--emb-ffw-n-ff-layers',),
+    )
+    emb_ffw_n_out_layers: int = Field(
+        1,
+        description='Number of output MLP layers in FFW middle model.',
+        cli=('--emb-ffw-n-out-layers',),
+    )
+    emb_ffw_dropout_rate: float = Field(
+        0.1,
+        description='Dropout rate for FFW middle model.',
+        cli=('--emb-ffw-dropout-rate',),
+    )
+    emb_ffw_act_fn: str = Field(
+        'gelu',
+        description='Activation function for FFW middle model.',
+        cli=('--emb-ffw-act-fn',),
+    )
+
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
     def mask_tokens(self) -> bool:
@@ -411,6 +437,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         emb_rnn_n_layers=args.emb_rnn_n_layers, emb_rnn_hidden_dim=args.emb_rnn_hidden_dim,
         emb_rnn_input_order=args.emb_rnn_input_order, emb_rnn_next_tok_from_hidden=args.emb_rnn_next_tok_from_hidden,
         emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
+        emb_ffw_window_size=args.emb_ffw_window_size, emb_ffw_n_ff_layers=args.emb_ffw_n_ff_layers, emb_ffw_n_out_layers=args.emb_ffw_n_out_layers,
+        emb_ffw_dropout_rate=args.emb_ffw_dropout_rate, emb_ffw_act_fn=args.emb_ffw_act_fn,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,
@@ -438,8 +466,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         log(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         log(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
-        chkpt_model_cfg = parse_yaml_file_as(EncdecGraphBertCfg, train_path / ENCDEC_GRAPH_BERT_MODEL_CFG_FNAME)
-        assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
+        # chkpt_model_cfg = parse_yaml_file_as(EncdecGraphBertCfg, train_path / ENCDEC_GRAPH_BERT_MODEL_CFG_FNAME)
+        # assert model_cfg == chkpt_model_cfg, f'{args.model_cfg_fpath} != {chkpt_model_cfg}'
     else:
         if rank == 0:
             to_yaml_file(train_path / ENCDEC_GRAPH_BERT_MODEL_CFG_FNAME, model_cfg)

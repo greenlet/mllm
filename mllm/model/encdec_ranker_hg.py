@@ -24,7 +24,7 @@ import torch.distributed as dist
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
-from mllm.config.model import EmbAttnCfg, EmbGraphCfg, EmbMlpCfg, EmbRnnCfg, EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+from mllm.config.model import EmbAttnCfg, EmbFfwCfg, EmbGraphCfg, EmbMlpCfg, EmbRnnCfg, EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
     parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
@@ -856,6 +856,80 @@ class EmbRnn(nn.Module):
         return out
 
 
+class EmbFfw(nn.Module):
+    """Feed Forward with Prompt middle model.
+    Each input embedding is concatenated with prompt and passed through FF layers.
+    Window outputs are then concatenated and passed through MLP.
+    """
+    cfg: EmbFfwCfg
+
+    def __init__(self, cfg: EmbFfwCfg):
+        super().__init__()
+        self.cfg = cfg
+        bias = True
+        act_fn = get_activation_module(cfg.act_fn)
+
+        # Feed forward layers: process (input_emb, prompt_emb) concatenation
+        # Input: d_model * 2, Output: d_model
+        ff_layers = []
+        for i in range(cfg.n_ff_layers):
+            in_features = cfg.d_model * 2 if i == 0 else cfg.d_model
+            out_features = cfg.d_model
+            ff_layers.append(nn.Linear(in_features=in_features, out_features=out_features, bias=bias))
+            ff_layers.append(nn.LayerNorm(out_features))
+            ff_layers.append(act_fn())
+            ff_layers.append(nn.Dropout(cfg.dropout_rate))
+        self.ff_layers = nn.Sequential(*ff_layers)
+
+        # Output MLP: process concatenated window outputs
+        # Input: window_size * d_model, Output: d_model
+        out_layers = []
+        for i in range(cfg.n_out_layers):
+            in_features = cfg.window_size * cfg.d_model if i == 0 else cfg.d_model
+            out_features = cfg.d_model
+            out_layers.append(nn.Linear(in_features=in_features, out_features=out_features, bias=bias))
+            if i < cfg.n_out_layers - 1:
+                out_layers.append(nn.LayerNorm(out_features))
+                out_layers.append(act_fn())
+                out_layers.append(nn.Dropout(cfg.dropout_rate))
+        self.out_layers = nn.Sequential(*out_layers)
+
+        self.init_weights()
+
+    def init_weights(self):
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
+
+    # input_embs: (batch_size, window_size, d_model)
+    # prompt_emb: (batch_size, 1, d_model)
+    # returns: (batch_size, d_model)
+    def forward(self, input_embs: Tensor, prompt_emb: Tensor) -> Tensor:
+        batch_size = input_embs.shape[0]
+        window_size = self.cfg.window_size
+
+        # Process each input embedding with prompt
+        ff_outputs = []
+        for i in range(window_size):
+            # inp_emb: (batch_size, d_model)
+            inp_emb = input_embs[:, i, :]
+            # prompt: (batch_size, d_model)
+            prompt = prompt_emb[:, 0, :]
+            # combined: (batch_size, d_model * 2)
+            combined = torch.cat([inp_emb, prompt], dim=1)
+            # out: (batch_size, d_model)
+            out = self.ff_layers(combined)
+            ff_outputs.append(out)
+
+        # ff_concat: (batch_size, window_size * d_model)
+        ff_concat = torch.cat(ff_outputs, dim=1)
+        # out: (batch_size, d_model)
+        out = self.out_layers(ff_concat)
+        return out
+
+
 class EncdecGraphBert(nn.Module):
     cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
@@ -880,6 +954,9 @@ class EncdecGraphBert(nn.Module):
             self.emb_mlp = EmbMlp(cfg.emb_mlp)
         elif self.cfg.middle_type == EncdecMiddleType.Rnn:
             self.emb_rnn = EmbRnn(cfg.emb_rnn)
+        elif self.cfg.middle_type == EncdecMiddleType.Ffw:
+            assert self.cfg.emb_ffw.window_size <= self.cfg.train_cfg.batch_size, f'FFW window size {self.cfg.emb_ffw.window_size} > batch size {self.cfg.train_cfg.batch_size}'
+            self.emb_ffw = EmbFfw(cfg.emb_ffw)
         else:
             raise Exception(f'Graph middle type {self.cfg.middle_type} is not supported')
         word_embeddings = None
@@ -917,7 +994,13 @@ class EncdecGraphBert(nn.Module):
 
     def load_pretrained(self, checkpoint: Optional[Dict[str, Any]] = None):
         if checkpoint is not None:
-            self.load_state_dict(checkpoint['model'], strict=True)
+            checkpt_dict = checkpoint['model']
+            cleaned_dict = {}
+            for key, val in checkpt_dict.items():
+                if key.startswith('module.'):
+                    key = key[7:]
+                cleaned_dict[key] = val
+            self.load_state_dict(cleaned_dict, strict=True)
         else:
             pretrained_encdecgraph_model_path = self.cfg.train_cfg.pretrained_encdecgraph_model_path
             pretrained_encdec_model_path = self.cfg.train_cfg.pretrained_encdec_model_path
@@ -1069,6 +1152,34 @@ class EncdecGraphBert(nn.Module):
     # inp_enc_embs: (batch_size, d_model)
     # prompt_enc_embs: (batch_size, d_model)
     # returns: (batch_size, d_model)
+    def run_middle_ffw(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
+        batch_size = inp_enc_embs.shape[0]
+        n_enc_embs = self.cfg.emb_ffw.window_size
+        out_embs = []
+        for ib in range(batch_size):
+            if ib < n_enc_embs:
+                i1 = 0
+            elif ib > batch_size - n_enc_embs:
+                i1 = batch_size - n_enc_embs
+            else:
+                off = np.random.randint(0, n_enc_embs)
+                i1 = ib - off
+            # enc_embs: (window_size, d_model)
+            enc_embs = inp_enc_embs[i1:i1 + n_enc_embs]
+            # enc_embs: (1, window_size, d_model)
+            enc_embs = enc_embs.unsqueeze(0)
+            # prompt_emb: (1, 1, d_model)
+            prompt_emb = prompt_enc_embs[ib:ib + 1].unsqueeze(1)
+            # out_emb: (1, d_model)
+            out_emb = self.emb_ffw(enc_embs, prompt_emb)
+            out_embs.append(out_emb[0])
+        # out_embs: (batch_size, d_model)
+        out_embs = torch.stack(out_embs, dim=0)
+        return out_embs
+
+    # inp_enc_embs: (batch_size, d_model)
+    # prompt_enc_embs: (batch_size, d_model)
+    # returns: (batch_size, d_model)
     def run_middle(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
         if self.cfg.middle_type == EncdecMiddleType.Graph:
             out_embs = self.run_middle_graph(inp_enc_embs, prompt_enc_embs, batch)
@@ -1078,6 +1189,8 @@ class EncdecGraphBert(nn.Module):
             out_embs = self.run_middle_mlp(inp_enc_embs, prompt_enc_embs, batch)
         elif self.cfg.middle_type == EncdecMiddleType.Rnn:
             out_embs = self.run_middle_rnn(inp_enc_embs, prompt_enc_embs, batch)
+        elif self.cfg.middle_type == EncdecMiddleType.Ffw:
+            out_embs = self.run_middle_ffw(inp_enc_embs, prompt_enc_embs, batch)
         else:
             raise Exception(f'Unsupported middle_type = {self.cfg.middle_type}')
         return out_embs

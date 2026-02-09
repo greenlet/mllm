@@ -285,6 +285,7 @@ class EncdecMiddleType(str, Enum):
     Attn = 'attn'
     Mlp = 'mlp'
     Rnn = 'rnn'
+    Ffw = 'ffw'  # Feed forward with prompt
 
 
 class PyClassCfg(BaseModel):
@@ -418,6 +419,19 @@ class EmbMlpCfg(BaseModel):
     act_fn: str = 'gelu'
 
 
+class EmbFfwCfg(BaseModel):
+    """Configuration for feed forward with prompt middle model.
+    Each input embedding is concatenated with prompt and passed through FF layers.
+    Window outputs are then concatenated and passed through MLP.
+    """
+    d_model: int  # Input embedding dimension
+    window_size: int = 3  # Number of input embeddings to process
+    n_ff_layers: int = 2  # Number of feed forward layers per embedding
+    n_out_layers: int = 1  # Number of output MLP layers
+    dropout_rate: float = 0.1
+    act_fn: str = 'gelu'
+
+
 class EmbRnnInputOrder(str, Enum):
     """Order of input sequences for the RNN: prompts first or context first"""
     PromptsContext = 'pc'  # prompts embeddings followed by context embeddings
@@ -477,6 +491,7 @@ class EncdecGraphBertCfg(BaseModel):
     emb_attn: EmbAttnCfg
     emb_mlp: EmbMlpCfg
     emb_rnn: EmbRnnCfg
+    emb_ffw: EmbFfwCfg
     train_cfg: EncdecTrainCfg
 
 
@@ -794,6 +809,8 @@ def create_encdec_graph_bert_cfg(
         emb_rnn_input_order: EmbRnnInputOrder = EmbRnnInputOrder.ContextPrompts,
         emb_rnn_next_tok_from_hidden: bool = True,
         emb_rnn_cell_name: str = 'LSTM', emb_rnn_cell_params: Optional[Dict[str, Any]] = None,
+        emb_ffw_window_size: int = 3, emb_ffw_n_ff_layers: int = 2, emb_ffw_n_out_layers: int = 1,
+        emb_ffw_dropout_rate: float = 0.1, emb_ffw_act_fn: str = 'gelu',
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: float = 1.0, cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All, cite_toks_target_scale: float = 1.0,
@@ -885,6 +902,11 @@ def create_encdec_graph_bert_cfg(
         input_order=emb_rnn_input_order, next_tok_from_hidden=emb_rnn_next_tok_from_hidden, rnn_cell=cfg_rnn_cell,
     )
 
+    cfg_ffw = EmbFfwCfg(
+        d_model=d_model, window_size=emb_ffw_window_size, n_ff_layers=emb_ffw_n_ff_layers,
+        n_out_layers=emb_ffw_n_out_layers, dropout_rate=emb_ffw_dropout_rate, act_fn=emb_ffw_act_fn,
+    )
+
     cfg_train = EncdecTrainCfg(
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
@@ -909,7 +931,8 @@ def create_encdec_graph_bert_cfg(
 
     cfg_encdec_bert = EncdecGraphBertCfg(
         enc_bert=cfg_enc, dec_pyr=cfg_dec, share_enc_dec_proj_weights=share_enc_dec_proj_weights,
-        middle_type=middle_type, emb_graph=cfg_graph, emb_attn=cfg_attn, emb_mlp=cfg_mlp, emb_rnn=cfg_rnn, train_cfg=cfg_train,
+        middle_type=middle_type, emb_graph=cfg_graph, emb_attn=cfg_attn, emb_mlp=cfg_mlp, emb_rnn=cfg_rnn,
+        emb_ffw=cfg_ffw, train_cfg=cfg_train,
     )
     return cfg_encdec_bert
 
@@ -1303,6 +1326,8 @@ def copy_override_encdec_graph_bert_cfg(
         emb_rnn_n_layers: Optional[int] = None, emb_rnn_hidden_dim: Optional[int] = None,
         emb_rnn_input_order: Optional[EmbRnnInputOrder] = None, emb_rnn_next_tok_from_hidden: Optional[bool] = None,
         emb_rnn_cell_name: Optional[str] = None, emb_rnn_cell_params: Optional[Dict[str, Any]] = None,
+        emb_ffw_window_size: Optional[int] = None, emb_ffw_n_ff_layers: Optional[int] = None, emb_ffw_n_out_layers: Optional[int] = None,
+        emb_ffw_dropout_rate: Optional[float] = None, emb_ffw_act_fn: Optional[str] = None,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None, cite_toks_target_scale: Optional[float] = None,
@@ -1340,6 +1365,11 @@ def copy_override_encdec_graph_bert_cfg(
     emb_rnn_next_tok_from_hidden = coalesce(emb_rnn_next_tok_from_hidden, cfg.emb_rnn.next_tok_from_hidden)
     emb_rnn_cell_name = coalesce(emb_rnn_cell_name, cfg.emb_rnn.rnn_cell.cls_name)
     emb_rnn_cell_params = coalesce(emb_rnn_cell_params, cfg.emb_rnn.rnn_cell.params)
+    emb_ffw_window_size = coalesce(emb_ffw_window_size, cfg.emb_ffw.window_size)
+    emb_ffw_n_ff_layers = coalesce(emb_ffw_n_ff_layers, cfg.emb_ffw.n_ff_layers)
+    emb_ffw_n_out_layers = coalesce(emb_ffw_n_out_layers, cfg.emb_ffw.n_out_layers)
+    emb_ffw_dropout_rate = coalesce(emb_ffw_dropout_rate, cfg.emb_ffw.dropout_rate)
+    emb_ffw_act_fn = coalesce(emb_ffw_act_fn, cfg.emb_ffw.act_fn)
     pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
     pretrained_encdecgraph_model_path = coalesce(pretrained_encdecgraph_model_path, cfg.train_cfg.pretrained_encdecgraph_model_path)
     cite_toks_target_weight = coalesce(cite_toks_target_weight, cfg.train_cfg.cite_toks_target_weight)
@@ -1371,6 +1401,8 @@ def copy_override_encdec_graph_bert_cfg(
         emb_rnn_n_layers=emb_rnn_n_layers, emb_rnn_hidden_dim=emb_rnn_hidden_dim,
         emb_rnn_input_order=emb_rnn_input_order, emb_rnn_next_tok_from_hidden=emb_rnn_next_tok_from_hidden,
         emb_rnn_cell_name=emb_rnn_cell_name, emb_rnn_cell_params=emb_rnn_cell_params,
+        emb_ffw_window_size=emb_ffw_window_size, emb_ffw_n_ff_layers=emb_ffw_n_ff_layers, emb_ffw_n_out_layers=emb_ffw_n_out_layers,
+        emb_ffw_dropout_rate=emb_ffw_dropout_rate, emb_ffw_act_fn=emb_ffw_act_fn,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type, cite_toks_target_scale=cite_toks_target_scale,
@@ -1678,6 +1710,13 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
         rnn_str = cls_cfg_to_str(rnn.rnn_cell, rnn_param_to_short_str)
         rnn_parts.append(rnn_str)
         postfix_parts.append('_'.join(rnn_parts))
+    elif model_cfg.middle_type == EncdecMiddleType.Ffw:
+        ffw = model_cfg.emb_ffw
+        ffw_parts = [f'embffw_win{ffw.window_size}_fflrs{ffw.n_ff_layers}_olrs{ffw.n_out_layers}']
+        if ffw.dropout_rate > 0:
+            ffw_parts.append(f'dp{ffw.dropout_rate}')
+        ffw_parts.append(f'act{ffw.act_fn.capitalize()}')
+        postfix_parts.append('_'.join(ffw_parts))
     else:
         raise Exception(f'Unsupported middle_type = {model_cfg.middle_type}')
 

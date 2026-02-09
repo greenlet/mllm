@@ -52,7 +52,7 @@ emb_mlp_n_window_layers=6
 emb_mlp_n_out_layers=2
 emb_mlp_act_fn='gelu'
 
-emb_middle_type=rnn
+# emb_middle_type=rnn
 emb_rnn_n_layers=2
 emb_rnn_hidden_dim=0
 emb_rnn_input_order='cp'  # 'cp' for context-prompts, 'pc' for prompts-context, 'ph0' for prompt as initial hidden state
@@ -60,6 +60,13 @@ emb_rnn_input_order='ph0'
 emb_rnn_next_tok_from_hidden=true  # true for hidden state output, false for last output sequence element
 emb_rnn_cell_name='GRU'
 emb_rnn_cell_params='{"bidirectional": false, "dropout": 0.0}'
+
+# emb_middle_type=ffw
+emb_ffw_window_size=3
+emb_ffw_n_ff_layers=2
+emb_ffw_n_out_layers=1
+emb_ffw_dropout_rate=0.1
+emb_ffw_act_fn='gelu'
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
@@ -97,7 +104,7 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=40
+docs_batch_size=60
 world_size=4
 
 
@@ -147,6 +154,11 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --emb-rnn-next-tok-from-hidden $emb_rnn_next_tok_from_hidden \
   --emb-rnn-cell-name $emb_rnn_cell_name \
   --emb-rnn-cell-params "$emb_rnn_cell_params" \
+  --emb-ffw-window-size $emb_ffw_window_size \
+  --emb-ffw-n-ff-layers $emb_ffw_n_ff_layers \
+  --emb-ffw-n-out-layers $emb_ffw_n_out_layers \
+  --emb-ffw-dropout-rate $emb_ffw_dropout_rate \
+  --emb-ffw-act-fn $emb_ffw_act_fn \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

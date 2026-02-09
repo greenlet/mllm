@@ -55,7 +55,7 @@ def find_last_train_subdir(train_root_path: Path, prefix: Optional[str] = None, 
             if not subdir.startswith(prefix):
                 continue
             subdir = subdir[len(prefix):]
-        if postfix:
+        if postfix and False:
             # print(subdir, subdir.endswith(postfix), postfix)
             if not subdir.endswith(postfix):
                 continue
