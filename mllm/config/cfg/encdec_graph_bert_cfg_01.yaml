@@ -20,6 +20,13 @@ emb_attn:
   dropout_rate: 0.0
   n_heads: 12
   n_layers: 2
+emb_ffw:
+  act_fn: gelu
+  d_model: 768
+  dropout_rate: 0.0
+  n_ff_layers: 2
+  n_out_layers: 1
+  window_size: 3
 emb_graph:
   d_model: 768
   gnn_conv:
@@ -45,6 +52,7 @@ emb_rnn:
   hidden_dim: 768
   input_order: cp
   n_layers: 1
+  next_tok_from_hidden: true
   rnn_cell:
     cls_name: LSTM
     module_path: torch.nn
@@ -70,6 +78,7 @@ train_cfg:
   cite_toks_target_scale: 1.0
   cite_toks_target_type: all
   cite_toks_target_weight: 1.0
+  encdec_freeze_epochs: 0
   input_toks_target_scale: 1.0
   input_toks_target_weight: 1.0
   learning_rate: 0.0001
@@ -82,4 +91,5 @@ train_cfg:
     cls_name: AdamW
     module_path: torch.optim
     params: {}
-  pretrained_model_path: null
+  pretrained_encdec_model_path: null
+  pretrained_encdecgraph_model_path: null

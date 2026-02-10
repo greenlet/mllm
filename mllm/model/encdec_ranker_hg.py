@@ -873,8 +873,8 @@ class EmbFfw(nn.Module):
         # Input: d_model * 2, Output: d_model
         ff_layers = []
         for i in range(cfg.n_ff_layers):
-            in_features = cfg.d_model * 2 if i == 0 else cfg.d_model
-            out_features = cfg.d_model
+            in_features = cfg.d_model * 2
+            out_features = in_features if i < cfg.n_ff_layers - 1 else cfg.d_model
             ff_layers.append(nn.Linear(in_features=in_features, out_features=out_features, bias=bias))
             ff_layers.append(nn.LayerNorm(out_features))
             ff_layers.append(act_fn())
@@ -885,8 +885,8 @@ class EmbFfw(nn.Module):
         # Input: window_size * d_model, Output: d_model
         out_layers = []
         for i in range(cfg.n_out_layers):
-            in_features = cfg.window_size * cfg.d_model if i == 0 else cfg.d_model
-            out_features = cfg.d_model
+            in_features = cfg.window_size * cfg.d_model
+            out_features = in_features if i < cfg.n_out_layers - 1 else cfg.d_model
             out_layers.append(nn.Linear(in_features=in_features, out_features=out_features, bias=bias))
             if i < cfg.n_out_layers - 1:
                 out_layers.append(nn.LayerNorm(out_features))
@@ -1114,7 +1114,7 @@ class EncdecGraphBert(nn.Module):
                 i1 = batch_size - n_enc_embs
             else:
                 off = np.random.randint(0, n_enc_embs)
-                i1 = ib - off
+                i1 = max(ib - off, 0)
             # enc_embs: (n_enc_embs, d_model)
             enc_embs = inp_enc_embs[i1:i1 + n_enc_embs]
             # prompt_emb: (1, d_model)
@@ -1163,7 +1163,7 @@ class EncdecGraphBert(nn.Module):
                 i1 = batch_size - n_enc_embs
             else:
                 off = np.random.randint(0, n_enc_embs)
-                i1 = ib - off
+                i1 = max(ib - off, 0)
             # enc_embs: (window_size, d_model)
             enc_embs = inp_enc_embs[i1:i1 + n_enc_embs]
             # enc_embs: (1, window_size, d_model)
