@@ -61,12 +61,18 @@ emb_rnn_next_tok_from_hidden=true  # true for hidden state output, false for las
 emb_rnn_cell_name='GRU'
 emb_rnn_cell_params='{"bidirectional": false, "dropout": 0.0}'
 
-# emb_middle_type=ffw
+emb_middle_type=ffw
 emb_ffw_window_size=3
 emb_ffw_n_ff_layers=2
 emb_ffw_n_out_layers=1
 emb_ffw_dropout_rate=0.1
 emb_ffw_act_fn='gelu'
+
+# emb_middle_type=cross
+emb_cross_n_heads=8
+emb_cross_n_layers=2
+emb_cross_d_inner=0
+emb_cross_dropout_rate=0.1
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
@@ -108,8 +114,8 @@ docs_batch_size=60
 world_size=4
 
 
-# learning_rate=0.0001
-learning_rate=0.00005
+learning_rate=0.0001
+# learning_rate=0.00005
 #learning_rate=0.00001
 random_seed=200
 
@@ -159,6 +165,10 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --emb-ffw-n-out-layers $emb_ffw_n_out_layers \
   --emb-ffw-dropout-rate $emb_ffw_dropout_rate \
   --emb-ffw-act-fn $emb_ffw_act_fn \
+  --emb-cross-n-heads $emb_cross_n_heads \
+  --emb-cross-n-layers $emb_cross_n_layers \
+  --emb-cross-d-inner $emb_cross_d_inner \
+  --emb-cross-dropout-rate $emb_cross_dropout_rate \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

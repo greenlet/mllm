@@ -218,6 +218,27 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         cli=('--emb-ffw-act-fn',),
     )
 
+    emb_cross_n_heads: int = Field(
+        8,
+        description='Number of attention heads for Cross-attention middle model.',
+        cli=('--emb-cross-n-heads',),
+    )
+    emb_cross_n_layers: int = Field(
+        2,
+        description='Number of cross-attention layers for Cross-attention middle model.',
+        cli=('--emb-cross-n-layers',),
+    )
+    emb_cross_d_inner: int = Field(
+        0,
+        description='Feed-forward inner dimension for Cross-attention middle model (0 = 4 * d_model).',
+        cli=('--emb-cross-d-inner',),
+    )
+    emb_cross_dropout_rate: float = Field(
+        0.1,
+        description='Dropout rate for Cross-attention middle model.',
+        cli=('--emb-cross-dropout-rate',),
+    )
+
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
     def mask_tokens(self) -> bool:
@@ -439,6 +460,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
         emb_ffw_window_size=args.emb_ffw_window_size, emb_ffw_n_ff_layers=args.emb_ffw_n_ff_layers, emb_ffw_n_out_layers=args.emb_ffw_n_out_layers,
         emb_ffw_dropout_rate=args.emb_ffw_dropout_rate, emb_ffw_act_fn=args.emb_ffw_act_fn,
+        emb_cross_n_heads=args.emb_cross_n_heads, emb_cross_n_layers=args.emb_cross_n_layers,
+        emb_cross_d_inner=args.emb_cross_d_inner, emb_cross_dropout_rate=args.emb_cross_dropout_rate,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,

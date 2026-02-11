@@ -24,7 +24,7 @@ import torch.distributed as dist
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
-from mllm.config.model import EmbAttnCfg, EmbFfwCfg, EmbGraphCfg, EmbMlpCfg, EmbRnnCfg, EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+from mllm.config.model import EmbAttnCfg, EmbCrossCfg, EmbFfwCfg, EmbGraphCfg, EmbMlpCfg, EmbRnnCfg, EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
     parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
@@ -930,6 +930,109 @@ class EmbFfw(nn.Module):
         return out
 
 
+class CrossAttentionLayer(nn.Module):
+    """Cross-attention layer where query attends to key-value pairs."""
+
+    def __init__(self, n_heads: int, d_model: int, d_inner: int, dropout_rate: float = 0.1):
+        super().__init__()
+        self.n_heads = n_heads
+        self.d_model = d_model
+        self.d_k = d_model // n_heads
+        self.d_v = d_model // n_heads
+
+        self.w_q = nn.Linear(d_model, n_heads * self.d_k, bias=False)
+        self.w_k = nn.Linear(d_model, n_heads * self.d_k, bias=False)
+        self.w_v = nn.Linear(d_model, n_heads * self.d_v, bias=False)
+        self.fc = nn.Linear(n_heads * self.d_v, d_model, bias=False)
+
+        self.temperature = self.d_k ** 0.5
+        self.dropout = nn.Dropout(dropout_rate)
+        self.layer_norm1 = nn.LayerNorm(d_model, eps=1e-6)
+
+        # Feed-forward network
+        self.ff = nn.Sequential(
+            nn.Linear(d_model, d_inner),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(d_inner, d_model),
+            nn.Dropout(dropout_rate),
+        )
+        self.layer_norm2 = nn.LayerNorm(d_model, eps=1e-6)
+
+    # q: (batch_size, q_len, d_model) - query (prompt)
+    # kv: (batch_size, kv_len, d_model) - key/value (input embeddings)
+    # returns: (batch_size, q_len, d_model)
+    def forward(self, q: Tensor, kv: Tensor) -> Tensor:
+        batch_size, q_len = q.shape[0], q.shape[1]
+        kv_len = kv.shape[1]
+
+        residual = q
+
+        # Project query, key, value
+        q_proj = self.w_q(q).view(batch_size, q_len, self.n_heads, self.d_k).transpose(1, 2)
+        k_proj = self.w_k(kv).view(batch_size, kv_len, self.n_heads, self.d_k).transpose(1, 2)
+        v_proj = self.w_v(kv).view(batch_size, kv_len, self.n_heads, self.d_v).transpose(1, 2)
+
+        # Attention: (batch_size, n_heads, q_len, kv_len)
+        attn = torch.matmul(q_proj / self.temperature, k_proj.transpose(-2, -1))
+        attn = self.dropout(F.softmax(attn, dim=-1))
+
+        # Output: (batch_size, n_heads, q_len, d_v)
+        out = torch.matmul(attn, v_proj)
+        # (batch_size, q_len, n_heads * d_v)
+        out = out.transpose(1, 2).contiguous().view(batch_size, q_len, -1)
+        out = self.dropout(self.fc(out))
+
+        # Residual + LayerNorm
+        out = self.layer_norm1(out + residual)
+
+        # Feed-forward with residual
+        residual = out
+        out = self.ff(out)
+        out = self.layer_norm2(out + residual)
+
+        return out
+
+
+class EmbCross(nn.Module):
+    """Cross-attention middle model.
+    Prompt embedding is query, input embeddings are key and value.
+    Includes feedforward layers after attention.
+    """
+    cfg: EmbCrossCfg
+
+    def __init__(self, cfg: EmbCrossCfg):
+        super().__init__()
+        self.cfg = cfg
+
+        self.layers = nn.ModuleList([
+            CrossAttentionLayer(
+                n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner,
+                dropout_rate=cfg.dropout_rate,
+            ) for _ in range(cfg.n_layers)
+        ])
+        self.init_weights()
+
+    def init_weights(self):
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
+
+    # input_embs: (batch_size, seq_len, d_model) - key/value
+    # prompt_emb: (batch_size, 1, d_model) - query
+    # returns: (batch_size, d_model)
+    def forward(self, input_embs: Tensor, prompt_emb: Tensor) -> Tensor:
+        # out: (batch_size, 1, d_model)
+        out = prompt_emb
+        for layer in self.layers:
+            out = layer(out, input_embs)
+        # out: (batch_size, d_model)
+        out = out.squeeze(1)
+        return out
+
+
 class EncdecGraphBert(nn.Module):
     cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
@@ -957,6 +1060,8 @@ class EncdecGraphBert(nn.Module):
         elif self.cfg.middle_type == EncdecMiddleType.Ffw:
             assert self.cfg.emb_ffw.window_size <= self.cfg.train_cfg.batch_size, f'FFW window size {self.cfg.emb_ffw.window_size} > batch size {self.cfg.train_cfg.batch_size}'
             self.emb_ffw = EmbFfw(cfg.emb_ffw)
+        elif self.cfg.middle_type == EncdecMiddleType.Cross:
+            self.emb_cross = EmbCross(cfg.emb_cross)
         else:
             raise Exception(f'Graph middle type {self.cfg.middle_type} is not supported')
         word_embeddings = None
@@ -1180,6 +1285,24 @@ class EncdecGraphBert(nn.Module):
     # inp_enc_embs: (batch_size, d_model)
     # prompt_enc_embs: (batch_size, d_model)
     # returns: (batch_size, d_model)
+    def run_middle_cross(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
+        batch_size = inp_enc_embs.shape[0]
+        out_cross_embs = []
+        for ib in range(batch_size):
+            # prompt_emb: (1, 1, d_model) - query
+            prompt_emb = prompt_enc_embs[ib:ib + 1, :].unsqueeze(1)
+            # input_embs: (1, batch_size, d_model) - key/value
+            input_embs = inp_enc_embs.unsqueeze(0)
+            # out_emb: (1, d_model)
+            out_emb = self.emb_cross(input_embs, prompt_emb)
+            out_cross_embs.append(out_emb[0])
+        # out_embs: (batch_size, d_model)
+        out_embs = torch.stack(out_cross_embs, dim=0)
+        return out_embs
+
+    # inp_enc_embs: (batch_size, d_model)
+    # prompt_enc_embs: (batch_size, d_model)
+    # returns: (batch_size, d_model)
     def run_middle(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
         if self.cfg.middle_type == EncdecMiddleType.Graph:
             out_embs = self.run_middle_graph(inp_enc_embs, prompt_enc_embs, batch)
@@ -1191,6 +1314,8 @@ class EncdecGraphBert(nn.Module):
             out_embs = self.run_middle_rnn(inp_enc_embs, prompt_enc_embs, batch)
         elif self.cfg.middle_type == EncdecMiddleType.Ffw:
             out_embs = self.run_middle_ffw(inp_enc_embs, prompt_enc_embs, batch)
+        elif self.cfg.middle_type == EncdecMiddleType.Cross:
+            out_embs = self.run_middle_cross(inp_enc_embs, prompt_enc_embs, batch)
         else:
             raise Exception(f'Unsupported middle_type = {self.cfg.middle_type}')
         return out_embs
