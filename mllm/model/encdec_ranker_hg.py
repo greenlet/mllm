@@ -989,6 +989,7 @@ class CrossAttentionLayer(nn.Module):
         # Feed-forward with residual
         residual = out
         out = self.ff(out)
+        # (batch_size, q_len, d_model)
         out = self.layer_norm2(out + residual)
 
         return out
@@ -998,6 +999,7 @@ class EmbCross(nn.Module):
     """Cross-attention middle model.
     Prompt embedding is query, input embeddings are key and value.
     Includes feedforward layers after attention.
+    Optionally includes global MLP layers that process prompt + all inputs concatenated.
     """
     cfg: EmbCrossCfg
 
@@ -1011,6 +1013,31 @@ class EmbCross(nn.Module):
                 dropout_rate=cfg.dropout_rate,
             ) for _ in range(cfg.n_layers)
         ])
+
+        # Global MLP layers: take prompt + all inputs concatenated
+        # For layers 0 to n_layers-2: output same dimension as input
+        # For last layer: output single embedding (d_model)
+        if cfg.with_global_mlp:
+            # Number of input embeddings = window_size - 1 (1 is the prompt)
+            n_inputs = cfg.window_size - 1
+            # Input dimension: prompt (d_model) + n_inputs (n_inputs * d_model)
+            in_dim = cfg.d_model + n_inputs * cfg.d_model
+            
+            self.global_mlp_layers = nn.ModuleList()
+            for i in range(cfg.n_layers):
+                is_last = (i == cfg.n_layers - 1)
+                if is_last:
+                    # Last layer: no activation, output d_model
+                    layer = nn.Linear(in_dim, cfg.d_model, bias=True)
+                else:
+                    # Non-last layers: with activation, output same dimension
+                    layer = nn.Sequential(
+                        nn.Linear(in_dim, in_dim, bias=True),
+                        nn.GELU(),
+                        nn.Dropout(cfg.dropout_rate),
+                    )
+                self.global_mlp_layers.append(layer)
+
         self.init_weights()
 
     def init_weights(self):
@@ -1020,16 +1047,54 @@ class EmbCross(nn.Module):
             else:
                 nn.init.uniform_(p, -0.1, 0.1)
 
-    # input_embs: (batch_size, seq_len, d_model) - key/value
+    # input_embs: (batch_size, seq_len, d_model) - key/value, seq_len = window_size - 1
     # prompt_emb: (batch_size, 1, d_model) - query
     # returns: (batch_size, d_model)
     def forward(self, input_embs: Tensor, prompt_emb: Tensor) -> Tensor:
+        batch_size = input_embs.shape[0]
+        seq_len = input_embs.shape[1]
+        
         # out: (batch_size, 1, d_model)
         out = prompt_emb
-        for layer in self.layers:
-            out = layer(out, input_embs)
-        # out: (batch_size, d_model)
-        out = out.squeeze(1)
+        
+        if self.cfg.with_global_mlp:
+            # Alternate: cross_attn -> global_mlp -> cross_attn -> global_mlp -> ...
+            for i in range(self.cfg.n_layers):
+                # Cross attention layer
+                out = self.layers[i](out, input_embs)
+                
+                # Global MLP: concatenate prompt output with all input embeddings
+                # prompt_flat: (batch_size, d_model)
+                prompt_flat = out.squeeze(1)
+                # inputs_flat: (batch_size, seq_len * d_model)
+                inputs_flat = input_embs.reshape(batch_size, -1)
+                # combined: (batch_size, d_model + seq_len * d_model)
+                combined = torch.cat([prompt_flat, inputs_flat], dim=1)
+                # mlp_out: (batch_size, in_dim) or (batch_size, d_model) for last layer
+                mlp_out = self.global_mlp_layers[i](combined)
+                
+                is_last = (i == self.cfg.n_layers - 1)
+                if is_last:
+                    # Last layer outputs d_model directly
+                    # out: (batch_size, d_model)
+                    out = mlp_out
+                else:
+                    # Non-last layers: update prompt and input_embs with MLP output
+                    # mlp_out: (batch_size, d_model + seq_len * d_model)
+                    # Split back into prompt and inputs
+                    prompt_part = mlp_out[:, :self.cfg.d_model]
+                    inputs_part = mlp_out[:, self.cfg.d_model:]
+                    # out: (batch_size, 1, d_model)
+                    out = prompt_part.unsqueeze(1)
+                    # input_embs: (batch_size, seq_len, d_model)
+                    input_embs = inputs_part.reshape(batch_size, seq_len, self.cfg.d_model)
+        else:
+            # Without global MLP: just run cross attention layers
+            for layer in self.layers:
+                out = layer(out, input_embs)
+            # out: (batch_size, d_model)
+            out = out.squeeze(1)
+        
         return out
 
 
@@ -1061,6 +1126,7 @@ class EncdecGraphBert(nn.Module):
             assert self.cfg.emb_ffw.window_size <= self.cfg.train_cfg.batch_size, f'FFW window size {self.cfg.emb_ffw.window_size} > batch size {self.cfg.train_cfg.batch_size}'
             self.emb_ffw = EmbFfw(cfg.emb_ffw)
         elif self.cfg.middle_type == EncdecMiddleType.Cross:
+            assert self.cfg.emb_cross.window_size <= self.cfg.train_cfg.batch_size, f'Cross window size {self.cfg.emb_cross.window_size} > batch size {self.cfg.train_cfg.batch_size}'
             self.emb_cross = EmbCross(cfg.emb_cross)
         else:
             raise Exception(f'Graph middle type {self.cfg.middle_type} is not supported')
@@ -1287,12 +1353,22 @@ class EncdecGraphBert(nn.Module):
     # returns: (batch_size, d_model)
     def run_middle_cross(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
         batch_size = inp_enc_embs.shape[0]
+        n_enc_embs = self.cfg.emb_cross.window_size - 1  # window_size - 1 inputs + 1 prompt
         out_cross_embs = []
         for ib in range(batch_size):
+            if ib < n_enc_embs:
+                i1 = 0
+            elif ib > batch_size - n_enc_embs:
+                i1 = batch_size - n_enc_embs
+            else:
+                off = np.random.randint(0, n_enc_embs)
+                i1 = max(ib - off, 0)
+            # input_embs: (n_enc_embs, d_model) - key/value
+            input_embs = inp_enc_embs[i1:i1 + n_enc_embs]
+            # input_embs: (1, n_enc_embs, d_model)
+            input_embs = input_embs.unsqueeze(0)
             # prompt_emb: (1, 1, d_model) - query
             prompt_emb = prompt_enc_embs[ib:ib + 1, :].unsqueeze(1)
-            # input_embs: (1, batch_size, d_model) - key/value
-            input_embs = inp_enc_embs.unsqueeze(0)
             # out_emb: (1, d_model)
             out_emb = self.emb_cross(input_embs, prompt_emb)
             out_cross_embs.append(out_emb[0])

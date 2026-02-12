@@ -20,6 +20,12 @@ emb_attn:
   dropout_rate: 0.0
   n_heads: 12
   n_layers: 2
+emb_cross:
+  d_inner: 3072
+  d_model: 768
+  dropout_rate: 0.1
+  n_heads: 8
+  n_layers: 2
 emb_ffw:
   act_fn: gelu
   d_model: 768

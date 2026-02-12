@@ -239,6 +239,21 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         cli=('--emb-cross-dropout-rate',),
     )
 
+    emb_cross_window_size: int = Field(
+        3,
+        description='Window size for Cross-attention middle model (window_size - 1 input embeddings + 1 prompt).',
+        cli=('--emb-cross-window-size',),
+    )
+
+    emb_cross_with_global_mlp_STR: str = Field(
+        'false',
+        description='Whether to add global MLP layer after each cross-attention layer.',
+        cli=('--emb-cross-with-global-mlp',),
+    )
+    @property
+    def emb_cross_with_global_mlp(self) -> bool:
+        return self.emb_cross_with_global_mlp_STR.lower() in ('true', '1', 'yes')
+
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
     def mask_tokens(self) -> bool:
@@ -462,6 +477,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         emb_ffw_dropout_rate=args.emb_ffw_dropout_rate, emb_ffw_act_fn=args.emb_ffw_act_fn,
         emb_cross_n_heads=args.emb_cross_n_heads, emb_cross_n_layers=args.emb_cross_n_layers,
         emb_cross_d_inner=args.emb_cross_d_inner, emb_cross_dropout_rate=args.emb_cross_dropout_rate,
+        emb_cross_window_size=args.emb_cross_window_size, emb_cross_with_global_mlp=args.emb_cross_with_global_mlp,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,

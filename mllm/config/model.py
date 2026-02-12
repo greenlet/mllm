@@ -443,6 +443,8 @@ class EmbCrossCfg(BaseModel):
     n_layers: int = 2  # Number of cross-attention layers
     d_inner: int = 0  # Feed-forward inner dimension (0 = 4 * d_model)
     dropout_rate: float = 0.1
+    window_size: int = 3  # Number of input embeddings (window_size - 1) + 1 prompt
+    with_global_mlp: bool = False  # If True, add MLP layer after each cross-attention that takes prompt + all inputs concatenated
 
 
 class EmbRnnInputOrder(str, Enum):
@@ -826,6 +828,7 @@ def create_encdec_graph_bert_cfg(
         emb_ffw_window_size: int = 3, emb_ffw_n_ff_layers: int = 2, emb_ffw_n_out_layers: int = 1,
         emb_ffw_dropout_rate: float = 0.1, emb_ffw_act_fn: str = 'gelu',
         emb_cross_n_heads: int = 8, emb_cross_n_layers: int = 2, emb_cross_d_inner: int = 0, emb_cross_dropout_rate: float = 0.1,
+        emb_cross_window_size: int = 3, emb_cross_with_global_mlp: bool = False,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: float = 1.0, cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All, cite_toks_target_scale: float = 1.0,
@@ -926,6 +929,7 @@ def create_encdec_graph_bert_cfg(
     cfg_cross = EmbCrossCfg(
         d_model=d_model, n_heads=emb_cross_n_heads, n_layers=emb_cross_n_layers,
         d_inner=cross_d_inner, dropout_rate=emb_cross_dropout_rate,
+        window_size=emb_cross_window_size, with_global_mlp=emb_cross_with_global_mlp,
     )
 
     cfg_train = EncdecTrainCfg(
@@ -1351,6 +1355,7 @@ def copy_override_encdec_graph_bert_cfg(
         emb_ffw_dropout_rate: Optional[float] = None, emb_ffw_act_fn: Optional[str] = None,
         emb_cross_n_heads: Optional[int] = None, emb_cross_n_layers: Optional[int] = None,
         emb_cross_d_inner: Optional[int] = None, emb_cross_dropout_rate: Optional[float] = None,
+        emb_cross_window_size: Optional[int] = None, emb_cross_with_global_mlp: Optional[bool] = None,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None, cite_toks_target_scale: Optional[float] = None,
@@ -1397,6 +1402,8 @@ def copy_override_encdec_graph_bert_cfg(
     emb_cross_n_layers = coalesce(emb_cross_n_layers, cfg.emb_cross.n_layers)
     emb_cross_d_inner = coalesce(emb_cross_d_inner, cfg.emb_cross.d_inner)
     emb_cross_dropout_rate = coalesce(emb_cross_dropout_rate, cfg.emb_cross.dropout_rate)
+    emb_cross_window_size = coalesce(emb_cross_window_size, cfg.emb_cross.window_size)
+    emb_cross_with_global_mlp = coalesce(emb_cross_with_global_mlp, cfg.emb_cross.with_global_mlp)
     pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
     pretrained_encdecgraph_model_path = coalesce(pretrained_encdecgraph_model_path, cfg.train_cfg.pretrained_encdecgraph_model_path)
     cite_toks_target_weight = coalesce(cite_toks_target_weight, cfg.train_cfg.cite_toks_target_weight)
@@ -1432,6 +1439,7 @@ def copy_override_encdec_graph_bert_cfg(
         emb_ffw_dropout_rate=emb_ffw_dropout_rate, emb_ffw_act_fn=emb_ffw_act_fn,
         emb_cross_n_heads=emb_cross_n_heads, emb_cross_n_layers=emb_cross_n_layers,
         emb_cross_d_inner=emb_cross_d_inner, emb_cross_dropout_rate=emb_cross_dropout_rate,
+        emb_cross_window_size=emb_cross_window_size, emb_cross_with_global_mlp=emb_cross_with_global_mlp,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type, cite_toks_target_scale=cite_toks_target_scale,
@@ -1748,9 +1756,10 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
         postfix_parts.append('_'.join(ffw_parts))
     elif model_cfg.middle_type == EncdecMiddleType.Cross:
         cross = model_cfg.emb_cross
-        cross_parts = [f'embcross_h{cross.n_heads}_lrs{cross.n_layers}']
+        cross_parts = [f'embcross_win{cross.window_size}_h{cross.n_heads}_lrs{cross.n_layers}']
         if cross.dropout_rate > 0:
             cross_parts.append(f'dp{cross.dropout_rate}')
+        cross_parts.append(bool_param_to_str('gmlp', cross.with_global_mlp))
         postfix_parts.append('_'.join(cross_parts))
     else:
         raise Exception(f'Unsupported middle_type = {model_cfg.middle_type}')

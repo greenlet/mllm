@@ -68,11 +68,13 @@ emb_ffw_n_out_layers=1
 emb_ffw_dropout_rate=0.1
 emb_ffw_act_fn='gelu'
 
-# emb_middle_type=cross
+emb_middle_type=cross
 emb_cross_n_heads=8
 emb_cross_n_layers=2
 emb_cross_d_inner=0
 emb_cross_dropout_rate=0.1
+emb_cross_window_size=3
+emb_cross_with_global_mlp=false
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
@@ -114,8 +116,8 @@ docs_batch_size=60
 world_size=4
 
 
-learning_rate=0.0001
-# learning_rate=0.00005
+# learning_rate=0.0001
+learning_rate=0.00005
 #learning_rate=0.00001
 random_seed=200
 
@@ -169,6 +171,8 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --emb-cross-n-layers $emb_cross_n_layers \
   --emb-cross-d-inner $emb_cross_d_inner \
   --emb-cross-dropout-rate $emb_cross_dropout_rate \
+  --emb-cross-window-size $emb_cross_window_size \
+  --emb-cross-with-global-mlp $emb_cross_with_global_mlp \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \
