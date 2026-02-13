@@ -21,7 +21,7 @@ from transformers import AutoTokenizer
 from mllm.config.model import EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecMiddleType, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
     gen_prefpostfix_encdec_bert, gen_prefpostfix_encdec_graph_bert
 from mllm.exp.args import ENCDEC_GRAPH_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, \
-    share_enc_dec_proj_weights_ARG, emb_rnn_next_tok_from_hidden_ARG
+    share_enc_dec_proj_weights_ARG, emb_rnn_next_tok_from_hidden_ARG, emb_cross_with_global_mlp_ARG
 from mllm.model.encdec_ranker_hg import EncdecBertAgg, EncdecGraphBert
 from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
@@ -245,14 +245,10 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         cli=('--emb-cross-window-size',),
     )
 
-    emb_cross_with_global_mlp_STR: str = Field(
-        'false',
-        description='Whether to add global MLP layer after each cross-attention layer.',
-        cli=('--emb-cross-with-global-mlp',),
-    )
+    emb_cross_with_global_mlp_STR: str = create_bool_str_field(*emb_cross_with_global_mlp_ARG)
     @property
     def emb_cross_with_global_mlp(self) -> bool:
-        return self.emb_cross_with_global_mlp_STR.lower() in ('true', '1', 'yes')
+        return is_arg_true(emb_cross_with_global_mlp_ARG[0], self.emb_cross_with_global_mlp_STR)
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property

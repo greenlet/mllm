@@ -1061,6 +1061,7 @@ class EmbCross(nn.Module):
             # Alternate: cross_attn -> global_mlp -> cross_attn -> global_mlp -> ...
             for i in range(self.cfg.n_layers):
                 # Cross attention layer
+                # out: (batch_size, 1, d_model)
                 out = self.layers[i](out, input_embs)
                 
                 # Global MLP: concatenate prompt output with all input embeddings
@@ -1092,7 +1093,7 @@ class EmbCross(nn.Module):
             # Without global MLP: just run cross attention layers
             for layer in self.layers:
                 out = layer(out, input_embs)
-            # out: (batch_size, d_model)
+            # out: (batch_size, 1, d_model)
             out = out.squeeze(1)
         
         return out
