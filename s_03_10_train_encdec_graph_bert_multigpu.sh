@@ -74,7 +74,7 @@ emb_cross_n_layers=2
 emb_cross_d_inner=0
 emb_cross_dropout_rate=0.1
 emb_cross_window_size=3
-emb_cross_with_global_mlp=false
+emb_cross_with_global_mlp=true
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
