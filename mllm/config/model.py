@@ -445,6 +445,7 @@ class EmbCrossCfg(BaseModel):
     dropout_rate: float = 0.1
     window_size: int = 3  # Number of input embeddings (window_size - 1) + 1 prompt
     with_global_mlp: bool = False  # If True, add MLP layer after each cross-attention that takes prompt + all inputs concatenated
+    emb_dim_exp_rate: int = 0  # If positive, expand each embedding into this many embeddings before cross-attention
 
 
 class EmbRnnInputOrder(str, Enum):

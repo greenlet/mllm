@@ -1014,21 +1014,34 @@ class EmbCross(nn.Module):
             ) for _ in range(cfg.n_layers)
         ])
 
+        # Dimensionality expansion layers
+        if cfg.emb_dim_exp_rate > 0:
+            # Expand each embedding into emb_dim_exp_rate embeddings
+            # input_expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, emb_dim_exp_rate * d_model)
+            self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_rate * cfg.d_model, bias=True)
+            # prompt_expand: (batch_size, 1, d_model) -> (batch_size, 1, emb_dim_exp_rate * d_model)
+            self.prompt_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_rate * cfg.d_model, bias=True)
+            # Contract expanded prompt embeddings back to single embedding
+            # contract: (batch_size, emb_dim_exp_rate, d_model) -> (batch_size, d_model)
+            self.prompt_contract = nn.Linear(cfg.emb_dim_exp_rate * cfg.d_model, cfg.d_model, bias=True)
+
         # Global MLP layers: take prompt + all inputs concatenated
         # For layers 0 to n_layers-2: output same dimension as input
         # For last layer: output single embedding (d_model)
         if cfg.with_global_mlp:
             # Number of input embeddings = window_size - 1 (1 is the prompt)
             n_inputs = cfg.window_size - 1
-            # Input dimension: prompt (d_model) + n_inputs (n_inputs * d_model)
-            in_dim = cfg.d_model + n_inputs * cfg.d_model
+            # Multiply by exp_rate if using dimensionality expansion
+            exp_rate = cfg.emb_dim_exp_rate if cfg.emb_dim_exp_rate > 0 else 1
+            # Input dimension: prompt (d_model * exp_rate) + n_inputs (n_inputs * d_model * exp_rate)
+            in_dim = cfg.d_model * exp_rate + n_inputs * cfg.d_model * exp_rate
             
             self.global_mlp_layers = nn.ModuleList()
             for i in range(cfg.n_layers):
                 is_last = (i == cfg.n_layers - 1)
                 if is_last:
-                    # Last layer: no activation, output d_model
-                    layer = nn.Linear(in_dim, cfg.d_model, bias=True)
+                    # Last layer: no activation, output d_model * exp_rate
+                    layer = nn.Linear(in_dim, cfg.d_model * exp_rate, bias=True)
                 else:
                     # Non-last layers: with activation, output same dimension
                     layer = nn.Sequential(
@@ -1053,48 +1066,83 @@ class EmbCross(nn.Module):
     def forward(self, input_embs: Tensor, prompt_emb: Tensor) -> Tensor:
         batch_size = input_embs.shape[0]
         seq_len = input_embs.shape[1]
+        exp_rate = self.cfg.emb_dim_exp_rate
         
-        # out: (batch_size, 1, d_model)
+        # Apply dimensionality expansion if configured
+        if exp_rate > 0:
+            # Expand input embeddings: (batch_size, seq_len, d_model) -> (batch_size, seq_len * exp_rate, d_model)
+            # First expand: (batch_size, seq_len, exp_rate * d_model)
+            input_expanded = self.input_expand(input_embs)
+            # Reshape to: (batch_size, seq_len * exp_rate, d_model)
+            input_embs = input_expanded.reshape(batch_size, seq_len * exp_rate, self.cfg.d_model)
+            
+            # Expand prompt embedding: (batch_size, 1, d_model) -> (batch_size, exp_rate, d_model)
+            # First expand: (batch_size, 1, exp_rate * d_model)
+            prompt_expanded = self.prompt_expand(prompt_emb)
+            # Reshape to: (batch_size, exp_rate, d_model)
+            prompt_emb = prompt_expanded.reshape(batch_size, exp_rate, self.cfg.d_model)
+            
+            # Update seq_len for the rest of processing
+            seq_len = seq_len * exp_rate
+        
+        # out: (batch_size, 1, d_model) or (batch_size, exp_rate, d_model) if expanded
         out = prompt_emb
         
         if self.cfg.with_global_mlp:
+            # Determine d_model for prompt in global MLP context
+            prompt_n_embs = exp_rate if exp_rate > 0 else 1
+            
             # Alternate: cross_attn -> global_mlp -> cross_attn -> global_mlp -> ...
             for i in range(self.cfg.n_layers):
                 # Cross attention layer
-                # out: (batch_size, 1, d_model)
+                # out: (batch_size, prompt_n_embs, d_model)
                 out = self.layers[i](out, input_embs)
                 
                 # Global MLP: concatenate prompt output with all input embeddings
-                # prompt_flat: (batch_size, d_model)
-                prompt_flat = out.squeeze(1)
+                # prompt_flat: (batch_size, prompt_n_embs * d_model)
+                prompt_flat = out.reshape(batch_size, -1)
                 # inputs_flat: (batch_size, seq_len * d_model)
                 inputs_flat = input_embs.reshape(batch_size, -1)
-                # combined: (batch_size, d_model + seq_len * d_model)
+                # combined: (batch_size, prompt_n_embs * d_model + seq_len * d_model)
                 combined = torch.cat([prompt_flat, inputs_flat], dim=1)
-                # mlp_out: (batch_size, in_dim) or (batch_size, d_model) for last layer
+                # mlp_out: (batch_size, in_dim) or (batch_size, d_model * prompt_n_embs) for last layer
                 mlp_out = self.global_mlp_layers[i](combined)
                 
                 is_last = (i == self.cfg.n_layers - 1)
                 if is_last:
-                    # Last layer outputs d_model directly
-                    # out: (batch_size, d_model)
+                    # Last layer outputs d_model * prompt_n_embs
+                    # out: (batch_size, prompt_n_embs * d_model)
                     out = mlp_out
                 else:
                     # Non-last layers: update prompt and input_embs with MLP output
-                    # mlp_out: (batch_size, d_model + seq_len * d_model)
+                    # mlp_out: (batch_size, prompt_n_embs * d_model + seq_len * d_model)
                     # Split back into prompt and inputs
-                    prompt_part = mlp_out[:, :self.cfg.d_model]
-                    inputs_part = mlp_out[:, self.cfg.d_model:]
-                    # out: (batch_size, 1, d_model)
-                    out = prompt_part.unsqueeze(1)
+                    prompt_dim = prompt_n_embs * self.cfg.d_model
+                    prompt_part = mlp_out[:, :prompt_dim]
+                    inputs_part = mlp_out[:, prompt_dim:]
+                    # out: (batch_size, prompt_n_embs, d_model)
+                    out = prompt_part.reshape(batch_size, prompt_n_embs, self.cfg.d_model)
                     # input_embs: (batch_size, seq_len, d_model)
                     input_embs = inputs_part.reshape(batch_size, seq_len, self.cfg.d_model)
+            
+            # Contract if using expansion
+            if exp_rate > 0:
+                # out: (batch_size, exp_rate * d_model) -> (batch_size, d_model)
+                out = self.prompt_contract(out)
         else:
             # Without global MLP: just run cross attention layers
             for layer in self.layers:
                 out = layer(out, input_embs)
-            # out: (batch_size, 1, d_model)
-            out = out.squeeze(1)
+            # out: (batch_size, 1, d_model) or (batch_size, exp_rate, d_model) if expanded
+            
+            if exp_rate > 0:
+                # Contract expanded prompt embeddings back to single embedding
+                # out: (batch_size, exp_rate, d_model) -> (batch_size, exp_rate * d_model)
+                out = out.reshape(batch_size, -1)
+                # out: (batch_size, exp_rate * d_model) -> (batch_size, d_model)
+                out = self.prompt_contract(out)
+            else:
+                out = out.squeeze(1)
         
         return out
 
