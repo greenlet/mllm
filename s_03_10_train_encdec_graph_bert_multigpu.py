@@ -245,6 +245,12 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         cli=('--emb-cross-window-size',),
     )
 
+    emb_cross_dim_exp_rate: int = Field(
+        0,
+        description='Dimensionality expansion rate for Cross-attention middle model. When positive, each embedding is expanded into this many embeddings.',
+        cli=('--emb-cross-dim-exp-rate',),
+    )
+
     emb_cross_with_global_mlp_STR: str = create_bool_str_field(*emb_cross_with_global_mlp_ARG)
     @property
     def emb_cross_with_global_mlp(self) -> bool:
@@ -474,6 +480,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         emb_cross_n_heads=args.emb_cross_n_heads, emb_cross_n_layers=args.emb_cross_n_layers,
         emb_cross_d_inner=args.emb_cross_d_inner, emb_cross_dropout_rate=args.emb_cross_dropout_rate,
         emb_cross_window_size=args.emb_cross_window_size, emb_cross_with_global_mlp=args.emb_cross_with_global_mlp,
+        emb_cross_dim_exp_rate=args.emb_cross_dim_exp_rate,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,

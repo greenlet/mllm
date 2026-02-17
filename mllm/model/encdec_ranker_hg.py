@@ -931,7 +931,9 @@ class EmbFfw(nn.Module):
 
 
 class CrossAttentionLayer(nn.Module):
-    """Cross-attention layer where query attends to key-value pairs."""
+    """Cross-attention layer where query attends to key-value pairs.
+    Returns both prompt_emb and inputs_emb with feedforward applied to both.
+    """
 
     def __init__(self, n_heads: int, d_model: int, d_inner: int, dropout_rate: float = 0.1):
         super().__init__()
@@ -940,16 +942,30 @@ class CrossAttentionLayer(nn.Module):
         self.d_k = d_model // n_heads
         self.d_v = d_model // n_heads
 
+        # Projections for prompt attending to inputs
         self.w_q = nn.Linear(d_model, n_heads * self.d_k, bias=False)
         self.w_k = nn.Linear(d_model, n_heads * self.d_k, bias=False)
         self.w_v = nn.Linear(d_model, n_heads * self.d_v, bias=False)
         self.fc = nn.Linear(n_heads * self.d_v, d_model, bias=False)
 
+        # Projections for inputs attending to prompt
+        self.w_q_inp = nn.Linear(d_model, n_heads * self.d_k, bias=False)
+        self.w_k_inp = nn.Linear(d_model, n_heads * self.d_k, bias=False)
+        self.w_v_inp = nn.Linear(d_model, n_heads * self.d_v, bias=False)
+        self.fc_inp = nn.Linear(n_heads * self.d_v, d_model, bias=False)
+
         self.temperature = self.d_k ** 0.5
         self.dropout = nn.Dropout(dropout_rate)
+        
+        # LayerNorms for prompt path
         self.layer_norm1 = nn.LayerNorm(d_model, eps=1e-6)
+        self.layer_norm2 = nn.LayerNorm(d_model, eps=1e-6)
+        
+        # LayerNorms for inputs path
+        self.layer_norm1_inp = nn.LayerNorm(d_model, eps=1e-6)
+        self.layer_norm2_inp = nn.LayerNorm(d_model, eps=1e-6)
 
-        # Feed-forward network
+        # Feed-forward network for prompt
         self.ff = nn.Sequential(
             nn.Linear(d_model, d_inner),
             nn.GELU(),
@@ -957,16 +973,27 @@ class CrossAttentionLayer(nn.Module):
             nn.Linear(d_inner, d_model),
             nn.Dropout(dropout_rate),
         )
-        self.layer_norm2 = nn.LayerNorm(d_model, eps=1e-6)
+        
+        # Feed-forward network for inputs
+        self.ff_inp = nn.Sequential(
+            nn.Linear(d_model, d_inner),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(d_inner, d_model),
+            nn.Dropout(dropout_rate),
+        )
 
     # q: (batch_size, q_len, d_model) - query (prompt)
     # kv: (batch_size, kv_len, d_model) - key/value (input embeddings)
-    # returns: (batch_size, q_len, d_model)
-    def forward(self, q: Tensor, kv: Tensor) -> Tensor:
+    # returns: (prompt_emb, inputs_emb)
+    #   prompt_emb: (batch_size, q_len, d_model)
+    #   inputs_emb: (batch_size, kv_len, d_model)
+    def forward(self, q: Tensor, kv: Tensor) -> Tuple[Tensor, Tensor]:
         batch_size, q_len = q.shape[0], q.shape[1]
         kv_len = kv.shape[1]
 
-        residual = q
+        # === Prompt attending to inputs ===
+        residual_q = q
 
         # Project query, key, value
         q_proj = self.w_q(q).view(batch_size, q_len, self.n_heads, self.d_k).transpose(1, 2)
@@ -978,21 +1005,48 @@ class CrossAttentionLayer(nn.Module):
         attn = self.dropout(F.softmax(attn, dim=-1))
 
         # Output: (batch_size, n_heads, q_len, d_v)
-        out = torch.matmul(attn, v_proj)
+        out_q = torch.matmul(attn, v_proj)
         # (batch_size, q_len, n_heads * d_v)
-        out = out.transpose(1, 2).contiguous().view(batch_size, q_len, -1)
-        out = self.dropout(self.fc(out))
+        out_q = out_q.transpose(1, 2).contiguous().view(batch_size, q_len, -1)
+        out_q = self.dropout(self.fc(out_q))
 
         # Residual + LayerNorm
-        out = self.layer_norm1(out + residual)
+        out_q = self.layer_norm1(out_q + residual_q)
 
-        # Feed-forward with residual
-        residual = out
-        out = self.ff(out)
+        # Feed-forward with residual for prompt
+        residual_q = out_q
+        out_q = self.ff(out_q)
         # (batch_size, q_len, d_model)
-        out = self.layer_norm2(out + residual)
+        prompt_emb = self.layer_norm2(out_q + residual_q)
 
-        return out
+        # === Inputs attending to prompt ===
+        residual_kv = kv
+
+        # Project: inputs as query, prompt as key/value
+        kv_q_proj = self.w_q_inp(kv).view(batch_size, kv_len, self.n_heads, self.d_k).transpose(1, 2)
+        kv_k_proj = self.w_k_inp(q).view(batch_size, q_len, self.n_heads, self.d_k).transpose(1, 2)
+        kv_v_proj = self.w_v_inp(q).view(batch_size, q_len, self.n_heads, self.d_v).transpose(1, 2)
+
+        # Attention: (batch_size, n_heads, kv_len, q_len)
+        attn_inp = torch.matmul(kv_q_proj / self.temperature, kv_k_proj.transpose(-2, -1))
+        attn_inp = self.dropout(F.softmax(attn_inp, dim=-1))
+
+        # Output: (batch_size, n_heads, kv_len, d_v)
+        out_kv = torch.matmul(attn_inp, kv_v_proj)
+        # (batch_size, kv_len, n_heads * d_v)
+        out_kv = out_kv.transpose(1, 2).contiguous().view(batch_size, kv_len, -1)
+        out_kv = self.dropout(self.fc_inp(out_kv))
+
+        # Residual + LayerNorm
+        out_kv = self.layer_norm1_inp(out_kv + residual_kv)
+
+        # Feed-forward with residual for inputs
+        residual_kv = out_kv
+        out_kv = self.ff_inp(out_kv)
+        # (batch_size, kv_len, d_model)
+        inputs_emb = self.layer_norm2_inp(out_kv + residual_kv)
+
+        return prompt_emb, inputs_emb
 
 
 class EmbCross(nn.Module):
@@ -1019,11 +1073,9 @@ class EmbCross(nn.Module):
             # Expand each embedding into emb_dim_exp_rate embeddings
             # input_expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, emb_dim_exp_rate * d_model)
             self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_rate * cfg.d_model, bias=True)
-            # prompt_expand: (batch_size, 1, d_model) -> (batch_size, 1, emb_dim_exp_rate * d_model)
-            self.prompt_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_rate * cfg.d_model, bias=True)
-            # Contract expanded prompt embeddings back to single embedding
-            # contract: (batch_size, emb_dim_exp_rate, d_model) -> (batch_size, d_model)
-            self.prompt_contract = nn.Linear(cfg.emb_dim_exp_rate * cfg.d_model, cfg.d_model, bias=True)
+            if not cfg.with_global_mlp:
+                # If not using global MLP, we need to project back to d_model after attention
+                self.input_contract = nn.Linear(cfg.emb_dim_exp_rate * cfg.d_model, cfg.d_model, bias=True)
 
         # Global MLP layers: take prompt + all inputs concatenated
         # For layers 0 to n_layers-2: output same dimension as input
@@ -1040,8 +1092,8 @@ class EmbCross(nn.Module):
             for i in range(cfg.n_layers):
                 is_last = (i == cfg.n_layers - 1)
                 if is_last:
-                    # Last layer: no activation, output d_model * exp_rate
-                    layer = nn.Linear(in_dim, cfg.d_model * exp_rate, bias=True)
+                    # Last layer: no activation, output d_model
+                    layer = nn.Linear(in_dim, cfg.d_model, bias=True)
                 else:
                     # Non-last layers: with activation, output same dimension
                     layer = nn.Sequential(
@@ -1062,8 +1114,10 @@ class EmbCross(nn.Module):
 
     # input_embs: (batch_size, seq_len, d_model) - key/value, seq_len = window_size - 1
     # prompt_emb: (batch_size, 1, d_model) - query
-    # returns: (batch_size, d_model)
-    def forward(self, input_embs: Tensor, prompt_emb: Tensor) -> Tensor:
+    # returns: (prompt_emb, inputs_emb)
+    #   prompt_emb: (batch_size, d_model)
+    #   inputs_emb: (batch_size, seq_len, d_model)
+    def forward(self, input_embs: Tensor, prompt_emb: Tensor) -> Tuple[Tensor, Tensor]:
         batch_size = input_embs.shape[0]
         seq_len = input_embs.shape[1]
         exp_rate = self.cfg.emb_dim_exp_rate
@@ -1078,15 +1132,12 @@ class EmbCross(nn.Module):
             
             # Expand prompt embedding: (batch_size, 1, d_model) -> (batch_size, exp_rate, d_model)
             # First expand: (batch_size, 1, exp_rate * d_model)
-            prompt_expanded = self.prompt_expand(prompt_emb)
+            prompt_expanded = self.input_expand(prompt_emb)
             # Reshape to: (batch_size, exp_rate, d_model)
             prompt_emb = prompt_expanded.reshape(batch_size, exp_rate, self.cfg.d_model)
             
             # Update seq_len for the rest of processing
             seq_len = seq_len * exp_rate
-        
-        # out: (batch_size, 1, d_model) or (batch_size, exp_rate, d_model) if expanded
-        out = prompt_emb
         
         if self.cfg.with_global_mlp:
             # Determine d_model for prompt in global MLP context
@@ -1095,23 +1146,23 @@ class EmbCross(nn.Module):
             # Alternate: cross_attn -> global_mlp -> cross_attn -> global_mlp -> ...
             for i in range(self.cfg.n_layers):
                 # Cross attention layer
-                # out: (batch_size, prompt_n_embs, d_model)
-                out = self.layers[i](out, input_embs)
+                # prompt_emb: (batch_size, prompt_n_embs, d_model)
+                # input_embs: (batch_size, seq_len, d_model)
+                prompt_emb, input_embs = self.layers[i](prompt_emb, input_embs)
                 
                 # Global MLP: concatenate prompt output with all input embeddings
                 # prompt_flat: (batch_size, prompt_n_embs * d_model)
-                prompt_flat = out.reshape(batch_size, -1)
+                prompt_flat = prompt_emb.reshape(batch_size, -1)
                 # inputs_flat: (batch_size, seq_len * d_model)
                 inputs_flat = input_embs.reshape(batch_size, -1)
                 # combined: (batch_size, prompt_n_embs * d_model + seq_len * d_model)
                 combined = torch.cat([prompt_flat, inputs_flat], dim=1)
-                # mlp_out: (batch_size, in_dim) or (batch_size, d_model * prompt_n_embs) for last layer
+                # mlp_out: (batch_size, in_dim) or (batch_size, d_model) for last layer
                 mlp_out = self.global_mlp_layers[i](combined)
                 
                 is_last = (i == self.cfg.n_layers - 1)
                 if is_last:
-                    # Last layer outputs d_model * prompt_n_embs
-                    # out: (batch_size, prompt_n_embs * d_model)
+                    # out: (batch_size, d_model)
                     out = mlp_out
                 else:
                     # Non-last layers: update prompt and input_embs with MLP output
@@ -1124,27 +1175,32 @@ class EmbCross(nn.Module):
                     out = prompt_part.reshape(batch_size, prompt_n_embs, self.cfg.d_model)
                     # input_embs: (batch_size, seq_len, d_model)
                     input_embs = inputs_part.reshape(batch_size, seq_len, self.cfg.d_model)
-            
-            # Contract if using expansion
-            if exp_rate > 0:
-                # out: (batch_size, exp_rate * d_model) -> (batch_size, d_model)
-                out = self.prompt_contract(out)
+            # Return both embeddings
+            # input_embs: (batch_size, seq_len, d_model)
+            return out, input_embs
         else:
             # Without global MLP: just run cross attention layers
             for layer in self.layers:
-                out = layer(out, input_embs)
+                out, input_embs = layer(out, input_embs)
             # out: (batch_size, 1, d_model) or (batch_size, exp_rate, d_model) if expanded
+            # input_embs: (batch_size, seq_len, d_model)
             
             if exp_rate > 0:
                 # Contract expanded prompt embeddings back to single embedding
                 # out: (batch_size, exp_rate, d_model) -> (batch_size, exp_rate * d_model)
                 out = out.reshape(batch_size, -1)
                 # out: (batch_size, exp_rate * d_model) -> (batch_size, d_model)
-                out = self.prompt_contract(out)
+                out = self.input_contract(out)
+                # Contract expanded inputs embeddings
+                # input_embs: (batch_size, seq_len, d_model) -> (batch_size, seq_len // exp_rate, exp_rate * d_model)
+                orig_seq_len = seq_len // exp_rate
+                input_embs = input_embs.reshape(batch_size, orig_seq_len, exp_rate * self.cfg.d_model)
+                # input_embs: (batch_size, orig_seq_len, exp_rate * d_model) -> (batch_size, orig_seq_len, d_model)
+                input_embs = self.input_contract(input_embs)
             else:
                 out = out.squeeze(1)
         
-        return out
+        return out, input_embs
 
 
 class EncdecGraphBert(nn.Module):
@@ -1418,9 +1474,9 @@ class EncdecGraphBert(nn.Module):
             input_embs = input_embs.unsqueeze(0)
             # prompt_emb: (1, 1, d_model) - query
             prompt_emb = prompt_enc_embs[ib:ib + 1, :].unsqueeze(1)
-            # out_emb: (1, d_model)
-            out_emb = self.emb_cross(input_embs, prompt_emb)
-            out_cross_embs.append(out_emb[0])
+            # out_prompt_emb: (1, d_model), out_inputs_emb: (1, n_enc_embs, d_model)
+            out_prompt_emb, out_inputs_emb = self.emb_cross(input_embs, prompt_emb)
+            out_cross_embs.append(out_prompt_emb[0])
         # out_embs: (batch_size, d_model)
         out_embs = torch.stack(out_cross_embs, dim=0)
         return out_embs

@@ -74,6 +74,7 @@ emb_cross_n_layers=2
 emb_cross_d_inner=0
 emb_cross_dropout_rate=0.1
 emb_cross_window_size=3
+emb_cross_dim_exp_rate=0
 emb_cross_with_global_mlp=true
 
 cite_toks_target_weight=1
@@ -172,6 +173,7 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --emb-cross-d-inner $emb_cross_d_inner \
   --emb-cross-dropout-rate $emb_cross_dropout_rate \
   --emb-cross-window-size $emb_cross_window_size \
+  --emb-cross-dim-exp-rate $emb_cross_dim_exp_rate \
   --emb-cross-with-global-mlp $emb_cross_with_global_mlp \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
