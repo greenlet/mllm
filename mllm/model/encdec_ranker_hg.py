@@ -933,6 +933,7 @@ class EmbFfw(nn.Module):
 class CrossAttentionLayer(nn.Module):
     """Cross-attention layer where query attends to key-value pairs.
     Returns both prompt_emb and inputs_emb with feedforward applied to both.
+    Uses shared weights for both attention directions.
     """
 
     def __init__(self, n_heads: int, d_model: int, d_inner: int, dropout_rate: float = 0.1):
@@ -942,17 +943,11 @@ class CrossAttentionLayer(nn.Module):
         self.d_k = d_model // n_heads
         self.d_v = d_model // n_heads
 
-        # Projections for prompt attending to inputs
+        # Shared projections for attention
         self.w_q = nn.Linear(d_model, n_heads * self.d_k, bias=False)
         self.w_k = nn.Linear(d_model, n_heads * self.d_k, bias=False)
         self.w_v = nn.Linear(d_model, n_heads * self.d_v, bias=False)
         self.fc = nn.Linear(n_heads * self.d_v, d_model, bias=False)
-
-        # Projections for inputs attending to prompt
-        self.w_q_inp = nn.Linear(d_model, n_heads * self.d_k, bias=False)
-        self.w_k_inp = nn.Linear(d_model, n_heads * self.d_k, bias=False)
-        self.w_v_inp = nn.Linear(d_model, n_heads * self.d_v, bias=False)
-        self.fc_inp = nn.Linear(n_heads * self.d_v, d_model, bias=False)
 
         self.temperature = self.d_k ** 0.5
         self.dropout = nn.Dropout(dropout_rate)
@@ -960,22 +955,9 @@ class CrossAttentionLayer(nn.Module):
         # LayerNorms for prompt path
         self.layer_norm1 = nn.LayerNorm(d_model, eps=1e-6)
         self.layer_norm2 = nn.LayerNorm(d_model, eps=1e-6)
-        
-        # LayerNorms for inputs path
-        self.layer_norm1_inp = nn.LayerNorm(d_model, eps=1e-6)
-        self.layer_norm2_inp = nn.LayerNorm(d_model, eps=1e-6)
 
-        # Feed-forward network for prompt
+        # Shared feed-forward network
         self.ff = nn.Sequential(
-            nn.Linear(d_model, d_inner),
-            nn.GELU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(d_inner, d_model),
-            nn.Dropout(dropout_rate),
-        )
-        
-        # Feed-forward network for inputs
-        self.ff_inp = nn.Sequential(
             nn.Linear(d_model, d_inner),
             nn.GELU(),
             nn.Dropout(dropout_rate),
@@ -986,9 +968,7 @@ class CrossAttentionLayer(nn.Module):
     # q: (batch_size, q_len, d_model) - query (prompt)
     # kv: (batch_size, kv_len, d_model) - key/value (input embeddings)
     # returns: (prompt_emb, inputs_emb)
-    #   prompt_emb: (batch_size, q_len, d_model)
-    #   inputs_emb: (batch_size, kv_len, d_model)
-    def forward(self, q: Tensor, kv: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, q: Tensor, kv: Tensor) -> Tensor:
         batch_size, q_len = q.shape[0], q.shape[1]
         kv_len = kv.shape[1]
 
@@ -1017,36 +997,9 @@ class CrossAttentionLayer(nn.Module):
         residual_q = out_q
         out_q = self.ff(out_q)
         # (batch_size, q_len, d_model)
-        prompt_emb = self.layer_norm2(out_q + residual_q)
+        out = self.layer_norm2(out_q + residual_q)
 
-        # === Inputs attending to prompt ===
-        residual_kv = kv
-
-        # Project: inputs as query, prompt as key/value
-        kv_q_proj = self.w_q_inp(kv).view(batch_size, kv_len, self.n_heads, self.d_k).transpose(1, 2)
-        kv_k_proj = self.w_k_inp(q).view(batch_size, q_len, self.n_heads, self.d_k).transpose(1, 2)
-        kv_v_proj = self.w_v_inp(q).view(batch_size, q_len, self.n_heads, self.d_v).transpose(1, 2)
-
-        # Attention: (batch_size, n_heads, kv_len, q_len)
-        attn_inp = torch.matmul(kv_q_proj / self.temperature, kv_k_proj.transpose(-2, -1))
-        attn_inp = self.dropout(F.softmax(attn_inp, dim=-1))
-
-        # Output: (batch_size, n_heads, kv_len, d_v)
-        out_kv = torch.matmul(attn_inp, kv_v_proj)
-        # (batch_size, kv_len, n_heads * d_v)
-        out_kv = out_kv.transpose(1, 2).contiguous().view(batch_size, kv_len, -1)
-        out_kv = self.dropout(self.fc_inp(out_kv))
-
-        # Residual + LayerNorm
-        out_kv = self.layer_norm1_inp(out_kv + residual_kv)
-
-        # Feed-forward with residual for inputs
-        residual_kv = out_kv
-        out_kv = self.ff_inp(out_kv)
-        # (batch_size, kv_len, d_model)
-        inputs_emb = self.layer_norm2_inp(out_kv + residual_kv)
-
-        return prompt_emb, inputs_emb
+        return out
 
 
 class EmbCross(nn.Module):
@@ -1061,7 +1014,7 @@ class EmbCross(nn.Module):
         super().__init__()
         self.cfg = cfg
 
-        self.layers = nn.ModuleList([
+        self.prompt_input_layers = nn.ModuleList([
             CrossAttentionLayer(
                 n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner,
                 dropout_rate=cfg.dropout_rate,
@@ -1073,9 +1026,12 @@ class EmbCross(nn.Module):
             # Expand each embedding into emb_dim_exp_rate embeddings
             # input_expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, emb_dim_exp_rate * d_model)
             self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_rate * cfg.d_model, bias=True)
-            if not cfg.with_global_mlp:
-                # If not using global MLP, we need to project back to d_model after attention
-                self.input_contract = nn.Linear(cfg.emb_dim_exp_rate * cfg.d_model, cfg.d_model, bias=True)
+            self.input_prompt_layers = nn.ModuleList([
+                CrossAttentionLayer(
+                    n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner,
+                    dropout_rate=cfg.dropout_rate,
+                ) for _ in range(cfg.n_layers)
+            ])
 
         # Global MLP layers: take prompt + all inputs concatenated
         # For layers 0 to n_layers-2: output same dimension as input
@@ -1115,9 +1071,7 @@ class EmbCross(nn.Module):
     # input_embs: (batch_size, seq_len, d_model) - key/value, seq_len = window_size - 1
     # prompt_emb: (batch_size, 1, d_model) - query
     # returns: (prompt_emb, inputs_emb)
-    #   prompt_emb: (batch_size, d_model)
-    #   inputs_emb: (batch_size, seq_len, d_model)
-    def forward(self, input_embs: Tensor, prompt_emb: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, input_embs: Tensor, prompt_emb: Tensor) -> Tensor:
         batch_size = input_embs.shape[0]
         seq_len = input_embs.shape[1]
         exp_rate = self.cfg.emb_dim_exp_rate
@@ -1148,7 +1102,9 @@ class EmbCross(nn.Module):
                 # Cross attention layer
                 # prompt_emb: (batch_size, prompt_n_embs, d_model)
                 # input_embs: (batch_size, seq_len, d_model)
-                prompt_emb, input_embs = self.layers[i](prompt_emb, input_embs)
+                if self.cfg.emb_dim_exp_rate > 0:
+                    input_embs = self.input_prompt_layers[i](input_embs, prompt_emb)
+                prompt_emb = self.prompt_input_layers[i](prompt_emb, input_embs)
                 
                 # Global MLP: concatenate prompt output with all input embeddings
                 # prompt_flat: (batch_size, prompt_n_embs * d_model)
@@ -1163,7 +1119,7 @@ class EmbCross(nn.Module):
                 is_last = (i == self.cfg.n_layers - 1)
                 if is_last:
                     # out: (batch_size, d_model)
-                    out = mlp_out
+                    prompt_emb = mlp_out
                 else:
                     # Non-last layers: update prompt and input_embs with MLP output
                     # mlp_out: (batch_size, prompt_n_embs * d_model + seq_len * d_model)
@@ -1171,36 +1127,26 @@ class EmbCross(nn.Module):
                     prompt_dim = prompt_n_embs * self.cfg.d_model
                     prompt_part = mlp_out[:, :prompt_dim]
                     inputs_part = mlp_out[:, prompt_dim:]
-                    # out: (batch_size, prompt_n_embs, d_model)
-                    out = prompt_part.reshape(batch_size, prompt_n_embs, self.cfg.d_model)
+                    # prompt_emb: (batch_size, prompt_n_embs, d_model)
+                    prompt_emb = prompt_part.reshape(batch_size, prompt_n_embs, self.cfg.d_model)
                     # input_embs: (batch_size, seq_len, d_model)
                     input_embs = inputs_part.reshape(batch_size, seq_len, self.cfg.d_model)
             # Return both embeddings
-            # input_embs: (batch_size, seq_len, d_model)
-            return out, input_embs
+            # prompt_emb: (batch_size, d_model)
+            return prompt_emb
         else:
             # Without global MLP: just run cross attention layers
-            for layer in self.layers:
-                out, input_embs = layer(out, input_embs)
-            # out: (batch_size, 1, d_model) or (batch_size, exp_rate, d_model) if expanded
-            # input_embs: (batch_size, seq_len, d_model)
+            for i in range(self.cfg.n_layers):
+                # prompt_emb: (batch_size, prompt_n_embs, d_model) or (batch_size, exp_rate, d_model) if expanded
+                # input_embs: (batch_size, seq_len, d_model)
+                if self.cfg.emb_dim_exp_rate > 0:
+                    input_embs = self.input_prompt_layers[i](input_embs, prompt_emb)
+                prompt_emb  = self.prompt_input_layers[i](prompt_emb, input_embs)
             
-            if exp_rate > 0:
-                # Contract expanded prompt embeddings back to single embedding
-                # out: (batch_size, exp_rate, d_model) -> (batch_size, exp_rate * d_model)
-                out = out.reshape(batch_size, -1)
-                # out: (batch_size, exp_rate * d_model) -> (batch_size, d_model)
-                out = self.input_contract(out)
-                # Contract expanded inputs embeddings
-                # input_embs: (batch_size, seq_len, d_model) -> (batch_size, seq_len // exp_rate, exp_rate * d_model)
-                orig_seq_len = seq_len // exp_rate
-                input_embs = input_embs.reshape(batch_size, orig_seq_len, exp_rate * self.cfg.d_model)
-                # input_embs: (batch_size, orig_seq_len, exp_rate * d_model) -> (batch_size, orig_seq_len, d_model)
-                input_embs = self.input_contract(input_embs)
-            else:
-                out = out.squeeze(1)
+            # prompt_emb: (batch_size, d_model)
+            prompt_emb = prompt_emb[:, -1, :]
         
-        return out, input_embs
+        return prompt_emb
 
 
 class EncdecGraphBert(nn.Module):
