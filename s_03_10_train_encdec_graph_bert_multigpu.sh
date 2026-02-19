@@ -45,6 +45,7 @@ gnn_conv_params='{"K": 3, "bias": true}'
 
 emb_middle_type=attn
 n_emb_attn_layers=8
+emb_attn_dim_exp_rate=0
 
 emb_middle_type=mlp
 emb_mlp_window_size=3
@@ -70,12 +71,12 @@ emb_ffw_act_fn='gelu'
 
 emb_middle_type=cross
 emb_cross_n_heads=8
-emb_cross_n_layers=2
+emb_cross_n_layers=4
 emb_cross_d_inner=0
 emb_cross_dropout_rate=0.1
 emb_cross_window_size=3
-emb_cross_dim_exp_rate=0
-emb_cross_with_global_mlp=true
+emb_cross_dim_exp_rate=4
+emb_cross_with_global_mlp=false
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
@@ -113,7 +114,7 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=60
+docs_batch_size=50
 world_size=4
 
 
@@ -153,6 +154,7 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --gnn-conv-name $gnn_conv_name \
   --gnn-conv-params "$gnn_conv_params" \
   --n-emb-attn-layers $n_emb_attn_layers \
+  --emb-attn-dim-exp-rate $emb_attn_dim_exp_rate \
   --emb-mlp-window-size $emb_mlp_window_size \
   --emb-mlp-n-window-layers $emb_mlp_n_window_layers \
   --emb-mlp-n-out-layers $emb_mlp_n_out_layers \

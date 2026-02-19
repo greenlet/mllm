@@ -134,6 +134,11 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Number of embedding attention layers in the middle model.',
         cli=('--n-emb-attn-layers',),
     )
+    emb_attn_dim_exp_rate: int = Field(
+        0,
+        description='Dimensionality expansion rate for Attn middle model. When positive, each embedding is expanded into this many embeddings.',
+        cli=('--emb-attn-dim-exp-rate',),
+    )
 
     emb_mlp_window_size: int = Field(
         3,
@@ -469,7 +474,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
         share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, middle_type=args.emb_middle_type,
         n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim, gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
-        n_emb_attn_layers=args.n_emb_attn_layers, emb_mlp_window_size=args.emb_mlp_window_size,
+        n_emb_attn_layers=args.n_emb_attn_layers, emb_attn_dim_exp_rate=args.emb_attn_dim_exp_rate,
+        emb_mlp_window_size=args.emb_mlp_window_size,
         emb_mlp_n_window_layers=args.emb_mlp_n_window_layers, emb_mlp_n_out_layers=args.emb_mlp_n_out_layers,
         emb_mlp_act_fn=args.emb_mlp_act_fn,
         emb_rnn_n_layers=args.emb_rnn_n_layers, emb_rnn_hidden_dim=args.emb_rnn_hidden_dim,

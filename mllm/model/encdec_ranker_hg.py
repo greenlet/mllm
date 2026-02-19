@@ -705,6 +705,16 @@ class EmbAttn(nn.Module):
                 dropout_rate=cfg.dropout_rate, temperature=temperature,
             ) for _ in range(cfg.n_layers)
         ])
+
+        # Dimensionality expansion layers
+        if cfg.emb_dim_exp_rate > 0:
+            # Expand each embedding into emb_dim_exp_rate embeddings
+            # input_expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, emb_dim_exp_rate * d_model)
+            self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_rate * cfg.d_model, bias=True)
+            # Contract expanded prompt embeddings back to single embedding
+            # input_contract: (batch_size, emb_dim_exp_rate * d_model) -> (batch_size, d_model)
+            self.input_contract = nn.Linear(cfg.emb_dim_exp_rate * cfg.d_model, cfg.d_model, bias=True)
+
         self.init_weights()
 
     def init_weights(self):
@@ -714,10 +724,36 @@ class EmbAttn(nn.Module):
             else:
                 nn.init.uniform_(p, -0.1, 0.1)
 
-    def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
+    # x: (batch_size, seq_len, d_model)
+    # n_prompt_embs: number of prompt embeddings at the end of the sequence (before expansion)
+    # returns: (batch_size, d_model) if emb_dim_exp_rate > 0, else (batch_size, seq_len, d_model)
+    def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None, n_prompt_embs: int = 0) -> Tensor:
+        exp_rate = self.cfg.emb_dim_exp_rate
+        batch_size = x.shape[0]
+
+        if exp_rate > 0:
+            # Expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, exp_rate * d_model)
+            x_expanded = self.input_expand(x)
+            # Reshape to: (batch_size, seq_len * exp_rate, d_model)
+            x = x_expanded.reshape(batch_size, -1, self.cfg.d_model)
+
         out = x
         for layer in self.layers:
             out, _ = layer(out, slf_attn_mask=attn_mask)
+
+        if exp_rate > 0 and n_prompt_embs > 0:
+            # Extract prompt embeddings (last n_prompt_embs * exp_rate elements)
+            n_prompt_expanded = n_prompt_embs * exp_rate
+            # prompt_out: (batch_size, n_prompt_embs * exp_rate, d_model)
+            prompt_out = out[:, -n_prompt_expanded:]
+            # prompt_out: (batch_size, n_prompt_embs, exp_rate * d_model)
+            prompt_out = prompt_out.reshape(batch_size, n_prompt_embs, exp_rate * self.cfg.d_model)
+            # Contract: (batch_size, n_prompt_embs, exp_rate * d_model) -> (batch_size, n_prompt_embs, d_model)
+            prompt_out = self.input_contract(prompt_out)
+            # prompt_out: (batch_size, d_model)
+            prompt_out = prompt_out.squeeze(1)
+            return prompt_out
+
         return out
 
 
@@ -1305,6 +1341,7 @@ class EncdecGraphBert(nn.Module):
     # returns: (batch_size, d_model)
     def run_middle_attn(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
         batch_size = inp_enc_embs.shape[0]
+        exp_rate = self.cfg.emb_attn.emb_dim_exp_rate
         out_attn_embs = []
         for ib in range(batch_size):
             # prompt_embs: (1, d_model)
@@ -1313,10 +1350,14 @@ class EncdecGraphBert(nn.Module):
             combined_embs = torch.concatenate([inp_enc_embs, prompt_embs], dim=0)
             # combined_embs: (1, batch_size + 1, d_model)
             combined_embs = combined_embs.unsqueeze(0)
-            # out_embs: (1, batch_size + 1, d_model)
-            out_embs = self.emb_attn(combined_embs)
-            # out_embs: (d_model,)
-            out_embs = out_embs[0, -1]  # take prompt embedding only
+            if exp_rate > 0:
+                # out_embs: (d_model,)
+                out_embs = self.emb_attn(combined_embs, n_prompt_embs=1)
+            else:
+                # out_embs: (1, batch_size + 1, d_model)
+                out_embs = self.emb_attn(combined_embs)
+                # out_embs: (d_model,)
+                out_embs = out_embs[0, -1]  # take prompt embedding only
             out_attn_embs.append(out_embs)
         # out_embs: (batch_size, d_model)
         out_embs = torch.stack(out_attn_embs, dim=0)
@@ -1421,7 +1462,7 @@ class EncdecGraphBert(nn.Module):
             # prompt_emb: (1, 1, d_model) - query
             prompt_emb = prompt_enc_embs[ib:ib + 1, :].unsqueeze(1)
             # out_prompt_emb: (1, d_model), out_inputs_emb: (1, n_enc_embs, d_model)
-            out_prompt_emb, out_inputs_emb = self.emb_cross(input_embs, prompt_emb)
+            out_prompt_emb = self.emb_cross(input_embs, prompt_emb)
             out_cross_embs.append(out_prompt_emb[0])
         # out_embs: (batch_size, d_model)
         out_embs = torch.stack(out_cross_embs, dim=0)
