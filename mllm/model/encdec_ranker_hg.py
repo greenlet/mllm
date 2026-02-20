@@ -725,11 +725,10 @@ class EmbAttn(nn.Module):
                 nn.init.uniform_(p, -0.1, 0.1)
 
     # x: (batch_size, seq_len, d_model)
-    # n_prompt_embs: number of prompt embeddings at the end of the sequence (before expansion)
-    # returns: (batch_size, d_model) if emb_dim_exp_rate > 0, else (batch_size, seq_len, d_model)
-    def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None, n_prompt_embs: int = 0) -> Tensor:
+    # returns: (batch_size, seq_len, d_model)
+    def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
         exp_rate = self.cfg.emb_dim_exp_rate
-        batch_size = x.shape[0]
+        batch_size, seq_len = x.shape[:2]
 
         if exp_rate > 0:
             # Expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, exp_rate * d_model)
@@ -741,17 +740,11 @@ class EmbAttn(nn.Module):
         for layer in self.layers:
             out, _ = layer(out, slf_attn_mask=attn_mask)
 
-        if exp_rate > 0 and n_prompt_embs > 0:
-            # Extract prompt embeddings (last n_prompt_embs * exp_rate elements)
-            n_prompt_expanded = n_prompt_embs * exp_rate
-            # prompt_out: (batch_size, n_prompt_embs * exp_rate, d_model)
-            prompt_out = out[:, -n_prompt_expanded:]
-            # prompt_out: (batch_size, n_prompt_embs, exp_rate * d_model)
-            prompt_out = prompt_out.reshape(batch_size, n_prompt_embs, exp_rate * self.cfg.d_model)
-            # Contract: (batch_size, n_prompt_embs, exp_rate * d_model) -> (batch_size, n_prompt_embs, d_model)
+        if exp_rate > 0:
+            # prompt_out: (batch_size, seq_len, exp_rate * d_model)
+            prompt_out = out.reshape(batch_size, seq_len, exp_rate * self.cfg.d_model)
+            # Contract: (batch_size, seq_len, exp_rate * d_model) -> (batch_size, seq_len, d_model)
             prompt_out = self.input_contract(prompt_out)
-            # prompt_out: (batch_size, d_model)
-            prompt_out = prompt_out.squeeze(1)
             return prompt_out
 
         return out
