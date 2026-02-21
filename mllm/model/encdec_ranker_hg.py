@@ -758,21 +758,26 @@ class EmbMlp(nn.Module):
         self.cfg = cfg
         bias = True
         act_fn = get_activation_module(self.cfg.act_fn)
+        exp_rate = cfg.emb_dim_exp_rate if cfg.emb_dim_exp_rate > 0 else 1
         
         assert cfg.n_window_layers >= 1, f'At least one window layer is required. cfg.n_window_layers = {cfg.n_window_layers}'
         assert cfg.n_out_layers >= 1, f'At least one output layer is required. cfg.n_out_layers = {cfg.n_out_layers}'
-        
+
+        # Dimensionality expansion layers
+        if cfg.emb_dim_exp_rate > 0:
+            self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_rate * cfg.d_model, bias=True)
+
         layers = []
-        # Window layers: from window_size * d_model to window_size * d_out
+        # Window layers: from window_size * exp_rate * d_model to window_size * exp_rate * d_out
         for i in range(cfg.n_window_layers):
-            in_features = cfg.window_size * cfg.d_model if i == 0 else cfg.window_size * cfg.d_out
-            out_features = cfg.window_size * cfg.d_out
+            in_features = cfg.window_size * exp_rate * cfg.d_model if i == 0 else cfg.window_size * exp_rate * cfg.d_out
+            out_features = cfg.window_size * exp_rate * cfg.d_out
             layers.append(nn.Linear(in_features=in_features, out_features=out_features, bias=bias))
             layers.append(act_fn())
         
-        # Output layers: from window_size * d_out to d_out
+        # Output layers: from window_size * exp_rate * d_out to d_out
         for i in range(cfg.n_out_layers):
-            in_features = cfg.window_size * cfg.d_out if i == 0 else cfg.d_out
+            in_features = cfg.window_size * exp_rate * cfg.d_out if i == 0 else cfg.d_out
             out_features = cfg.d_out
             layers.append(nn.Linear(in_features=in_features, out_features=out_features, bias=bias))
             if i < cfg.n_out_layers - 1:
@@ -791,8 +796,17 @@ class EmbMlp(nn.Module):
     # inp: (batch_size, window_size, d_model)
     # returns: (batch_size, d_out)
     def forward(self, inp: Tensor) -> Tensor:
-        # out: (batch_size, window_size * d_model)
-        out = inp.reshape((-1, self.cfg.window_size * self.cfg.d_model))
+        batch_size = inp.shape[0]
+        exp_rate = self.cfg.emb_dim_exp_rate
+
+        if exp_rate > 0:
+            # Expand: (batch_size, window_size, d_model) -> (batch_size, window_size, exp_rate * d_model)
+            inp = self.input_expand(inp)
+            # Reshape to: (batch_size, window_size * exp_rate, d_model)
+            inp = inp.reshape(batch_size, -1, self.cfg.d_model)
+
+        # out: (batch_size, window_size * exp_rate * d_model) or (batch_size, window_size * d_model)
+        out = inp.reshape((batch_size, -1))
         # out: (batch_size, d_out)
         out = self.mlp(out)
         return out
@@ -1343,14 +1357,10 @@ class EncdecGraphBert(nn.Module):
             combined_embs = torch.concatenate([inp_enc_embs, prompt_embs], dim=0)
             # combined_embs: (1, batch_size + 1, d_model)
             combined_embs = combined_embs.unsqueeze(0)
-            if exp_rate > 0:
-                # out_embs: (d_model,)
-                out_embs = self.emb_attn(combined_embs, n_prompt_embs=1)
-            else:
-                # out_embs: (1, batch_size + 1, d_model)
-                out_embs = self.emb_attn(combined_embs)
-                # out_embs: (d_model,)
-                out_embs = out_embs[0, -1]  # take prompt embedding only
+            # out_embs: (1, batch_size + 1, d_model)
+            out_embs = self.emb_attn(combined_embs)
+            # out_embs: (d_model,)
+            out_embs = out_embs[0, -1]  # take prompt embedding only
             out_attn_embs.append(out_embs)
         # out_embs: (batch_size, d_model)
         out_embs = torch.stack(out_attn_embs, dim=0)

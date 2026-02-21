@@ -419,6 +419,7 @@ class EmbMlpCfg(BaseModel):
     n_window_layers: int = 1
     n_out_layers: int = 1
     act_fn: str = 'gelu'
+    emb_dim_exp_rate: int = 0  # If positive, expand each embedding into this many embeddings before MLP
 
 
 class EmbFfwCfg(BaseModel):
@@ -823,7 +824,7 @@ def create_encdec_graph_bert_cfg(
         n_graph_layers: int = 1, gnn_hidden_dim: int = 0, gnn_conv_name: str = 'GCNConv', gnn_conv_params: Optional[Dict[str, Any]] = None,
         n_emb_attn_layers: int = 2, emb_attn_dim_exp_rate: int = 0,
         emb_mlp_window_size: int = 3, emb_mlp_n_window_layers: int = 1, emb_mlp_n_out_layers: int = 1,
-        emb_mlp_act_fn: str = 'gelu',
+        emb_mlp_act_fn: str = 'gelu', emb_mlp_dim_exp_rate: int = 0,
         emb_rnn_n_layers: int = 1, emb_rnn_hidden_dim: int = 0,
         emb_rnn_input_order: EmbRnnInputOrder = EmbRnnInputOrder.ContextPrompts,
         emb_rnn_next_tok_from_hidden: bool = True,
@@ -909,6 +910,7 @@ def create_encdec_graph_bert_cfg(
     cfg_mlp = EmbMlpCfg(
         d_model=d_model, d_out=cfg_dec.d_model, window_size=emb_mlp_window_size,
         n_window_layers=emb_mlp_n_window_layers, n_out_layers=emb_mlp_n_out_layers, act_fn=emb_mlp_act_fn,
+        emb_dim_exp_rate=emb_mlp_dim_exp_rate,
     )
 
     rnn_cell_params = create_cls_params(emb_rnn_cell_name, rnn_name_to_defaults, emb_rnn_cell_params)
@@ -1353,7 +1355,7 @@ def copy_override_encdec_graph_bert_cfg(
         n_graph_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None, gnn_conv_name: Optional[str] = None, gnn_conv_params: Optional[Dict[str, Any]] = None,
         n_emb_attn_layers: Optional[int] = None, emb_attn_dim_exp_rate: Optional[int] = None,
         emb_mlp_window_size: Optional[int] = None, emb_mlp_n_window_layers: Optional[int] = None, emb_mlp_n_out_layers: Optional[int] = None,
-        emb_mlp_act_fn: Optional[str] = None,
+        emb_mlp_act_fn: Optional[str] = None, emb_mlp_dim_exp_rate: Optional[int] = None,
         emb_rnn_n_layers: Optional[int] = None, emb_rnn_hidden_dim: Optional[int] = None,
         emb_rnn_input_order: Optional[EmbRnnInputOrder] = None, emb_rnn_next_tok_from_hidden: Optional[bool] = None,
         emb_rnn_cell_name: Optional[str] = None, emb_rnn_cell_params: Optional[Dict[str, Any]] = None,
@@ -1395,6 +1397,7 @@ def copy_override_encdec_graph_bert_cfg(
     emb_mlp_n_window_layers = coalesce(emb_mlp_n_window_layers, cfg.emb_mlp.n_window_layers)
     emb_mlp_n_out_layers = coalesce(emb_mlp_n_out_layers, cfg.emb_mlp.n_out_layers)
     emb_mlp_act_fn = coalesce(emb_mlp_act_fn, cfg.emb_mlp.act_fn)
+    emb_mlp_dim_exp_rate = coalesce(emb_mlp_dim_exp_rate, cfg.emb_mlp.emb_dim_exp_rate)
     emb_rnn_n_layers = coalesce(emb_rnn_n_layers, cfg.emb_rnn.n_layers)
     emb_rnn_hidden_dim = coalesce(emb_rnn_hidden_dim, cfg.emb_rnn.hidden_dim)
     emb_rnn_input_order = coalesce(emb_rnn_input_order, cfg.emb_rnn.input_order)
@@ -1442,6 +1445,7 @@ def copy_override_encdec_graph_bert_cfg(
         n_emb_attn_layers=n_emb_attn_layers, emb_attn_dim_exp_rate=emb_attn_dim_exp_rate,
         emb_mlp_window_size=emb_mlp_window_size, emb_mlp_n_window_layers=emb_mlp_n_window_layers,
         emb_mlp_n_out_layers=emb_mlp_n_out_layers, emb_mlp_act_fn=emb_mlp_act_fn,
+        emb_mlp_dim_exp_rate=emb_mlp_dim_exp_rate,
         emb_rnn_n_layers=emb_rnn_n_layers, emb_rnn_hidden_dim=emb_rnn_hidden_dim,
         emb_rnn_input_order=emb_rnn_input_order, emb_rnn_next_tok_from_hidden=emb_rnn_next_tok_from_hidden,
         emb_rnn_cell_name=emb_rnn_cell_name, emb_rnn_cell_params=emb_rnn_cell_params,
@@ -1751,7 +1755,10 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
             attn_parts.append(f'exp{attn.emb_dim_exp_rate}')
         postfix_parts.append('_'.join(attn_parts))
     elif model_cfg.middle_type == EncdecMiddleType.Mlp:
-        postfix_parts.append(f'embmlp_win{mlp.window_size}_wlrs{mlp.n_window_layers}_olrs{mlp.n_out_layers}_act{mlp.act_fn.capitalize()}')
+        mlp_parts = [f'embmlp_win{mlp.window_size}_wlrs{mlp.n_window_layers}_olrs{mlp.n_out_layers}_act{mlp.act_fn.capitalize()}']
+        if mlp.emb_dim_exp_rate > 0:
+            mlp_parts.append(f'exp{mlp.emb_dim_exp_rate}')
+        postfix_parts.append('_'.join(mlp_parts))
     elif model_cfg.middle_type == EncdecMiddleType.Rnn:
         rnn_parts = [f'embrnn_lrs{rnn.n_layers}']
         if rnn.hidden_dim != enc.d_model:

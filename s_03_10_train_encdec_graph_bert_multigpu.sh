@@ -52,6 +52,7 @@ emb_mlp_window_size=3
 emb_mlp_n_window_layers=6
 emb_mlp_n_out_layers=2
 emb_mlp_act_fn='gelu'
+emb_mlp_dim_exp_rate=0
 
 # emb_middle_type=rnn
 emb_rnn_n_layers=2
@@ -159,6 +160,7 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --emb-mlp-n-window-layers $emb_mlp_n_window_layers \
   --emb-mlp-n-out-layers $emb_mlp_n_out_layers \
   --emb-mlp-act-fn $emb_mlp_act_fn \
+  --emb-mlp-dim-exp-rate $emb_mlp_dim_exp_rate \
   --emb-rnn-n-layers $emb_rnn_n_layers \
   --emb-rnn-hidden-dim $emb_rnn_hidden_dim \
   --emb-rnn-input-order $emb_rnn_input_order \

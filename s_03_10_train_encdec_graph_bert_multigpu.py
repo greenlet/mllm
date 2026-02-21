@@ -160,6 +160,11 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Activation function for MLP as the middle embedding model.',
         cli=('--emb-mlp-act-fn',),
     )
+    emb_mlp_dim_exp_rate: int = Field(
+        0,
+        description='Dimensionality expansion rate for MLP middle model. When positive, each embedding is expanded into this many embeddings.',
+        cli=('--emb-mlp-dim-exp-rate',),
+    )
 
     emb_rnn_n_layers: int = Field(
         1,
@@ -477,7 +482,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         n_emb_attn_layers=args.n_emb_attn_layers, emb_attn_dim_exp_rate=args.emb_attn_dim_exp_rate,
         emb_mlp_window_size=args.emb_mlp_window_size,
         emb_mlp_n_window_layers=args.emb_mlp_n_window_layers, emb_mlp_n_out_layers=args.emb_mlp_n_out_layers,
-        emb_mlp_act_fn=args.emb_mlp_act_fn,
+        emb_mlp_act_fn=args.emb_mlp_act_fn, emb_mlp_dim_exp_rate=args.emb_mlp_dim_exp_rate,
         emb_rnn_n_layers=args.emb_rnn_n_layers, emb_rnn_hidden_dim=args.emb_rnn_hidden_dim,
         emb_rnn_input_order=args.emb_rnn_input_order, emb_rnn_next_tok_from_hidden=args.emb_rnn_next_tok_from_hidden,
         emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
