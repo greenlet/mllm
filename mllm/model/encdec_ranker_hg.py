@@ -24,7 +24,7 @@ import torch.distributed as dist
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
-from mllm.config.model import EmbAttnCfg, EmbCrossCfg, EmbFfwCfg, EmbGraphCfg, EmbMlpCfg, EmbRnnCfg, EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
+from mllm.config.model import EmbAttnCfg, EmbCrossCfg, EmbFfwCfg, EmbGateCfg, EmbGraphCfg, EmbMlpCfg, EmbRnnCfg, EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
     parse_mlp_layers, ParsedMlpLayer, EncBertCfg, BertEmbType, EncdecBertCfg, RankerBertCfg
 from mllm.model.modules import VocabEncoder, VocabDecoder
 
@@ -1192,6 +1192,63 @@ class EmbCross(nn.Module):
         return prompt_emb
 
 
+class EmbGate(nn.Module):
+    """Gated middle model where the prompt acts as a controller gate over data embeddings.
+    Two input embeddings are concatenated to form the signal, and the prompt generates
+    an element-wise gate that filters the signal before projecting back to d_model.
+    """
+    cfg: EmbGateCfg
+
+    def __init__(self, cfg: EmbGateCfg):
+        super().__init__()
+        self.cfg = cfg
+        d_inner = cfg.d_model * cfg.expansion_factor
+
+        # Feature extraction for data (the signal): concatenated pair of d_model embeddings -> d_inner
+        self.data_proj = nn.Sequential(
+            nn.Linear(cfg.d_model * 2, d_inner),
+            nn.GELU(),
+        )
+
+        # Gate generation from prompt (the controller): d_model -> d_inner, bounded in [0, 1]
+        self.gate_proj = nn.Sequential(
+            nn.Linear(cfg.d_model, d_inner),
+            nn.Sigmoid(),
+        )
+
+        # Final fusion and compression: d_inner -> d_model
+        self.out_proj = nn.Sequential(
+            nn.Dropout(cfg.dropout_rate),
+            nn.Linear(d_inner, cfg.d_model),
+            nn.LayerNorm(cfg.d_model),
+        )
+
+        self.init_weights()
+
+    def init_weights(self):
+        for n, p in self.named_parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+            else:
+                nn.init.uniform_(p, -0.1, 0.1)
+
+    # e_prompt: (batch_size, d_model)
+    # e_data1:  (batch_size, d_model)
+    # e_data2:  (batch_size, d_model)
+    # returns:  (batch_size, d_model)
+    def forward(self, e_prompt: Tensor, e_data1: Tensor, e_data2: Tensor) -> Tensor:
+        # data_combined: (batch_size, d_model * 2)
+        data_combined = torch.cat([e_data1, e_data2], dim=-1)
+        # signal: (batch_size, d_inner)
+        signal = self.data_proj(data_combined)
+        # gate: (batch_size, d_inner)
+        gate = self.gate_proj(e_prompt)
+        # gated_features: (batch_size, d_inner)
+        gated_features = signal * gate
+        # output: (batch_size, d_model)
+        return self.out_proj(gated_features)
+
+
 class EncdecGraphBert(nn.Module):
     cfg: EncdecGraphBertCfg
     tkz: PreTrainedTokenizer
@@ -1222,6 +1279,8 @@ class EncdecGraphBert(nn.Module):
         elif self.cfg.middle_type == EncdecMiddleType.Cross:
             assert self.cfg.emb_cross.window_size <= self.cfg.train_cfg.batch_size, f'Cross window size {self.cfg.emb_cross.window_size} > batch size {self.cfg.train_cfg.batch_size}'
             self.emb_cross = EmbCross(cfg.emb_cross)
+        elif self.cfg.middle_type == EncdecMiddleType.Gate:
+            self.emb_gate = EmbGate(cfg.emb_gate)
         else:
             raise Exception(f'Graph middle type {self.cfg.middle_type} is not supported')
         word_embeddings = None
@@ -1474,6 +1533,27 @@ class EncdecGraphBert(nn.Module):
     # inp_enc_embs: (batch_size, d_model)
     # prompt_enc_embs: (batch_size, d_model)
     # returns: (batch_size, d_model)
+    def run_middle_gate(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
+        batch_size = inp_enc_embs.shape[0]
+        out_gate_embs = []
+        for ib in range(batch_size):
+            # Pick a neighboring input embedding as e_data2 (wrap around at boundaries)
+            ib2 = ib + 1 if ib + 1 < batch_size else ib - 1
+            # e_data1, e_data2: (1, d_model)
+            e_data1 = inp_enc_embs[ib:ib + 1]
+            e_data2 = inp_enc_embs[ib2:ib2 + 1]
+            # e_prompt: (1, d_model)
+            e_prompt = prompt_enc_embs[ib:ib + 1]
+            # out_emb: (1, d_model)
+            out_emb = self.emb_gate(e_prompt, e_data1, e_data2)
+            out_gate_embs.append(out_emb[0])
+        # out_embs: (batch_size, d_model)
+        out_embs = torch.stack(out_gate_embs, dim=0)
+        return out_embs
+
+    # inp_enc_embs: (batch_size, d_model)
+    # prompt_enc_embs: (batch_size, d_model)
+    # returns: (batch_size, d_model)
     def run_middle(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
         if self.cfg.middle_type == EncdecMiddleType.Graph:
             out_embs = self.run_middle_graph(inp_enc_embs, prompt_enc_embs, batch)
@@ -1487,6 +1567,8 @@ class EncdecGraphBert(nn.Module):
             out_embs = self.run_middle_ffw(inp_enc_embs, prompt_enc_embs, batch)
         elif self.cfg.middle_type == EncdecMiddleType.Cross:
             out_embs = self.run_middle_cross(inp_enc_embs, prompt_enc_embs, batch)
+        elif self.cfg.middle_type == EncdecMiddleType.Gate:
+            out_embs = self.run_middle_gate(inp_enc_embs, prompt_enc_embs, batch)
         else:
             raise Exception(f'Unsupported middle_type = {self.cfg.middle_type}')
         return out_embs

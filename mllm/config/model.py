@@ -287,6 +287,7 @@ class EncdecMiddleType(str, Enum):
     Rnn = 'rnn'
     Ffw = 'ffw'  # Feed forward with prompt
     Cross = 'cross'  # Cross attention with prompt as query
+    Gate = 'gate'  # Gated model: prompt-controlled gate over data embeddings
 
 
 class PyClassCfg(BaseModel):
@@ -467,6 +468,15 @@ class EmbRnnCfg(BaseModel):
     rnn_cell: PyClassCfg  # RNN cell configuration (RNN, LSTM, GRU from torch.nn)
 
 
+class EmbGateCfg(BaseModel):
+    """Configuration for gated middle model.
+    Prompt acts as a gate controller over two concatenated data embeddings.
+    """
+    d_model: int  # Input and output embedding dimension
+    expansion_factor: int = 4  # Multiplier for inner dimension (d_inner = d_model * expansion_factor)
+    dropout_rate: float = 0.1
+
+
 class EncdecCiteToksTargetType(str, Enum):
     All = 'all'
     Cite = 'cite'
@@ -511,6 +521,7 @@ class EncdecGraphBertCfg(BaseModel):
     emb_rnn: EmbRnnCfg
     emb_ffw: EmbFfwCfg
     emb_cross: EmbCrossCfg
+    emb_gate: EmbGateCfg
     train_cfg: EncdecTrainCfg
 
 
@@ -833,6 +844,7 @@ def create_encdec_graph_bert_cfg(
         emb_ffw_dropout_rate: float = 0.1, emb_ffw_act_fn: str = 'gelu',
         emb_cross_n_heads: int = 8, emb_cross_n_layers: int = 2, emb_cross_d_inner: int = 0, emb_cross_dropout_rate: float = 0.1,
         emb_cross_window_size: int = 3, emb_cross_with_global_mlp: bool = False, emb_cross_dim_exp_rate: int = 0,
+        emb_gate_expansion_factor: int = 4, emb_gate_dropout_rate: float = 0.1,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: float = 1.0, cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All, cite_toks_target_scale: float = 1.0,
@@ -939,6 +951,10 @@ def create_encdec_graph_bert_cfg(
         emb_dim_exp_rate=emb_cross_dim_exp_rate,
     )
 
+    cfg_gate = EmbGateCfg(
+        d_model=d_model, expansion_factor=emb_gate_expansion_factor, dropout_rate=emb_gate_dropout_rate,
+    )
+
     cfg_train = EncdecTrainCfg(
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
@@ -964,7 +980,7 @@ def create_encdec_graph_bert_cfg(
     cfg_encdec_bert = EncdecGraphBertCfg(
         enc_bert=cfg_enc, dec_pyr=cfg_dec, share_enc_dec_proj_weights=share_enc_dec_proj_weights,
         middle_type=middle_type, emb_graph=cfg_graph, emb_attn=cfg_attn, emb_mlp=cfg_mlp, emb_rnn=cfg_rnn,
-        emb_ffw=cfg_ffw, emb_cross=cfg_cross, train_cfg=cfg_train,
+        emb_ffw=cfg_ffw, emb_cross=cfg_cross, emb_gate=cfg_gate, train_cfg=cfg_train,
     )
     return cfg_encdec_bert
 
