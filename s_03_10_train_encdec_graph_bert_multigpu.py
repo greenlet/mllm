@@ -134,10 +134,10 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Number of embedding attention layers in the middle model.',
         cli=('--n-emb-attn-layers',),
     )
-    emb_attn_dim_exp_rate: int = Field(
+    emb_attn_dim_exp_factor: int = Field(
         0,
         description='Dimensionality expansion rate for Attn middle model. When positive, each embedding is expanded into this many embeddings.',
-        cli=('--emb-attn-dim-exp-rate',),
+        cli=('--emb-attn-dim-exp-factor',),
     )
 
     emb_mlp_window_size: int = Field(
@@ -160,10 +160,10 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description='Activation function for MLP as the middle embedding model.',
         cli=('--emb-mlp-act-fn',),
     )
-    emb_mlp_dim_exp_rate: int = Field(
+    emb_mlp_dim_exp_factor: int = Field(
         0,
         description='Dimensionality expansion rate for MLP middle model. When positive, each embedding is expanded into this many embeddings.',
-        cli=('--emb-mlp-dim-exp-rate',),
+        cli=('--emb-mlp-dim-exp-factor',),
     )
 
     emb_rnn_n_layers: int = Field(
@@ -255,16 +255,27 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         cli=('--emb-cross-window-size',),
     )
 
-    emb_cross_dim_exp_rate: int = Field(
+    emb_cross_dim_exp_factor: int = Field(
         0,
         description='Dimensionality expansion rate for Cross-attention middle model. When positive, each embedding is expanded into this many embeddings.',
-        cli=('--emb-cross-dim-exp-rate',),
+        cli=('--emb-cross-dim-exp-factor',),
     )
 
     emb_cross_with_global_mlp_STR: str = create_bool_str_field(*emb_cross_with_global_mlp_ARG)
     @property
     def emb_cross_with_global_mlp(self) -> bool:
         return is_arg_true(emb_cross_with_global_mlp_ARG[0], self.emb_cross_with_global_mlp_STR)
+
+    emb_gate_exp_factor: int = Field(
+        4,
+        description='Expansion factor for Gate middle model inner dimension (d_inner = d_model * exp_factor).',
+        cli=('--emb-gate-exp-factor',),
+    )
+    emb_gate_dropout_rate: float = Field(
+        0.1,
+        description='Dropout rate for Gate middle model.',
+        cli=('--emb-gate-dropout-rate',),
+    )
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
@@ -479,10 +490,10 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
         share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, middle_type=args.emb_middle_type,
         n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim, gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
-        n_emb_attn_layers=args.n_emb_attn_layers, emb_attn_dim_exp_rate=args.emb_attn_dim_exp_rate,
+        n_emb_attn_layers=args.n_emb_attn_layers, emb_attn_dim_exp_factor=args.emb_attn_dim_exp_factor,
         emb_mlp_window_size=args.emb_mlp_window_size,
         emb_mlp_n_window_layers=args.emb_mlp_n_window_layers, emb_mlp_n_out_layers=args.emb_mlp_n_out_layers,
-        emb_mlp_act_fn=args.emb_mlp_act_fn, emb_mlp_dim_exp_rate=args.emb_mlp_dim_exp_rate,
+        emb_mlp_act_fn=args.emb_mlp_act_fn, emb_mlp_dim_exp_factor=args.emb_mlp_dim_exp_factor,
         emb_rnn_n_layers=args.emb_rnn_n_layers, emb_rnn_hidden_dim=args.emb_rnn_hidden_dim,
         emb_rnn_input_order=args.emb_rnn_input_order, emb_rnn_next_tok_from_hidden=args.emb_rnn_next_tok_from_hidden,
         emb_rnn_cell_name=args.emb_rnn_cell_name, emb_rnn_cell_params=args.emb_rnn_cell_params,
@@ -491,7 +502,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         emb_cross_n_heads=args.emb_cross_n_heads, emb_cross_n_layers=args.emb_cross_n_layers,
         emb_cross_d_inner=args.emb_cross_d_inner, emb_cross_dropout_rate=args.emb_cross_dropout_rate,
         emb_cross_window_size=args.emb_cross_window_size, emb_cross_with_global_mlp=args.emb_cross_with_global_mlp,
-        emb_cross_dim_exp_rate=args.emb_cross_dim_exp_rate,
+        emb_cross_dim_exp_factor=args.emb_cross_dim_exp_factor,
+        emb_gate_exp_factor=args.emb_gate_exp_factor, emb_gate_dropout_rate=args.emb_gate_dropout_rate,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,

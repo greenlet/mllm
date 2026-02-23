@@ -45,14 +45,14 @@ gnn_conv_params='{"K": 3, "bias": true}'
 
 emb_middle_type=attn
 n_emb_attn_layers=8
-emb_attn_dim_exp_rate=0
+emb_attn_dim_exp_factor=0
 
 emb_middle_type=mlp
 emb_mlp_window_size=3
 emb_mlp_n_window_layers=6
 emb_mlp_n_out_layers=2
 emb_mlp_act_fn='gelu'
-emb_mlp_dim_exp_rate=0
+emb_mlp_dim_exp_factor=0
 
 # emb_middle_type=rnn
 emb_rnn_n_layers=2
@@ -76,8 +76,12 @@ emb_cross_n_layers=4
 emb_cross_d_inner=0
 emb_cross_dropout_rate=0.1
 emb_cross_window_size=3
-emb_cross_dim_exp_rate=4
+emb_cross_dim_exp_factor=4
 emb_cross_with_global_mlp=false
+
+# emb_middle_type=gate
+emb_gate_exp_factor=4
+emb_gate_dropout_rate=0.1
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
@@ -155,12 +159,12 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --gnn-conv-name $gnn_conv_name \
   --gnn-conv-params "$gnn_conv_params" \
   --n-emb-attn-layers $n_emb_attn_layers \
-  --emb-attn-dim-exp-rate $emb_attn_dim_exp_rate \
+  --emb-attn-dim-exp-factor $emb_attn_dim_exp_factor \
   --emb-mlp-window-size $emb_mlp_window_size \
   --emb-mlp-n-window-layers $emb_mlp_n_window_layers \
   --emb-mlp-n-out-layers $emb_mlp_n_out_layers \
   --emb-mlp-act-fn $emb_mlp_act_fn \
-  --emb-mlp-dim-exp-rate $emb_mlp_dim_exp_rate \
+  --emb-mlp-dim-exp-factor $emb_mlp_dim_exp_factor \
   --emb-rnn-n-layers $emb_rnn_n_layers \
   --emb-rnn-hidden-dim $emb_rnn_hidden_dim \
   --emb-rnn-input-order $emb_rnn_input_order \
@@ -177,8 +181,10 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --emb-cross-d-inner $emb_cross_d_inner \
   --emb-cross-dropout-rate $emb_cross_dropout_rate \
   --emb-cross-window-size $emb_cross_window_size \
-  --emb-cross-dim-exp-rate $emb_cross_dim_exp_rate \
+  --emb-cross-dim-exp-factor $emb_cross_dim_exp_factor \
   --emb-cross-with-global-mlp $emb_cross_with_global_mlp \
+  --emb-gate-exp-factor $emb_gate_exp_factor \
+  --emb-gate-dropout-rate $emb_gate_dropout_rate \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

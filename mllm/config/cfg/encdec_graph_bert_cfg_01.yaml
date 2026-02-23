@@ -18,14 +18,18 @@ emb_attn:
   d_model: 768
   d_v: 64
   dropout_rate: 0.0
+  emb_dim_exp_factor: 0
   n_heads: 12
   n_layers: 2
 emb_cross:
   d_inner: 3072
   d_model: 768
   dropout_rate: 0.1
+  emb_dim_exp_factor: 0
   n_heads: 8
   n_layers: 2
+  window_size: 3
+  with_global_mlp: false
 emb_ffw:
   act_fn: gelu
   d_model: 768
@@ -33,6 +37,10 @@ emb_ffw:
   n_ff_layers: 2
   n_out_layers: 1
   window_size: 3
+emb_gate:
+  d_model: 768
+  dropout_rate: 0.1
+  exp_factor: 4
 emb_graph:
   d_model: 768
   gnn_conv:
@@ -50,6 +58,7 @@ emb_mlp:
   act_fn: gelu
   d_model: 768
   d_out: 768
+  emb_dim_exp_factor: 0
   n_out_layers: 1
   n_window_layers: 1
   window_size: 3

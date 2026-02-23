@@ -410,7 +410,7 @@ class EmbAttnCfg(BaseModel):
     d_inner: int
     n_layers: int
     dropout_rate: float
-    emb_dim_exp_rate: int = 0  # If positive, expand each embedding into this many embeddings before attention
+    emb_dim_exp_factor: int = 0  # If positive, expand each embedding into this many embeddings before attention
 
 
 class EmbMlpCfg(BaseModel):
@@ -420,7 +420,7 @@ class EmbMlpCfg(BaseModel):
     n_window_layers: int = 1
     n_out_layers: int = 1
     act_fn: str = 'gelu'
-    emb_dim_exp_rate: int = 0  # If positive, expand each embedding into this many embeddings before MLP
+    emb_dim_exp_factor: int = 0  # If positive, expand each embedding into this many embeddings before MLP
 
 
 class EmbFfwCfg(BaseModel):
@@ -448,7 +448,7 @@ class EmbCrossCfg(BaseModel):
     dropout_rate: float = 0.1
     window_size: int = 3  # Number of input embeddings (window_size - 1) + 1 prompt
     with_global_mlp: bool = False  # If True, add MLP layer after each cross-attention that takes prompt + all inputs concatenated
-    emb_dim_exp_rate: int = 0  # If positive, expand each embedding into this many embeddings before cross-attention
+    emb_dim_exp_factor: int = 0  # If positive, expand each embedding into this many embeddings before cross-attention
 
 
 class EmbRnnInputOrder(str, Enum):
@@ -473,7 +473,7 @@ class EmbGateCfg(BaseModel):
     Prompt acts as a gate controller over two concatenated data embeddings.
     """
     d_model: int  # Input and output embedding dimension
-    expansion_factor: int = 4  # Multiplier for inner dimension (d_inner = d_model * expansion_factor)
+    exp_factor: int = 4  # Multiplier for inner dimension (d_inner = d_model * exp_factor)
     dropout_rate: float = 0.1
 
 
@@ -833,9 +833,9 @@ def create_encdec_graph_bert_cfg(
         dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
         share_enc_dec_proj_weights: bool = False, middle_type: EncdecMiddleType = EncdecMiddleType.Graph,
         n_graph_layers: int = 1, gnn_hidden_dim: int = 0, gnn_conv_name: str = 'GCNConv', gnn_conv_params: Optional[Dict[str, Any]] = None,
-        n_emb_attn_layers: int = 2, emb_attn_dim_exp_rate: int = 0,
+        n_emb_attn_layers: int = 2, emb_attn_dim_exp_factor: int = 0,
         emb_mlp_window_size: int = 3, emb_mlp_n_window_layers: int = 1, emb_mlp_n_out_layers: int = 1,
-        emb_mlp_act_fn: str = 'gelu', emb_mlp_dim_exp_rate: int = 0,
+        emb_mlp_act_fn: str = 'gelu', emb_mlp_dim_exp_factor: int = 0,
         emb_rnn_n_layers: int = 1, emb_rnn_hidden_dim: int = 0,
         emb_rnn_input_order: EmbRnnInputOrder = EmbRnnInputOrder.ContextPrompts,
         emb_rnn_next_tok_from_hidden: bool = True,
@@ -843,8 +843,8 @@ def create_encdec_graph_bert_cfg(
         emb_ffw_window_size: int = 3, emb_ffw_n_ff_layers: int = 2, emb_ffw_n_out_layers: int = 1,
         emb_ffw_dropout_rate: float = 0.1, emb_ffw_act_fn: str = 'gelu',
         emb_cross_n_heads: int = 8, emb_cross_n_layers: int = 2, emb_cross_d_inner: int = 0, emb_cross_dropout_rate: float = 0.1,
-        emb_cross_window_size: int = 3, emb_cross_with_global_mlp: bool = False, emb_cross_dim_exp_rate: int = 0,
-        emb_gate_expansion_factor: int = 4, emb_gate_dropout_rate: float = 0.1,
+        emb_cross_window_size: int = 3, emb_cross_with_global_mlp: bool = False, emb_cross_dim_exp_factor: int = 0,
+        emb_gate_exp_factor: int = 4, emb_gate_dropout_rate: float = 0.1,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: float = 1.0, cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All, cite_toks_target_scale: float = 1.0,
@@ -916,13 +916,13 @@ def create_encdec_graph_bert_cfg(
 
     cfg_attn = EmbAttnCfg(
         d_model=d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_inner=d_inner, n_layers=n_emb_attn_layers, dropout_rate=dec_dropout_rate,
-        emb_dim_exp_rate=emb_attn_dim_exp_rate,
+        emb_dim_exp_factor=emb_attn_dim_exp_factor,
     )
 
     cfg_mlp = EmbMlpCfg(
         d_model=d_model, d_out=cfg_dec.d_model, window_size=emb_mlp_window_size,
         n_window_layers=emb_mlp_n_window_layers, n_out_layers=emb_mlp_n_out_layers, act_fn=emb_mlp_act_fn,
-        emb_dim_exp_rate=emb_mlp_dim_exp_rate,
+        emb_dim_exp_factor=emb_mlp_dim_exp_factor,
     )
 
     rnn_cell_params = create_cls_params(emb_rnn_cell_name, rnn_name_to_defaults, emb_rnn_cell_params)
@@ -948,11 +948,11 @@ def create_encdec_graph_bert_cfg(
         d_model=d_model, n_heads=emb_cross_n_heads, n_layers=emb_cross_n_layers,
         d_inner=cross_d_inner, dropout_rate=emb_cross_dropout_rate,
         window_size=emb_cross_window_size, with_global_mlp=emb_cross_with_global_mlp,
-        emb_dim_exp_rate=emb_cross_dim_exp_rate,
+        emb_dim_exp_factor=emb_cross_dim_exp_factor,
     )
 
     cfg_gate = EmbGateCfg(
-        d_model=d_model, expansion_factor=emb_gate_expansion_factor, dropout_rate=emb_gate_dropout_rate,
+        d_model=d_model, exp_factor=emb_gate_exp_factor, dropout_rate=emb_gate_dropout_rate,
     )
 
     cfg_train = EncdecTrainCfg(
@@ -1369,9 +1369,9 @@ def copy_override_encdec_graph_bert_cfg(
         dec_dropout_rate: Optional[float] = None, dec_temperature: Optional[float] = None, share_enc_dec_proj_weights: Optional[bool] = None,
         middle_type: Optional[EncdecMiddleType] = None,
         n_graph_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None, gnn_conv_name: Optional[str] = None, gnn_conv_params: Optional[Dict[str, Any]] = None,
-        n_emb_attn_layers: Optional[int] = None, emb_attn_dim_exp_rate: Optional[int] = None,
+        n_emb_attn_layers: Optional[int] = None, emb_attn_dim_exp_factor: Optional[int] = None,
         emb_mlp_window_size: Optional[int] = None, emb_mlp_n_window_layers: Optional[int] = None, emb_mlp_n_out_layers: Optional[int] = None,
-        emb_mlp_act_fn: Optional[str] = None, emb_mlp_dim_exp_rate: Optional[int] = None,
+        emb_mlp_act_fn: Optional[str] = None, emb_mlp_dim_exp_factor: Optional[int] = None,
         emb_rnn_n_layers: Optional[int] = None, emb_rnn_hidden_dim: Optional[int] = None,
         emb_rnn_input_order: Optional[EmbRnnInputOrder] = None, emb_rnn_next_tok_from_hidden: Optional[bool] = None,
         emb_rnn_cell_name: Optional[str] = None, emb_rnn_cell_params: Optional[Dict[str, Any]] = None,
@@ -1380,7 +1380,8 @@ def copy_override_encdec_graph_bert_cfg(
         emb_cross_n_heads: Optional[int] = None, emb_cross_n_layers: Optional[int] = None,
         emb_cross_d_inner: Optional[int] = None, emb_cross_dropout_rate: Optional[float] = None,
         emb_cross_window_size: Optional[int] = None, emb_cross_with_global_mlp: Optional[bool] = None,
-        emb_cross_dim_exp_rate: Optional[int] = None,
+        emb_cross_dim_exp_factor: Optional[int] = None,
+        emb_gate_exp_factor: Optional[int] = None, emb_gate_dropout_rate: Optional[float] = None,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None, cite_toks_target_scale: Optional[float] = None,
@@ -1408,12 +1409,12 @@ def copy_override_encdec_graph_bert_cfg(
     gnn_conv_name = coalesce(gnn_conv_name, cfg.emb_graph.gnn_conv.cls_name)
     gnn_conv_params = coalesce(gnn_conv_params, cfg.emb_graph.gnn_conv.params)
     n_emb_attn_layers = coalesce(n_emb_attn_layers, cfg.emb_attn.n_layers)
-    emb_attn_dim_exp_rate = coalesce(emb_attn_dim_exp_rate, cfg.emb_attn.emb_dim_exp_rate)
+    emb_attn_dim_exp_factor = coalesce(emb_attn_dim_exp_factor, cfg.emb_attn.emb_dim_exp_factor)
     emb_mlp_window_size = coalesce(emb_mlp_window_size, cfg.emb_mlp.window_size)
     emb_mlp_n_window_layers = coalesce(emb_mlp_n_window_layers, cfg.emb_mlp.n_window_layers)
     emb_mlp_n_out_layers = coalesce(emb_mlp_n_out_layers, cfg.emb_mlp.n_out_layers)
     emb_mlp_act_fn = coalesce(emb_mlp_act_fn, cfg.emb_mlp.act_fn)
-    emb_mlp_dim_exp_rate = coalesce(emb_mlp_dim_exp_rate, cfg.emb_mlp.emb_dim_exp_rate)
+    emb_mlp_dim_exp_factor = coalesce(emb_mlp_dim_exp_factor, cfg.emb_mlp.emb_dim_exp_factor)
     emb_rnn_n_layers = coalesce(emb_rnn_n_layers, cfg.emb_rnn.n_layers)
     emb_rnn_hidden_dim = coalesce(emb_rnn_hidden_dim, cfg.emb_rnn.hidden_dim)
     emb_rnn_input_order = coalesce(emb_rnn_input_order, cfg.emb_rnn.input_order)
@@ -1431,7 +1432,9 @@ def copy_override_encdec_graph_bert_cfg(
     emb_cross_dropout_rate = coalesce(emb_cross_dropout_rate, cfg.emb_cross.dropout_rate)
     emb_cross_window_size = coalesce(emb_cross_window_size, cfg.emb_cross.window_size)
     emb_cross_with_global_mlp = coalesce(emb_cross_with_global_mlp, cfg.emb_cross.with_global_mlp)
-    emb_cross_dim_exp_rate = coalesce(emb_cross_dim_exp_rate, cfg.emb_cross.emb_dim_exp_rate)
+    emb_cross_dim_exp_factor = coalesce(emb_cross_dim_exp_factor, cfg.emb_cross.emb_dim_exp_factor)
+    emb_gate_exp_factor = coalesce(emb_gate_exp_factor, cfg.emb_gate.exp_factor)
+    emb_gate_dropout_rate = coalesce(emb_gate_dropout_rate, cfg.emb_gate.dropout_rate)
     pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
     pretrained_encdecgraph_model_path = coalesce(pretrained_encdecgraph_model_path, cfg.train_cfg.pretrained_encdecgraph_model_path)
     cite_toks_target_weight = coalesce(cite_toks_target_weight, cfg.train_cfg.cite_toks_target_weight)
@@ -1458,10 +1461,10 @@ def copy_override_encdec_graph_bert_cfg(
         dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature, share_enc_dec_proj_weights=share_enc_dec_proj_weights,
         middle_type=middle_type,
         n_graph_layers=n_graph_layers, gnn_hidden_dim=gnn_hidden_dim, gnn_conv_name=gnn_conv_name, gnn_conv_params=gnn_conv_params,
-        n_emb_attn_layers=n_emb_attn_layers, emb_attn_dim_exp_rate=emb_attn_dim_exp_rate,
+        n_emb_attn_layers=n_emb_attn_layers, emb_attn_dim_exp_factor=emb_attn_dim_exp_factor,
         emb_mlp_window_size=emb_mlp_window_size, emb_mlp_n_window_layers=emb_mlp_n_window_layers,
         emb_mlp_n_out_layers=emb_mlp_n_out_layers, emb_mlp_act_fn=emb_mlp_act_fn,
-        emb_mlp_dim_exp_rate=emb_mlp_dim_exp_rate,
+        emb_mlp_dim_exp_factor=emb_mlp_dim_exp_factor,
         emb_rnn_n_layers=emb_rnn_n_layers, emb_rnn_hidden_dim=emb_rnn_hidden_dim,
         emb_rnn_input_order=emb_rnn_input_order, emb_rnn_next_tok_from_hidden=emb_rnn_next_tok_from_hidden,
         emb_rnn_cell_name=emb_rnn_cell_name, emb_rnn_cell_params=emb_rnn_cell_params,
@@ -1470,7 +1473,8 @@ def copy_override_encdec_graph_bert_cfg(
         emb_cross_n_heads=emb_cross_n_heads, emb_cross_n_layers=emb_cross_n_layers,
         emb_cross_d_inner=emb_cross_d_inner, emb_cross_dropout_rate=emb_cross_dropout_rate,
         emb_cross_window_size=emb_cross_window_size, emb_cross_with_global_mlp=emb_cross_with_global_mlp,
-        emb_cross_dim_exp_rate=emb_cross_dim_exp_rate,
+        emb_cross_dim_exp_factor=emb_cross_dim_exp_factor,
+        emb_gate_exp_factor=emb_gate_exp_factor, emb_gate_dropout_rate=emb_gate_dropout_rate,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type, cite_toks_target_scale=cite_toks_target_scale,
@@ -1767,13 +1771,13 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
         postfix_parts.append('_'.join(graph_parts))
     elif model_cfg.middle_type == EncdecMiddleType.Attn:
         attn_parts = [f'embattn_lrs{attn.n_layers}']
-        if attn.emb_dim_exp_rate > 0:
-            attn_parts.append(f'exp{attn.emb_dim_exp_rate}')
+        if attn.emb_dim_exp_factor > 0:
+            attn_parts.append(f'exp{attn.emb_dim_exp_factor}')
         postfix_parts.append('_'.join(attn_parts))
     elif model_cfg.middle_type == EncdecMiddleType.Mlp:
         mlp_parts = [f'embmlp_win{mlp.window_size}_wlrs{mlp.n_window_layers}_olrs{mlp.n_out_layers}_act{mlp.act_fn.capitalize()}']
-        if mlp.emb_dim_exp_rate > 0:
-            mlp_parts.append(f'exp{mlp.emb_dim_exp_rate}')
+        if mlp.emb_dim_exp_factor > 0:
+            mlp_parts.append(f'exp{mlp.emb_dim_exp_factor}')
         postfix_parts.append('_'.join(mlp_parts))
     elif model_cfg.middle_type == EncdecMiddleType.Rnn:
         rnn_parts = [f'embrnn_lrs{rnn.n_layers}']
@@ -1797,9 +1801,15 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
         if cross.dropout_rate > 0:
             cross_parts.append(f'dp{cross.dropout_rate}')
         cross_parts.append(bool_param_to_str('gmlp', cross.with_global_mlp))
-        if cross.emb_dim_exp_rate > 0:
-            cross_parts.append(f'exp{cross.emb_dim_exp_rate}')
+        if cross.emb_dim_exp_factor > 0:
+            cross_parts.append(f'exp{cross.emb_dim_exp_factor}')
         postfix_parts.append('_'.join(cross_parts))
+    elif model_cfg.middle_type == EncdecMiddleType.Gate:
+        gate = model_cfg.emb_gate
+        gate_parts = [f'embgate_exp{gate.exp_factor}']
+        if gate.dropout_rate > 0:
+            gate_parts.append(f'dp{gate.dropout_rate}')
+        postfix_parts.append('_'.join(gate_parts))
     else:
         raise Exception(f'Unsupported middle_type = {model_cfg.middle_type}')
 

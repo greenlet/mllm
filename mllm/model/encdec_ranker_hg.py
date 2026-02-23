@@ -707,13 +707,13 @@ class EmbAttn(nn.Module):
         ])
 
         # Dimensionality expansion layers
-        if cfg.emb_dim_exp_rate > 0:
-            # Expand each embedding into emb_dim_exp_rate embeddings
-            # input_expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, emb_dim_exp_rate * d_model)
-            self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_rate * cfg.d_model, bias=True)
+        if cfg.emb_dim_exp_factor > 0:
+            # Expand each embedding into emb_dim_exp_factor embeddings
+            # input_expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, emb_dim_exp_factor * d_model)
+            self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_factor * cfg.d_model, bias=True)
             # Contract expanded prompt embeddings back to single embedding
-            # input_contract: (batch_size, emb_dim_exp_rate * d_model) -> (batch_size, d_model)
-            self.input_contract = nn.Linear(cfg.emb_dim_exp_rate * cfg.d_model, cfg.d_model, bias=True)
+            # input_contract: (batch_size, emb_dim_exp_factor * d_model) -> (batch_size, d_model)
+            self.input_contract = nn.Linear(cfg.emb_dim_exp_factor * cfg.d_model, cfg.d_model, bias=True)
 
         self.init_weights()
 
@@ -727,23 +727,23 @@ class EmbAttn(nn.Module):
     # x: (batch_size, seq_len, d_model)
     # returns: (batch_size, seq_len, d_model)
     def forward(self, x: Tensor, attn_mask: Optional[Tensor] = None) -> Tensor:
-        exp_rate = self.cfg.emb_dim_exp_rate
+        exp_factor = self.cfg.emb_dim_exp_factor
         batch_size, seq_len = x.shape[:2]
 
-        if exp_rate > 0:
-            # Expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, exp_rate * d_model)
+        if exp_factor > 0:
+            # Expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, exp_factor * d_model)
             x_expanded = self.input_expand(x)
-            # Reshape to: (batch_size, seq_len * exp_rate, d_model)
+            # Reshape to: (batch_size, seq_len * exp_factor, d_model)
             x = x_expanded.reshape(batch_size, -1, self.cfg.d_model)
 
         out = x
         for layer in self.layers:
             out, _ = layer(out, slf_attn_mask=attn_mask)
 
-        if exp_rate > 0:
-            # prompt_out: (batch_size, seq_len, exp_rate * d_model)
-            prompt_out = out.reshape(batch_size, seq_len, exp_rate * self.cfg.d_model)
-            # Contract: (batch_size, seq_len, exp_rate * d_model) -> (batch_size, seq_len, d_model)
+        if exp_factor > 0:
+            # prompt_out: (batch_size, seq_len, exp_factor * d_model)
+            prompt_out = out.reshape(batch_size, seq_len, exp_factor * self.cfg.d_model)
+            # Contract: (batch_size, seq_len, exp_factor * d_model) -> (batch_size, seq_len, d_model)
             prompt_out = self.input_contract(prompt_out)
             return prompt_out
 
@@ -758,26 +758,26 @@ class EmbMlp(nn.Module):
         self.cfg = cfg
         bias = True
         act_fn = get_activation_module(self.cfg.act_fn)
-        exp_rate = cfg.emb_dim_exp_rate if cfg.emb_dim_exp_rate > 0 else 1
+        exp_factor = cfg.emb_dim_exp_factor if cfg.emb_dim_exp_factor > 0 else 1
         
         assert cfg.n_window_layers >= 1, f'At least one window layer is required. cfg.n_window_layers = {cfg.n_window_layers}'
         assert cfg.n_out_layers >= 1, f'At least one output layer is required. cfg.n_out_layers = {cfg.n_out_layers}'
 
         # Dimensionality expansion layers
-        if cfg.emb_dim_exp_rate > 0:
-            self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_rate * cfg.d_model, bias=True)
+        if cfg.emb_dim_exp_factor > 0:
+            self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_factor * cfg.d_model, bias=True)
 
         layers = []
-        # Window layers: from window_size * exp_rate * d_model to window_size * exp_rate * d_out
+        # Window layers: from window_size * exp_factor * d_model to window_size * exp_factor * d_out
         for i in range(cfg.n_window_layers):
-            in_features = cfg.window_size * exp_rate * cfg.d_model if i == 0 else cfg.window_size * exp_rate * cfg.d_out
-            out_features = cfg.window_size * exp_rate * cfg.d_out
+            in_features = cfg.window_size * exp_factor * cfg.d_model if i == 0 else cfg.window_size * exp_factor * cfg.d_out
+            out_features = cfg.window_size * exp_factor * cfg.d_out
             layers.append(nn.Linear(in_features=in_features, out_features=out_features, bias=bias))
             layers.append(act_fn())
         
-        # Output layers: from window_size * exp_rate * d_out to d_out
+        # Output layers: from window_size * exp_factor * d_out to d_out
         for i in range(cfg.n_out_layers):
-            in_features = cfg.window_size * exp_rate * cfg.d_out if i == 0 else cfg.d_out
+            in_features = cfg.window_size * exp_factor * cfg.d_out if i == 0 else cfg.d_out
             out_features = cfg.d_out
             layers.append(nn.Linear(in_features=in_features, out_features=out_features, bias=bias))
             if i < cfg.n_out_layers - 1:
@@ -797,15 +797,15 @@ class EmbMlp(nn.Module):
     # returns: (batch_size, d_out)
     def forward(self, inp: Tensor) -> Tensor:
         batch_size = inp.shape[0]
-        exp_rate = self.cfg.emb_dim_exp_rate
+        exp_factor = self.cfg.emb_dim_exp_factor
 
-        if exp_rate > 0:
-            # Expand: (batch_size, window_size, d_model) -> (batch_size, window_size, exp_rate * d_model)
+        if exp_factor > 0:
+            # Expand: (batch_size, window_size, d_model) -> (batch_size, window_size, exp_factor * d_model)
             inp = self.input_expand(inp)
-            # Reshape to: (batch_size, window_size * exp_rate, d_model)
+            # Reshape to: (batch_size, window_size * exp_factor, d_model)
             inp = inp.reshape(batch_size, -1, self.cfg.d_model)
 
-        # out: (batch_size, window_size * exp_rate * d_model) or (batch_size, window_size * d_model)
+        # out: (batch_size, window_size * exp_factor * d_model) or (batch_size, window_size * d_model)
         out = inp.reshape((batch_size, -1))
         # out: (batch_size, d_out)
         out = self.mlp(out)
@@ -1065,10 +1065,10 @@ class EmbCross(nn.Module):
         ])
 
         # Dimensionality expansion layers
-        if cfg.emb_dim_exp_rate > 0:
-            # Expand each embedding into emb_dim_exp_rate embeddings
-            # input_expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, emb_dim_exp_rate * d_model)
-            self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_rate * cfg.d_model, bias=True)
+        if cfg.emb_dim_exp_factor > 0:
+            # Expand each embedding into emb_dim_exp_factor embeddings
+            # input_expand: (batch_size, seq_len, d_model) -> (batch_size, seq_len, emb_dim_exp_factor * d_model)
+            self.input_expand = nn.Linear(cfg.d_model, cfg.emb_dim_exp_factor * cfg.d_model, bias=True)
             self.input_prompt_layers = nn.ModuleList([
                 CrossAttentionLayer(
                     n_heads=cfg.n_heads, d_model=cfg.d_model, d_inner=cfg.d_inner,
@@ -1082,10 +1082,10 @@ class EmbCross(nn.Module):
         if cfg.with_global_mlp:
             # Number of input embeddings = window_size - 1 (1 is the prompt)
             n_inputs = cfg.window_size - 1
-            # Multiply by exp_rate if using dimensionality expansion
-            exp_rate = cfg.emb_dim_exp_rate if cfg.emb_dim_exp_rate > 0 else 1
-            # Input dimension: prompt (d_model * exp_rate) + n_inputs (n_inputs * d_model * exp_rate)
-            in_dim = cfg.d_model * exp_rate + n_inputs * cfg.d_model * exp_rate
+            # Multiply by exp_factor if using dimensionality expansion
+            exp_factor = cfg.emb_dim_exp_factor if cfg.emb_dim_exp_factor > 0 else 1
+            # Input dimension: prompt (d_model * exp_factor) + n_inputs (n_inputs * d_model * exp_factor)
+            in_dim = cfg.d_model * exp_factor + n_inputs * cfg.d_model * exp_factor
             
             self.global_mlp_layers = nn.ModuleList()
             for i in range(cfg.n_layers):
@@ -1117,35 +1117,35 @@ class EmbCross(nn.Module):
     def forward(self, input_embs: Tensor, prompt_emb: Tensor) -> Tensor:
         batch_size = input_embs.shape[0]
         seq_len = input_embs.shape[1]
-        exp_rate = self.cfg.emb_dim_exp_rate
+        exp_factor = self.cfg.emb_dim_exp_factor
         
         # Apply dimensionality expansion if configured
-        if exp_rate > 0:
-            # Expand input embeddings: (batch_size, seq_len, d_model) -> (batch_size, seq_len * exp_rate, d_model)
-            # First expand: (batch_size, seq_len, exp_rate * d_model)
+        if exp_factor > 0:
+            # Expand input embeddings: (batch_size, seq_len, d_model) -> (batch_size, seq_len * exp_factor, d_model)
+            # First expand: (batch_size, seq_len, exp_factor * d_model)
             input_expanded = self.input_expand(input_embs)
-            # Reshape to: (batch_size, seq_len * exp_rate, d_model)
-            input_embs = input_expanded.reshape(batch_size, seq_len * exp_rate, self.cfg.d_model)
+            # Reshape to: (batch_size, seq_len * exp_factor, d_model)
+            input_embs = input_expanded.reshape(batch_size, seq_len * exp_factor, self.cfg.d_model)
             
-            # Expand prompt embedding: (batch_size, 1, d_model) -> (batch_size, exp_rate, d_model)
-            # First expand: (batch_size, 1, exp_rate * d_model)
+            # Expand prompt embedding: (batch_size, 1, d_model) -> (batch_size, exp_factor, d_model)
+            # First expand: (batch_size, 1, exp_factor * d_model)
             prompt_expanded = self.input_expand(prompt_emb)
-            # Reshape to: (batch_size, exp_rate, d_model)
-            prompt_emb = prompt_expanded.reshape(batch_size, exp_rate, self.cfg.d_model)
+            # Reshape to: (batch_size, exp_factor, d_model)
+            prompt_emb = prompt_expanded.reshape(batch_size, exp_factor, self.cfg.d_model)
             
             # Update seq_len for the rest of processing
-            seq_len = seq_len * exp_rate
+            seq_len = seq_len * exp_factor
         
         if self.cfg.with_global_mlp:
             # Determine d_model for prompt in global MLP context
-            prompt_n_embs = exp_rate if exp_rate > 0 else 1
+            prompt_n_embs = exp_factor if exp_factor > 0 else 1
             
             # Alternate: cross_attn -> global_mlp -> cross_attn -> global_mlp -> ...
             for i in range(self.cfg.n_layers):
                 # Cross attention layer
                 # prompt_emb: (batch_size, prompt_n_embs, d_model)
                 # input_embs: (batch_size, seq_len, d_model)
-                if self.cfg.emb_dim_exp_rate > 0:
+                if self.cfg.emb_dim_exp_factor > 0:
                     input_embs = self.input_prompt_layers[i](input_embs, prompt_emb)
                 prompt_emb = self.prompt_input_layers[i](prompt_emb, input_embs)
                 
@@ -1180,9 +1180,9 @@ class EmbCross(nn.Module):
         else:
             # Without global MLP: just run cross attention layers
             for i in range(self.cfg.n_layers):
-                # prompt_emb: (batch_size, prompt_n_embs, d_model) or (batch_size, exp_rate, d_model) if expanded
+                # prompt_emb: (batch_size, prompt_n_embs, d_model) or (batch_size, exp_factor, d_model) if expanded
                 # input_embs: (batch_size, seq_len, d_model)
-                if self.cfg.emb_dim_exp_rate > 0:
+                if self.cfg.emb_dim_exp_factor > 0:
                     input_embs = self.input_prompt_layers[i](input_embs, prompt_emb)
                 prompt_emb  = self.prompt_input_layers[i](prompt_emb, input_embs)
             
@@ -1202,7 +1202,7 @@ class EmbGate(nn.Module):
     def __init__(self, cfg: EmbGateCfg):
         super().__init__()
         self.cfg = cfg
-        d_inner = cfg.d_model * cfg.expansion_factor
+        d_inner = cfg.d_model * cfg.exp_factor
 
         # Feature extraction for data (the signal): concatenated pair of d_model embeddings -> d_inner
         self.data_proj = nn.Sequential(
@@ -1407,7 +1407,7 @@ class EncdecGraphBert(nn.Module):
     # returns: (batch_size, d_model)
     def run_middle_attn(self, inp_enc_embs: Tensor, prompt_enc_embs: Tensor, batch: MaskedCiteBatch) -> Tensor:
         batch_size = inp_enc_embs.shape[0]
-        exp_rate = self.cfg.emb_attn.emb_dim_exp_rate
+        exp_factor = self.cfg.emb_attn.emb_dim_exp_factor
         out_attn_embs = []
         for ib in range(batch_size):
             # prompt_embs: (1, d_model)
@@ -1537,10 +1537,12 @@ class EncdecGraphBert(nn.Module):
         batch_size = inp_enc_embs.shape[0]
         out_gate_embs = []
         for ib in range(batch_size):
-            # Pick a neighboring input embedding as e_data2 (wrap around at boundaries)
-            ib2 = ib + 1 if ib + 1 < batch_size else ib - 1
+            ib1 = ib
+            ib2 = ib - 1 if ib > 0 else ib + 1
+            if np.random.rand() < 0.5:
+                ib1, ib2 = ib2, ib1
             # e_data1, e_data2: (1, d_model)
-            e_data1 = inp_enc_embs[ib:ib + 1]
+            e_data1 = inp_enc_embs[ib1:ib1 + 1]
             e_data2 = inp_enc_embs[ib2:ib2 + 1]
             # e_prompt: (1, d_model)
             e_prompt = prompt_enc_embs[ib:ib + 1]
