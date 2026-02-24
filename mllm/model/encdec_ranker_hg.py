@@ -1192,10 +1192,40 @@ class EmbCross(nn.Module):
         return prompt_emb
 
 
+class GatedResidualBlock(nn.Module):
+    """Single gated residual layer used when EmbGate is configured with n_layers > 1.
+    The prompt controls an element-wise gate over the signal, followed by a residual add.
+    """
+    def __init__(self, d_model: int, exp_factor: int, dropout_rate: float):
+        super().__init__()
+        d_inner = d_model * exp_factor
+        self.layernorm = nn.LayerNorm(d_model)
+        self.fc1 = nn.Linear(d_model, d_inner)
+        self.fc2 = nn.Linear(d_inner, d_model)
+        self.gate_fc = nn.Linear(d_model, d_inner)
+        self.activation = nn.GELU()
+        self.dropout = nn.Dropout(dropout_rate)
+
+    # x:          (batch_size, d_model)
+    # prompt_emb: (batch_size, d_model)
+    # returns:    (batch_size, d_model)
+    def forward(self, x: Tensor, prompt_emb: Tensor) -> Tensor:
+        residual = x
+        x = self.layernorm(x)
+        signal = self.fc1(x)
+        gate = torch.sigmoid(self.gate_fc(prompt_emb))
+        x = self.activation(signal * gate)
+        x = self.fc2(x)
+        return residual + self.dropout(x)
+
+
 class EmbGate(nn.Module):
     """Gated middle model where the prompt acts as a controller gate over data embeddings.
     Two input embeddings are concatenated to form the signal, and the prompt generates
     an element-wise gate that filters the signal before projecting back to d_model.
+
+    n_layers=1 (default): original single-layer architecture.
+    n_layers>1: input projection to d_model, then n_layers stacked GatedResidualBlocks.
     """
     cfg: EmbGateCfg
 
@@ -1204,24 +1234,32 @@ class EmbGate(nn.Module):
         self.cfg = cfg
         d_inner = cfg.d_model * cfg.exp_factor
 
-        # Feature extraction for data (the signal): concatenated pair of d_model embeddings -> d_inner
-        self.data_proj = nn.Sequential(
-            nn.Linear(cfg.d_model * 2, d_inner),
-            nn.GELU(),
-        )
-
-        # Gate generation from prompt (the controller): d_model -> d_inner, bounded in [0, 1]
-        self.gate_proj = nn.Sequential(
-            nn.Linear(cfg.d_model, d_inner),
-            nn.Sigmoid(),
-        )
-
-        # Final fusion and compression: d_inner -> d_model
-        self.out_proj = nn.Sequential(
-            nn.Dropout(cfg.dropout_rate),
-            nn.Linear(d_inner, cfg.d_model),
-            nn.LayerNorm(cfg.d_model),
-        )
+        if cfg.n_layers == 1:
+            # Original single-layer architecture
+            # Feature extraction for data (the signal): concatenated pair of d_model embeddings -> d_inner
+            self.data_proj = nn.Sequential(
+                nn.Linear(cfg.d_model * 2, d_inner),
+                nn.GELU(),
+            )
+            # Gate generation from prompt (the controller): d_model -> d_inner, bounded in [0, 1]
+            self.gate_proj = nn.Sequential(
+                nn.Linear(cfg.d_model, d_inner),
+                nn.Sigmoid(),
+            )
+            # Final fusion and compression: d_inner -> d_model
+            self.out_proj = nn.Sequential(
+                nn.Dropout(cfg.dropout_rate),
+                nn.Linear(d_inner, cfg.d_model),
+                nn.LayerNorm(cfg.d_model),
+            )
+        else:
+            # Multi-layer architecture: project concatenated data to d_model, then stack GatedResidualBlocks
+            self.input_projection = nn.Linear(cfg.d_model * 2, cfg.d_model)
+            self.layers = nn.ModuleList([
+                GatedResidualBlock(cfg.d_model, cfg.exp_factor, cfg.dropout_rate)
+                for _ in range(cfg.n_layers)
+            ])
+            self.final_norm = nn.LayerNorm(cfg.d_model)
 
         self.init_weights()
 
@@ -1239,14 +1277,21 @@ class EmbGate(nn.Module):
     def forward(self, e_prompt: Tensor, e_data1: Tensor, e_data2: Tensor) -> Tensor:
         # data_combined: (batch_size, d_model * 2)
         data_combined = torch.cat([e_data1, e_data2], dim=-1)
-        # signal: (batch_size, d_inner)
-        signal = self.data_proj(data_combined)
-        # gate: (batch_size, d_inner)
-        gate = self.gate_proj(e_prompt)
-        # gated_features: (batch_size, d_inner)
-        gated_features = signal * gate
-        # output: (batch_size, d_model)
-        return self.out_proj(gated_features)
+        if self.cfg.n_layers == 1:
+            # signal: (batch_size, d_inner)
+            signal = self.data_proj(data_combined)
+            # gate: (batch_size, d_inner)
+            gate = self.gate_proj(e_prompt)
+            # gated_features: (batch_size, d_inner)
+            gated_features = signal * gate
+            # output: (batch_size, d_model)
+            return self.out_proj(gated_features)
+        else:
+            # x: (batch_size, d_model)
+            x = self.input_projection(data_combined)
+            for layer in self.layers:
+                x = layer(x, e_prompt)
+            return self.final_norm(x)
 
 
 class EncdecGraphBert(nn.Module):

@@ -475,6 +475,7 @@ class EmbGateCfg(BaseModel):
     d_model: int  # Input and output embedding dimension
     exp_factor: int = 4  # Multiplier for inner dimension (d_inner = d_model * exp_factor)
     dropout_rate: float = 0.1
+    n_layers: int = 1  # Number of gated layers; 1 = original single-layer model, >1 = stacked GatedResidualBlocks
 
 
 class EncdecCiteToksTargetType(str, Enum):
@@ -1807,6 +1808,8 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
     elif model_cfg.middle_type == EncdecMiddleType.Gate:
         gate = model_cfg.emb_gate
         gate_parts = [f'embgate_exp{gate.exp_factor}']
+        if gate.n_layers > 1:
+            gate_parts.append(f'nl{gate.n_layers}')
         if gate.dropout_rate > 0:
             gate_parts.append(f'dp{gate.dropout_rate}')
         postfix_parts.append('_'.join(gate_parts))
