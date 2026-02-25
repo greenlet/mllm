@@ -516,6 +516,8 @@ class EncdecGraphBertCfg(BaseModel):
     dec_pyr: DecPyrCfg
     share_enc_dec_proj_weights: bool
     middle_type: EncdecMiddleType
+    mix_prompt: bool = False  # When True, encoded input embeddings + raw prompt token embeddings are fed into EmbAttn
+    mix_prompt_max_seq_len: int = 256  # Max combined sequence length for mix_prompt mode
     emb_graph: EmbGraphCfg
     emb_attn: EmbAttnCfg
     emb_mlp: EmbMlpCfg
@@ -833,6 +835,7 @@ def create_encdec_graph_bert_cfg(
         inp_len = 128, dec_enhance_type: HgEnhanceType = HgEnhanceType.Matmul,
         dec_n_layers: int = 7, dec_n_similar_layers: int = 1, dec_dropout_rate: float = 0.0, dec_temperature: float = 0,
         share_enc_dec_proj_weights: bool = False, middle_type: EncdecMiddleType = EncdecMiddleType.Graph,
+        mix_prompt: bool = False, mix_prompt_max_seq_len: int = 256,
         n_graph_layers: int = 1, gnn_hidden_dim: int = 0, gnn_conv_name: str = 'GCNConv', gnn_conv_params: Optional[Dict[str, Any]] = None,
         n_emb_attn_layers: int = 2, emb_attn_dim_exp_factor: int = 0,
         emb_mlp_window_size: int = 3, emb_mlp_n_window_layers: int = 1, emb_mlp_n_out_layers: int = 1,
@@ -845,7 +848,7 @@ def create_encdec_graph_bert_cfg(
         emb_ffw_dropout_rate: float = 0.1, emb_ffw_act_fn: str = 'gelu',
         emb_cross_n_heads: int = 8, emb_cross_n_layers: int = 2, emb_cross_d_inner: int = 0, emb_cross_dropout_rate: float = 0.1,
         emb_cross_window_size: int = 3, emb_cross_with_global_mlp: bool = False, emb_cross_dim_exp_factor: int = 0,
-        emb_gate_exp_factor: int = 4, emb_gate_dropout_rate: float = 0.1,
+        emb_gate_exp_factor: int = 4, emb_gate_dropout_rate: float = 0.1, emb_gate_n_layers: int = 1,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: float = 1.0, cite_toks_target_type: EncdecCiteToksTargetType = EncdecCiteToksTargetType.All, cite_toks_target_scale: float = 1.0,
@@ -953,7 +956,7 @@ def create_encdec_graph_bert_cfg(
     )
 
     cfg_gate = EmbGateCfg(
-        d_model=d_model, exp_factor=emb_gate_exp_factor, dropout_rate=emb_gate_dropout_rate,
+        d_model=d_model, exp_factor=emb_gate_exp_factor, dropout_rate=emb_gate_dropout_rate, n_layers=emb_gate_n_layers,
     )
 
     cfg_train = EncdecTrainCfg(
@@ -980,7 +983,8 @@ def create_encdec_graph_bert_cfg(
 
     cfg_encdec_bert = EncdecGraphBertCfg(
         enc_bert=cfg_enc, dec_pyr=cfg_dec, share_enc_dec_proj_weights=share_enc_dec_proj_weights,
-        middle_type=middle_type, emb_graph=cfg_graph, emb_attn=cfg_attn, emb_mlp=cfg_mlp, emb_rnn=cfg_rnn,
+        middle_type=middle_type, mix_prompt=mix_prompt, mix_prompt_max_seq_len=mix_prompt_max_seq_len,
+        emb_graph=cfg_graph, emb_attn=cfg_attn, emb_mlp=cfg_mlp, emb_rnn=cfg_rnn,
         emb_ffw=cfg_ffw, emb_cross=cfg_cross, emb_gate=cfg_gate, train_cfg=cfg_train,
     )
     return cfg_encdec_bert
@@ -1368,7 +1372,7 @@ def copy_override_encdec_graph_bert_cfg(
         cfg: EncdecGraphBertCfg, pretrained_model_name: Optional[str], emb_type: Optional[BertEmbType] = None, inp_len: Optional[int] = None,
         dec_enhance_type: Optional[HgEnhanceType] = None, dec_n_layers: Optional[int] = None, dec_n_similar_layers: Optional[int] = None,
         dec_dropout_rate: Optional[float] = None, dec_temperature: Optional[float] = None, share_enc_dec_proj_weights: Optional[bool] = None,
-        middle_type: Optional[EncdecMiddleType] = None,
+        middle_type: Optional[EncdecMiddleType] = None, mix_prompt: Optional[bool] = None, mix_prompt_max_seq_len: Optional[int] = None,
         n_graph_layers: Optional[int] = None, gnn_hidden_dim: Optional[int] = None, gnn_conv_name: Optional[str] = None, gnn_conv_params: Optional[Dict[str, Any]] = None,
         n_emb_attn_layers: Optional[int] = None, emb_attn_dim_exp_factor: Optional[int] = None,
         emb_mlp_window_size: Optional[int] = None, emb_mlp_n_window_layers: Optional[int] = None, emb_mlp_n_out_layers: Optional[int] = None,
@@ -1382,7 +1386,7 @@ def copy_override_encdec_graph_bert_cfg(
         emb_cross_d_inner: Optional[int] = None, emb_cross_dropout_rate: Optional[float] = None,
         emb_cross_window_size: Optional[int] = None, emb_cross_with_global_mlp: Optional[bool] = None,
         emb_cross_dim_exp_factor: Optional[int] = None,
-        emb_gate_exp_factor: Optional[int] = None, emb_gate_dropout_rate: Optional[float] = None,
+        emb_gate_exp_factor: Optional[int] = None, emb_gate_dropout_rate: Optional[float] = None, emb_gate_n_layers: Optional[int] = None,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_encdecgraph_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
         cite_toks_target_weight: Optional[float] = None, cite_toks_target_type: Optional[EncdecCiteToksTargetType] = None, cite_toks_target_scale: Optional[float] = None,
@@ -1405,6 +1409,8 @@ def copy_override_encdec_graph_bert_cfg(
     dec_temperature = coalesce(dec_temperature, dec.temperature)
     share_enc_dec_proj_weights = coalesce(share_enc_dec_proj_weights, cfg.share_enc_dec_proj_weights)
     middle_type = coalesce(middle_type, cfg.middle_type)
+    mix_prompt = coalesce(mix_prompt, cfg.mix_prompt)
+    mix_prompt_max_seq_len = coalesce(mix_prompt_max_seq_len, cfg.mix_prompt_max_seq_len)
     n_graph_layers = coalesce(n_graph_layers, cfg.emb_graph.n_layers)
     gnn_hidden_dim = coalesce(gnn_hidden_dim, cfg.emb_graph.hidden_dim)
     gnn_conv_name = coalesce(gnn_conv_name, cfg.emb_graph.gnn_conv.cls_name)
@@ -1436,6 +1442,7 @@ def copy_override_encdec_graph_bert_cfg(
     emb_cross_dim_exp_factor = coalesce(emb_cross_dim_exp_factor, cfg.emb_cross.emb_dim_exp_factor)
     emb_gate_exp_factor = coalesce(emb_gate_exp_factor, cfg.emb_gate.exp_factor)
     emb_gate_dropout_rate = coalesce(emb_gate_dropout_rate, cfg.emb_gate.dropout_rate)
+    emb_gate_n_layers = coalesce(emb_gate_n_layers, cfg.emb_gate.n_layers)
     pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
     pretrained_encdecgraph_model_path = coalesce(pretrained_encdecgraph_model_path, cfg.train_cfg.pretrained_encdecgraph_model_path)
     cite_toks_target_weight = coalesce(cite_toks_target_weight, cfg.train_cfg.cite_toks_target_weight)
@@ -1460,7 +1467,7 @@ def copy_override_encdec_graph_bert_cfg(
         pretrained_model_name=pretrained_model_name, tokenizer_name=tokenizer_name, emb_type=emb_type,
         inp_len=inp_len, dec_enhance_type=dec_enhance_type, dec_n_layers=dec_n_layers, dec_n_similar_layers=dec_n_similar_layers,
         dec_dropout_rate=dec_dropout_rate, dec_temperature=dec_temperature, share_enc_dec_proj_weights=share_enc_dec_proj_weights,
-        middle_type=middle_type,
+        middle_type=middle_type, mix_prompt=mix_prompt, mix_prompt_max_seq_len=mix_prompt_max_seq_len,
         n_graph_layers=n_graph_layers, gnn_hidden_dim=gnn_hidden_dim, gnn_conv_name=gnn_conv_name, gnn_conv_params=gnn_conv_params,
         n_emb_attn_layers=n_emb_attn_layers, emb_attn_dim_exp_factor=emb_attn_dim_exp_factor,
         emb_mlp_window_size=emb_mlp_window_size, emb_mlp_n_window_layers=emb_mlp_n_window_layers,
@@ -1475,7 +1482,7 @@ def copy_override_encdec_graph_bert_cfg(
         emb_cross_d_inner=emb_cross_d_inner, emb_cross_dropout_rate=emb_cross_dropout_rate,
         emb_cross_window_size=emb_cross_window_size, emb_cross_with_global_mlp=emb_cross_with_global_mlp,
         emb_cross_dim_exp_factor=emb_cross_dim_exp_factor,
-        emb_gate_exp_factor=emb_gate_exp_factor, emb_gate_dropout_rate=emb_gate_dropout_rate,
+        emb_gate_exp_factor=emb_gate_exp_factor, emb_gate_dropout_rate=emb_gate_dropout_rate, emb_gate_n_layers=emb_gate_n_layers,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=cite_toks_target_weight, cite_toks_target_type=cite_toks_target_type, cite_toks_target_scale=cite_toks_target_scale,
@@ -1748,6 +1755,8 @@ def gen_prefpostfix_encdec_graph_bert(model_cfg: EncdecGraphBertCfg) -> tuple[st
     postfix_parts.append(f'step{dec.step}')
     postfix_parts.append(f'h{dec.n_heads}')
     postfix_parts.append(bool_param_to_str('sw', model_cfg.share_enc_dec_proj_weights))
+    if model_cfg.mix_prompt:
+        postfix_parts.append(f'mixprompt_msl{model_cfg.mix_prompt_max_seq_len}')
 
     if mask_cfg is not None:
         sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)

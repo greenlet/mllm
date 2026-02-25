@@ -21,7 +21,7 @@ from transformers import AutoTokenizer
 from mllm.config.model import EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecMiddleType, HgEnhanceType, EncdecBertCfg, copy_override_encdec_bert_cfg, BertEmbType, copy_override_encdec_graph_bert_cfg, \
     gen_prefpostfix_encdec_bert, gen_prefpostfix_encdec_graph_bert
 from mllm.exp.args import ENCDEC_GRAPH_BERT_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, mask_tokens_ARG, next_tok_pred_ARG, \
-    share_enc_dec_proj_weights_ARG, emb_rnn_next_tok_from_hidden_ARG, emb_cross_with_global_mlp_ARG
+    share_enc_dec_proj_weights_ARG, emb_rnn_next_tok_from_hidden_ARG, emb_cross_with_global_mlp_ARG, mix_prompt_ARG
 from mllm.model.encdec_ranker_hg import EncdecBertAgg, EncdecGraphBert
 from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
@@ -105,6 +105,18 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         description=f'Embedding processing model middle type. Can have values: {list(x.value for x in EncdecMiddleType)}',
         cli=('--emb-middle-type',),
     )
+
+    mix_prompt_STR: str = create_bool_str_field(*mix_prompt_ARG)
+    @property
+    def mix_prompt(self) -> bool:
+        return is_arg_true(mix_prompt_ARG[0], self.mix_prompt_STR)
+
+    mix_prompt_max_seq_len: int = Field(
+        256,
+        description='Max combined sequence length (inp_len + prompt_len) for mix_prompt mode.',
+        cli=('--mix-prompt-max-seq-len',),
+    )
+
     n_graph_layers: int = Field(
         1,
         description='Number of graph layers.',
@@ -275,6 +287,11 @@ class ArgsEncdecGraphBertMultigpuTrain(BaseModel):
         0.1,
         description='Dropout rate for Gate middle model.',
         cli=('--emb-gate-dropout-rate',),
+    )
+    emb_gate_n_layers: int = Field(
+        1,
+        description='Number of gated layers for Gate middle model. 1 = original single-layer model, >1 = stacked GatedResidualBlocks.',
+        cli=('--emb-gate-n-layers',),
     )
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
@@ -489,6 +506,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type, inp_len=args.inp_len, dec_enhance_type=args.dec_enhance_type,
         dec_n_layers=args.dec_n_layers, dec_n_similar_layers=args.dec_n_similar_layers, dec_dropout_rate=args.dec_dropout_rate,
         share_enc_dec_proj_weights=args.share_enc_dec_proj_weights, middle_type=args.emb_middle_type,
+        mix_prompt=args.mix_prompt, mix_prompt_max_seq_len=args.mix_prompt_max_seq_len,
         n_graph_layers=args.n_graph_layers, gnn_hidden_dim=args.gnn_hidden_dim, gnn_conv_name=args.gnn_conv_name, gnn_conv_params=args.gnn_conv_params,
         n_emb_attn_layers=args.n_emb_attn_layers, emb_attn_dim_exp_factor=args.emb_attn_dim_exp_factor,
         emb_mlp_window_size=args.emb_mlp_window_size,
@@ -503,7 +521,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
         emb_cross_d_inner=args.emb_cross_d_inner, emb_cross_dropout_rate=args.emb_cross_dropout_rate,
         emb_cross_window_size=args.emb_cross_window_size, emb_cross_with_global_mlp=args.emb_cross_with_global_mlp,
         emb_cross_dim_exp_factor=args.emb_cross_dim_exp_factor,
-        emb_gate_exp_factor=args.emb_gate_exp_factor, emb_gate_dropout_rate=args.emb_gate_dropout_rate,
+        emb_gate_exp_factor=args.emb_gate_exp_factor, emb_gate_dropout_rate=args.emb_gate_dropout_rate, emb_gate_n_layers=args.emb_gate_n_layers,
         pretrained_encdec_model_path=pretrained_encdec_model_path, pretrained_encdecgraph_model_path=pretrained_encdecgraph_model_path,
         mask_cfg=mask_cfg,
         cite_toks_target_weight=args.cite_toks_target_weight, cite_toks_target_type=args.cite_toks_target_type, cite_toks_target_scale=args.cite_toks_target_scale,

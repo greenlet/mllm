@@ -79,9 +79,10 @@ emb_cross_window_size=3
 emb_cross_dim_exp_factor=4
 emb_cross_with_global_mlp=false
 
-# emb_middle_type=gate
+emb_middle_type=gate
 emb_gate_exp_factor=4
 emb_gate_dropout_rate=0.1
+emb_gate_n_layers=4
 
 cite_toks_target_weight=1
 cite_toks_target_type='all'
@@ -102,6 +103,11 @@ encdec_freeze_epochs=0
 cite_embs_target_type='r2'
 cite_embs_target_type='cosl2'
 cite_embs_target_scale=1.0
+
+
+mix_prompt=false
+mix_prompt_max_seq_len=256
+
 
 #pretrained_encdec_model_path=$train_root_path/encdecbert-20250131_223521-bert-base-uncased-d768-emb_cls-inp128-lrs7x1-enh_mmbb-step2-h12-dp0-t0.0
 pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
@@ -154,6 +160,8 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --dec-dropout-rate $dec_dropout_rate \
   --share-enc-dec-proj-weights $share_enc_dec_proj_weights \
   --emb-middle-type $emb_middle_type \
+  --mix-prompt $mix_prompt \
+  --mix-prompt-max-seq-len $mix_prompt_max_seq_len \
   --n-graph-layers $n_graph_layers \
   --gnn-hidden-dim $gnn_hidden_dim \
   --gnn-conv-name $gnn_conv_name \
@@ -185,6 +193,7 @@ python s_03_10_train_encdec_graph_bert_multigpu.py \
   --emb-cross-with-global-mlp $emb_cross_with_global_mlp \
   --emb-gate-exp-factor $emb_gate_exp_factor \
   --emb-gate-dropout-rate $emb_gate_dropout_rate \
+  --emb-gate-n-layers $emb_gate_n_layers \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

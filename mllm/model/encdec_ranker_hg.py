@@ -1328,6 +1328,11 @@ class EncdecGraphBert(nn.Module):
             self.emb_gate = EmbGate(cfg.emb_gate)
         else:
             raise Exception(f'Graph middle type {self.cfg.middle_type} is not supported')
+
+        if self.cfg.mix_prompt:
+            assert self.cfg.middle_type == EncdecMiddleType.Attn, \
+                f'mix_prompt is only supported with middle_type=Attn, got {self.cfg.middle_type}'
+            self.mix_prompt_pos_emb = nn.Embedding(cfg.mix_prompt_max_seq_len, cfg.emb_attn.d_model)
         word_embeddings = None
         if self.cfg.share_enc_dec_proj_weights:
             word_embeddings = self.enc.bert_model.embeddings.word_embeddings
@@ -1696,19 +1701,65 @@ class EncdecGraphBert(nn.Module):
         # Use no_grad for encoder when frozen during early epochs
         encdec_frozen = epoch >= 0 and epoch < self.cfg.train_cfg.encdec_freeze_epochs
         enc_ctx = torch.no_grad() if encdec_frozen else self.grad_ctx
-        
-        with enc_ctx:
-            # inp_enc_embs: (batch_size, inp_len, d_model)
-            inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
-            # inp_enc_embs: (batch_size, d_model)
-            inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
-            # prompt_enc_embs: (batch_size, inp_len, d_model)
-            prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
-            # prompt_enc_embs: (batch_size, d_model)
-            prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
-        
-        # middle_embs: (batch_size, d_model)
-        middle_embs = self.run_middle(inp_enc_embs, prompt_enc_embs, batch)
+
+        if self.cfg.mix_prompt:
+            # mix_prompt mode: concatenate encoded input embs with raw prompt token embs,
+            # run through EmbAttn, extract prompt CLS token output
+            with enc_ctx:
+                # inp_enc_embs: (batch_size, inp_embs_len, d_model) - full encoded input sequence
+                inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
+
+            # Get raw (non-encoded) prompt token embeddings from BERT word_embeddings
+            # prompt_raw_embs: (batch_size, prompt_len, d_model)
+            prompt_raw_embs = self.enc.bert_model.embeddings.word_embeddings(batch.prompts_toks)
+
+            inp_embs_len = inp_enc_embs.shape[1]
+            prompt_len = batch.prompts_toks.shape[1]
+            total_len = inp_embs_len + prompt_len
+            assert total_len <= self.cfg.mix_prompt_max_seq_len, \
+                f'Combined sequence length {total_len} (inp_embs_len={inp_embs_len} + prompt_len={prompt_len}) exceeds mix_prompt_max_seq_len={self.cfg.mix_prompt_max_seq_len}'
+
+            # Concatenate: [inp_enc_embs, prompt_raw_embs]
+            # combined_embs: (batch_size, inp_embs_len + prompt_len, d_model)
+            combined_embs = torch.cat([inp_enc_embs, prompt_raw_embs], dim=1)
+
+            # Add positional embeddings
+            # pos_ids: (1, total_len)
+            pos_ids = torch.arange(total_len, device=combined_embs.device).unsqueeze(0)
+            # pos_embs: (1, total_len, d_model)
+            pos_embs = self.mix_prompt_pos_emb(pos_ids)
+            combined_embs = combined_embs + pos_embs
+
+            inp_embs_att_mask = torch.ones((batch_size, inp_embs_len), device=combined_embs.device)
+            # Build attention mask: inp_att_mask for input embeddings, prompts_att_mask for prompt tokens
+            # combined_mask: (batch_size, total_len)
+            combined_mask = torch.cat([inp_embs_att_mask, batch.prompts_att_mask], dim=1)
+            # attn_mask: (batch_size, total_len) for broadcasting in multi-head attention
+            attn_mask = combined_mask.unsqueeze(1) # (batch_size, 1, total_len)
+
+            # Run through EmbAttn
+            # attn_out: (batch_size, total_len, d_model)
+            attn_out = self.emb_attn(combined_embs, attn_mask=attn_mask)
+
+            # Extract prompt CLS token (first prompt position) as middle embedding
+            # middle_embs: (batch_size, d_model)
+            middle_embs = attn_out[:, inp_embs_len]
+
+            # inp_enc_embs: (batch_size, d_model) - CLS for loss calculation
+            inp_enc_embs = inp_enc_embs[:, 0]
+        else:
+            with enc_ctx:
+                # inp_enc_embs: (batch_size, inp_len, d_model)
+                inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
+                # inp_enc_embs: (batch_size, d_model)
+                inp_enc_embs = inp_enc_embs[:, 0]  # take CLS token embedding only
+                # prompt_enc_embs: (batch_size, inp_len, d_model)
+                prompt_enc_embs = self.run_enc(batch.prompts_toks, batch.prompts_att_mask)
+                # prompt_enc_embs: (batch_size, d_model)
+                prompt_enc_embs = prompt_enc_embs[:, 0]  # take CLS token embedding only
+            
+            # middle_embs: (batch_size, d_model)
+            middle_embs = self.run_middle(inp_enc_embs, prompt_enc_embs, batch)
 
         # Use no_grad for decoder when frozen during early epochs
         dec_ctx = torch.no_grad() if encdec_frozen else nullcontext()

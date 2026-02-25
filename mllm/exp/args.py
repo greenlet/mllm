@@ -21,6 +21,7 @@ masked_loss_for_encoder_ARG = '--masked-loss-for-encoder', 'Add masked loss for 
 share_enc_dec_proj_weights_ARG = '--share-enc-dec-proj-weights', 'Share encoder and decoder token projection (d_model x vocab_size) weights'
 emb_rnn_next_tok_from_hidden_ARG = '--emb-rnn-next-tok-from-hidden', 'Use last hidden state for output instead of last element from output sequence'
 emb_cross_with_global_mlp_ARG = '--emb-cross-with-global-mlp', 'Whether to add global MLP layer after each cross-attention layer'
+mix_prompt_ARG = '--mix-prompt', 'Concatenate encoded input embeddings with raw prompt token embeddings and feed into EmbAttn'
 
 ARG_TRUE_VALUES = ('true', 't', 'yes', 'y', '1')
 ARG_FALSE_VALUES = ('false', 'f', 'no', 'n', '0')
