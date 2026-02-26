@@ -2007,6 +2007,32 @@ def float_param_to_str(name: str, val: float) -> str:
     return f'{name}{val_rnd}'
 
 
+class MixedDecoderType(str, Enum):
+    Gpt2 = 'gpt2'
+    BertDec = 'bertdec'
+
+
+class MixedDecoderTrainCfg(BaseModel):
+    pretrained_encdec_model_path: Optional[Path] = None
+    pretrained_mixed_decoder_model_path: Optional[Path] = None
+    mask_cfg: Optional[MaskCfg] = None
+    learning_rate: float = 1e-4
+    optimizer: Optional[PyClassCfg] = None
+    learning_rate_scheduler: Optional[PyClassCfg] = None
+    batch_size: int = 10
+    freeze_encoder: bool = True
+
+
+class MixedDecoderCfg(BaseModel):
+    enc_bert: EncBertCfg
+    decoder_type: MixedDecoderType = MixedDecoderType.Gpt2
+    decoder_model_name: str = 'gpt2'
+    max_seq_len: int = 384
+    use_sep: bool = True
+    d_model: int = 768
+    train_cfg: MixedDecoderTrainCfg
+
+
 checkpoint_fname_pat = re.compile(r'^(\w+)-(\d{8})_(\d{6})-.*$')
 
 
@@ -2136,3 +2162,137 @@ def gen_prefpostfix_genmixemb(
     postfix = '-'.join(postfix_parts)
     return prefix, postfix
 
+
+def create_mixed_decoder_cfg(
+        pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
+        inp_len: int = 128, decoder_type: MixedDecoderType = MixedDecoderType.Gpt2, decoder_model_name: str = 'gpt2',
+        max_seq_len: int = 384, use_sep: bool = True, freeze_encoder: bool = True,
+        pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
+        mask_cfg: Optional[MaskCfg] = None,
+        learning_rate: float = 1e-4, optimizer_name: str = 'AdamW', optimizer_params: Optional[Dict[str, Any]] = None,
+        lrs_name: str = 'ReduceLROnPlateau', lrs_params: Optional[Dict[str, Any]] = None, batch_size: int = 10,
+) -> MixedDecoderCfg:
+    model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
+    bert_cfg: BertConfig = model.config
+    d_model = bert_cfg.hidden_size
+    pad_token_id = bert_cfg.pad_token_id
+
+    tokenizer_name = tokenizer_name or pretrained_model_name
+    cfg_enc = EncBertCfg(
+        inp_len=inp_len, d_model=d_model, pad_token_id=pad_token_id, pretrained_model_name=pretrained_model_name,
+        tokenizer_name=tokenizer_name, emb_type=emb_type,
+    )
+
+    cfg_train = MixedDecoderTrainCfg(
+        pretrained_encdec_model_path=pretrained_encdec_model_path,
+        pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
+        mask_cfg=mask_cfg,
+        learning_rate=learning_rate,
+        optimizer=PyClassCfg(
+            module_path='torch.optim',
+            cls_name=optimizer_name,
+            params=optimizer_params or {},
+        ),
+        learning_rate_scheduler=PyClassCfg(
+            module_path='torch.optim.lr_scheduler',
+            cls_name=lrs_name,
+            params=lrs_params or {},
+        ),
+        batch_size=batch_size,
+        freeze_encoder=freeze_encoder,
+    )
+
+    cfg = MixedDecoderCfg(
+        enc_bert=cfg_enc,
+        decoder_type=decoder_type,
+        decoder_model_name=decoder_model_name,
+        max_seq_len=max_seq_len,
+        use_sep=use_sep,
+        d_model=d_model,
+        train_cfg=cfg_train,
+    )
+    return cfg
+
+
+def copy_override_mixed_decoder_cfg(
+        cfg: MixedDecoderCfg, pretrained_model_name: Optional[str] = None, emb_type: Optional[BertEmbType] = None,
+        inp_len: Optional[int] = None, decoder_type: Optional[MixedDecoderType] = None, decoder_model_name: Optional[str] = None,
+        max_seq_len: Optional[int] = None, use_sep: Optional[bool] = None, freeze_encoder: Optional[bool] = None,
+        pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
+        mask_cfg: Optional[MaskCfg] = None, learning_rate: Optional[float] = None,
+        optimizer_name: Optional[str] = None, optimizer_params: Optional[Dict[str, Any]] = None,
+        lrs_name: Optional[str] = None, lrs_params: Optional[Dict[str, Any]] = None, batch_size: Optional[int] = None,
+) -> MixedDecoderCfg:
+    enc = cfg.enc_bert
+    pretrained_model_name = coalesce(pretrained_model_name, enc.pretrained_model_name)
+    emb_type = coalesce(emb_type, enc.emb_type)
+    inp_len = coalesce(inp_len, enc.inp_len)
+    decoder_type = coalesce(decoder_type, cfg.decoder_type)
+    decoder_model_name = coalesce(decoder_model_name, cfg.decoder_model_name)
+    max_seq_len = coalesce(max_seq_len, cfg.max_seq_len)
+    use_sep = coalesce(use_sep, cfg.use_sep)
+    freeze_encoder = coalesce(freeze_encoder, cfg.train_cfg.freeze_encoder)
+    pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
+    pretrained_mixed_decoder_model_path = coalesce(pretrained_mixed_decoder_model_path, cfg.train_cfg.pretrained_mixed_decoder_model_path)
+    learning_rate = coalesce(learning_rate, cfg.train_cfg.learning_rate)
+    if cfg.train_cfg.optimizer is not None:
+        optimizer_name = coalesce(optimizer_name, cfg.train_cfg.optimizer.cls_name)
+        optimizer_params = {**(cfg.train_cfg.optimizer.params or {}), **(optimizer_params or {})}
+    if cfg.train_cfg.learning_rate_scheduler is not None:
+        lrs_name = coalesce(lrs_name, cfg.train_cfg.learning_rate_scheduler.cls_name)
+        lrs_params = {**(cfg.train_cfg.learning_rate_scheduler.params or {}), **(lrs_params or {})}
+    batch_size = coalesce(batch_size, cfg.train_cfg.batch_size)
+
+    return create_mixed_decoder_cfg(
+        pretrained_model_name=pretrained_model_name, emb_type=emb_type, inp_len=inp_len,
+        decoder_type=decoder_type, decoder_model_name=decoder_model_name,
+        max_seq_len=max_seq_len, use_sep=use_sep, freeze_encoder=freeze_encoder,
+        pretrained_encdec_model_path=pretrained_encdec_model_path,
+        pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
+        mask_cfg=mask_cfg, learning_rate=learning_rate, optimizer_name=optimizer_name, optimizer_params=optimizer_params,
+        lrs_name=lrs_name, lrs_params=lrs_params, batch_size=batch_size,
+    )
+
+
+def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]:
+    prefix = 'mixeddecoder'
+    postfix_parts = []
+    enc = model_cfg.enc_bert
+    train = model_cfg.train_cfg
+
+    pretrained_model_path = None
+    if train.pretrained_mixed_decoder_model_path is not None:
+        pretrained_model_path = train.pretrained_mixed_decoder_model_path
+    elif train.pretrained_encdec_model_path is not None:
+        pretrained_model_path = train.pretrained_encdec_model_path
+    if pretrained_model_path is not None:
+        dname = pretrained_model_path.parent.name
+        m = checkpoint_fname_pat.match(dname)
+        assert m is not None, f'Cannot parse checkpoint folder name "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
+        postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
+
+    brt_str = enc.pretrained_model_name.replace('-', '')
+    postfix_parts.append(brt_str)
+    postfix_parts.append(f'd{enc.d_model}')
+    postfix_parts.append(f'embEnc{enc.emb_type.value.capitalize()}')
+    postfix_parts.append(f'inp{enc.inp_len}')
+    postfix_parts.append(f'dec{model_cfg.decoder_type.value.capitalize()}')
+    postfix_parts.append(f'decm{model_cfg.decoder_model_name.replace("-", "")}')
+    postfix_parts.append(f'msl{model_cfg.max_seq_len}')
+    postfix_parts.append(bool_param_to_str('sep', model_cfg.use_sep))
+    postfix_parts.append(bool_param_to_str('frzenc', train.freeze_encoder))
+
+    if train.mask_cfg is not None:
+        mask_cfg = train.mask_cfg
+        sep_freq, sep_frac = np.round(mask_cfg.sep_freq, 2), np.round(mask_cfg.sep_frac, 2)
+        seq_freq, seq_max_frac = np.round(mask_cfg.seq_freq, 2), np.round(mask_cfg.seq_max_frac, 2)
+        postfix_parts.append(f'msk_sep{sep_freq}x{sep_frac}_seq{seq_freq}x{seq_max_frac}x{mask_cfg.seq_max_len}_last{mask_cfg.n_last_toks}')
+
+    train_parts = ['trn']
+    lr = np.round(train.learning_rate, 9)
+    train_parts.append(f'lr{lr}')
+    train_parts.append(f'bs{train.batch_size}')
+    postfix_parts.append('_'.join(train_parts))
+
+    postfix = '-'.join(postfix_parts)
+    return prefix, postfix

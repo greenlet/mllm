@@ -1,0 +1,28 @@
+d_model: 768
+decoder_model_name: gpt2
+decoder_type: gpt2
+enc_bert:
+  d_model: 768
+  emb2_tok_name: ''
+  emb_type: cls
+  inp_len: 128
+  pad_token_id: 0
+  pretrained_model_name: bert-base-uncased
+  tokenizer_name: bert-base-uncased
+max_seq_len: 384
+use_sep: true
+train_cfg:
+  batch_size: 10
+  freeze_encoder: true
+  learning_rate: 0.0001
+  learning_rate_scheduler:
+    cls_name: ReduceLROnPlateau
+    module_path: torch.optim.lr_scheduler
+    params: {}
+  mask_cfg: null
+  optimizer:
+    cls_name: AdamW
+    module_path: torch.optim
+    params: {}
+  pretrained_encdec_model_path: null
+  pretrained_mixed_decoder_model_path: null

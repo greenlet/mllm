@@ -14,6 +14,7 @@ RANKER_BERT_MODEL_CFG_FNAME = 'ranker_bert_model_cfg.yaml'
 ENCMIX_BERT_MODEL_CFG_FNAME = 'encmix_bert_model_cfg.yaml'
 GENMIX_BERT_MODEL_CFG_FNAME = 'genmix_bert_model_cfg.yaml'
 GENMIXEMB_BERT_MODEL_CFG_FNAME = 'genmixemb_model_cfg.yaml'
+MIXED_DECODER_MODEL_CFG_FNAME = 'mixed_decoder_model_cfg.yaml'
 
 mask_tokens_ARG = '--mask-tokens', 'Mask input tokens'
 next_tok_pred_ARG = '--next-tok-pred', 'Predict next token'

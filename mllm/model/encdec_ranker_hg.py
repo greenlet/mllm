@@ -21,7 +21,6 @@ import numpy as np
 import torch
 from torch import nn, Tensor
 import torch.distributed as dist
-from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
 from mllm.config.model import EmbAttnCfg, EmbCrossCfg, EmbFfwCfg, EmbGateCfg, EmbGraphCfg, EmbMlpCfg, EmbRnnCfg, EmbRnnInputOrder, EncdecCiteEmbsTargetType, EncdecCiteToksTargetType, EncdecGraphBertCfg, EncdecHgCfg, DecPyrCfg, EncPyrCfg, EncdecMiddleType, HgReductType, HgEnhanceType, RankerHgCfg, DecRankHgCfg, \
