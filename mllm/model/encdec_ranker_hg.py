@@ -1777,8 +1777,8 @@ class EncdecGraphBert(nn.Module):
 
     # inp_masked_toks: (batch_size, inp_len)
     # inp_toks: (batch_size, inp_len)
-    def forward(self, inp_masked_toks, inp_toks: Tensor) -> dict[str, Tensor]:
-      raise NotImplementedError('Use run_on_text_citation method for EncdecGraphBert model')
+    def forward(self, batch: MaskedCiteBatch, epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
+      return self.run_on_text_citation(batch, epoch)
 
 
 class DecoderRankHg(nn.Module):

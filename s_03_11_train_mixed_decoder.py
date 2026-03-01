@@ -32,6 +32,7 @@ from mllm.utils.utils import instantiate_torch_lr_scheduler, instantiate_torch_o
 
 freeze_encoder_ARG = '--freeze-encoder', 'Freeze encoder weights during training'
 use_sep_ARG = '--use-sep', 'Insert SEP/EOS embedding between context embeddings and prompt tokens'
+prompt_all_ARG = '--prompt-all', 'Target is whole input chunk (true) or citation only (false)'
 
 
 class ArgsMixedDecoderTrain(BaseModel):
@@ -101,6 +102,11 @@ class ArgsMixedDecoderTrain(BaseModel):
     @property
     def use_sep(self) -> bool:
         return is_arg_true(use_sep_ARG[0], self.use_sep_STR)
+
+    prompt_all_STR: str = create_bool_str_field(*prompt_all_ARG)
+    @property
+    def prompt_all(self) -> bool:
+        return is_arg_true(prompt_all_ARG[0], self.prompt_all_STR)
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
@@ -258,7 +264,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsMixedDecoderT
     model_cfg = copy_override_mixed_decoder_cfg(
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type,
         inp_len=args.inp_len, decoder_type=args.decoder_type, decoder_model_name=args.decoder_model_name,
-        max_seq_len=args.max_seq_len, use_sep=args.use_sep, freeze_encoder=args.freeze_encoder,
+        max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, freeze_encoder=args.freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
         mask_cfg=mask_cfg, learning_rate=args.learning_rate,
@@ -314,8 +320,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsMixedDecoderT
         del checkpoint
 
     n_special_toks = 1000
-    ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
-    ds_val = MaskedCiteDataset(ds_val, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
+    ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device)
+    ds_val = MaskedCiteDataset(ds_val, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device)
     train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
     val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
 
@@ -340,14 +346,11 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsMixedDecoderT
             pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         else:
             pbar = range(args.train_epoch_steps)
-        for _ in pbar:
+        for i in pbar:
             batch = next(train_batch_it)
 
             optimizer.zero_grad()
-            if args.world_size > 1:
-                loss_dict, _ = ddp_model.module.run_on_text_citation(batch)
-            else:
-                loss_dict, _ = ddp_model.run_on_text_citation(batch)
+            loss_dict, _ = ddp_model(batch)
             loss = loss_dict['loss']
             loss.backward()
 
@@ -380,14 +383,14 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsMixedDecoderT
             pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         else:
             pbar = range(args.val_epoch_steps)
-        for _ in pbar:
+        for i in pbar:
             batch = next(val_batch_it)
 
             with torch.no_grad():
                 if args.world_size > 1:
-                    loss_dict, _ = ddp_model.module.run_on_text_citation(batch)
+                    loss_dict, _ = ddp_model(batch)
                 else:
-                    loss_dict, _ = ddp_model.run_on_text_citation(batch)
+                    loss_dict, _ = ddp_model(batch)
             loss = loss_dict['loss']
 
             val_loss += loss.item()

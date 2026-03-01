@@ -28,6 +28,7 @@ decoder_model_name=gpt2
 max_seq_len=384
 freeze_encoder=true
 use_sep=true
+prompt_all=true
 
 mask_tokens=false
 mask_sep_freq=0.5
@@ -81,6 +82,7 @@ python s_03_11_train_mixed_decoder.py \
   --max-seq-len $max_seq_len \
   --freeze-encoder $freeze_encoder \
   --use-sep $use_sep \
+  --prompt-all $prompt_all \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

@@ -10,6 +10,7 @@ enc_bert:
   pretrained_model_name: bert-base-uncased
   tokenizer_name: bert-base-uncased
 max_seq_len: 384
+prompt_all: true
 train_cfg:
   batch_size: 10
   freeze_encoder: true

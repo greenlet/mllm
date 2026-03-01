@@ -51,7 +51,7 @@ class MaskedCiteBatch:
 class MaskedCiteDataset:
     def __init__(
             self, dataset: Dataset, tkz: PreTrainedTokenizer, max_seq_len: int, n_special_toks: int = 1000, mask_cfg: Optional[MaskCfg] = None,
-            device: Optional[torch.device] = None,
+            prompt_all: bool = True, device: Optional[torch.device] = None,
         ):
         '''Dataset for masked citation prediction with random input tokens.
          Args:
@@ -60,6 +60,7 @@ class MaskedCiteDataset:
             max_seq_len: Maximum sequence length.
             n_special_toks: Number of special tokens reserved in tokenizer. 1000 is the number of first BERT token ids reserved for special or unused tokens.
             mask_cfg: Optional MaskCfg for citation masking.
+            prompt_all: If True, prompt asks for whole text; if False, prompt asks for citation only.
             device: Optional torch.device to move batches to.
         '''
         self.dataset = dataset
@@ -69,6 +70,7 @@ class MaskedCiteDataset:
         self.max_seq_len = max_seq_len
         self.mask_token_id = tkz.mask_token_id
         self.mask_cfg = mask_cfg
+        self.prompt_all = prompt_all
         self.device = device if device is not None else torch.device('cpu')
         self.inds = np.arange(self.size)
         self.random_inp_tkz = RandomInputTokenizerV2(
@@ -97,7 +99,7 @@ class MaskedCiteDataset:
         for i in inds:
             item = self.dataset[i]
             texts.append(item['text'])
-        tokens_subsets = self.random_inp_tkz(texts)
+        tokens_subsets = self.random_inp_tkz(texts, prompt_all=self.prompt_all)
 
         batch_size = len(inds)
         inp_toks, inp_att_mask = self.toks_to_tensor([item.toks_inp for item in tokens_subsets], with_att_mask=True)

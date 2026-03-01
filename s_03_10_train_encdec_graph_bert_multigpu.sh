@@ -77,9 +77,9 @@ emb_cross_d_inner=0
 emb_cross_dropout_rate=0.1
 emb_cross_window_size=3
 emb_cross_dim_exp_factor=4
-emb_cross_with_global_mlp=false
+emb_cross_with_global_mlp=true
 
-emb_middle_type=gate
+# emb_middle_type=gate
 emb_gate_exp_factor=4
 emb_gate_dropout_rate=0.1
 emb_gate_n_layers=4
@@ -125,7 +125,7 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=50
+docs_batch_size=10
 world_size=4
 
 

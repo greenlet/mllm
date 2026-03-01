@@ -584,8 +584,9 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
     n_special_toks = 1000
     ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
     ds_val = MaskedCiteDataset(ds_val, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, device=device)
-    train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
-    val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
+    batch_size = args.docs_batch_size if rank == 0 else int(args.docs_batch_size * 2)
+    train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=batch_size)
+    val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=batch_size)
 
     lr = optimizer.param_groups[0]['lr']
     log(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
@@ -612,10 +613,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
             batch = next(train_batch_it)
 
             optimizer.zero_grad()
-            if args.world_size > 1:
-                loss_dict, _ = ddp_model.module.run_on_text_citation(batch, epoch=epoch)
-            else:
-                loss_dict, _ = ddp_model.run_on_text_citation(batch, epoch=epoch)
+            loss_dict, _ = ddp_model(batch, epoch=epoch)
             loss = loss_dict['loss']
             loss.backward()
 
@@ -654,9 +652,9 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsEncdecGraphBe
 
             with torch.no_grad():
                 if args.world_size > 1:
-                    loss_dict, _ = ddp_model.module.run_on_text_citation(batch)
+                    loss_dict, _ = ddp_model(batch)
                 else:
-                    loss_dict, _ = ddp_model.run_on_text_citation(batch)
+                    loss_dict, _ = ddp_model(batch)
             loss = loss_dict['loss']
 
             val_loss += loss.item()

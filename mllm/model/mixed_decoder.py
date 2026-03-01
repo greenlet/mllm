@@ -17,8 +17,8 @@ from mllm.train.encdec_graph_bert import MaskedCiteBatch
 class MixedDecoder(nn.Module):
     cfg: MixedDecoderCfg
     tkz: PreTrainedTokenizer
-    enc: EncoderBert
-    pos_emb: nn.Embedding
+    # enc: EncoderBert
+    # pos_emb: nn.Embedding
 
     def __init__(self, cfg: MixedDecoderCfg, tkz: PreTrainedTokenizer):
         super().__init__()
@@ -271,9 +271,20 @@ class MixedDecoder(nn.Module):
         # ctx_embs: (batch_size, batch_size, d_model)
         ctx_embs = inp_enc_embs.unsqueeze(0).expand(batch_size, -1, -1)
 
-        # Target tokens: the full input chunk with tags (inp_toks)
-        target_toks = batch.inp_toks  # (batch_size, inp_len)
-        target_att_mask = batch.inp_att_mask  # (batch_size, inp_len)
+        # Select target based on prompt_all config
+        if self.cfg.prompt_all:
+            # Target is the whole input chunk with tags (inp_toks), starts with CLS
+            target_toks = batch.inp_toks  # (batch_size, inp_len)
+            target_att_mask = batch.inp_att_mask  # (batch_size, inp_len)
+            # Strip leading CLS token - it's an encoder special token, not a generation target
+            assert torch.all(target_toks[:, 0] == self.tkz.cls_token_id), \
+                'Target tokens (inp_toks) must start with CLS token'
+            target_toks = target_toks[:, 1:]
+            target_att_mask = target_att_mask[:, 1:]
+        else:
+            # Target is just the citation between tags (cites_toks) - no CLS prefix
+            target_toks = batch.cites_toks  # (batch_size, cite_len)
+            target_att_mask = batch.cites_att_mask  # (batch_size, cite_len)
 
         # Build decoder input
         input_embs, attention_mask, labels, target_start_idx = self.build_decoder_input(
@@ -289,5 +300,5 @@ class MixedDecoder(nn.Module):
 
         return loss_dict, logits
 
-    def forward(self, *args, **kwargs):
-        raise NotImplementedError('Use run_on_text_citation method for MixedDecoder model')
+    def forward(self, batch: MaskedCiteBatch, epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
+        return self.run_on_text_citation(batch, epoch)
