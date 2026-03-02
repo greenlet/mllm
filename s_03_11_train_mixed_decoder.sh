@@ -29,6 +29,7 @@ max_seq_len=384
 freeze_encoder=true
 use_sep=true
 prompt_all=true
+emb_exp_rate=0
 
 mask_tokens=false
 mask_sep_freq=0.5
@@ -83,6 +84,7 @@ python s_03_11_train_mixed_decoder.py \
   --freeze-encoder $freeze_encoder \
   --use-sep $use_sep \
   --prompt-all $prompt_all \
+  --emb-exp-rate $emb_exp_rate \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

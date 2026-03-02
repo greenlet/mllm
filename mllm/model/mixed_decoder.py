@@ -42,9 +42,14 @@ class MixedDecoder(nn.Module):
         else:
             raise ValueError(f'Decoder type {self.cfg.decoder_type} is not supported.')
 
-        # If encoder d_model differs from decoder d_model, add a projection layer
+        # Embedding expansion: each CLS embedding (d_model) → (emb_exp_rate, d_dec)
+        self.emb_exp = None
+        if self.cfg.emb_exp_rate > 0:
+            self.emb_exp = nn.Linear(self.cfg.d_model, self.cfg.emb_exp_rate * d_dec, bias=False)
+
+        # If encoder d_model differs from decoder d_model, add a projection layer (only when no emb expansion)
         self.enc_proj = None
-        if self.cfg.d_model != d_dec:
+        if self.cfg.emb_exp_rate <= 0 and self.cfg.d_model != d_dec:
             self.enc_proj = nn.Linear(self.cfg.d_model, d_dec, bias=False)
 
         self.d_dec = d_dec
@@ -268,8 +273,19 @@ class MixedDecoder(nn.Module):
             inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
 
         # Context embeddings: all batch CLS embeddings as prefix for each sample
-        # ctx_embs: (batch_size, batch_size, d_model)
-        ctx_embs = inp_enc_embs.unsqueeze(0).expand(batch_size, -1, -1)
+        if self.cfg.emb_exp_rate > 0:
+            # Expand each CLS embedding from 1 vector to emb_exp_rate vectors
+            # inp_enc_embs: (batch_size, d_model) -> (batch_size, emb_exp_rate * d_dec)
+            exp_embs = self.emb_exp(inp_enc_embs)
+            # (batch_size, emb_exp_rate * d_dec) -> (batch_size, emb_exp_rate, d_dec)
+            exp_embs = exp_embs.view(batch_size, self.cfg.emb_exp_rate, self.d_dec)
+            # (batch_size, emb_exp_rate, d_dec) -> (1, batch_size * emb_exp_rate, d_dec)
+            exp_embs = exp_embs.reshape(1, batch_size * self.cfg.emb_exp_rate, self.d_dec)
+            # -> (batch_size, batch_size * emb_exp_rate, d_dec)
+            ctx_embs = exp_embs.expand(batch_size, -1, -1)
+        else:
+            # ctx_embs: (batch_size, batch_size, d_model)
+            ctx_embs = inp_enc_embs.unsqueeze(0).expand(batch_size, -1, -1)
 
         # Select target based on prompt_all config
         if self.cfg.prompt_all:

@@ -1,6 +1,7 @@
 d_model: 768
 decoder_model_name: gpt2
 decoder_type: gpt2
+emb_exp_rate: 0
 enc_bert:
   d_model: 768
   emb2_tok_name: ''

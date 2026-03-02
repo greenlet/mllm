@@ -92,6 +92,12 @@ class ArgsMixedDecoderTrain(BaseModel):
         description='Maximum combined sequence length (context embeddings + sep + prompt tokens + target tokens).',
         cli=('--max-seq-len',),
     )
+    emb_exp_rate: int = Field(
+        0,
+        description='Embedding expansion rate. If > 0, each CLS embedding is linearly expanded from 1 to emb_exp_rate vectors. '
+            'If 1, a linear vector-to-vector transform is performed.',
+        cli=('--emb-exp-rate',),
+    )
 
     freeze_encoder_STR: str = create_bool_str_field(*freeze_encoder_ARG)
     @property
@@ -264,7 +270,8 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsMixedDecoderT
     model_cfg = copy_override_mixed_decoder_cfg(
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type,
         inp_len=args.inp_len, decoder_type=args.decoder_type, decoder_model_name=args.decoder_model_name,
-        max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, freeze_encoder=args.freeze_encoder,
+        max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, emb_exp_rate=args.emb_exp_rate,
+        freeze_encoder=args.freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
         mask_cfg=mask_cfg, learning_rate=args.learning_rate,
