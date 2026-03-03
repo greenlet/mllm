@@ -26,10 +26,10 @@ decoder_model_name=gpt2
 # decoder_model_name=bert-base-uncased
 
 max_seq_len=384
-freeze_encoder=true
+freeze_encoder=false
 use_sep=true
-prompt_all=true
-emb_exp_rate=0
+prompt_all=false
+emb_exp_rate=2
 
 mask_tokens=false
 mask_sep_freq=0.5
@@ -40,6 +40,7 @@ mask_seq_max_len=20
 mask_n_last_toks=0
 
 pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
+# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260302_110919-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-decmgpt2-msl384-sepT-pallF-frzencF-trn_lr5e-05_bs30
 pretrained_mixed_decoder_model_path=
 
 
@@ -54,7 +55,7 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=50
+docs_batch_size=30
 world_size=4
 
 
@@ -106,3 +107,4 @@ python s_03_11_train_mixed_decoder.py \
   --pretrained-encdec-model-path "$pretrained_encdec_model_path" \
   --pretrained-mixed-decoder-model-path "$pretrained_mixed_decoder_model_path" \
   --world-size $world_size
+

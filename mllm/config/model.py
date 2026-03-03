@@ -2031,6 +2031,8 @@ class MixedDecoderCfg(BaseModel):
     use_sep: bool = True
     prompt_all: bool = True
     emb_exp_rate: int = 0
+    emb_win_min_size: int = 0
+    emb_win_max_size: int = 0
     d_model: int = 768
     train_cfg: MixedDecoderTrainCfg
 
@@ -2169,7 +2171,7 @@ def create_mixed_decoder_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
         inp_len: int = 128, decoder_type: MixedDecoderType = MixedDecoderType.Gpt2, decoder_model_name: str = 'gpt2',
         max_seq_len: int = 384, use_sep: bool = True, prompt_all: bool = True, emb_exp_rate: int = 0,
-        freeze_encoder: bool = True,
+        emb_win_min_size: int = 0, emb_win_max_size: int = 0, freeze_encoder: bool = True,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
         learning_rate: float = 1e-4, optimizer_name: str = 'AdamW', optimizer_params: Optional[Dict[str, Any]] = None,
@@ -2213,6 +2215,8 @@ def create_mixed_decoder_cfg(
         use_sep=use_sep,
         prompt_all=prompt_all,
         emb_exp_rate=emb_exp_rate,
+        emb_win_min_size=emb_win_min_size,
+        emb_win_max_size=emb_win_max_size,
         d_model=d_model,
         train_cfg=cfg_train,
     )
@@ -2223,7 +2227,7 @@ def copy_override_mixed_decoder_cfg(
         cfg: MixedDecoderCfg, pretrained_model_name: Optional[str] = None, emb_type: Optional[BertEmbType] = None,
         inp_len: Optional[int] = None, decoder_type: Optional[MixedDecoderType] = None, decoder_model_name: Optional[str] = None,
         max_seq_len: Optional[int] = None, use_sep: Optional[bool] = None, prompt_all: Optional[bool] = None, emb_exp_rate: Optional[int] = None,
-        freeze_encoder: Optional[bool] = None,
+        emb_win_min_size: Optional[int] = None, emb_win_max_size: Optional[int] = None, freeze_encoder: Optional[bool] = None,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None, learning_rate: Optional[float] = None,
         optimizer_name: Optional[str] = None, optimizer_params: Optional[Dict[str, Any]] = None,
@@ -2239,6 +2243,8 @@ def copy_override_mixed_decoder_cfg(
     use_sep = coalesce(use_sep, cfg.use_sep)
     prompt_all = coalesce(prompt_all, cfg.prompt_all)
     emb_exp_rate = coalesce(emb_exp_rate, cfg.emb_exp_rate)
+    emb_win_min_size = coalesce(emb_win_min_size, cfg.emb_win_min_size)
+    emb_win_max_size = coalesce(emb_win_max_size, cfg.emb_win_max_size)
     freeze_encoder = coalesce(freeze_encoder, cfg.train_cfg.freeze_encoder)
     pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
     pretrained_mixed_decoder_model_path = coalesce(pretrained_mixed_decoder_model_path, cfg.train_cfg.pretrained_mixed_decoder_model_path)
@@ -2254,7 +2260,8 @@ def copy_override_mixed_decoder_cfg(
     return create_mixed_decoder_cfg(
         pretrained_model_name=pretrained_model_name, emb_type=emb_type, inp_len=inp_len,
         decoder_type=decoder_type, decoder_model_name=decoder_model_name,
-        max_seq_len=max_seq_len, use_sep=use_sep, prompt_all=prompt_all, emb_exp_rate=emb_exp_rate, freeze_encoder=freeze_encoder,
+        max_seq_len=max_seq_len, use_sep=use_sep, prompt_all=prompt_all, emb_exp_rate=emb_exp_rate,
+        emb_win_min_size=emb_win_min_size, emb_win_max_size=emb_win_max_size, freeze_encoder=freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
         mask_cfg=mask_cfg, learning_rate=learning_rate, optimizer_name=optimizer_name, optimizer_params=optimizer_params,
@@ -2291,6 +2298,8 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
     postfix_parts.append(bool_param_to_str('pall', model_cfg.prompt_all))
     if model_cfg.emb_exp_rate > 0:
         postfix_parts.append(f'eer{model_cfg.emb_exp_rate}')
+    if model_cfg.emb_win_max_size > 0 and model_cfg.emb_win_min_size <= model_cfg.emb_win_max_size:
+        postfix_parts.append(f'ewn{model_cfg.emb_win_min_size}x{model_cfg.emb_win_max_size}')
     postfix_parts.append(bool_param_to_str('frzenc', train.freeze_encoder))
 
     if train.mask_cfg is not None:

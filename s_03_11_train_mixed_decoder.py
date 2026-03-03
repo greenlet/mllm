@@ -98,6 +98,16 @@ class ArgsMixedDecoderTrain(BaseModel):
             'If 1, a linear vector-to-vector transform is performed.',
         cli=('--emb-exp-rate',),
     )
+    emb_win_min_size: int = Field(
+        0,
+        description='Minimum embedding window size. Active when emb_win_min_size <= emb_win_max_size > 0.',
+        cli=('--emb-win-min-size',),
+    )
+    emb_win_max_size: int = Field(
+        0,
+        description='Maximum embedding window size. Active when emb_win_min_size <= emb_win_max_size > 0.',
+        cli=('--emb-win-max-size',),
+    )
 
     freeze_encoder_STR: str = create_bool_str_field(*freeze_encoder_ARG)
     @property
@@ -271,6 +281,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsMixedDecoderT
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type,
         inp_len=args.inp_len, decoder_type=args.decoder_type, decoder_model_name=args.decoder_model_name,
         max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, emb_exp_rate=args.emb_exp_rate,
+        emb_win_min_size=args.emb_win_min_size, emb_win_max_size=args.emb_win_max_size,
         freeze_encoder=args.freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,

@@ -273,19 +273,44 @@ class MixedDecoder(nn.Module):
             inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
 
         # Context embeddings: all batch CLS embeddings as prefix for each sample
+        # Determine embedding window
+        emb_win_active = (self.cfg.emb_win_min_size <= self.cfg.emb_win_max_size and self.cfg.emb_win_max_size > 0)
+        win_indices = None  # None means use all embeddings
+        if emb_win_active:
+            win_min = max(self.cfg.emb_win_min_size, 1)
+            win_max = min(self.cfg.emb_win_max_size, batch_size)
+            win_min = min(win_min, win_max)
+            win_size = torch.randint(win_min, win_max + 1, (1,)).item()
+            if win_size < batch_size:
+                offset_before = torch.randint(0, win_size, (1,)).item() if win_size > 1 else 0
+                sample_idx = torch.arange(batch_size, device=inp_enc_embs.device)
+                j_idx = torch.arange(win_size, device=inp_enc_embs.device)
+                # win_indices[i, j] = (i - offset_before + j) % batch_size
+                # Ensures each sample's own embedding is always at position offset_before
+                win_indices = (sample_idx.unsqueeze(1) - offset_before + j_idx.unsqueeze(0)) % batch_size
+
         if self.cfg.emb_exp_rate > 0:
             # Expand each CLS embedding from 1 vector to emb_exp_rate vectors
             # inp_enc_embs: (batch_size, d_model) -> (batch_size, emb_exp_rate * d_dec)
             exp_embs = self.emb_exp(inp_enc_embs)
             # (batch_size, emb_exp_rate * d_dec) -> (batch_size, emb_exp_rate, d_dec)
             exp_embs = exp_embs.view(batch_size, self.cfg.emb_exp_rate, self.d_dec)
-            # (batch_size, emb_exp_rate, d_dec) -> (1, batch_size * emb_exp_rate, d_dec)
-            exp_embs = exp_embs.reshape(1, batch_size * self.cfg.emb_exp_rate, self.d_dec)
-            # -> (batch_size, batch_size * emb_exp_rate, d_dec)
-            ctx_embs = exp_embs.expand(batch_size, -1, -1)
+            if win_indices is not None:
+                # (batch_size, win_size, emb_exp_rate, d_dec) -> (batch_size, win_size * emb_exp_rate, d_dec)
+                ctx_embs = exp_embs[win_indices]
+                ctx_embs = ctx_embs.reshape(batch_size, win_indices.shape[1] * self.cfg.emb_exp_rate, self.d_dec)
+            else:
+                # (batch_size, emb_exp_rate, d_dec) -> (1, batch_size * emb_exp_rate, d_dec)
+                exp_embs = exp_embs.reshape(1, batch_size * self.cfg.emb_exp_rate, self.d_dec)
+                # -> (batch_size, batch_size * emb_exp_rate, d_dec)
+                ctx_embs = exp_embs.expand(batch_size, -1, -1)
         else:
-            # ctx_embs: (batch_size, batch_size, d_model)
-            ctx_embs = inp_enc_embs.unsqueeze(0).expand(batch_size, -1, -1)
+            if win_indices is not None:
+                # ctx_embs: (batch_size, win_size, d_model)
+                ctx_embs = inp_enc_embs[win_indices]
+            else:
+                # ctx_embs: (batch_size, batch_size, d_model)
+                ctx_embs = inp_enc_embs.unsqueeze(0).expand(batch_size, -1, -1)
 
         # Select target based on prompt_all config
         if self.cfg.prompt_all:
