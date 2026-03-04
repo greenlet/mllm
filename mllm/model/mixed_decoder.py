@@ -170,17 +170,16 @@ class MixedDecoder(nn.Module):
         prompt_len = prompt_toks.shape[1]
         prefix_len += prompt_len
 
-        # Target token embeddings (shifted: input is target[:-1], labels are target[1:])
+        # Target token embeddings (shifted: input is target[:-1], labels are target)
         target_inp_toks = target_toks[:, :-1]  # (batch_size, target_len - 1)
-        target_out_toks = target_toks[:, 1:]   # (batch_size, target_len - 1)
         target_inp_embs = self.word_embeddings(target_inp_toks)  # (batch_size, target_len - 1, d_dec)
         target_inp_mask = target_att_mask[:, :-1]  # (batch_size, target_len - 1)
         parts_embs.append(target_inp_embs)
         parts_mask.append(target_inp_mask)
 
-        target_start_idx = prefix_len
-        target_len = target_inp_toks.shape[1]
-        total_len = prefix_len + target_len
+        target_start_idx = prefix_len - 1  # Target starts right after the prompt (or SEP if used). The first target token corresponds to the prediction at this position.
+        target_inp_len = target_inp_toks.shape[1]
+        total_len = prefix_len + target_inp_len
 
         assert total_len <= self.cfg.max_seq_len, \
             f'Total sequence length {total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
@@ -198,10 +197,10 @@ class MixedDecoder(nn.Module):
         labels = torch.full((batch_size, total_len), -100, dtype=torch.long, device=device)
         # Target labels at positions [target_start_idx, target_start_idx + target_len)
         # The label at position i corresponds to the prediction at position i (next token)
-        target_labels = target_out_toks.clone()
+        target_labels = target_toks.clone()
         # Mask padding positions in target labels
-        target_labels[target_inp_mask == 0] = -100
-        labels[:, target_start_idx:target_start_idx + target_len] = target_labels
+        target_labels[target_att_mask == 0] = -100
+        labels[:, target_start_idx:target_start_idx + target_toks.shape[1]] = target_labels
 
         return input_embs, attention_mask, labels, target_start_idx
 

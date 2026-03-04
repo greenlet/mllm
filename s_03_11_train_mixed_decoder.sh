@@ -29,7 +29,9 @@ max_seq_len=384
 freeze_encoder=false
 use_sep=true
 prompt_all=false
-emb_exp_rate=2
+emb_exp_rate=4
+emb_win_min_size=10
+emb_win_max_size=10
 
 mask_tokens=false
 mask_sep_freq=0.5
@@ -86,6 +88,8 @@ python s_03_11_train_mixed_decoder.py \
   --use-sep $use_sep \
   --prompt-all $prompt_all \
   --emb-exp-rate $emb_exp_rate \
+  --emb-win-min-size $emb_win_min_size \
+  --emb-win-max-size $emb_win_max_size \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \
