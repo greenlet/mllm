@@ -64,6 +64,7 @@ class MixedDecoder(nn.Module):
                 if key.startswith('module.'):
                     key = key[7:]
                 cleaned_dict[key] = val
+            print(f'Load {len(cleaned_dict)}')
             self.load_state_dict(cleaned_dict, strict=True)
         else:
             pretrained_mixed_decoder_model_path = self.cfg.train_cfg.pretrained_mixed_decoder_model_path
