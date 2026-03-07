@@ -1,6 +1,6 @@
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn.functional as F
@@ -8,10 +8,11 @@ from torch import Tensor, nn
 import torch.distributed as dist
 from transformers import PreTrainedTokenizer
 
-from mllm.config.model import MixedDecoderCfg, MixedDecoderType, BertEmbType
+from mllm.config.model import MixedDecoderCfg, MixedDecoderDsType, MixedDecoderType, BertEmbType
 from mllm.model.encdec_ranker_hg import EncoderBert
 from mllm.model.gpt2 import GPT2LMHeadModel
 from mllm.train.encdec_graph_bert import MaskedCiteBatch
+from mllm.train.qna_cite import QnaCiteBatch
 
 
 class MixedDecoder(nn.Module):
@@ -341,5 +342,125 @@ class MixedDecoder(nn.Module):
 
         return loss_dict, logits
 
-    def forward(self, batch: MaskedCiteBatch, epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
+    def run_on_qna(self, batch: QnaCiteBatch, epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
+        """Training method for QnA (SQuAD v2) data.
+
+        1. Encode all context chunks to CLS embeddings
+        2. For each sample, gather its own context embeddings; fill remaining
+           slots (up to emb_win_max_size) with random embeddings from the batch,
+           placed before or after the sample's own embeddings (random coin flip).
+        3. Apply emb_exp expansion if configured.
+        4. Build decoder input: [ctx_embs, (sep), prompt_toks, ans_toks]
+        5. Run decoder with causal attention
+        6. Compute loss on answer positions
+
+        Args:
+            batch: QnaCiteBatch with context chunks, prompts, and answer tokens.
+            epoch: Current epoch number.
+
+        Returns:
+            Tuple of (loss_dict, logits).
+        """
+        batch_size = len(batch.ctx_chunk_counts)
+        device = batch.ctx_chunks_toks.device
+
+        # 1. Encode all context chunks
+        freeze_enc = self.cfg.train_cfg.freeze_encoder
+        enc_ctx = torch.no_grad() if freeze_enc else nullcontext()
+
+        with enc_ctx:
+            # all_enc_embs: (total_chunks, d_model)
+            all_enc_embs = self.run_enc(batch.ctx_chunks_toks, batch.ctx_chunks_att_mask)
+
+        total_chunks = all_enc_embs.shape[0]
+
+        # 2. Determine target context window size per sample
+        emb_win_max = self.cfg.emb_win_max_size
+        emb_win_min = max(self.cfg.emb_win_min_size, 1)
+        if emb_win_max <= 0:
+            # No windowing: use max chunks in this batch
+            emb_win_max = max(batch.ctx_chunk_counts)
+            emb_win_min = emb_win_max
+
+        # Optionally randomize window size
+        win_min = min(emb_win_min, emb_win_max)
+        target_win_size = torch.randint(win_min, emb_win_max + 1, (1,)).item()
+
+        # 3. Build ctx_embs per sample: own chunks + filler from other samples
+        # Split all_enc_embs by chunk_counts
+        chunk_offsets = [0]
+        for c in batch.ctx_chunk_counts:
+            chunk_offsets.append(chunk_offsets[-1] + c)
+
+        # Collect per-sample own embeddings (before expansion)
+        own_embs_list = []  # list of (n_own_i, d_model) tensors
+        for i in range(batch_size):
+            start, end = chunk_offsets[i], chunk_offsets[i + 1]
+            own_embs_list.append(all_enc_embs[start:end])  # (n_own_i, d_model)
+
+        # Build padded context embeddings of shape (batch_size, target_win_size, d_model)
+        ctx_embs_raw = torch.zeros((batch_size, target_win_size, self.cfg.d_model), device=device)
+        for i in range(batch_size):
+            own = own_embs_list[i]
+            n_own = min(own.shape[0], target_win_size)
+
+            if n_own >= target_win_size:
+                # Have enough own context chunks
+                ctx_embs_raw[i] = own[:target_win_size]
+            else:
+                # Need filler embeddings from other samples in the batch
+                n_filler = target_win_size - n_own
+
+                # Collect all embeddings except this sample's
+                other_inds = list(range(0, chunk_offsets[i])) + list(range(chunk_offsets[i + 1], total_chunks))
+                if len(other_inds) >= n_filler:
+                    perm = torch.randperm(len(other_inds), device=device)[:n_filler]
+                    filler_inds = torch.tensor(other_inds, device=device)[perm]
+                else:
+                    # Not enough other embeddings; repeat with replacement
+                    filler_inds = torch.tensor(other_inds, device=device)
+                    if len(other_inds) > 0:
+                        extra = torch.randint(0, len(other_inds), (n_filler - len(other_inds),), device=device)
+                        filler_inds = torch.cat([filler_inds, torch.tensor(other_inds, device=device)[extra]])
+                    else:
+                        # Only one sample with all chunks; pad with zeros
+                        filler_inds = torch.tensor([], dtype=torch.long, device=device)
+
+                filler_embs = all_enc_embs[filler_inds] if filler_inds.numel() > 0 else torch.zeros((n_filler, self.cfg.d_model), device=device)
+
+                # Random coin flip: place own embeddings first or last
+                if torch.rand(1).item() < 0.5:
+                    # Own first, filler after
+                    ctx_embs_raw[i, :n_own] = own[:n_own]
+                    ctx_embs_raw[i, n_own:n_own + filler_embs.shape[0]] = filler_embs
+                else:
+                    # Filler first, own after
+                    n_fill = filler_embs.shape[0]
+                    ctx_embs_raw[i, :n_fill] = filler_embs
+                    ctx_embs_raw[i, n_fill:n_fill + n_own] = own[:n_own]
+
+        # 4. Apply emb_exp expansion or projection
+        if self.cfg.emb_exp_rate > 0:
+            # ctx_embs_raw: (batch_size, target_win_size, d_model)
+            # Expand each embedding from d_model to emb_exp_rate * d_dec
+            exp_embs = self.emb_exp(ctx_embs_raw)  # (batch_size, target_win_size, emb_exp_rate * d_dec)
+            exp_embs = exp_embs.view(batch_size, target_win_size * self.cfg.emb_exp_rate, self.d_dec)
+            ctx_embs = exp_embs
+        else:
+            ctx_embs = ctx_embs_raw  # (batch_size, target_win_size, d_model)
+
+        # 5. Build decoder input and run
+        input_embs, attention_mask, labels, target_start_idx = self.build_decoder_input(
+            ctx_embs, batch.prompt_toks, batch.prompt_att_mask,
+            batch.ans_toks, batch.ans_att_mask,
+        )
+
+        logits = self.run_decoder(input_embs, attention_mask)
+        loss_dict = self.calc_loss(logits, labels)
+
+        return loss_dict, logits
+
+    def forward(self, batch: Union[MaskedCiteBatch, QnaCiteBatch], epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
+        if self.cfg.train_ds_type == MixedDecoderDsType.Qna:
+            return self.run_on_qna(batch, epoch)
         return self.run_on_text_citation(batch, epoch)

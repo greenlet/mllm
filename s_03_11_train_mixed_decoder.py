@@ -18,7 +18,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
 
-from mllm.config.model import MixedDecoderCfg, MixedDecoderType, BertEmbType, \
+from mllm.config.model import MixedDecoderCfg, MixedDecoderDsType, MixedDecoderType, BertEmbType, \
     copy_override_mixed_decoder_cfg, gen_prefpostfix_mixed_decoder
 from mllm.exp.args import MIXED_DECODER_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, \
     mask_tokens_ARG
@@ -26,6 +26,7 @@ from mllm.model.mixed_decoder import MixedDecoder
 from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
 from mllm.train.mask_utils import MaskCfg
+from mllm.train.qna_cite import QnaCiteDataset, create_qna_cite_dataloader, load_split_squadv2
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import instantiate_torch_lr_scheduler, instantiate_torch_optimizer, parse_dict_str, rethrow
 
@@ -107,6 +108,11 @@ class ArgsMixedDecoderTrain(BaseModel):
         0,
         description='Maximum embedding window size. Active when emb_win_min_size <= emb_win_max_size > 0.',
         cli=('--emb-win-max-size',),
+    )
+    train_ds_type: MixedDecoderDsType = Field(
+        MixedDecoderDsType.Cite,
+        description=f'Training dataset type. Can have values: {list(x.value for x in MixedDecoderDsType)}',
+        cli=('--train-ds-type',),
     )
 
     freeze_encoder_STR: str = create_bool_str_field(*freeze_encoder_ARG)
@@ -255,7 +261,7 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsMixedDecoderTrain):
+def train(rank: int, ds_train, ds_val, args: ArgsMixedDecoderTrain):
     print(f'Running DDP training on rank {rank}.')
     def log(*msgs: Any, forall: bool = False):
         if rank == 0 or forall:
@@ -282,6 +288,7 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsMixedDecoderT
         inp_len=args.inp_len, decoder_type=args.decoder_type, decoder_model_name=args.decoder_model_name,
         max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, emb_exp_rate=args.emb_exp_rate,
         emb_win_min_size=args.emb_win_min_size, emb_win_max_size=args.emb_win_max_size,
+        train_ds_type=args.train_ds_type,
         freeze_encoder=args.freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
@@ -338,10 +345,25 @@ def train(rank: int, ds_train: Dataset, ds_val: Dataset, args: ArgsMixedDecoderT
         del checkpoint
 
     n_special_toks = 1000
-    ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device)
-    ds_val = MaskedCiteDataset(ds_val, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device)
-    train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
-    val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
+    inds_train, inds_val = None, None
+    if args.train_ds_type == MixedDecoderDsType.Cite:
+        ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device)
+        ds_val = MaskedCiteDataset(ds_val, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device)
+        train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
+        val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
+    elif args.train_ds_type == MixedDecoderDsType.Qna:
+        df_sq, inds_train, inds_val = load_split_squadv2(exclude_empty_answers=True)
+        max_chunks = max(args.emb_win_max_size, 1)
+        ds_train = QnaCiteDataset(
+            df_sq, inds_train, tkz, inp_len=args.inp_len, max_chunks=max_chunks, device=device,
+        )
+        ds_val = QnaCiteDataset(
+            df_sq, inds_val, tkz, inp_len=args.inp_len, max_chunks=max_chunks, device=device,
+        )
+        train_batch_it = create_qna_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
+        val_batch_it = create_qna_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
+    else:
+        raise ValueError(f'Unsupported train_ds_type: {args.train_ds_type}')
 
     lr = optimizer.param_groups[0]['lr']
     log(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
@@ -474,10 +496,16 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         )
 
     tkz = AutoTokenizer.from_pretrained(args.bert_model_name)
-    ds_train, ds_val = load_split_wiki_dataset(
-        data_path=args.data_path, tkz=tkz, max_seq_len=args.inp_len, val_split_ratio=0.05,
-        mask_cfg=mask_cfg, random_seed=args.random_seed,
-    )
+
+    if args.train_ds_type == MixedDecoderDsType.Cite:
+        ds_train, ds_val = load_split_wiki_dataset(
+            data_path=args.data_path, tkz=tkz, max_seq_len=args.inp_len, val_split_ratio=0.05,
+            mask_cfg=mask_cfg, random_seed=args.random_seed,
+        )
+    elif args.train_ds_type == MixedDecoderDsType.Qna:
+        ds_train, ds_val = None, None  # QnA datasets created in train() from SQuAD v2
+    else:
+        raise ValueError(f'Unsupported train_ds_type: {args.train_ds_type}')
 
     mp.spawn(train, args=(
         ds_train, ds_val, args,
