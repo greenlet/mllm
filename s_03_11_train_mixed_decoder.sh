@@ -25,6 +25,9 @@ decoder_model_name=gpt2
 # decoder_type=bert_dec
 # decoder_model_name=bert-base-uncased
 
+# train_ds_type=cite
+train_ds_type=qna
+
 max_seq_len=384
 freeze_encoder=false
 use_sep=true
@@ -42,9 +45,9 @@ mask_seq_max_len=20
 mask_n_last_toks=0
 
 pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
-# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260304_105309-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-decmgpt2-msl384-sepT-pallF-eer4-ewn10x10-frzencF-trn_lr5e-05_bs30
+pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260304_105309-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-decmgpt2-msl384-sepT-pallF-eer4-ewn10x10-frzencF-trn_lr5e-05_bs30
 # pretrained_mixed_decoder_model_path=
-train_subdir=last
+# train_subdir=last
 
 # device=cpu
 # epochs=5
@@ -90,6 +93,7 @@ python s_03_11_train_mixed_decoder.py \
   --emb-exp-rate $emb_exp_rate \
   --emb-win-min-size $emb_win_min_size \
   --emb-win-max-size $emb_win_max_size \
+  --train-ds-type $train_ds_type \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

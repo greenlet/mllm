@@ -271,7 +271,7 @@ class MixedDecoder(nn.Module):
 
         with enc_ctx:
             # inp_enc_embs: (batch_size, d_model)
-            inp_enc_embs = self.run_enc(batch.inp_toks, batch.inp_att_mask)
+            inp_enc_embs = self.run_enc(batch.inp_masked_toks, batch.inp_att_mask)
 
         # Context embeddings: all batch CLS embeddings as prefix for each sample
         # Determine embedding window
@@ -464,3 +464,4 @@ class MixedDecoder(nn.Module):
         if self.cfg.train_ds_type == MixedDecoderDsType.Qna:
             return self.run_on_qna(batch, epoch)
         return self.run_on_text_citation(batch, epoch)
+

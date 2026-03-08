@@ -64,30 +64,42 @@ class QnaCiteDataset:
         self.device = device if device is not None else torch.device('cpu')
         self.pad_token_id = tkz.pad_token_id
         self.cls_token_id = tkz.cls_token_id
+        self.sep_token_id = tkz.sep_token_id
         self.size = len(self.inds)
+        self.prompt_prefix_toks = self.tkz('Question: ', add_special_tokens=False).input_ids
+        self.prompt_suffix_toks = self.tkz(' Answer:', add_special_tokens=False).input_ids
+        self.prompt_budget = self.max_prompt_toks - len(self.prompt_prefix_toks) - len(self.prompt_suffix_toks)
+        assert self.prompt_budget > 0, f'Not enough max_prompt_toks to fit prefix and suffix. prompt_budget={self.prompt_budget}. prefix_len={len(self.prompt_prefix_toks)}. suffix_len={len(self.prompt_suffix_toks)}. max_prompt_toks={self.max_prompt_toks}.'
+
 
     def __len__(self):
         return self.size
 
     def _chunk_context(self, context: str) -> List[List[int]]:
-        """Tokenize context and split into chunks of (inp_len - 1) tokens, prepending CLS to each."""
+        """Tokenize context and split into chunks, each starting with CLS and ending with SEP."""
         ctx_toks = self.tkz(context, add_special_tokens=False).input_ids
-        chunk_content_len = self.inp_len - 1  # reserve 1 token for CLS
+        chunk_content_len = self.inp_len - 2  # reserve 1 for CLS and 1 for SEP
         chunks = []
         for start in range(0, len(ctx_toks), chunk_content_len):
-            chunk = [self.cls_token_id] + ctx_toks[start:start + chunk_content_len]
+            content = ctx_toks[start:start + chunk_content_len]
+            chunk = [self.cls_token_id] + content + [self.sep_token_id]
             chunks.append(chunk)
             if len(chunks) >= self.max_chunks:
                 break
         return chunks
 
     def _tokenize_prompt(self, question: str) -> List[int]:
-        """Tokenize question into prompt format: 'Question: {q} Answer:'."""
-        prompt_str = f'Question: {question} Answer:'
-        toks = self.tkz(prompt_str, add_special_tokens=False).input_ids
-        if len(toks) > self.max_prompt_toks:
-            toks = toks[:self.max_prompt_toks]
-        return toks
+        """Tokenize question into prompt format: 'Question: {q} Answer:'.
+
+        If the full prompt does not fit into max_prompt_toks, the question is
+        truncated from the left so that the *last* part of the question is kept,
+        preserving the 'Question: ' prefix and ' Answer:' suffix.
+        """
+        q_toks = self.tkz(question, add_special_tokens=False).input_ids
+
+        if len(q_toks) > self.prompt_budget:
+            q_toks = q_toks[-self.prompt_budget:]  # keep the last (most relevant) part
+        return self.prompt_prefix_toks + q_toks + self.prompt_suffix_toks
 
     def _tokenize_answer(self, answer: str) -> List[int]:
         """Tokenize answer with special tokens (CLS at start, SEP at end)."""
@@ -109,7 +121,10 @@ class QnaCiteDataset:
             context = row['context']
             question = row['question']
             answers = row['answers']['text']
-            answer = answers[0] if len(answers) > 0 else ''
+            n_answers = len(answers)
+            assert n_answers > 0, f'Expected at least one answer for SQuAD v2 item, but got n_answers={n_answers} for idx={idx}.'
+            # randomly sample one answer if multiple are present
+            answer = np.random.choice(answers)
 
             chunks = self._chunk_context(context)
             all_chunks.extend(chunks)
@@ -170,15 +185,14 @@ def load_split_squadv2(
     """Load SQuAD v2 and split into train/val indices."""
     df = get_squadv2_df(exclude_empty_answers=exclude_empty_answers)
     n_total = len(df)
-    df_train, df_val = split_df(df, val_ratio=val_ratio)
-    inds_train = np.arange(len(df_train))
-    inds_val = np.arange(len(df_train), len(df_train) + len(df_val))
     # Re-index to use iloc correctly
     df = df.reset_index(drop=True)
     inds = np.arange(n_total)
     if random_seed is not None:
-        np.random.seed(random_seed)
-    np.random.shuffle(inds)
+        rng = np.random.default_rng(random_seed)
+        rng.shuffle(inds)
+    else:
+        np.random.shuffle(inds)
     n_val = int(n_total * val_ratio)
     inds_train = inds[n_val:].copy()
     inds_val = inds[:n_val].copy()
@@ -199,9 +213,9 @@ def create_qna_cite_dataloader(
         inds = dataset.inds[start_ind:end_ind].tolist()
         if len(inds) < batch_size:
             inds += dataset.inds[:(batch_size - len(inds))].tolist()
+        batch = dataset.get_batch(inds)
         if end_ind == len(dataset):
             print(f'R{rank}. Shuffle QnaCite dataset')
             dataset.shuffle()
-        batch = dataset.get_batch(inds)
         yield batch
         start_ind = end_ind % len(dataset)
