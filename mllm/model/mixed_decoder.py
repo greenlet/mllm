@@ -11,6 +11,7 @@ from transformers import PreTrainedTokenizer
 from mllm.config.model import MixedDecoderCfg, MixedDecoderDsType, MixedDecoderType, BertEmbType
 from mllm.model.encdec_ranker_hg import EncoderBert
 from mllm.model.gpt2 import GPT2LMHeadModel
+from mllm.model.losses import EncdecMaskPadItemLoss
 from mllm.train.encdec_graph_bert import MaskedCiteBatch
 from mllm.train.qna_cite import QnaCiteBatch
 
@@ -56,6 +57,15 @@ class MixedDecoder(nn.Module):
         self.d_dec = d_dec
         # Learnable positional embeddings over the full combined sequence
         self.pos_emb = nn.Embedding(cfg.max_seq_len, d_dec)
+
+        # Mask-aware loss: gives higher weight to [MASK] positions, lower to special tokens
+        self.mask_loss_fn = None
+        if self.cfg.train_cfg.mask_cfg is not None:
+            self.mask_loss_fn = EncdecMaskPadItemLoss(
+                msk_tok_id=cast(int, tkz.mask_token_id),
+                spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
+                reg_weight=1, msk_weight=5, spc_weight=0.1,
+            )
 
     def load_pretrained(self, checkpoint: Optional[Dict[str, Any]] = None):
         if checkpoint is not None:
@@ -230,16 +240,33 @@ class MixedDecoder(nn.Module):
             raise ValueError(f'Decoder type {self.cfg.decoder_type} is not supported.')
         return out.logits
 
-    def calc_loss(self, logits: Tensor, labels: Tensor) -> Dict[str, Tensor]:
-        """Compute cross-entropy loss on target positions only.
+    def calc_loss(
+            self, logits: Tensor, labels: Tensor,
+            tokens_inp: Optional[Tensor] = None, tokens_tgt: Optional[Tensor] = None,
+            target_start_idx: int = 0,
+    ) -> Dict[str, Tensor]:
+        """Compute loss on target positions.
+
+        When mask_loss_fn is available and tokens_inp/tokens_tgt are provided,
+        uses EncdecMaskPadItemLoss which weights masked positions higher.
+        Otherwise falls back to standard cross-entropy.
 
         Args:
             logits: (batch_size, total_len, n_vocab)
             labels: (batch_size, total_len) with -100 for ignored positions
+            tokens_inp: (batch_size, target_len) masked input tokens for mask-aware loss
+            tokens_tgt: (batch_size, target_len) original target tokens for mask-aware loss
+            target_start_idx: start index of target tokens in the logits sequence
 
         Returns:
-            Dict with 'loss' key.
+            Dict with 'loss' key (and 'reg_toks_loss', 'msk_toks_loss', 'spc_toks_loss' when mask loss is used).
         """
+        if self.mask_loss_fn is not None and tokens_inp is not None and tokens_tgt is not None:
+            # Extract target logits: (batch_size, target_len, n_vocab)
+            target_len = tokens_tgt.shape[1]
+            target_logits = logits[:, target_start_idx:target_start_idx + target_len]
+            return self.mask_loss_fn(target_logits, tokens_inp, tokens_tgt)
+
         # Flatten
         logits_flat = logits.view(-1, logits.shape[-1])  # (batch_size * total_len, n_vocab)
         labels_flat = labels.view(-1)  # (batch_size * total_len)
@@ -338,7 +365,17 @@ class MixedDecoder(nn.Module):
         logits = self.run_decoder(input_embs, attention_mask)
 
         # Compute loss
-        loss_dict = self.calc_loss(logits, labels)
+        if self.mask_loss_fn is not None:
+            if self.cfg.prompt_all:
+                # target_toks was stripped of leading CLS, so masked tokens must match
+                masked_target_toks = batch.inp_masked_toks[:, 1:]  # (batch_size, inp_len - 1)
+                orig_target_toks = batch.inp_toks[:, 1:]  # (batch_size, inp_len - 1)
+            else:
+                masked_target_toks = batch.cites_masked_toks  # (batch_size, cite_len)
+                orig_target_toks = batch.cites_toks  # (batch_size, cite_len)
+            loss_dict = self.calc_loss(logits, labels, masked_target_toks, orig_target_toks, target_start_idx)
+        else:
+            loss_dict = self.calc_loss(logits, labels)
 
         return loss_dict, logits
 

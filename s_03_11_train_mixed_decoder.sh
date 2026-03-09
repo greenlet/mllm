@@ -25,8 +25,8 @@ decoder_model_name=gpt2
 # decoder_type=bert_dec
 # decoder_model_name=bert-base-uncased
 
-# train_ds_type=cite
-train_ds_type=qna
+train_ds_type=cite
+# train_ds_type=qna
 
 max_seq_len=384
 freeze_encoder=false
@@ -36,7 +36,7 @@ emb_exp_rate=4
 emb_win_min_size=10
 emb_win_max_size=10
 
-mask_tokens=false
+mask_tokens=true
 mask_sep_freq=0.5
 mask_sep_frac=0.15
 mask_seq_freq=0.5
