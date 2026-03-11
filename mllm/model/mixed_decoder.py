@@ -486,12 +486,72 @@ class MixedDecoder(nn.Module):
         else:
             ctx_embs = ctx_embs_raw  # (batch_size, target_win_size, d_model)
 
-        # 5. Build decoder input and run
-        input_embs, attention_mask, labels, target_start_idx = self.build_decoder_input(
-            ctx_embs, batch.prompt_toks, batch.prompt_att_mask,
-            batch.ans_toks, batch.ans_att_mask,
-        )
+        # 5. Build decoder input per sample (prompts have variable lengths)
+        # Project encoder embeddings if needed
+        if self.enc_proj is not None:
+            ctx_embs = self.enc_proj(ctx_embs)
 
+        n_ctx = ctx_embs.shape[1]
+        sep_len = 1 if self.cfg.use_sep else 0
+
+        # Pre-compute all embeddings
+        prompt_embs_all = self.word_embeddings(batch.prompt_toks)    # (bs, max_prompt_len, d_dec)
+        target_inp_embs_all = self.word_embeddings(batch.ans_toks[:, :-1])  # (bs, max_ans_len-1, d_dec)
+        if self.cfg.use_sep:
+            sep_emb = self.word_embeddings(
+                torch.full((1, 1), self.sep_token_id, dtype=torch.long, device=device)
+            )  # (1, 1, d_dec)
+
+        prompt_lens = batch.prompt_lengths
+        ans_lens = [int(batch.ans_att_mask[i].sum().item()) for i in range(batch_size)]
+
+        # Compute per-sample total length and max
+        total_lens = [n_ctx + sep_len + prompt_lens[i] + max(ans_lens[i] - 1, 0) for i in range(batch_size)]
+        max_total_len = max(total_lens)
+        assert max_total_len <= self.cfg.max_seq_len, \
+            f'Total sequence length {max_total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
+
+        input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device)
+        attention_mask = torch.zeros((batch_size, max_total_len), dtype=torch.long, device=device)
+        labels = torch.full((batch_size, max_total_len), -100, dtype=torch.long, device=device)
+
+        for i in range(batch_size):
+            pos = 0
+            # Context embeddings
+            input_embs[i, :n_ctx] = ctx_embs[i]
+            attention_mask[i, :n_ctx] = 1
+            pos = n_ctx
+
+            # Optional SEP
+            if self.cfg.use_sep:
+                input_embs[i, pos:pos + 1] = sep_emb[0]
+                attention_mask[i, pos:pos + 1] = 1
+                pos += 1
+
+            # Prompt tokens (actual length, no padding)
+            pl = prompt_lens[i]
+            input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
+            attention_mask[i, pos:pos + pl] = 1
+
+            target_start_i = pos + pl - 1  # last prompt pos predicts first answer token
+            pos += pl
+
+            # Target input tokens (shifted: first ans_len-1 tokens)
+            til = max(ans_lens[i] - 1, 0)
+            if til > 0:
+                input_embs[i, pos:pos + til] = target_inp_embs_all[i, :til]
+                attention_mask[i, pos:pos + til] = 1
+            pos += til
+
+            # Labels: place actual answer tokens at [target_start_i, target_start_i + ans_len)
+            al = ans_lens[i]
+            labels[i, target_start_i:target_start_i + al] = batch.ans_toks[i, :al]
+
+        # Positional embeddings
+        pos_ids = torch.arange(max_total_len, device=device).unsqueeze(0)
+        input_embs = input_embs + self.pos_emb(pos_ids)
+
+        # 6. Run decoder and compute loss
         logits = self.run_decoder(input_embs, attention_mask)
         loss_dict = self.calc_loss(logits, labels)
 

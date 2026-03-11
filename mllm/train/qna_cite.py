@@ -32,10 +32,12 @@ class QnaCiteBatch:
     ctx_chunks_att_mask: torch.Tensor
     # Number of context chunks per QnA item (list of length batch_size)
     ctx_chunk_counts: List[int]
-    # (batch_size, prompt_len) - tokenized "Question: {q} Answer:"
+    # (batch_size, max_prompt_len) - tokenized "Question: {q} Answer:" right-padded
     prompt_toks: torch.Tensor
-    # (batch_size, prompt_len) - attention mask for prompts
+    # (batch_size, max_prompt_len) - attention mask for prompts
     prompt_att_mask: torch.Tensor
+    # Actual token lengths of each prompt before padding (list of length batch_size)
+    prompt_lengths: List[int]
     # (batch_size, ans_len) - target answer tokens (with special tokens)
     ans_toks: torch.Tensor
     # (batch_size, ans_len) - attention mask for answer tokens
@@ -142,8 +144,9 @@ class QnaCiteDataset:
             ctx_chunks_t[i, :n] = torch.tensor(chunk[:n], dtype=torch.long, device=self.device)
             ctx_chunks_att[i, :n] = 1
 
-        # Pad prompts
-        max_prompt_len = max(len(p) for p in prompt_toks_list)
+        # Right-pad prompts; store actual lengths for per-sample sequence building
+        prompt_lengths = [len(p) for p in prompt_toks_list]
+        max_prompt_len = max(prompt_lengths)
         prompt_t = torch.full((batch_size, max_prompt_len), self.pad_token_id, dtype=torch.long, device=self.device)
         prompt_att = torch.zeros((batch_size, max_prompt_len), dtype=torch.long, device=self.device)
         for i, toks in enumerate(prompt_toks_list):
@@ -166,6 +169,7 @@ class QnaCiteDataset:
             ctx_chunk_counts=chunk_counts,
             prompt_toks=prompt_t,
             prompt_att_mask=prompt_att,
+            prompt_lengths=prompt_lengths,
             ans_toks=ans_t,
             ans_att_mask=ans_att,
         )
