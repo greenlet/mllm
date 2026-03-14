@@ -2,8 +2,8 @@ d_model: 768
 decoder_model_name: gpt2
 decoder_type: gpt2
 emb_exp_rate: 0
+emb_win_max_size: 10
 emb_win_min_size: 0
-emb_win_max_size: 0
 enc_bert:
   d_model: 768
   emb2_tok_name: ''
@@ -16,7 +16,7 @@ max_seq_len: 384
 prompt_all: true
 train_cfg:
   batch_size: 10
-  freeze_encoder: true
+  freeze_encoder: false
   learning_rate: 0.0001
   learning_rate_scheduler:
     cls_name: ReduceLROnPlateau
@@ -29,4 +29,5 @@ train_cfg:
     params: {}
   pretrained_encdec_model_path: null
   pretrained_mixed_decoder_model_path: null
+train_ds_type: cite
 use_sep: true

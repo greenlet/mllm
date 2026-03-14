@@ -489,7 +489,8 @@ class EncdecMaskPadItemLoss(nn.Module):
         self.reg_weight = reg_weight
         self.msk_weight = msk_weight
         self.spc_weight = spc_weight
-        self.register_buffer('prob_cap', torch.scalar_tensor(prob_cap))
+        # self.register_buffer('prob_cap', torch.scalar_tensor(prob_cap))
+        self.prob_cap = torch.scalar_tensor(prob_cap)
 
     # logits_pred: (batch_size, inp_len, vocab_size)
     # tokens_inp: (batch_size, inp_len)
