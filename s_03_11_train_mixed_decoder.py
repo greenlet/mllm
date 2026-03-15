@@ -26,6 +26,7 @@ from mllm.model.mixed_decoder import MixedDecoder
 from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
 from mllm.train.mask_utils import MaskCfg
+from mllm.train.next_tok_wiki import NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next
 from mllm.train.qna_cite import QnaCiteDataset, create_qna_cite_dataloader, load_split_squadv2
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import instantiate_torch_lr_scheduler, instantiate_torch_optimizer, parse_dict_str, rethrow
@@ -113,6 +114,11 @@ class ArgsMixedDecoderTrain(BaseModel):
         MixedDecoderDsType.Cite,
         description=f'Training dataset type. Can have values: {list(x.value for x in MixedDecoderDsType)}',
         cli=('--train-ds-type',),
+    )
+    min_next_toks: int = Field(
+        64,
+        description='Minimum number of tokens reserved for next-token prediction target (used with train_ds_type=next).',
+        cli=('--min-next-toks',),
     )
 
     freeze_encoder_STR: str = create_bool_str_field(*freeze_encoder_ARG)
@@ -261,7 +267,7 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, args: ArgsMixedDecoderTrain):
+def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_ds, wiki_inds_train, wiki_inds_val, args: ArgsMixedDecoderTrain):
     print(f'Running DDP training on rank {rank}.')
     def log(*msgs: Any, forall: bool = False):
         if rank == 0 or forall:
@@ -288,7 +294,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, args: 
         inp_len=args.inp_len, decoder_type=args.decoder_type, decoder_model_name=args.decoder_model_name,
         max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, emb_exp_rate=args.emb_exp_rate,
         emb_win_min_size=args.emb_win_min_size, emb_win_max_size=args.emb_win_max_size,
-        train_ds_type=args.train_ds_type,
+        min_next_toks=args.min_next_toks, train_ds_type=args.train_ds_type,
         freeze_encoder=args.freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
@@ -364,6 +370,21 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, args: 
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
         train_batch_it = create_qna_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
         val_batch_it = create_qna_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
+    elif args.train_ds_type == MixedDecoderDsType.Next:
+        ds_train = NextTokWikiDataset(
+            wiki_ds, wiki_inds_train, tkz, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
+            emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
+            device=device,
+        )
+        ds_val = NextTokWikiDataset(
+            wiki_ds, wiki_inds_val, tkz, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
+            emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
+            device=device,
+        )
+        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
+        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
+        train_batch_it = create_next_tok_dataloader(ds_train, batch_size=args.docs_batch_size)
+        val_batch_it = create_next_tok_dataloader(ds_val, batch_size=args.docs_batch_size)
     else:
         raise ValueError(f'Unsupported train_ds_type: {args.train_ds_type}')
 
@@ -499,6 +520,7 @@ def main(args: ArgsMixedDecoderTrain) -> int:
 
     tkz = AutoTokenizer.from_pretrained(args.bert_model_name)
 
+    wiki_ds, wiki_inds_train, wiki_inds_val = None, None, None
     if args.train_ds_type == MixedDecoderDsType.Cite:
         ds_train, ds_val = load_split_wiki_dataset(
             data_path=args.data_path, tkz=tkz, max_seq_len=args.inp_len, val_split_ratio=0.05,
@@ -508,11 +530,17 @@ def main(args: ArgsMixedDecoderTrain) -> int:
     elif args.train_ds_type == MixedDecoderDsType.Qna:
         df_sq, sq_inds_train, sq_inds_val = load_split_squadv2(exclude_empty_answers=True)
         ds_train, ds_val = None, None
+    elif args.train_ds_type == MixedDecoderDsType.Next:
+        wiki_ds, wiki_inds_train, wiki_inds_val = load_split_wiki_for_next(
+            data_path=args.data_path, random_seed=args.random_seed,
+        )
+        ds_train, ds_val = None, None
+        df_sq, sq_inds_train, sq_inds_val = None, None, None
     else:
         raise ValueError(f'Unsupported train_ds_type: {args.train_ds_type}')
 
     mp.spawn(train, args=(
-        ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, args,
+        ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_ds, wiki_inds_train, wiki_inds_val, args,
     ), nprocs=args.world_size, join=True)
 
     return 0

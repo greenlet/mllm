@@ -2010,6 +2010,7 @@ def float_param_to_str(name: str, val: float) -> str:
 class MixedDecoderDsType(str, Enum):
     Cite = 'cite'
     Qna = 'qna'
+    Next = 'next'
 
 
 class MixedDecoderType(str, Enum):
@@ -2038,6 +2039,7 @@ class MixedDecoderCfg(BaseModel):
     emb_exp_rate: int = 0
     emb_win_min_size: int = 0
     emb_win_max_size: int = 0
+    min_next_toks: int = 64
     d_model: int = 768
     train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite
     train_cfg: MixedDecoderTrainCfg
@@ -2177,7 +2179,8 @@ def create_mixed_decoder_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
         inp_len: int = 128, decoder_type: MixedDecoderType = MixedDecoderType.Gpt2, decoder_model_name: str = 'gpt2',
         max_seq_len: int = 384, use_sep: bool = True, prompt_all: bool = True, emb_exp_rate: int = 0,
-        emb_win_min_size: int = 0, emb_win_max_size: int = 0, train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite,
+        emb_win_min_size: int = 0, emb_win_max_size: int = 0, min_next_toks: int = 64,
+        train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite,
         freeze_encoder: bool = True,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
@@ -2224,6 +2227,7 @@ def create_mixed_decoder_cfg(
         emb_exp_rate=emb_exp_rate,
         emb_win_min_size=emb_win_min_size,
         emb_win_max_size=emb_win_max_size,
+        min_next_toks=min_next_toks,
         d_model=d_model,
         train_ds_type=train_ds_type,
         train_cfg=cfg_train,
@@ -2235,7 +2239,8 @@ def copy_override_mixed_decoder_cfg(
         cfg: MixedDecoderCfg, pretrained_model_name: Optional[str] = None, emb_type: Optional[BertEmbType] = None,
         inp_len: Optional[int] = None, decoder_type: Optional[MixedDecoderType] = None, decoder_model_name: Optional[str] = None,
         max_seq_len: Optional[int] = None, use_sep: Optional[bool] = None, prompt_all: Optional[bool] = None, emb_exp_rate: Optional[int] = None,
-        emb_win_min_size: Optional[int] = None, emb_win_max_size: Optional[int] = None, train_ds_type: Optional[MixedDecoderDsType] = None,
+        emb_win_min_size: Optional[int] = None, emb_win_max_size: Optional[int] = None, min_next_toks: Optional[int] = None,
+        train_ds_type: Optional[MixedDecoderDsType] = None,
         freeze_encoder: Optional[bool] = None,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None, learning_rate: Optional[float] = None,
@@ -2254,6 +2259,7 @@ def copy_override_mixed_decoder_cfg(
     emb_exp_rate = coalesce(emb_exp_rate, cfg.emb_exp_rate)
     emb_win_min_size = coalesce(emb_win_min_size, cfg.emb_win_min_size)
     emb_win_max_size = coalesce(emb_win_max_size, cfg.emb_win_max_size)
+    min_next_toks = coalesce(min_next_toks, cfg.min_next_toks)
     train_ds_type = coalesce(train_ds_type, cfg.train_ds_type)
     freeze_encoder = coalesce(freeze_encoder, cfg.train_cfg.freeze_encoder)
     pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
@@ -2271,7 +2277,8 @@ def copy_override_mixed_decoder_cfg(
         pretrained_model_name=pretrained_model_name, emb_type=emb_type, inp_len=inp_len,
         decoder_type=decoder_type, decoder_model_name=decoder_model_name,
         max_seq_len=max_seq_len, use_sep=use_sep, prompt_all=prompt_all, emb_exp_rate=emb_exp_rate,
-        emb_win_min_size=emb_win_min_size, emb_win_max_size=emb_win_max_size, train_ds_type=train_ds_type,
+        emb_win_min_size=emb_win_min_size, emb_win_max_size=emb_win_max_size, min_next_toks=min_next_toks,
+        train_ds_type=train_ds_type,
         freeze_encoder=freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
@@ -2312,6 +2319,8 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
         postfix_parts.append(f'ewn{model_cfg.emb_win_min_size}x{model_cfg.emb_win_max_size}')
     postfix_parts.append(bool_param_to_str('frzenc', train.freeze_encoder))
     postfix_parts.append(f'ds{model_cfg.train_ds_type.value.capitalize()}')
+    if model_cfg.train_ds_type == MixedDecoderDsType.Next:
+        postfix_parts.append(f'mnt{model_cfg.min_next_toks}')
 
     if train.mask_cfg is not None:
         mask_cfg = train.mask_cfg
