@@ -27,6 +27,9 @@ decoder_model_name=gpt2
 
 train_ds_type=cite
 # train_ds_type=qna
+# train_ds_type=next
+
+min_next_toks=64
 
 max_seq_len=384
 freeze_encoder=false
@@ -94,6 +97,7 @@ python s_03_11_train_mixed_decoder.py \
   --emb-win-min-size $emb_win_min_size \
   --emb-win-max-size $emb_win_max_size \
   --train-ds-type $train_ds_type \
+  --min-next-toks $min_next_toks \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

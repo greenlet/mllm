@@ -13,6 +13,7 @@ from mllm.model.encdec_ranker_hg import EncoderBert
 from mllm.model.gpt2 import GPT2LMHeadModel
 from mllm.model.losses import EncdecMaskPadItemLoss
 from mllm.train.encdec_graph_bert import MaskedCiteBatch
+from mllm.train.next_tok_wiki import NextTokBatch
 from mllm.train.qna_cite import QnaCiteBatch
 
 
@@ -557,7 +558,127 @@ class MixedDecoder(nn.Module):
 
         return loss_dict, logits
 
-    def forward(self, batch: Union[MaskedCiteBatch, QnaCiteBatch], epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
+    def run_on_next(self, batch: NextTokBatch, epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
+        """Training method for next-token prediction with Wikipedia data.
+
+        1. Encode all context chunks to CLS embeddings.
+        2. Per-sample: use exactly the sample's own context embeddings (no filler).
+           Pad to the maximum chunk count across the batch.
+        3. Apply emb_exp expansion if configured.
+        4. Build decoder input: [ctx_embs, (sep), prompt_embs, target_inp_embs].
+        5. Run decoder with causal attention.
+        6. Compute loss on target positions.
+
+        Args:
+            batch: NextTokBatch with context chunks, prompt, and target tokens.
+            epoch: Current epoch number.
+
+        Returns:
+            Tuple of (loss_dict, logits).
+        """
+        batch_size = len(batch.ctx_chunk_counts)
+        device = batch.ctx_chunks_toks.device
+
+        # 1. Encode all context chunks
+        freeze_enc = self.cfg.train_cfg.freeze_encoder
+        enc_ctx = torch.no_grad() if freeze_enc else nullcontext()
+
+        with enc_ctx:
+            # all_enc_embs: (total_chunks, d_model)
+            all_enc_embs = self.run_enc(batch.ctx_chunks_toks, batch.ctx_chunks_att_mask)
+
+        # 2. Split encoded embeddings per sample and pad to max window size
+        chunk_offsets = [0]
+        for c in batch.ctx_chunk_counts:
+            chunk_offsets.append(chunk_offsets[-1] + c)
+
+        max_win = max(batch.ctx_chunk_counts)
+
+        ctx_embs_raw = torch.zeros((batch_size, max_win, self.cfg.d_model), device=device)
+        for i in range(batch_size):
+            start, end = chunk_offsets[i], chunk_offsets[i + 1]
+            n_own = end - start
+            ctx_embs_raw[i, :n_own] = all_enc_embs[start:end]
+
+        # 3. Apply emb_exp expansion or projection
+        if self.cfg.emb_exp_rate > 0:
+            exp_embs = self.emb_exp(ctx_embs_raw)  # (batch_size, max_win, emb_exp_rate * d_dec)
+            exp_embs = exp_embs.view(batch_size, max_win * self.cfg.emb_exp_rate, self.d_dec)
+            ctx_embs = exp_embs
+        else:
+            ctx_embs = ctx_embs_raw
+
+        # 4. Build decoder input per sample
+        if self.enc_proj is not None:
+            ctx_embs = self.enc_proj(ctx_embs)
+
+        n_ctx = ctx_embs.shape[1]
+        sep_len = 1 if self.cfg.use_sep else 0
+
+        prompt_embs_all = self.word_embeddings(batch.prompt_toks)        # (bs, max_prompt_len, d_dec)
+        target_inp_embs_all = self.word_embeddings(batch.target_toks[:, :-1])  # (bs, max_target_len-1, d_dec)
+        if self.cfg.use_sep:
+            sep_emb = self.word_embeddings(
+                torch.full((1, 1), self.sep_token_id, dtype=torch.long, device=device)
+            )  # (1, 1, d_dec)
+
+        prompt_lens = batch.prompt_lengths
+        target_lens = [int(batch.target_att_mask[i].sum().item()) for i in range(batch_size)]
+
+        total_lens = [n_ctx + sep_len + prompt_lens[i] + max(target_lens[i] - 1, 0) for i in range(batch_size)]
+        max_total_len = max(total_lens)
+        assert max_total_len <= self.cfg.max_seq_len, \
+            f'Total sequence length {max_total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
+
+        input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device)
+        attention_mask = torch.zeros((batch_size, max_total_len), dtype=torch.long, device=device)
+        labels = torch.full((batch_size, max_total_len), -100, dtype=torch.long, device=device)
+
+        for i in range(batch_size):
+            pos = 0
+            # Context embeddings
+            input_embs[i, :n_ctx] = ctx_embs[i]
+            attention_mask[i, :n_ctx] = 1
+            pos = n_ctx
+
+            # Optional SEP
+            if self.cfg.use_sep:
+                input_embs[i, pos:pos + 1] = sep_emb[0]
+                attention_mask[i, pos:pos + 1] = 1
+                pos += 1
+
+            # Prompt tokens
+            pl = prompt_lens[i]
+            input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
+            attention_mask[i, pos:pos + pl] = 1
+
+            target_start_i = pos + pl - 1  # last prompt pos predicts first target token
+            pos += pl
+
+            # Target input tokens (shifted: first target_len-1 tokens)
+            til = max(target_lens[i] - 1, 0)
+            if til > 0:
+                input_embs[i, pos:pos + til] = target_inp_embs_all[i, :til]
+                attention_mask[i, pos:pos + til] = 1
+            pos += til
+
+            # Labels: actual target tokens at [target_start_i, target_start_i + target_len)
+            al = target_lens[i]
+            labels[i, target_start_i:target_start_i + al] = batch.target_toks[i, :al]
+
+        # Positional embeddings
+        pos_ids = torch.arange(max_total_len, device=device).unsqueeze(0)
+        input_embs = input_embs + self.pos_emb(pos_ids)
+
+        # 5. Run decoder and compute loss
+        logits = self.run_decoder(input_embs, attention_mask)
+        loss_dict = self.calc_loss(logits, labels)
+
+        return loss_dict, logits
+
+    def forward(self, batch: Union[MaskedCiteBatch, QnaCiteBatch, NextTokBatch], epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
+        if self.cfg.train_ds_type == MixedDecoderDsType.Next:
+            return self.run_on_next(batch, epoch)
         if self.cfg.train_ds_type == MixedDecoderDsType.Qna:
             return self.run_on_qna(batch, epoch)
         return self.run_on_text_citation(batch, epoch)
