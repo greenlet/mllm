@@ -20,10 +20,10 @@ bert_emb_type=cls
 inp_len=128
 
 # Decoder type: gpt2 or bert_dec
-decoder_type=gpt2
-decoder_model_name=gpt2
-# decoder_type=bert_dec
-# decoder_model_name=bert-base-uncased
+# decoder_type=gpt2
+# decoder_model_name=gpt2
+decoder_type=bertdec
+decoder_model_name=bert-base-uncased
 
 train_ds_type=cite
 # train_ds_type=qna
@@ -39,7 +39,7 @@ emb_exp_rate=4
 emb_win_min_size=10
 emb_win_max_size=10
 
-mask_tokens=true
+mask_tokens=false
 mask_sep_freq=0.5
 mask_sep_frac=0.15
 mask_seq_freq=0.5
@@ -50,7 +50,7 @@ mask_n_last_toks=0
 pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
 pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260304_105309-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-decmgpt2-msl384-sepT-pallF-eer4-ewn10x10-frzencF-trn_lr5e-05_bs30
 # pretrained_mixed_decoder_model_path=
-# train_subdir=last
+train_subdir=last
 
 # device=cpu
 # epochs=5
@@ -63,7 +63,7 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=30
+docs_batch_size=40
 world_size=4
 
 
