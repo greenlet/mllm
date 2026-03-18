@@ -104,8 +104,8 @@ class QnaCiteDataset:
         return self.prompt_prefix_toks + q_toks + self.prompt_suffix_toks
 
     def _tokenize_answer(self, answer: str) -> List[int]:
-        """Tokenize answer with special tokens (CLS at start, SEP at end)."""
-        toks = self.tkz(answer, add_special_tokens=True).input_ids
+        """Tokenize answer with SEP token at the end."""
+        toks = self.tkz(answer, add_special_tokens=True).input_ids[1:]
         if len(toks) > self.max_ans_toks:
             toks = toks[:self.max_ans_toks]
         return toks
@@ -192,11 +192,11 @@ def load_split_squadv2(
     # Re-index to use iloc correctly
     df = df.reset_index(drop=True)
     inds = np.arange(n_total)
-    if random_seed is not None:
-        rng = np.random.default_rng(random_seed)
-        rng.shuffle(inds)
-    else:
-        np.random.shuffle(inds)
+    # if random_seed is not None:
+    #     rng = np.random.default_rng(random_seed)
+    #     rng.shuffle(inds)
+    # else:
+    #     np.random.shuffle(inds)
     n_val = int(n_total * val_ratio)
     inds_train = inds[n_val:].copy()
     inds_val = inds[:n_val].copy()
