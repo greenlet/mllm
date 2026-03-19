@@ -466,16 +466,11 @@ class MixedDecoder(nn.Module):
 
                 filler_embs = all_enc_embs[filler_inds] if filler_inds.numel() > 0 else torch.zeros((n_filler, self.cfg.d_model), device=device)
 
-                # Random coin flip: place own embeddings first or last
-                if torch.rand(1).item() < 0.5:
-                    # Own first, filler after
-                    ctx_embs_raw[i, :n_own] = own[:n_own]
-                    ctx_embs_raw[i, n_own:n_own + filler_embs.shape[0]] = filler_embs
-                else:
-                    # Filler first, own after
-                    n_fill = filler_embs.shape[0]
-                    ctx_embs_raw[i, :n_fill] = filler_embs
-                    ctx_embs_raw[i, n_fill:n_fill + n_own] = own[:n_own]
+                off = torch.randint(0, target_win_size - n_own + 1, (1,)).item()
+                ctx_embs_raw[i, off:off + n_own] = own[:n_own]
+                ctx_embs_raw[i, :off] = filler_embs[:off]
+                if off + n_own < target_win_size:
+                    ctx_embs_raw[i, off + n_own:] = filler_embs[off:n_filler]
 
         # 4. Apply emb_exp expansion or projection
         if self.cfg.emb_exp_rate > 0:

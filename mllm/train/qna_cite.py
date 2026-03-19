@@ -200,6 +200,13 @@ def load_split_squadv2(
     n_val = int(n_total * val_ratio)
     inds_train = inds[n_val:].copy()
     inds_val = inds[:n_val].copy()
+    if random_seed is not None:
+        rng = np.random.default_rng(random_seed)
+        rng.shuffle(inds_train)
+        rng.shuffle(inds_val)
+    else:
+        np.random.shuffle(inds_train)
+        np.random.shuffle(inds_val)
     rank = dist.get_rank() if dist.is_initialized() else 0
     print(f'R{rank}. SQuAD v2 n_total={n_total}. n_train={len(inds_train)}. n_val={len(inds_val)}.')
     return df, inds_train, inds_val
