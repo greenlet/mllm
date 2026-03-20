@@ -26,8 +26,8 @@ decoder_type=bertdec
 decoder_model_name=bert-base-uncased
 
 train_ds_type=cite
-# train_ds_type=qna
-# train_ds_type=next
+train_ds_type=qna
+train_ds_type=next
 
 min_next_toks=64
 
@@ -36,7 +36,7 @@ freeze_encoder=false
 use_sep=true
 prompt_all=false
 emb_exp_rate=4
-emb_win_min_size=10
+emb_win_min_size=2
 emb_win_max_size=10
 
 mask_tokens=false
@@ -48,9 +48,10 @@ mask_seq_max_len=20
 mask_n_last_toks=0
 
 pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
-pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260304_105309-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-decmgpt2-msl384-sepT-pallF-eer4-ewn10x10-frzencF-trn_lr5e-05_bs30
-# pretrained_mixed_decoder_model_path=
-train_subdir=last
+# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260304_105309-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-decmgpt2-msl384-sepT-pallF-eer4-ewn10x10-frzencF-trn_lr5e-05_bs30
+pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260316_221645-pre_mixeddecoder20260304105309-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-trn_lr5e-05_bs40
+pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260319_130017-pre_mixeddecoder20260316221645-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs40
+# train_subdir=last
 
 # device=cpu
 # epochs=5
@@ -63,7 +64,9 @@ device=cuda
 epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
-docs_batch_size=40
+# docs_batch_size=40
+# docs_batch_size=20
+docs_batch_size=15
 world_size=4
 
 
