@@ -74,7 +74,7 @@ class QnaBaseDataset:
       - _get_item(idx): return (context, prompt_text, answer_text, is_answerable) for a single item
     """
 
-    NO_ANSWER_TEXT = '[No Answer]'
+    NO_ANSWER_TEXT = 'noanswer'
 
     def __init__(
             self, tkz: PreTrainedTokenizer,
