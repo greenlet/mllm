@@ -149,7 +149,7 @@ class NaturalQuestionsDataset(QnaBaseDataset):
 
         # Answers — always strip HTML
         short_ans = nq_extract_short_answer(ex, strip_html=True)
-        long_ans = nq_extract_long_answer(ex, strip_html=True) if la_span is not None else None
+        long_ans = nq_extract_long_answer(ex, strip_html=True)
         yes_no = nq_extract_yes_no(ex)
 
         answerable = short_ans is not None or long_ans is not None or yes_no is not None
