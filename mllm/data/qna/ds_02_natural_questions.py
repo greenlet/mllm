@@ -124,7 +124,6 @@ class NaturalQuestionsDataset(QnaBaseDataset):
     def __init__(
             self,
             ds: HfDataset,
-            inds: np.ndarray,
             tkz: PreTrainedTokenizer,
             inp_len: int,
             max_chunks: int,
@@ -137,7 +136,7 @@ class NaturalQuestionsDataset(QnaBaseDataset):
             max_ans_toks=max_ans_toks, max_prompt_toks=max_prompt_toks, device=device,
         )
         self.ds = ds
-        self.inds = inds.copy()
+        self.inds = np.arange(len(ds))
 
     def _get_item(self, idx: int) -> Tuple[str, str, str, bool]:
         ex = self.ds[idx]
