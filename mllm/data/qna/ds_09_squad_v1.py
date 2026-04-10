@@ -50,7 +50,7 @@ class SquadV1Dataset(QnaBaseDataset):
         self.ds = ds
         self.inds = np.arange(len(ds))
 
-    def _get_item(self, idx: int) -> Tuple[str, str, str, bool]:
+    def _get_item(self, idx: int) -> Tuple[str, List[str], List[str], bool]:
         ex = self.ds[idx]
         context = ex['context']
         question = ex['question']
@@ -58,7 +58,7 @@ class SquadV1Dataset(QnaBaseDataset):
         answer_texts: List[str] = ex['answers']['text']
         # SQuAD v1 is answerable-only; every item has at least one answer
         answer = answer_texts[np.random.randint(len(answer_texts))]
-        return context, question, answer, True
+        return context, [question], [answer], True
 
 
 # ---------------------------------------------------------------------------

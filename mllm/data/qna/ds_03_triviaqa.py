@@ -95,7 +95,7 @@ class TriviaQADataset(QnaBaseDataset):
         self.ds = ds
         self.inds = np.arange(len(ds))
 
-    def _get_item(self, idx: int) -> Tuple[str, str, str, bool]:
+    def _get_item(self, idx: int) -> Tuple[str, List[str], List[str], bool]:
         ex = self.ds[idx]
         question = ex['question']
 
@@ -111,7 +111,7 @@ class TriviaQADataset(QnaBaseDataset):
             # Fallback to canonical value (should always exist)
             answer = ex['answer']['value']
 
-        return context, question, answer, True
+        return context, [question], [answer], True
 
 
 # ---------------------------------------------------------------------------

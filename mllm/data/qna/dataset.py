@@ -91,7 +91,7 @@ class QnaBaseDataset:
         self.cls_token_id = tkz.cls_token_id
         self.sep_token_id = tkz.sep_token_id
 
-        # Prompt formatting
+        # Single-turn prompt formatting: 'Question: {q} Answer:'
         self.prompt_prefix_toks = self.tkz('Question: ', add_special_tokens=False).input_ids
         self.prompt_suffix_toks = self.tkz(' Answer:', add_special_tokens=False).input_ids
         self.prompt_budget = (
@@ -107,6 +107,12 @@ class QnaBaseDataset:
             f'max_prompt_toks={self.max_prompt_toks}.'
         )
 
+        # Multi-turn prompt formatting: 'Q: {q0} A: {a0}. Q: {q1} A: {a1}. ... Q: {qn} A:'
+        self.mt_q_prefix_toks = self.tkz('Q: ', add_special_tokens=False).input_ids
+        self.mt_a_infix_toks = self.tkz(' A: ', add_special_tokens=False).input_ids
+        self.mt_turn_sep_toks = self.tkz('. ', add_special_tokens=False).input_ids
+        self.mt_suffix_toks = self.tkz(' A:', add_special_tokens=False).input_ids
+
         # To be set by subclasses
         self.inds: np.ndarray = np.array([], dtype=np.int64)
 
@@ -119,10 +125,15 @@ class QnaBaseDataset:
 
     # --- Methods to override in subclasses ---
 
-    def _get_item(self, idx: int) -> Tuple[str, str, str, bool]:
-        """Return (context, question, answer, is_answerable) for item at index idx.
+    def _get_item(self, idx: int) -> Tuple[str, List[str], List[str], bool]:
+        """Return (context, questions, answers, is_answerable) for item at index idx.
 
-        For unanswerable items, answer should be NO_ANSWER_TEXT.
+        questions and answers are parallel lists of equal length.
+        For single-turn datasets: questions = [q], answers = [a].
+        For multi-turn datasets: questions = [q_0, ..., q_n], answers = [a_0, ..., a_n]
+        where answers[-1] is the generation target.
+
+        For unanswerable items, answers[-1] should be NO_ANSWER_TEXT.
         """
         raise NotImplementedError
 
@@ -141,16 +152,62 @@ class QnaBaseDataset:
                 break
         return chunks
 
-    def tokenize_prompt(self, question: str) -> List[int]:
-        """Tokenize question into prompt format: 'Question: {q} Answer:'.
+    def tokenize_prompt(self, questions: List[str], answers: List[str]) -> List[int]:
+        """Tokenize prompt from question/answer lists.
 
-        If the full prompt does not fit into max_prompt_toks, the question is
-        truncated from the left so that the *last* part of the question is kept.
+        Single-turn (len == 1): 'Question: {q} Answer:'
+        Multi-turn  (len >  1): 'Q: {q0} A: {a0}. Q: {q1} A: {a1}. ... Q: {qn} A:'
+
+        questions and answers have equal length.  answers[-1] is the generation
+        target and does NOT appear in the prompt.
+
+        For multi-turn, history turns are added one by one from oldest to newest.
+        If a turn would exceed the token budget, remaining history is skipped.
+        The current question (questions[-1]) is always included.
         """
-        q_toks = self.tkz(question, add_special_tokens=False).input_ids
-        if len(q_toks) > self.prompt_budget:
-            q_toks = q_toks[-self.prompt_budget:]
-        return self.prompt_prefix_toks + q_toks + self.prompt_suffix_toks
+        assert len(questions) == len(answers)
+        n = len(questions)
+
+        if n == 1:
+            # Single-turn: existing format
+            q_toks = self.tkz(questions[0], add_special_tokens=False).input_ids
+            if len(q_toks) > self.prompt_budget:
+                q_toks = q_toks[-self.prompt_budget:]
+            return self.prompt_prefix_toks + q_toks + self.prompt_suffix_toks
+
+        # Multi-turn ----------------------------------------------------------
+        # Current question block (always included)
+        cur_q_toks = self.tkz(questions[-1], add_special_tokens=False).input_ids
+        cur_block = self.mt_q_prefix_toks + cur_q_toks + self.mt_suffix_toks
+
+        # Truncate current question from the left if it alone exceeds budget
+        if len(cur_block) > self.max_prompt_toks:
+            budget_for_q = (
+                self.max_prompt_toks
+                - len(self.mt_q_prefix_toks)
+                - len(self.mt_suffix_toks)
+            )
+            cur_q_toks = cur_q_toks[-max(budget_for_q, 1):]
+            cur_block = self.mt_q_prefix_toks + cur_q_toks + self.mt_suffix_toks
+
+        budget = self.max_prompt_toks - len(cur_block)
+
+        # Add history turns from oldest to newest
+        history_toks: List[int] = []
+        for j in range(n - 2, -1, -1):
+            q_toks = self.tkz(questions[j], add_special_tokens=False).input_ids
+            a_toks = self.tkz(answers[j], add_special_tokens=False).input_ids
+            turn_toks = (
+                self.mt_q_prefix_toks + q_toks
+                + self.mt_a_infix_toks + a_toks
+                + self.mt_turn_sep_toks
+            )
+            if len(turn_toks) > budget:
+                break
+            history_toks.extend(turn_toks)
+            budget -= len(turn_toks)
+
+        return history_toks + cur_block
 
     def tokenize_answer(self, answer: str) -> List[int]:
         """Tokenize answer with SEP token at the end."""
@@ -171,14 +228,14 @@ class QnaBaseDataset:
         answerable_list: List[bool] = []
 
         for idx in inds:
-            context, question, answer, is_answerable = self._get_item(idx)
+            context, questions, answers, is_answerable = self._get_item(idx)
 
             chunks = self.chunk_context(context)
             all_chunks.extend(chunks)
             chunk_counts.append(len(chunks))
 
-            prompt_toks_list.append(self.tokenize_prompt(question))
-            ans_toks_list.append(self.tokenize_answer(answer))
+            prompt_toks_list.append(self.tokenize_prompt(questions, answers))
+            ans_toks_list.append(self.tokenize_answer(answers[-1]))
             answerable_list.append(is_answerable)
 
         # Pad context chunks to inp_len

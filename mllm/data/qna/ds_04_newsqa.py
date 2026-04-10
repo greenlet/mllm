@@ -46,19 +46,23 @@ class NewsqaDataset(QnaBaseDataset):
             max_ans_toks=max_ans_toks, max_prompt_toks=max_prompt_toks, device=device,
         )
         self.ds = ds
-        self.inds = np.arange(len(ds))
+        # Filter out items with empty answers, empty context, or empty question
+        self.inds = np.array([
+            i for i in range(len(ds))
+            if ds[i]['answers'] and ds[i]['context'].strip() and ds[i]['question'].strip()
+        ], dtype=np.int64)
 
-    def _get_item(self, idx: int) -> Tuple[str, str, str, bool]:
+    def _get_item(self, idx: int) -> Tuple[str, List[str], List[str], bool]:
         ex = self.ds[idx]
         context = ex['context']
         question = ex['question']
 
         answer_texts: List[str] = ex['answers']
         if len(answer_texts) == 0:
-            return context, question, self.NO_ANSWER_TEXT, False
+            return context, [question], [self.NO_ANSWER_TEXT], False
 
         answer = answer_texts[np.random.randint(len(answer_texts))]
-        return context, question, answer, True
+        return context, [question], [answer], True
 
 
 # ---------------------------------------------------------------------------

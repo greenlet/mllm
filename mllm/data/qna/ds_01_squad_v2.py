@@ -50,7 +50,7 @@ class SquadV2Dataset(QnaBaseDataset):
         self.ds = ds
         self.inds = np.arange(len(ds))
 
-    def _get_item(self, idx: int) -> Tuple[str, str, str, bool]:
+    def _get_item(self, idx: int) -> Tuple[str, List[str], List[str], bool]:
         ex = self.ds[idx]
         context = ex['context']
         question = ex['question']
@@ -58,11 +58,11 @@ class SquadV2Dataset(QnaBaseDataset):
         answer_texts: List[str] = ex['answers']['text']
         if len(answer_texts) == 0:
             # Unanswerable — return constant, same as NQ
-            return context, question, self.NO_ANSWER_TEXT, False
+            return context, [question], [self.NO_ANSWER_TEXT], False
 
         # Pick a random answer span from annotations
         answer = answer_texts[np.random.randint(len(answer_texts))]
-        return context, question, answer, True
+        return context, [question], [answer], True
 
 
 # ---------------------------------------------------------------------------

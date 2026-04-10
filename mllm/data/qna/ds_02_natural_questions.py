@@ -138,7 +138,7 @@ class NaturalQuestionsDataset(QnaBaseDataset):
         self.ds = ds
         self.inds = np.arange(len(ds))
 
-    def _get_item(self, idx: int) -> Tuple[str, str, str, bool]:
+    def _get_item(self, idx: int) -> Tuple[str, List[str], List[str], bool]:
         ex = self.ds[idx]
         question = ex['question']['text']
 
@@ -153,7 +153,7 @@ class NaturalQuestionsDataset(QnaBaseDataset):
 
         answerable = short_ans is not None or long_ans is not None or yes_no is not None
         if not answerable:
-            return context, question, self.NO_ANSWER_TEXT, False
+            return context, [question], [self.NO_ANSWER_TEXT], False
 
         # Collect answer candidates and pick one randomly
         candidates: list[str] = []
@@ -165,7 +165,7 @@ class NaturalQuestionsDataset(QnaBaseDataset):
             candidates.append(yes_no)
 
         answer = candidates[np.random.randint(len(candidates))]
-        return context, question, answer, True
+        return context, [question], [answer], True
 
 
 # ---------------------------------------------------------------------------
