@@ -139,7 +139,7 @@ def load_split_wiki_dataset(
         mask_cfg: Optional[MaskCfg] = None, random_seed: Optional[int] = 55,
     ) -> Tuple[Dataset, Dataset]:
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
-    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path), trust_remote_code=True)['train']
+    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))['train']
 
     if random_seed is not None:
         dataset = dataset.shuffle(seed=random_seed)

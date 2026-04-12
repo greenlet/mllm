@@ -143,7 +143,8 @@ class NaturalQuestionsDataset(QnaBaseDataset):
         question = ex['question']['text']
 
         # Randomly decide whether to keep HTML tokens in context
-        ctx_strip_html = bool(np.random.randint(2))
+        # ctx_strip_html = bool(np.random.randint(2))
+        ctx_strip_html = True  # Always strip HTML from context as answers to nonanswerable questions can be present in HTML tags
         context = nq_get_text(ex['document'], strip_html=ctx_strip_html)
 
         # Answers — always strip HTML

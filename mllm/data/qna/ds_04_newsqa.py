@@ -57,6 +57,14 @@ class NewsqaDataset(QnaBaseDataset):
         context = ex['context']
         question = ex['question']
 
+        # Split context on " -- " (CNN articles typically have "SOURCE -- body")
+        parts = context.split(' -- ', 1)
+        if len(parts) >= 2:
+            prefix = parts[0].strip()
+            question = f'({prefix}) {question}'
+        else:
+            question = f'(News) {question}'
+
         answer_texts: List[str] = ex['answers']
         if len(answer_texts) == 0:
             return context, [question], [self.NO_ANSWER_TEXT], False
