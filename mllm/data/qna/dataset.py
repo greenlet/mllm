@@ -297,3 +297,124 @@ class QnaBaseDataset:
         else:
             np.random.shuffle(self.inds)
         return self
+
+
+class QnaDatasetAgg:
+    """Aggregator that combines multiple QnaBaseDataset instances under a single global index.
+
+    Maintains a mapping from global index to (dataset_index, local_index) so that
+    ``_get_item``, ``get_batch``, and ``shuffle`` work transparently across all
+    underlying datasets.
+    """
+
+    def __init__(self, datasets: List[QnaBaseDataset]):
+        assert len(datasets) > 0, 'QnaDatasetAgg requires at least one dataset'
+        self.datasets = datasets
+
+        # Build 2-column numpy array: [ds_idx, local_idx] per global index
+        ds_lens = [len(ds) for ds in self.datasets]
+        total = sum(ds_lens)
+        self._map = np.empty((total, 2), dtype=np.int64)
+        offset = 0
+        for ds_idx, ds_len in enumerate(ds_lens):
+            self._map[offset:offset + ds_len, 0] = ds_idx
+            self._map[offset:offset + ds_len, 1] = np.arange(ds_len, dtype=np.int64)
+            offset += ds_len
+
+        self.inds = np.arange(total, dtype=np.int64)
+
+    @property
+    def size(self) -> int:
+        return len(self.inds)
+
+    def __len__(self) -> int:
+        return self.size
+
+    def _get_item(self, idx: int) -> Tuple[str, List[str], List[str], bool]:
+        ds_idx, local_idx = self._map[idx]
+        return self.datasets[ds_idx]._get_item(local_idx)
+
+    def get_batch(self, inds: List[int]) -> QnaBatch:
+        """Build a batch by delegating to the first dataset's batching logic."""
+        # Group items by dataset to resolve global → local indices, but
+        # use the first dataset's tokenization/batching (all share the same config).
+        ds0 = self.datasets[0]
+
+        batch_size = len(inds)
+        all_chunks: List[List[int]] = []
+        chunk_counts: List[int] = []
+        prompt_toks_list: List[List[int]] = []
+        ans_toks_list: List[List[int]] = []
+        answerable_list: List[bool] = []
+
+        for idx in inds:
+            context, questions, answers, is_answerable = self._get_item(idx)
+
+            chunks = ds0.chunk_context(context)
+            all_chunks.extend(chunks)
+            chunk_counts.append(len(chunks))
+
+            prompt_toks_list.append(ds0.tokenize_prompt(questions, answers))
+            ans_toks_list.append(ds0.tokenize_answer(answers[-1]))
+            answerable_list.append(is_answerable)
+
+        # Pad context chunks to inp_len
+        total_chunks = len(all_chunks)
+        ctx_chunks_t = torch.full(
+            (total_chunks, ds0.inp_len), ds0.pad_token_id, dtype=torch.long, device=ds0.device,
+        )
+        ctx_chunks_att = torch.zeros(
+            (total_chunks, ds0.inp_len), dtype=torch.long, device=ds0.device,
+        )
+        for i, chunk in enumerate(all_chunks):
+            n = min(len(chunk), ds0.inp_len)
+            ctx_chunks_t[i, :n] = torch.tensor(chunk[:n], dtype=torch.long, device=ds0.device)
+            ctx_chunks_att[i, :n] = 1
+
+        # Right-pad prompts
+        prompt_lengths = [len(p) for p in prompt_toks_list]
+        max_prompt_len = max(prompt_lengths)
+        prompt_t = torch.full(
+            (batch_size, max_prompt_len), ds0.pad_token_id, dtype=torch.long, device=ds0.device,
+        )
+        prompt_att = torch.zeros(
+            (batch_size, max_prompt_len), dtype=torch.long, device=ds0.device,
+        )
+        for i, toks in enumerate(prompt_toks_list):
+            n = len(toks)
+            prompt_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=ds0.device)
+            prompt_att[i, :n] = 1
+
+        # Pad answers
+        max_ans_len = max(len(a) for a in ans_toks_list)
+        ans_t = torch.full(
+            (batch_size, max_ans_len), ds0.pad_token_id, dtype=torch.long, device=ds0.device,
+        )
+        ans_att = torch.zeros(
+            (batch_size, max_ans_len), dtype=torch.long, device=ds0.device,
+        )
+        for i, toks in enumerate(ans_toks_list):
+            n = len(toks)
+            ans_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=ds0.device)
+            ans_att[i, :n] = 1
+
+        return QnaBatch(
+            ctx_chunks_toks=ctx_chunks_t,
+            ctx_chunks_att_mask=ctx_chunks_att,
+            ctx_chunk_counts=chunk_counts,
+            prompt_toks=prompt_t,
+            prompt_att_mask=prompt_att,
+            prompt_lengths=prompt_lengths,
+            ans_toks=ans_t,
+            ans_att_mask=ans_att,
+            answerable=answerable_list,
+        )
+
+    def shuffle(self, seed: Optional[int] = None) -> 'QnaDatasetAgg':
+        if seed is not None:
+            rng = np.random.default_rng(seed)
+            rng.shuffle(self.inds)
+        else:
+            np.random.shuffle(self.inds)
+        return self
+

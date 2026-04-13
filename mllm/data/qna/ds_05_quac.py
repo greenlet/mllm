@@ -65,7 +65,9 @@ class QuacDataset(QnaBaseDataset):
         i_turn = np.random.randint(n_turns)
 
         # Questions: history + current
-        questions = all_questions[:i_turn + 1]
+        questions = [*all_questions[:i_turn + 1]]
+        wikipedia_page_title = ex['wikipedia_page_title']
+        questions[-1] = f'({wikipedia_page_title}) {questions[-1]}'
         # Answers: history + target (parallel with questions)
         answers = all_answers[:i_turn + 1]
 

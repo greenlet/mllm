@@ -65,7 +65,10 @@ class CoqaDataset(QnaBaseDataset):
         i_turn = np.random.randint(n_turns)
 
         # Questions: history + current
-        questions = all_questions[:i_turn + 1]
+        questions = [*all_questions[:i_turn + 1]]
+        parts = context.split(' ', 5)
+        prefix = ' '.join(parts[:5])
+        questions[-1] = f'({prefix}) {questions[-1]}'
         # Answers: history + target (parallel with questions)
         answers = all_answers[:i_turn + 1]
 
