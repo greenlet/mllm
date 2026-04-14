@@ -216,17 +216,18 @@ def create_qna_cite_dataloader(
         dataset: QnaCiteDataset, batch_size: int, shuffle: bool = True,
 ) -> Generator[QnaCiteBatch, None, None]:
     """Create infinite-loop generator yielding QnaCiteBatch instances."""
+    n = len(dataset)
     rank = dist.get_rank() if dist.is_initialized() else 0
-    print(f'R{rank}. Create QnaCiteDataset dataloader. batch_size={batch_size}. shuffle={shuffle}.')
+    print(f'R{rank}. Create QnaCiteDataset dataloader. total={n}. batch_size={batch_size}. shuffle={shuffle}.')
     start_ind = 0
     while True:
-        end_ind = min(start_ind + batch_size, len(dataset))
+        end_ind = min(start_ind + batch_size, n)
         inds = dataset.inds[start_ind:end_ind].tolist()
         if len(inds) < batch_size:
             inds += dataset.inds[:(batch_size - len(inds))].tolist()
         batch = dataset.get_batch(inds)
-        if end_ind == len(dataset):
+        if end_ind == n and shuffle:
             print(f'R{rank}. Shuffle QnaCite dataset')
             dataset.shuffle()
         yield batch
-        start_ind = end_ind % len(dataset)
+        start_ind = end_ind % n

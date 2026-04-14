@@ -10,6 +10,7 @@ Multi-turn datasets additionally carry conversation history.
 
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Generator, List, Optional, Tuple
 
 import numpy as np
@@ -28,6 +29,18 @@ class QnaDatasetType(str, Enum):
     SQUAD_V1 = 'squad_v1'
     QUAC = 'quac'
     COQA = 'coqa'
+
+
+QNA_DATASETS_DEFAULT = (
+    QnaDatasetType.SQUAD_V2,
+    QnaDatasetType.NATURAL_QUESTIONS,
+    QnaDatasetType.TRIVIAQA,
+    QnaDatasetType.NEWSQA,
+    QnaDatasetType.MRQA,
+    QnaDatasetType.ADVERSARIALQA,
+    QnaDatasetType.QUAC,
+    QnaDatasetType.COQA,
+)
 
 
 @dataclass(kw_only=True)
@@ -417,4 +430,93 @@ class QnaDatasetAgg:
         else:
             np.random.shuffle(self.inds)
         return self
+
+
+def load_qna_datasets(
+        tkz: PreTrainedTokenizer,
+        inp_len: int,
+        max_chunks: int,
+        max_ans_toks: int = 100,
+        max_prompt_toks: int = 100,
+        device: Optional[torch.device] = None,
+        cache_dir: str | Path | None = None,
+        sources: Tuple[QnaDatasetType, ...] = QNA_DATASETS_DEFAULT,
+) -> Tuple[QnaDatasetAgg, QnaDatasetAgg]:
+    """Load QnA datasets and return aggregated train/val splits.
+
+    Args:
+        sources: Tuple of QnaDatasetType values to load. Defaults to all except SQuAD v1.
+
+    Returns:
+        (train_agg, val_agg): QnaDatasetAgg for train and validation splits.
+    """
+    from mllm.data.qna.ds_01_squad_v2 import SquadV2Dataset, load_squad_v2
+    from mllm.data.qna.ds_02_natural_questions import NaturalQuestionsDataset, load_nq
+    from mllm.data.qna.ds_03_triviaqa import TriviaQADataset, load_triviaqa
+    from mllm.data.qna.ds_04_newsqa import NewsqaDataset, load_newsqa
+    from mllm.data.qna.ds_05_quac import QuacDataset, load_quac
+    from mllm.data.qna.ds_06_coqa import CoqaDataset, load_coqa
+    from mllm.data.qna.ds_07_mrqa import MrqaDataset, load_mrqa
+    from mllm.data.qna.ds_08_adversarialqa import AdversarialqaDataset, load_adversarialqa
+    from mllm.data.qna.ds_09_squad_v1 import SquadV1Dataset, load_squad_v1
+
+    _REGISTRY = {
+        QnaDatasetType.SQUAD_V2: (load_squad_v2, SquadV2Dataset),
+        QnaDatasetType.NATURAL_QUESTIONS: (load_nq, NaturalQuestionsDataset),
+        QnaDatasetType.TRIVIAQA: (load_triviaqa, TriviaQADataset),
+        QnaDatasetType.NEWSQA: (load_newsqa, NewsqaDataset),
+        QnaDatasetType.QUAC: (load_quac, QuacDataset),
+        QnaDatasetType.COQA: (load_coqa, CoqaDataset),
+        QnaDatasetType.MRQA: (load_mrqa, MrqaDataset),
+        QnaDatasetType.ADVERSARIALQA: (load_adversarialqa, AdversarialqaDataset),
+        QnaDatasetType.SQUAD_V1: (load_squad_v1, SquadV1Dataset),
+    }
+
+    ds_kwargs = dict(tkz=tkz, inp_len=inp_len, max_chunks=max_chunks,
+                     max_ans_toks=max_ans_toks, max_prompt_toks=max_prompt_toks, device=device)
+
+    train_datasets: List[QnaBaseDataset] = []
+    val_datasets: List[QnaBaseDataset] = []
+
+    for src in sources:
+        load_fn, ds_cls = _REGISTRY[src]
+        ds_train_hf, ds_val_hf = load_fn(cache_dir=cache_dir)
+        train_datasets.append(ds_cls(ds=ds_train_hf, **ds_kwargs))
+        val_datasets.append(ds_cls(ds=ds_val_hf, **ds_kwargs))
+
+    return QnaDatasetAgg(train_datasets), QnaDatasetAgg(val_datasets)
+
+
+def create_qna_dataloader(
+        ds_agg: QnaDatasetAgg,
+        batch_size: int,
+        shuffle: bool = True,
+        inds: Optional[np.ndarray] = None,
+) -> Generator[QnaBatch, None, None]:
+    """Create infinite-loop generator yielding QnaBatch instances.
+
+    Args:
+        ds_agg: Aggregated QnA dataset.
+        batch_size: Number of items per batch.
+        shuffle: Whether to shuffle indices after each full pass.
+        inds: Optional index array to use instead of ds_agg.inds.
+    """
+    from torch import distributed as dist
+
+    cur_inds = inds if inds is not None else ds_agg.inds
+    cur_inds = cur_inds.copy()
+    n = len(cur_inds)
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    print(f'R{rank}. Create QnaCiteDataset dataloader. total={n}. batch_size={batch_size}. shuffle={shuffle}.')
+    start_ind = 0
+    while True:
+        end_ind = min(start_ind + batch_size, n)
+        batch_inds = cur_inds[start_ind:end_ind].tolist()
+        if len(batch_inds) < batch_size:
+            batch_inds += cur_inds[:(batch_size - len(batch_inds))].tolist()
+        batch = ds_agg.get_batch(batch_inds)
+        if end_ind == n and shuffle:
+                np.random.shuffle(cur_inds)
+        yield batch
+        start_ind = end_ind % n
 
