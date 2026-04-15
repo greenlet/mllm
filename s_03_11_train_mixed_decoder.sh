@@ -26,8 +26,9 @@ decoder_type=bertdec
 decoder_model_name=bert-base-uncased
 
 train_ds_type=cite
-train_ds_type=qna
-train_ds_type=next
+train_ds_type=qnasqv2
+train_ds_type=qnaall
+# train_ds_type=next
 
 min_next_toks=64
 

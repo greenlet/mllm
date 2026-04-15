@@ -80,7 +80,7 @@ def load_mrqa(
         ds_train: HF Dataset for the filtered train split
         ds_val: HF Dataset for the filtered validation split
     """
-    kwargs = {'trust_remote_code': True}
+    kwargs = {}
     if cache_dir is not None:
         kwargs['cache_dir'] = str(cache_dir)
     ds_train = load_dataset(MRQA_HF_ID, split='train', **kwargs)

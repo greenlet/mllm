@@ -27,6 +27,7 @@ from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.next_tok_wiki import NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next
+from mllm.data.qna.dataset import QnaDatasetAgg, load_qna_datasets, create_qna_dataloader
 from mllm.train.qna_cite import QnaCiteDataset, create_qna_cite_dataloader, load_split_squadv2
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
 from mllm.utils.utils import instantiate_torch_lr_scheduler, instantiate_torch_optimizer, parse_dict_str, rethrow
@@ -267,7 +268,7 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_ds, wiki_inds_train, wiki_inds_val, args: ArgsMixedDecoderTrain):
+def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_ds, wiki_inds_train, wiki_inds_val, qna_agg_train, qna_agg_val, args: ArgsMixedDecoderTrain):
     print(f'Running DDP training on rank {rank}.')
     def log(*msgs: Any, forall: bool = False):
         if rank == 0 or forall:
@@ -358,7 +359,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
         train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
         val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
-    elif args.train_ds_type == MixedDecoderDsType.Qna:
+    elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:
         max_chunks = max(args.emb_win_max_size, 1)
         ds_train = QnaCiteDataset(
             df_sq, sq_inds_train, tkz, inp_len=args.inp_len, max_chunks=max_chunks, device=device,
@@ -370,6 +371,15 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
         train_batch_it = create_qna_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
         val_batch_it = create_qna_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
+    elif args.train_ds_type == MixedDecoderDsType.QnaAll:
+        qna_agg_train.device = device
+        qna_agg_val.device = device
+        max_chunks = max(args.emb_win_max_size, 1)
+        qna_agg_train.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
+        qna_agg_val.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
+        print(f'qna_agg_train size: {len(qna_agg_train)}. qna_agg_val size: {len(qna_agg_val)}.')
+        train_batch_it = create_qna_dataloader(qna_agg_train, batch_size=args.docs_batch_size)
+        val_batch_it = create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size)
     elif args.train_ds_type == MixedDecoderDsType.Next:
         ds_train = NextTokWikiDataset(
             wiki_ds, wiki_inds_train, tkz, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
@@ -521,15 +531,24 @@ def main(args: ArgsMixedDecoderTrain) -> int:
     tkz = AutoTokenizer.from_pretrained(args.bert_model_name)
 
     wiki_ds, wiki_inds_train, wiki_inds_val = None, None, None
+    qna_agg_train, qna_agg_val = None, None
     if args.train_ds_type == MixedDecoderDsType.Cite:
         ds_train, ds_val = load_split_wiki_dataset(
             data_path=args.data_path, tkz=tkz, max_seq_len=args.inp_len, val_split_ratio=0.05,
             mask_cfg=mask_cfg, random_seed=args.random_seed,
         )
         df_sq, sq_inds_train, sq_inds_val = None, None, None
-    elif args.train_ds_type == MixedDecoderDsType.Qna:
+    elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:
         df_sq, sq_inds_train, sq_inds_val = load_split_squadv2(exclude_empty_answers=True)
         ds_train, ds_val = None, None
+    elif args.train_ds_type == MixedDecoderDsType.QnaAll:
+        ds_train, ds_val = None, None
+        df_sq, sq_inds_train, sq_inds_val = None, None, None
+        max_chunks = max(args.emb_win_max_size, 1)
+        qna_agg_train, qna_agg_val = load_qna_datasets(
+            tkz=tkz, inp_len=args.inp_len, max_chunks=max_chunks,
+            cache_dir=str(args.data_path),
+        )
     elif args.train_ds_type == MixedDecoderDsType.Next:
         wiki_ds, wiki_inds_train, wiki_inds_val = load_split_wiki_for_next(
             data_path=args.data_path, random_seed=args.random_seed,
@@ -540,7 +559,7 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         raise ValueError(f'Unsupported train_ds_type: {args.train_ds_type}')
 
     mp.spawn(train, args=(
-        ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_ds, wiki_inds_train, wiki_inds_val, args,
+        ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_ds, wiki_inds_train, wiki_inds_val, qna_agg_train, qna_agg_val, args,
     ), nprocs=args.world_size, join=True)
 
     return 0
@@ -550,3 +569,4 @@ if __name__ == '__main__':
     run_and_exit(
         ArgsMixedDecoderTrain, main, 'Train MixedDecoder model (Encoder-Decoder with causal attention) multi GPU training.', exception_handler=rethrow,
     )
+

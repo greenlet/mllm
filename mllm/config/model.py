@@ -2009,7 +2009,8 @@ def float_param_to_str(name: str, val: float) -> str:
 
 class MixedDecoderDsType(str, Enum):
     Cite = 'cite'
-    Qna = 'qna'
+    QnaSquadV2 = 'qnasqv2'
+    QnaAll = 'qnaall'
     Next = 'next'
 
 

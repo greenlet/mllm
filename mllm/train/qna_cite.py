@@ -6,7 +6,6 @@ The question is formatted as "Question: {q} Answer:" and used as the prompt.
 The answer text is the target for autoregressive generation.
 """
 
-from dataclasses import dataclass, field
 from typing import Generator, List, Optional, Tuple
 
 import numpy as np
@@ -16,36 +15,12 @@ import torch.distributed as dist
 from transformers import PreTrainedTokenizer
 
 from mllm.data.itsquadv2 import get_squadv2_df
+from mllm.data.qna.batch import QnaBatch
 from mllm.data.utils import split_df
 
 
-@dataclass(kw_only=True)
-class QnaCiteBatch:
-    """Batch of QnA items prepared for MixedDecoder training.
-
-    Context chunks are encoded by the BERT encoder to produce CLS embeddings.
-    These embeddings serve as the context prefix for the autoregressive decoder.
-    """
-    # (total_chunks_in_batch, inp_len) - all context chunk tokens concatenated across batch items
-    ctx_chunks_toks: torch.Tensor
-    # (total_chunks_in_batch, inp_len) - attention masks for context chunks
-    ctx_chunks_att_mask: torch.Tensor
-    # Number of context chunks per QnA item (list of length batch_size)
-    ctx_chunk_counts: List[int]
-    # (batch_size, max_prompt_len) - tokenized "Question: {q} Answer:" right-padded
-    prompt_toks: torch.Tensor
-    # (batch_size, max_prompt_len) - attention mask for prompts
-    prompt_att_mask: torch.Tensor
-    # Actual token lengths of each prompt before padding (list of length batch_size)
-    prompt_lengths: List[int]
-    # (batch_size, ans_len) - target answer tokens (with special tokens)
-    ans_toks: torch.Tensor
-    # (batch_size, ans_len) - attention mask for answer tokens
-    ans_att_mask: torch.Tensor
-
-
 class QnaCiteDataset:
-    """Dataset that yields QnaCiteBatch from SQuAD v2 data.
+    """Dataset that yields QnaBatch from SQuAD v2 data.
 
     Each context is split into chunks of `inp_len` tokens.
     Each chunk gets CLS prepended so that BERT encoding produces a meaningful [CLS] embedding.
@@ -110,7 +85,7 @@ class QnaCiteDataset:
             toks = toks[:self.max_ans_toks]
         return toks
 
-    def get_batch(self, inds: List[int]) -> QnaCiteBatch:
+    def get_batch(self, inds: List[int]) -> QnaBatch:
         batch_size = len(inds)
 
         all_chunks: List[List[int]] = []
@@ -163,7 +138,7 @@ class QnaCiteDataset:
             ans_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=self.device)
             ans_att[i, :n] = 1
 
-        return QnaCiteBatch(
+        return QnaBatch(
             ctx_chunks_toks=ctx_chunks_t,
             ctx_chunks_att_mask=ctx_chunks_att,
             ctx_chunk_counts=chunk_counts,
@@ -214,8 +189,8 @@ def load_split_squadv2(
 
 def create_qna_cite_dataloader(
         dataset: QnaCiteDataset, batch_size: int, shuffle: bool = True,
-) -> Generator[QnaCiteBatch, None, None]:
-    """Create infinite-loop generator yielding QnaCiteBatch instances."""
+) -> Generator[QnaBatch, None, None]:
+    """Create infinite-loop generator yielding QnaBatch instances."""
     n = len(dataset)
     rank = dist.get_rank() if dist.is_initialized() else 0
     print(f'R{rank}. Create QnaCiteDataset dataloader. total={n}. batch_size={batch_size}. shuffle={shuffle}.')

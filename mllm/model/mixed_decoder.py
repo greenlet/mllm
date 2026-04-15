@@ -14,7 +14,7 @@ from mllm.model.gpt2 import GPT2LMHeadModel
 from mllm.model.losses import EncdecMaskPadItemLoss
 from mllm.train.encdec_graph_bert import MaskedCiteBatch
 from mllm.train.next_tok_wiki import NextTokBatch
-from mllm.train.qna_cite import QnaCiteBatch
+from mllm.data.qna.batch import QnaBatch
 
 
 class MixedDecoder(nn.Module):
@@ -380,7 +380,7 @@ class MixedDecoder(nn.Module):
 
         return loss_dict, logits
 
-    def run_on_qna(self, batch: QnaCiteBatch, epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
+    def run_on_qna(self, batch: QnaBatch, epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
         """Training method for QnA (SQuAD v2) data.
 
         1. Encode all context chunks to CLS embeddings
@@ -393,7 +393,7 @@ class MixedDecoder(nn.Module):
         6. Compute loss on answer positions
 
         Args:
-            batch: QnaCiteBatch with context chunks, prompts, and answer tokens.
+            batch: QnaBatch with context chunks, prompts, and answer tokens.
             epoch: Current epoch number.
 
         Returns:
@@ -671,10 +671,10 @@ class MixedDecoder(nn.Module):
 
         return loss_dict, logits
 
-    def forward(self, batch: Union[MaskedCiteBatch, QnaCiteBatch, NextTokBatch], epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
+    def forward(self, batch: Union[MaskedCiteBatch, QnaBatch, NextTokBatch], epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
         if self.cfg.train_ds_type == MixedDecoderDsType.Next:
             return self.run_on_next(batch, epoch)
-        if self.cfg.train_ds_type == MixedDecoderDsType.Qna:
+        if self.cfg.train_ds_type in (MixedDecoderDsType.QnaSquadV2, MixedDecoderDsType.QnaAll):
             return self.run_on_qna(batch, epoch)
         return self.run_on_text_citation(batch, epoch)
 

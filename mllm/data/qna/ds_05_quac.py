@@ -93,11 +93,11 @@ def load_quac(
         ds_train: HF Dataset for the train split
         ds_val: HF Dataset for the validation split
     """
-    kwargs = {'trust_remote_code': True}
+    kwargs = {}
     if cache_dir is not None:
         kwargs['cache_dir'] = str(cache_dir)
-    ds_train = load_dataset(QUAC_HF_ID, split='train', **kwargs)
-    ds_val = load_dataset(QUAC_HF_ID, split='validation', **kwargs)
+    ds_train = load_dataset(QUAC_HF_ID, split='train', revision='refs/convert/parquet', **kwargs)
+    ds_val = load_dataset(QUAC_HF_ID, split='validation', revision='refs/convert/parquet', **kwargs)        
     n_train_turns = sum(len(ds_train[i]['questions']) for i in range(len(ds_train)))
     n_val_turns = sum(len(ds_val[i]['questions']) for i in range(len(ds_val)))
     print(f'QuAC loaded: train={len(ds_train)} dialogues ({n_train_turns} turns), '

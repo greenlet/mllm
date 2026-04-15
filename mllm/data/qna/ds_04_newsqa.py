@@ -86,7 +86,7 @@ def load_newsqa(
         ds_train: HF Dataset for the train split
         ds_val: HF Dataset for the validation split
     """
-    kwargs = {'trust_remote_code': True}
+    kwargs = {}
     if cache_dir is not None:
         kwargs['cache_dir'] = str(cache_dir)
     ds_train = load_dataset(NEWSQA_HF_ID, split='train', **kwargs)

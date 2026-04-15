@@ -17,6 +17,8 @@ import numpy as np
 import torch
 from transformers import PreTrainedTokenizer
 
+from mllm.data.qna.batch import QnaBatch
+
 
 class QnaDatasetType(str, Enum):
     """Registry of all supported QnA datasets."""
@@ -41,42 +43,6 @@ QNA_DATASETS_DEFAULT = (
     QnaDatasetType.QUAC,
     QnaDatasetType.COQA,
 )
-
-
-@dataclass(kw_only=True)
-class QnaBatch:
-    """Batch of QnA items prepared for MixedDecoder training.
-
-    Context chunks are encoded by the BERT encoder to produce CLS embeddings.
-    These embeddings serve as the context prefix for the autoregressive decoder.
-    The prompt encodes the question (and optionally conversation history for multi-turn).
-    The answer is the generation target (empty string for unanswerable questions).
-    """
-    # --- Context ---
-    # (total_chunks_in_batch, inp_len) — all context chunk tokens across batch items
-    ctx_chunks_toks: torch.Tensor
-    # (total_chunks_in_batch, inp_len) — attention masks for context chunks
-    ctx_chunks_att_mask: torch.Tensor
-    # Number of context chunks per QnA item (list of length batch_size)
-    ctx_chunk_counts: List[int]
-
-    # --- Prompt (question / conversation history) ---
-    # (batch_size, max_prompt_len) — tokenized prompt, right-padded
-    prompt_toks: torch.Tensor
-    # (batch_size, max_prompt_len) — attention mask for prompts
-    prompt_att_mask: torch.Tensor
-    # Actual token lengths of each prompt before padding (list of length batch_size)
-    prompt_lengths: List[int]
-
-    # --- Answer ---
-    # (batch_size, max_ans_len) — target answer tokens (with special tokens)
-    ans_toks: torch.Tensor
-    # (batch_size, max_ans_len) — attention mask for answer tokens
-    ans_att_mask: torch.Tensor
-
-    # --- Metadata ---
-    # Whether each item is answerable (list of length batch_size)
-    answerable: List[bool]
 
 
 class QnaBaseDataset:
@@ -320,9 +286,10 @@ class QnaDatasetAgg:
     underlying datasets.
     """
 
-    def __init__(self, datasets: List[QnaBaseDataset]):
+    def __init__(self, datasets: List[QnaBaseDataset], device: Optional[torch.device] = None):
         assert len(datasets) > 0, 'QnaDatasetAgg requires at least one dataset'
         self.datasets = datasets
+        self.device = device if device is not None else torch.device('cpu')
 
         # Build 2-column numpy array: [ds_idx, local_idx] per global index
         ds_lens = [len(ds) for ds in self.datasets]
@@ -374,41 +341,41 @@ class QnaDatasetAgg:
         # Pad context chunks to inp_len
         total_chunks = len(all_chunks)
         ctx_chunks_t = torch.full(
-            (total_chunks, ds0.inp_len), ds0.pad_token_id, dtype=torch.long, device=ds0.device,
+            (total_chunks, ds0.inp_len), ds0.pad_token_id, dtype=torch.long, device=self.device,
         )
         ctx_chunks_att = torch.zeros(
-            (total_chunks, ds0.inp_len), dtype=torch.long, device=ds0.device,
+            (total_chunks, ds0.inp_len), dtype=torch.long, device=self.device,
         )
         for i, chunk in enumerate(all_chunks):
             n = min(len(chunk), ds0.inp_len)
-            ctx_chunks_t[i, :n] = torch.tensor(chunk[:n], dtype=torch.long, device=ds0.device)
+            ctx_chunks_t[i, :n] = torch.tensor(chunk[:n], dtype=torch.long, device=self.device)
             ctx_chunks_att[i, :n] = 1
 
         # Right-pad prompts
         prompt_lengths = [len(p) for p in prompt_toks_list]
         max_prompt_len = max(prompt_lengths)
         prompt_t = torch.full(
-            (batch_size, max_prompt_len), ds0.pad_token_id, dtype=torch.long, device=ds0.device,
+            (batch_size, max_prompt_len), ds0.pad_token_id, dtype=torch.long, device=self.device,
         )
         prompt_att = torch.zeros(
-            (batch_size, max_prompt_len), dtype=torch.long, device=ds0.device,
+            (batch_size, max_prompt_len), dtype=torch.long, device=self.device,
         )
         for i, toks in enumerate(prompt_toks_list):
             n = len(toks)
-            prompt_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=ds0.device)
+            prompt_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=self.device)
             prompt_att[i, :n] = 1
 
         # Pad answers
         max_ans_len = max(len(a) for a in ans_toks_list)
         ans_t = torch.full(
-            (batch_size, max_ans_len), ds0.pad_token_id, dtype=torch.long, device=ds0.device,
+            (batch_size, max_ans_len), ds0.pad_token_id, dtype=torch.long, device=self.device,
         )
         ans_att = torch.zeros(
-            (batch_size, max_ans_len), dtype=torch.long, device=ds0.device,
+            (batch_size, max_ans_len), dtype=torch.long, device=self.device,
         )
         for i, toks in enumerate(ans_toks_list):
             n = len(toks)
-            ans_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=ds0.device)
+            ans_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=self.device)
             ans_att[i, :n] = 1
 
         return QnaBatch(
@@ -484,7 +451,7 @@ def load_qna_datasets(
         train_datasets.append(ds_cls(ds=ds_train_hf, **ds_kwargs))
         val_datasets.append(ds_cls(ds=ds_val_hf, **ds_kwargs))
 
-    return QnaDatasetAgg(train_datasets), QnaDatasetAgg(val_datasets)
+    return QnaDatasetAgg(train_datasets, device=device), QnaDatasetAgg(val_datasets, device=device)
 
 
 def create_qna_dataloader(
