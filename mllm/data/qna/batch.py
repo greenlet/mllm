@@ -38,3 +38,5 @@ class QnaBatch:
     # --- Metadata ---
     # Whether each item is answerable (list of length batch_size)
     answerable: Optional[List[bool]] = None
+    # Dataset source index for each item (list of length batch_size)
+    ds_src: Optional[List[int]] = None

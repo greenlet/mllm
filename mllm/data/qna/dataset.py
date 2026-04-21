@@ -378,6 +378,8 @@ class QnaDatasetAgg:
             ans_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=self.device)
             ans_att[i, :n] = 1
 
+        ds_src_list = [int(self._map[idx, 0]) for idx in inds]
+
         return QnaBatch(
             ctx_chunks_toks=ctx_chunks_t,
             ctx_chunks_att_mask=ctx_chunks_att,
@@ -388,7 +390,17 @@ class QnaDatasetAgg:
             ans_toks=ans_t,
             ans_att_mask=ans_att,
             answerable=answerable_list,
+            ds_src=ds_src_list,
         )
+
+    @property
+    def ds_names(self) -> List[str]:
+        """Return human-readable dataset names, one per underlying dataset."""
+        return [type(ds).__name__ for ds in self.datasets]
+
+    def ds_name(self, ds_idx: int) -> str:
+        """Return the class name for a dataset by its index."""
+        return type(self.datasets[ds_idx]).__name__
 
     def shuffle(self, seed: Optional[int] = None) -> 'QnaDatasetAgg':
         if seed is not None:
