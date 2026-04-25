@@ -27,7 +27,11 @@ class MixedDecoder(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.tkz = tkz
-        self.enc = EncoderBert(cfg.enc_bert)
+        self.decoder_only = cfg.decoder_only
+        if not self.decoder_only:
+            self.enc = EncoderBert(cfg.enc_bert)
+        else:
+            self.enc = None
 
         if self.cfg.decoder_type == MixedDecoderType.Gpt2:
             self.decoder = GPT2LMHeadModel.from_pretrained(self.cfg.decoder_model_name)
@@ -47,12 +51,12 @@ class MixedDecoder(nn.Module):
 
         # Embedding expansion: each CLS embedding (d_model) → (emb_exp_rate, d_dec)
         self.emb_exp = None
-        if self.cfg.emb_exp_rate > 0:
+        if not self.decoder_only and self.cfg.emb_exp_rate > 0:
             self.emb_exp = nn.Linear(self.cfg.d_model, self.cfg.emb_exp_rate * d_dec, bias=False)
 
         # If encoder d_model differs from decoder d_model, add a projection layer (only when no emb expansion)
         self.enc_proj = None
-        if self.cfg.emb_exp_rate <= 0 and self.cfg.d_model != d_dec:
+        if not self.decoder_only and self.cfg.emb_exp_rate <= 0 and self.cfg.d_model != d_dec:
             self.enc_proj = nn.Linear(self.cfg.d_model, d_dec, bias=False)
 
         self.d_dec = d_dec
@@ -75,9 +79,11 @@ class MixedDecoder(nn.Module):
             for key, val in checkpt_dict.items():
                 if key.startswith('module.'):
                     key = key[7:]
+                if self.decoder_only and (key.startswith('enc.') or key.startswith('emb_exp.') or key.startswith('enc_proj.')):
+                    continue
                 cleaned_dict[key] = val
             print(f'Load {len(cleaned_dict)}')
-            self.load_state_dict(cleaned_dict, strict=True)
+            self.load_state_dict(cleaned_dict, strict=not self.decoder_only)
         else:
             pretrained_mixed_decoder_model_path = self.cfg.train_cfg.pretrained_mixed_decoder_model_path
             pretrained_encdec_model_path = self.cfg.train_cfg.pretrained_encdec_model_path
@@ -95,10 +101,15 @@ class MixedDecoder(nn.Module):
                         key = key[7:]
                     if key.startswith('model.'):
                         key = key[6:]
+                    if self.decoder_only and (key.startswith('enc.') or key.startswith('emb_exp.') or key.startswith('enc_proj.')):
+                        continue
                     cleaned_dict[key] = val
 
-                self.load_state_dict(cleaned_dict, strict=True)
+                self.load_state_dict(cleaned_dict, strict=not self.decoder_only)
             elif pretrained_encdec_model_path and pretrained_encdec_model_path.exists():
+                if self.decoder_only:
+                    print(f'R{rank}. decoder_only=True: skipping encoder load from {pretrained_encdec_model_path}')
+                    return
                 # Load only encoder weights from an EncdecBert checkpoint
                 print(f'R{rank}. Loading encoder checkpoint from {pretrained_encdec_model_path}')
                 pretrained_checkpoint = torch.load(pretrained_encdec_model_path)
@@ -274,6 +285,131 @@ class MixedDecoder(nn.Module):
         loss = F.cross_entropy(logits_flat, labels_flat, ignore_index=-100)
         return {'loss': loss}
 
+    def _build_ctx_tokens_decoder_only(
+            self, ctx_chunks_toks: Tensor, ctx_chunks_att_mask: Tensor, chunk_counts: list,
+    ) -> Tuple[list, list]:
+        """For decoder-only mode: per-sample, concatenate raw chunk content tokens
+        (strip per-chunk leading CLS / trailing SEP via attention mask) into a single
+        1-D tensor.
+
+        Returns:
+            ctx_tok_ids_list: list of 1-D LongTensors, one per sample.
+            ctx_lens: list of int lengths matching the above tensors.
+        """
+        chunk_offsets = [0]
+        for c in chunk_counts:
+            chunk_offsets.append(chunk_offsets[-1] + c)
+
+        cls_id = self.tkz.cls_token_id
+        sep_id = self.tkz.sep_token_id
+        device = ctx_chunks_toks.device
+
+        ctx_tok_ids_list = []
+        ctx_lens = []
+        for i in range(len(chunk_counts)):
+            start, end = chunk_offsets[i], chunk_offsets[i + 1]
+            parts = []
+            for ci in range(start, end):
+                n_valid = int(ctx_chunks_att_mask[ci].sum().item())
+                toks = ctx_chunks_toks[ci, :n_valid]
+                # Strip leading CLS and trailing SEP if present
+                if toks.numel() > 0 and cls_id is not None and toks[0].item() == cls_id:
+                    toks = toks[1:]
+                if toks.numel() > 0 and sep_id is not None and toks[-1].item() == sep_id:
+                    toks = toks[:-1]
+                if toks.numel() > 0:
+                    parts.append(toks)
+            if parts:
+                ctx_ids = torch.cat(parts, dim=0)
+            else:
+                ctx_ids = torch.empty((0,), dtype=torch.long, device=device)
+            ctx_tok_ids_list.append(ctx_ids)
+            ctx_lens.append(int(ctx_ids.numel()))
+        return ctx_tok_ids_list, ctx_lens
+
+    def _decoder_only_forward(
+            self,
+            ctx_tok_ids_list: list, ctx_lens: list,
+            prompt_toks: Tensor, prompt_lengths: list,
+            target_toks: Tensor, target_lengths: list,
+            masked_target_toks: Optional[Tensor] = None,
+            orig_target_toks: Optional[Tensor] = None,
+    ) -> Tuple[Dict[str, Tensor], Tensor]:
+        """Decoder-only forward: build per-sample sequence
+        [ctx_tok_embs, sep?, prompt_embs, target_inp_embs], add positional
+        embeddings, run decoder, compute loss on target positions.
+
+        For mask-aware loss, the answer/target region must be a contiguous slice
+        and start aligned across the batch in the logits tensor; this helper does
+        not support mask-aware loss in that case (falls back to standard CE).
+        """
+        batch_size = prompt_toks.shape[0]
+        device = prompt_toks.device
+        sep_len = 1 if self.cfg.use_sep else 0
+
+        # Per-sample lengths
+        total_lens = [
+            ctx_lens[i] + sep_len + prompt_lengths[i] + max(target_lengths[i] - 1, 0)
+            for i in range(batch_size)
+        ]
+        max_total_len = max(total_lens) if total_lens else 0
+        assert max_total_len <= self.cfg.max_seq_len, \
+            f'Total sequence length {max_total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
+
+        input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device)
+        attention_mask = torch.zeros((batch_size, max_total_len), dtype=torch.long, device=device)
+        labels = torch.full((batch_size, max_total_len), -100, dtype=torch.long, device=device)
+
+        # Pre-compute all embeddings we can in batched form
+        prompt_embs_all = self.word_embeddings(prompt_toks)  # (B, max_prompt, d_dec)
+        target_inp_embs_all = self.word_embeddings(target_toks[:, :-1]) if target_toks.shape[1] > 1 \
+            else torch.zeros((batch_size, 0, self.d_dec), device=device)
+        if self.cfg.use_sep:
+            sep_emb = self.word_embeddings(
+                torch.full((1, 1), self.sep_token_id, dtype=torch.long, device=device)
+            )
+
+        for i in range(batch_size):
+            pos = 0
+            cl = ctx_lens[i]
+            if cl > 0:
+                ctx_embs_i = self.word_embeddings(ctx_tok_ids_list[i].unsqueeze(0))[0]
+                input_embs[i, :cl] = ctx_embs_i
+                attention_mask[i, :cl] = 1
+            pos = cl
+
+            if self.cfg.use_sep:
+                input_embs[i, pos:pos + 1] = sep_emb[0]
+                attention_mask[i, pos:pos + 1] = 1
+                pos += 1
+
+            pl = prompt_lengths[i]
+            input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
+            attention_mask[i, pos:pos + pl] = 1
+
+            target_start_i = pos + pl - 1  # last prompt pos predicts first target token
+            pos += pl
+
+            til = max(target_lengths[i] - 1, 0)
+            if til > 0:
+                input_embs[i, pos:pos + til] = target_inp_embs_all[i, :til]
+                attention_mask[i, pos:pos + til] = 1
+            pos += til
+
+            tl = target_lengths[i]
+            labels[i, target_start_i:target_start_i + tl] = target_toks[i, :tl]
+
+        pos_ids = torch.arange(max_total_len, device=device).unsqueeze(0)
+        input_embs = input_embs + self.pos_emb(pos_ids)
+
+        logits = self.run_decoder(input_embs, attention_mask)
+
+        # Mask-aware loss requires a fixed target_start across the batch. In
+        # decoder-only mode per-sample target_start varies, so fall back to
+        # standard CE in that case.
+        loss_dict = self.calc_loss(logits, labels)
+        return loss_dict, logits
+
     def run_on_text_citation(self, batch: MaskedCiteBatch, epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
         """Main training method.
 
@@ -292,6 +428,26 @@ class MixedDecoder(nn.Module):
         batch_size = batch.inp_toks.shape[0]
 
         assert torch.all(batch.inp_toks[:, 0] == self.tkz.cls_token_id), 'Input tokens must start with CLS token'
+
+        if self.decoder_only:
+            # Treat each sample's inp_toks as a single chunk (already shape (B, inp_len)).
+            ctx_tok_ids_list, ctx_lens = self._build_ctx_tokens_decoder_only(
+                batch.inp_toks, batch.inp_att_mask, [1] * batch_size,
+            )
+
+            if self.cfg.prompt_all:
+                target_toks = batch.inp_toks[:, 1:]
+                target_att_mask = batch.inp_att_mask[:, 1:]
+            else:
+                target_toks = batch.cites_toks
+                target_att_mask = batch.cites_att_mask
+            target_lengths = [int(target_att_mask[i].sum().item()) for i in range(batch_size)]
+
+            return self._decoder_only_forward(
+                ctx_tok_ids_list, ctx_lens,
+                batch.prompts_toks, [int(batch.prompts_att_mask[i].sum().item()) for i in range(batch_size)],
+                target_toks, target_lengths,
+            )
 
         # Encode context chunks
         freeze_enc = self.cfg.train_cfg.freeze_encoder
@@ -401,6 +557,17 @@ class MixedDecoder(nn.Module):
         """
         batch_size = len(batch.ctx_chunk_counts)
         device = batch.ctx_chunks_toks.device
+
+        if self.decoder_only:
+            ctx_tok_ids_list, ctx_lens = self._build_ctx_tokens_decoder_only(
+                batch.ctx_chunks_toks, batch.ctx_chunks_att_mask, batch.ctx_chunk_counts,
+            )
+            ans_lens = [int(batch.ans_att_mask[i].sum().item()) for i in range(batch_size)]
+            return self._decoder_only_forward(
+                ctx_tok_ids_list, ctx_lens,
+                batch.prompt_toks, list(batch.prompt_lengths),
+                batch.ans_toks, ans_lens,
+            )
 
         # 1. Encode all context chunks
         freeze_enc = self.cfg.train_cfg.freeze_encoder
@@ -573,6 +740,17 @@ class MixedDecoder(nn.Module):
         """
         batch_size = len(batch.ctx_chunk_counts)
         device = batch.ctx_chunks_toks.device
+
+        if self.decoder_only:
+            ctx_tok_ids_list, ctx_lens = self._build_ctx_tokens_decoder_only(
+                batch.ctx_chunks_toks, batch.ctx_chunks_att_mask, batch.ctx_chunk_counts,
+            )
+            target_lens = [int(batch.target_att_mask[i].sum().item()) for i in range(batch_size)]
+            return self._decoder_only_forward(
+                ctx_tok_ids_list, ctx_lens,
+                batch.prompt_toks, list(batch.prompt_lengths),
+                batch.target_toks, target_lens,
+            )
 
         # 1. Encode all context chunks
         freeze_enc = self.cfg.train_cfg.freeze_encoder

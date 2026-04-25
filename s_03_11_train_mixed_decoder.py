@@ -36,6 +36,7 @@ from mllm.utils.utils import instantiate_torch_lr_scheduler, instantiate_torch_o
 freeze_encoder_ARG = '--freeze-encoder', 'Freeze encoder weights during training'
 use_sep_ARG = '--use-sep', 'Insert SEP/EOS embedding between context embeddings and prompt tokens'
 prompt_all_ARG = '--prompt-all', 'Target is whole input chunk (true) or citation only (false)'
+decoder_only_ARG = '--decoder-only', 'Train decoder without encoder (raw context tokens fed directly to decoder, encoder is not instantiated).'
 
 
 class ArgsMixedDecoderTrain(BaseModel):
@@ -136,6 +137,11 @@ class ArgsMixedDecoderTrain(BaseModel):
     @property
     def prompt_all(self) -> bool:
         return is_arg_true(prompt_all_ARG[0], self.prompt_all_STR)
+
+    decoder_only_STR: str = create_bool_str_field(*decoder_only_ARG)
+    @property
+    def decoder_only(self) -> bool:
+        return is_arg_true(decoder_only_ARG[0], self.decoder_only_STR)
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
@@ -296,6 +302,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, emb_exp_rate=args.emb_exp_rate,
         emb_win_min_size=args.emb_win_min_size, emb_win_max_size=args.emb_win_max_size,
         min_next_toks=args.min_next_toks, train_ds_type=args.train_ds_type,
+        decoder_only=args.decoder_only,
         freeze_encoder=args.freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,

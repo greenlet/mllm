@@ -2043,6 +2043,7 @@ class MixedDecoderCfg(BaseModel):
     min_next_toks: int = 64
     d_model: int = 768
     train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite
+    decoder_only: bool = False
     train_cfg: MixedDecoderTrainCfg
 
 
@@ -2182,6 +2183,7 @@ def create_mixed_decoder_cfg(
         max_seq_len: int = 384, use_sep: bool = True, prompt_all: bool = True, emb_exp_rate: int = 0,
         emb_win_min_size: int = 0, emb_win_max_size: int = 0, min_next_toks: int = 64,
         train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite,
+        decoder_only: bool = False,
         freeze_encoder: bool = True,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
@@ -2231,6 +2233,7 @@ def create_mixed_decoder_cfg(
         min_next_toks=min_next_toks,
         d_model=d_model,
         train_ds_type=train_ds_type,
+        decoder_only=decoder_only,
         train_cfg=cfg_train,
     )
     return cfg
@@ -2242,6 +2245,7 @@ def copy_override_mixed_decoder_cfg(
         max_seq_len: Optional[int] = None, use_sep: Optional[bool] = None, prompt_all: Optional[bool] = None, emb_exp_rate: Optional[int] = None,
         emb_win_min_size: Optional[int] = None, emb_win_max_size: Optional[int] = None, min_next_toks: Optional[int] = None,
         train_ds_type: Optional[MixedDecoderDsType] = None,
+        decoder_only: Optional[bool] = None,
         freeze_encoder: Optional[bool] = None,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None, learning_rate: Optional[float] = None,
@@ -2262,6 +2266,7 @@ def copy_override_mixed_decoder_cfg(
     emb_win_max_size = coalesce(emb_win_max_size, cfg.emb_win_max_size)
     min_next_toks = coalesce(min_next_toks, cfg.min_next_toks)
     train_ds_type = coalesce(train_ds_type, cfg.train_ds_type)
+    decoder_only = coalesce(decoder_only, cfg.decoder_only)
     freeze_encoder = coalesce(freeze_encoder, cfg.train_cfg.freeze_encoder)
     pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
     pretrained_mixed_decoder_model_path = coalesce(pretrained_mixed_decoder_model_path, cfg.train_cfg.pretrained_mixed_decoder_model_path)
@@ -2280,6 +2285,7 @@ def copy_override_mixed_decoder_cfg(
         max_seq_len=max_seq_len, use_sep=use_sep, prompt_all=prompt_all, emb_exp_rate=emb_exp_rate,
         emb_win_min_size=emb_win_min_size, emb_win_max_size=emb_win_max_size, min_next_toks=min_next_toks,
         train_ds_type=train_ds_type,
+        decoder_only=decoder_only,
         freeze_encoder=freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
@@ -2308,17 +2314,21 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
     brt_str = enc.pretrained_model_name.replace('-', '')
     postfix_parts.append(brt_str)
     postfix_parts.append(f'd{enc.d_model}')
-    postfix_parts.append(f'embEnc{enc.emb_type.value.capitalize()}')
+    if model_cfg.decoder_only:
+        postfix_parts.append('deco')
+    else:
+        postfix_parts.append(f'embEnc{enc.emb_type.value.capitalize()}')
     postfix_parts.append(f'inp{enc.inp_len}')
     postfix_parts.append(f'dec{model_cfg.decoder_model_name.replace("-", "").capitalize()}')
     postfix_parts.append(f'msl{model_cfg.max_seq_len}')
     postfix_parts.append(bool_param_to_str('sep', model_cfg.use_sep))
     postfix_parts.append(bool_param_to_str('pall', model_cfg.prompt_all))
-    if model_cfg.emb_exp_rate > 0:
-        postfix_parts.append(f'eer{model_cfg.emb_exp_rate}')
-    if model_cfg.emb_win_max_size > 0 and model_cfg.emb_win_min_size <= model_cfg.emb_win_max_size:
-        postfix_parts.append(f'ewn{model_cfg.emb_win_min_size}x{model_cfg.emb_win_max_size}')
-    postfix_parts.append(bool_param_to_str('frzenc', train.freeze_encoder))
+    if not model_cfg.decoder_only:
+        if model_cfg.emb_exp_rate > 0:
+            postfix_parts.append(f'eer{model_cfg.emb_exp_rate}')
+        if model_cfg.emb_win_max_size > 0 and model_cfg.emb_win_min_size <= model_cfg.emb_win_max_size:
+            postfix_parts.append(f'ewn{model_cfg.emb_win_min_size}x{model_cfg.emb_win_max_size}')
+        postfix_parts.append(bool_param_to_str('frzenc', train.freeze_encoder))
     postfix_parts.append(f'ds{model_cfg.train_ds_type.value.capitalize()}')
     if model_cfg.train_ds_type == MixedDecoderDsType.Next:
         postfix_parts.append(f'mnt{model_cfg.min_next_toks}')
