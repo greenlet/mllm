@@ -353,7 +353,7 @@ class MixedDecoder(nn.Module):
             for i in range(batch_size)
         ]
         max_total_len = max(total_lens) if total_lens else 0
-        assert max_total_len <= self.cfg.max_seq_len, \
+        assert self.cfg.decoder_only or max_total_len <= self.cfg.max_seq_len, \
             f'Total sequence length {max_total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
 
         input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device)

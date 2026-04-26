@@ -20,10 +20,10 @@ bert_emb_type=cls
 inp_len=128
 
 # Decoder type: gpt2 or bertdec
-decoder_type=gpt2
-decoder_model_name=gpt2
-# decoder_type=bertdec
-# decoder_model_name=bert-base-uncased
+# decoder_type=gpt2
+# decoder_model_name=gpt2
+decoder_type=bertdec
+decoder_model_name=bert-base-uncased
 
 train_ds_type=cite
 train_ds_type=qnasqv2
@@ -34,11 +34,15 @@ min_next_toks=64
 
 max_seq_len=384
 freeze_encoder=false
-use_sep=true
+# use_sep=true
+use_sep=false
 prompt_all=false
 emb_exp_rate=4
 emb_win_min_size=2
 emb_win_max_size=10
+
+decoder_only=false
+# decoder_only=true
 
 mask_tokens=false
 mask_sep_freq=0.5
@@ -49,10 +53,10 @@ mask_seq_max_len=20
 mask_n_last_toks=0
 
 pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbaseuncased-d768-embCls-inp128-lrs7x1-enhMmbb-step2-h12-dp0-t0.0
-pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260304_105309-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-decmgpt2-msl384-sepT-pallF-eer4-ewn10x10-frzencF-trn_lr5e-05_bs30
-# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260316_221645-pre_mixeddecoder20260304105309-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-trn_lr5e-05_bs40
+# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260304_105309-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-decmgpt2-msl384-sepT-pallF-eer4-ewn10x10-frzencF-trn_lr5e-05_bs30
+pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260316_221645-pre_mixeddecoder20260304105309-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-trn_lr5e-05_bs40
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260319_130017-pre_mixeddecoder20260316221645-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs40
-# train_subdir=last
+train_subdir=last
 
 # device=cpu
 # epochs=5
@@ -79,6 +83,12 @@ optimizer_params='{}'
 learning_rate_scheduler_name='ReduceLROnPlateau'
 learning_rate_scheduler_params='{"mode": "min", "factor": 0.5, "patience": 10, "threshold": 1e-6, "min_lr": 1e-8}'
 
+optimizer_name='AdamW'
+optimizer_params='{"weight_decay": 0.01, "betas": [0.9, 0.98], "eps": 1e-8}'
+learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
+learning_rate_scheduler_params='{"T_0": 30, "T_mult": 2, "eta_min": 1e-7}'
+
+
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
 cd "$mllm_src_path" || exit 1
@@ -97,6 +107,7 @@ python s_03_11_train_mixed_decoder.py \
   --freeze-encoder $freeze_encoder \
   --use-sep $use_sep \
   --prompt-all $prompt_all \
+  --decoder-only $decoder_only \
   --emb-exp-rate $emb_exp_rate \
   --emb-win-min-size $emb_win_min_size \
   --emb-win-max-size $emb_win_max_size \
