@@ -39,10 +39,12 @@ use_sep=false
 prompt_all=false
 emb_exp_rate=4
 emb_win_min_size=2
-emb_win_max_size=10
+emb_win_max_size=4
 
 decoder_only=false
-# decoder_only=true
+decoder_only=true
+# inp_len * emb_win_max_size * emb_exp_rate
+max_seq_len=$((max_seq_len + inp_len * emb_win_max_size * emb_exp_rate))
 
 mask_tokens=false
 mask_sep_freq=0.5
@@ -56,7 +58,7 @@ pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbas
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260304_105309-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-decmgpt2-msl384-sepT-pallF-eer4-ewn10x10-frzencF-trn_lr5e-05_bs30
 pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260316_221645-pre_mixeddecoder20260304105309-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-trn_lr5e-05_bs40
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260319_130017-pre_mixeddecoder20260316221645-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs40
-train_subdir=last
+# train_subdir=last
 
 # device=cpu
 # epochs=5

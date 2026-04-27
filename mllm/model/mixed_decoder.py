@@ -43,6 +43,7 @@ class MixedDecoder(nn.Module):
             self.decoder = BertGenerationDecoder.from_pretrained(
                 self.cfg.decoder_model_name, is_decoder=True, add_cross_attention=False,
             )
+            self._extend_bert_position_embeddings(self.cfg.max_seq_len)
             self.word_embeddings = self.decoder.bert.embeddings.word_embeddings
             self.sep_token_id = tkz.sep_token_id if tkz.sep_token_id is not None else tkz.cls_token_id
             d_dec = self.decoder.config.hidden_size
@@ -71,6 +72,33 @@ class MixedDecoder(nn.Module):
                 spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
                 reg_weight=1, msk_weight=5, spc_weight=0.1,
             )
+
+    def _extend_bert_position_embeddings(self, new_max_len: int):
+        """Extend BertGenerationDecoder positional embeddings if new_max_len exceeds
+        the model's current max_position_embeddings. New positions are initialized by
+        tiling the existing pretrained position embeddings.
+        """
+        embeddings = self.decoder.bert.embeddings
+        old_pe: nn.Embedding = embeddings.position_embeddings
+        old_max, hidden = old_pe.weight.shape
+        if new_max_len <= old_max:
+            return
+
+        rank = dist.get_rank() if dist.is_initialized() else 0
+        print(f'R{rank}. Extending BertDec position embeddings from {old_max} to {new_max_len}')
+
+        new_pe = nn.Embedding(new_max_len, hidden)
+        new_pe.to(device=old_pe.weight.device, dtype=old_pe.weight.dtype)
+        with torch.no_grad():
+            reps = (new_max_len + old_max - 1) // old_max
+            tiled = old_pe.weight.repeat(reps, 1)[:new_max_len]
+            new_pe.weight.copy_(tiled)
+        embeddings.position_embeddings = new_pe
+
+        embeddings.register_buffer(
+            'position_ids', torch.arange(new_max_len).expand((1, -1)), persistent=False,
+        )
+        self.decoder.config.max_position_embeddings = new_max_len
 
     def load_pretrained(self, checkpoint: Optional[Dict[str, Any]] = None):
         if checkpoint is not None:
@@ -353,7 +381,7 @@ class MixedDecoder(nn.Module):
             for i in range(batch_size)
         ]
         max_total_len = max(total_lens) if total_lens else 0
-        assert self.cfg.decoder_only or max_total_len <= self.cfg.max_seq_len, \
+        assert max_total_len <= self.cfg.max_seq_len, \
             f'Total sequence length {max_total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
 
         input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device)
