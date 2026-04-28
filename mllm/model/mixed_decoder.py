@@ -19,14 +19,18 @@ from mllm.data.qna.batch import QnaBatch
 
 class MixedDecoder(nn.Module):
     cfg: MixedDecoderCfg
-    tkz: PreTrainedTokenizer
+    tkz_enc: PreTrainedTokenizer
+    tkz_dec: PreTrainedTokenizer
     # enc: EncoderBert
     # pos_emb: nn.Embedding
 
-    def __init__(self, cfg: MixedDecoderCfg, tkz: PreTrainedTokenizer):
+    def __init__(self, cfg: MixedDecoderCfg, tkz_enc: PreTrainedTokenizer, tkz_dec: PreTrainedTokenizer):
         super().__init__()
         self.cfg = cfg
-        self.tkz = tkz
+        self.tkz_enc = tkz_enc
+        self.tkz_dec = tkz_dec
+        # Backward-compat alias: legacy code may still read self.tkz.
+        self.tkz = tkz_enc
         self.decoder_only = cfg.decoder_only
         if not self.decoder_only:
             self.enc = EncoderBert(cfg.enc_bert)
@@ -36,7 +40,8 @@ class MixedDecoder(nn.Module):
         if self.cfg.decoder_type == MixedDecoderType.Gpt2:
             self.decoder = GPT2LMHeadModel.from_pretrained(self.cfg.decoder_model_name)
             self.word_embeddings = self.decoder.transformer.wte
-            self.sep_token_id = tkz.sep_token_id if tkz.sep_token_id is not None else tkz.eos_token_id
+            # GPT-2 has only the eos special token; use it as SEP/delimiter and as the target ending.
+            self.sep_token_id = tkz_dec.sep_token_id if tkz_dec.sep_token_id is not None else tkz_dec.eos_token_id
             d_dec = self.decoder.config.n_embd
         elif self.cfg.decoder_type == MixedDecoderType.BertDec:
             from mllm.model.bert_generation import BertGenerationDecoder
@@ -45,10 +50,17 @@ class MixedDecoder(nn.Module):
             )
             self._extend_bert_position_embeddings(self.cfg.max_seq_len)
             self.word_embeddings = self.decoder.bert.embeddings.word_embeddings
-            self.sep_token_id = tkz.sep_token_id if tkz.sep_token_id is not None else tkz.cls_token_id
+            self.sep_token_id = tkz_dec.sep_token_id if tkz_dec.sep_token_id is not None else tkz_dec.cls_token_id
             d_dec = self.decoder.config.hidden_size
         else:
             raise ValueError(f'Decoder type {self.cfg.decoder_type} is not supported.')
+
+        # Sanity check: decoder embedding table must match tkz_dec vocab size.
+        assert self.word_embeddings.num_embeddings >= len(tkz_dec), (
+            f'Decoder embedding size {self.word_embeddings.num_embeddings} is smaller than '
+            f'tkz_dec vocab size {len(tkz_dec)}. Check that --decoder-model-name and the '
+            f'decoder tokenizer come from the same model family.'
+        )
 
         # Embedding expansion: each CLS embedding (d_model) → (emb_exp_rate, d_dec)
         self.emb_exp = None
@@ -64,12 +76,27 @@ class MixedDecoder(nn.Module):
         # Learnable positional embeddings over the full combined sequence
         self.pos_emb = nn.Embedding(cfg.max_seq_len, d_dec)
 
-        # Mask-aware loss: gives higher weight to [MASK] positions, lower to special tokens
+        # Mask-aware loss: gives higher weight to [MASK] positions, lower to special tokens.
+        # Special-token ids come from tkz_dec because the loss is computed over decoder targets.
         self.mask_loss_fn = None
         if self.cfg.train_cfg.mask_cfg is not None:
+            if tkz_dec.mask_token_id is None:
+                raise ValueError(
+                    f'mask_cfg is set but the decoder tokenizer ({type(tkz_dec).__name__}) has no '
+                    f'[MASK] token. Disable token masking when training with this decoder.'
+                )
+            if tkz_enc is not tkz_dec and len(tkz_enc) != len(tkz_dec):
+                raise ValueError(
+                    'mask_cfg is set but encoder and decoder tokenizers differ. Mask positions '
+                    'cannot be aligned across split vocabs; disable token masking in this setup.'
+                )
+            spc_ids = [
+                tid for tid in (tkz_dec.pad_token_id, tkz_dec.cls_token_id, tkz_dec.sep_token_id)
+                if tid is not None
+            ]
             self.mask_loss_fn = EncdecMaskPadItemLoss(
-                msk_tok_id=cast(int, tkz.mask_token_id),
-                spc_tok_ids=[cast(int, tkz.pad_token_id), cast(int, tkz.cls_token_id), cast(int, tkz.sep_token_id)],
+                msk_tok_id=cast(int, tkz_dec.mask_token_id),
+                spc_tok_ids=spc_ids,
                 reg_weight=1, msk_weight=5, spc_weight=0.1,
             )
 
@@ -318,35 +345,45 @@ class MixedDecoder(nn.Module):
     ) -> Tuple[list, list]:
         """For decoder-only mode: per-sample, concatenate raw chunk content tokens
         (strip per-chunk leading CLS / trailing SEP via attention mask) into a single
-        1-D tensor.
+        1-D tensor of decoder-vocab IDs.
 
-        Returns:
-            ctx_tok_ids_list: list of 1-D LongTensors, one per sample.
-            ctx_lens: list of int lengths matching the above tensors.
+        Chunk tokens originate from the data loader using the encoder tokenizer
+        (``tkz_enc``). When ``tkz_enc`` and ``tkz_dec`` differ we cannot feed those
+        IDs to the decoder embedding layer; we decode the per-chunk content text
+        with ``tkz_enc`` and re-tokenize it with ``tkz_dec``.
         """
         chunk_offsets = [0]
         for c in chunk_counts:
             chunk_offsets.append(chunk_offsets[-1] + c)
 
-        cls_id = self.tkz.cls_token_id
-        sep_id = self.tkz.sep_token_id
+        cls_id = self.tkz_enc.cls_token_id
+        sep_id = self.tkz_enc.sep_token_id
         device = ctx_chunks_toks.device
+        same_vocab = self.tkz_enc is self.tkz_dec or len(self.tkz_enc) == len(self.tkz_dec) and \
+            self.tkz_enc.get_vocab() == self.tkz_dec.get_vocab()
 
         ctx_tok_ids_list = []
         ctx_lens = []
         for i in range(len(chunk_counts)):
             start, end = chunk_offsets[i], chunk_offsets[i + 1]
-            parts = []
+            parts: list = []
             for ci in range(start, end):
                 n_valid = int(ctx_chunks_att_mask[ci].sum().item())
                 toks = ctx_chunks_toks[ci, :n_valid]
-                # Strip leading CLS and trailing SEP if present
+                # Strip leading CLS and trailing SEP if present (encoder vocab).
                 if toks.numel() > 0 and cls_id is not None and toks[0].item() == cls_id:
                     toks = toks[1:]
                 if toks.numel() > 0 and sep_id is not None and toks[-1].item() == sep_id:
                     toks = toks[:-1]
-                if toks.numel() > 0:
+                if toks.numel() == 0:
+                    continue
+                if same_vocab:
                     parts.append(toks)
+                else:
+                    text = self.tkz_enc.decode(toks.tolist(), skip_special_tokens=True)
+                    dec_ids = self.tkz_dec(text, add_special_tokens=False).input_ids
+                    if len(dec_ids) > 0:
+                        parts.append(torch.tensor(dec_ids, dtype=torch.long, device=device))
             if parts:
                 ctx_ids = torch.cat(parts, dim=0)
             else:
@@ -455,7 +492,7 @@ class MixedDecoder(nn.Module):
         """
         batch_size = batch.inp_toks.shape[0]
 
-        assert torch.all(batch.inp_toks[:, 0] == self.tkz.cls_token_id), 'Input tokens must start with CLS token'
+        assert torch.all(batch.inp_toks[:, 0] == self.tkz_enc.cls_token_id), 'Input tokens must start with encoder CLS token'
 
         if self.decoder_only:
             # Treat each sample's inp_toks as a single chunk (already shape (B, inp_len)).
@@ -464,8 +501,9 @@ class MixedDecoder(nn.Module):
             )
 
             if self.cfg.prompt_all:
-                target_toks = batch.inp_toks[:, 1:]
-                target_att_mask = batch.inp_att_mask[:, 1:]
+                # prompt_all target is the same content as the encoder input but in decoder vocab.
+                target_toks = batch.inp_toks_dec
+                target_att_mask = batch.inp_dec_att_mask
             else:
                 target_toks = batch.cites_toks
                 target_att_mask = batch.cites_att_mask
@@ -527,16 +565,11 @@ class MixedDecoder(nn.Module):
 
         # Select target based on prompt_all config
         if self.cfg.prompt_all:
-            # Target is the whole input chunk with tags (inp_toks), starts with CLS
-            target_toks = batch.inp_toks  # (batch_size, inp_len)
-            target_att_mask = batch.inp_att_mask  # (batch_size, inp_len)
-            # Strip leading CLS token - it's an encoder special token, not a generation target
-            assert torch.all(target_toks[:, 0] == self.tkz.cls_token_id), \
-                'Target tokens (inp_toks) must start with CLS token'
-            target_toks = target_toks[:, 1:]
-            target_att_mask = target_att_mask[:, 1:]
+            # Target is the whole input chunk content with tags, in decoder vocab.
+            target_toks = batch.inp_toks_dec  # (batch_size, inp_dec_len)
+            target_att_mask = batch.inp_dec_att_mask  # (batch_size, inp_dec_len)
         else:
-            # Target is just the citation between tags (cites_toks) - no CLS prefix
+            # Target is just the citation between tags (cites_toks) - decoder vocab
             target_toks = batch.cites_toks  # (batch_size, cite_len)
             target_att_mask = batch.cites_att_mask  # (batch_size, cite_len)
 
@@ -552,9 +585,8 @@ class MixedDecoder(nn.Module):
         # Compute loss
         if self.mask_loss_fn is not None:
             if self.cfg.prompt_all:
-                # target_toks was stripped of leading CLS, so masked tokens must match
-                masked_target_toks = batch.inp_masked_toks[:, 1:]  # (batch_size, inp_len - 1)
-                orig_target_toks = batch.inp_toks[:, 1:]  # (batch_size, inp_len - 1)
+                masked_target_toks = batch.inp_masked_toks_dec
+                orig_target_toks = batch.inp_toks_dec
             else:
                 masked_target_toks = batch.cites_masked_toks  # (batch_size, cite_len)
                 orig_target_toks = batch.cites_toks  # (batch_size, cite_len)

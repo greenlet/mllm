@@ -57,27 +57,49 @@ class NextTokWikiDataset:
     """
 
     def __init__(
-            self, ds: Dataset, inds: np.ndarray, tkz: PreTrainedTokenizer,
+            self, ds: Dataset, inds: np.ndarray, tkz_enc: PreTrainedTokenizer,
             inp_len: int, min_next_toks: int,
             emb_win_min_size: int, emb_win_max_size: int,
             max_target_toks: int = 128, device: Optional[torch.device] = None,
+            tkz_dec: Optional[PreTrainedTokenizer] = None,
     ):
         self.ds = ds
         self.inds = inds.copy()
-        self.tkz = tkz
+        self.tkz_enc = tkz_enc
+        self.tkz_dec = tkz_dec if tkz_dec is not None else tkz_enc
+        self.tkz = tkz_enc  # backward-compat alias
         self.inp_len = inp_len
         self.min_next_toks = min_next_toks
         self.emb_win_min_size = max(emb_win_min_size, 1)
         self.emb_win_max_size = max(emb_win_max_size, 1)
         self.max_target_toks = max_target_toks
         self.device = device if device is not None else torch.device('cpu')
-        self.pad_token_id = tkz.pad_token_id
-        self.cls_token_id = tkz.cls_token_id
-        self.sep_token_id = tkz.sep_token_id
+        self.enc_pad_token_id = tkz_enc.pad_token_id
+        self.dec_pad_token_id = self.tkz_dec.pad_token_id
+        if self.dec_pad_token_id is None:
+            self.dec_pad_token_id = self.tkz_dec.eos_token_id
+        self.cls_token_id = tkz_enc.cls_token_id
+        self.sep_token_id = tkz_enc.sep_token_id
         self.chunk_content_len = inp_len - 2  # reserve 1 for CLS and 1 for SEP
         self.size = len(self.inds)
-        # Fixed prompt tokenized once
-        self.prompt_toks_fixed: List[int] = self.tkz('Continue:', add_special_tokens=False).input_ids
+        # Decoder-side specials for wrapping the target sequence.
+        if self.tkz_dec.cls_token_id is not None and self.tkz_dec.sep_token_id is not None:
+            # BERT-like decoder: wrap with CLS .. SEP.
+            self.dec_target_prefix: List[int] = [self.tkz_dec.cls_token_id]
+            self.dec_target_suffix: List[int] = [self.tkz_dec.sep_token_id]
+        elif self.tkz_dec.eos_token_id is not None:
+            # GPT-2: only end-of-text token; use as target ending.
+            self.dec_target_prefix = []
+            self.dec_target_suffix = [self.tkz_dec.eos_token_id]
+        else:
+            self.dec_target_prefix = []
+            self.dec_target_suffix = []
+        # Reserve room for prefix+suffix in the target budget.
+        self.dec_target_content_budget = max(
+            self.max_target_toks - len(self.dec_target_prefix) - len(self.dec_target_suffix), 1,
+        )
+        # Fixed prompt tokenized once with the decoder tokenizer.
+        self.prompt_toks_fixed: List[int] = self.tkz_dec('Continue:', add_special_tokens=False).input_ids
         # Internal pointer for skipping short docs
         self._ptr = 0
 
@@ -85,7 +107,7 @@ class NextTokWikiDataset:
         return self.size
 
     def _tokenize_doc(self, text: str) -> List[int]:
-        return self.tkz(text, add_special_tokens=False).input_ids
+        return self.tkz_enc(text, add_special_tokens=False).input_ids
 
     def _make_chunks(self, doc_toks: List[int], start: int, win_size: int) -> List[List[int]]:
         """Split ``win_size`` consecutive content-length segments into CLS+content+SEP chunks."""
@@ -123,11 +145,14 @@ class NextTokWikiDataset:
 
         chunks = self._make_chunks(doc_toks, start, win_size)
 
-        # Target: tokens right after the context window
+        # Target: tokens right after the context window. We slice the encoder
+        # tokenization, decode to text, and re-tokenize with the decoder vocab.
         tgt_start = start + ctx_tok_count
-        tgt_end = min(tgt_start + self.max_target_toks - 2, doc_toks_num)  # -2 for CLS/SEP wrapping
-        tgt_content = doc_toks[tgt_start:tgt_end]
-        target = [self.cls_token_id] + tgt_content + [self.sep_token_id]
+        tgt_end = min(tgt_start + self.max_target_toks * 4, doc_toks_num)
+        tgt_text = self.tkz_enc.decode(doc_toks[tgt_start:tgt_end], skip_special_tokens=True)
+        tgt_content = self.tkz_dec(tgt_text, add_special_tokens=False).input_ids
+        tgt_content = tgt_content[:self.dec_target_content_budget]
+        target = self.dec_target_prefix + tgt_content + self.dec_target_suffix
 
         return chunks, target
 
@@ -158,28 +183,28 @@ class NextTokWikiDataset:
             prompt_toks_list.append(list(self.prompt_toks_fixed))
             target_toks_list.append(target)
 
-        # Pad context chunks to inp_len
+        # Pad context chunks to inp_len (encoder vocab)
         total_chunks = len(all_chunks)
-        ctx_chunks_t = torch.full((total_chunks, self.inp_len), self.pad_token_id, dtype=torch.long, device=self.device)
+        ctx_chunks_t = torch.full((total_chunks, self.inp_len), self.enc_pad_token_id, dtype=torch.long, device=self.device)
         ctx_chunks_att = torch.zeros((total_chunks, self.inp_len), dtype=torch.long, device=self.device)
         for i, chunk in enumerate(all_chunks):
             n = min(len(chunk), self.inp_len)
             ctx_chunks_t[i, :n] = torch.tensor(chunk[:n], dtype=torch.long, device=self.device)
             ctx_chunks_att[i, :n] = 1
 
-        # Right-pad prompts (fixed length, but keep interface consistent)
+        # Right-pad prompts (decoder vocab; fixed length, but keep interface consistent)
         prompt_lengths = [len(p) for p in prompt_toks_list]
         max_prompt_len = max(prompt_lengths)
-        prompt_t = torch.full((batch_size, max_prompt_len), self.pad_token_id, dtype=torch.long, device=self.device)
+        prompt_t = torch.full((batch_size, max_prompt_len), self.dec_pad_token_id, dtype=torch.long, device=self.device)
         prompt_att = torch.zeros((batch_size, max_prompt_len), dtype=torch.long, device=self.device)
         for i, toks in enumerate(prompt_toks_list):
             n = len(toks)
             prompt_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=self.device)
             prompt_att[i, :n] = 1
 
-        # Pad target tokens
+        # Pad target tokens (decoder vocab)
         max_target_len = max(len(t) for t in target_toks_list)
-        target_t = torch.full((batch_size, max_target_len), self.pad_token_id, dtype=torch.long, device=self.device)
+        target_t = torch.full((batch_size, max_target_len), self.dec_pad_token_id, dtype=torch.long, device=self.device)
         target_att = torch.zeros((batch_size, max_target_len), dtype=torch.long, device=self.device)
         for i, toks in enumerate(target_toks_list):
             n = len(toks)

@@ -56,23 +56,34 @@ class QnaBaseDataset:
     NO_ANSWER_TEXT = 'noanswer'
 
     def __init__(
-            self, tkz: PreTrainedTokenizer,
+            self, tkz_enc: PreTrainedTokenizer,
             inp_len: int, max_chunks: int, max_ans_toks: int = 100,
             max_prompt_toks: int = 100, device: Optional[torch.device] = None,
+            tkz_dec: Optional[PreTrainedTokenizer] = None,
     ):
-        self.tkz = tkz
+        self.tkz_enc = tkz_enc
+        self.tkz_dec = tkz_dec if tkz_dec is not None else tkz_enc
+        self.tkz = tkz_enc  # backward-compat alias
         self.inp_len = inp_len
         self.max_chunks = max_chunks
         self.max_ans_toks = max_ans_toks
         self.max_prompt_toks = max_prompt_toks
         self.device = device if device is not None else torch.device('cpu')
-        self.pad_token_id = tkz.pad_token_id
-        self.cls_token_id = tkz.cls_token_id
-        self.sep_token_id = tkz.sep_token_id
+        self.enc_pad_token_id = tkz_enc.pad_token_id
+        self.dec_pad_token_id = self.tkz_dec.pad_token_id
+        if self.dec_pad_token_id is None:
+            self.dec_pad_token_id = self.tkz_dec.eos_token_id
+        self.cls_token_id = tkz_enc.cls_token_id
+        self.sep_token_id = tkz_enc.sep_token_id
+        # Decoder-side answer end token: BERT uses SEP; GPT-2 uses eos.
+        self.dec_answer_end_id = (
+            self.tkz_dec.sep_token_id if self.tkz_dec.sep_token_id is not None
+            else self.tkz_dec.eos_token_id
+        )
 
-        # Single-turn prompt formatting: 'Question: {q} Answer:'
-        self.prompt_prefix_toks = self.tkz('Question: ', add_special_tokens=False).input_ids
-        self.prompt_suffix_toks = self.tkz(' Answer:', add_special_tokens=False).input_ids
+        # Single-turn prompt formatting: 'Question: {q} Answer:' (decoder vocab)
+        self.prompt_prefix_toks = self.tkz_dec('Question: ', add_special_tokens=False).input_ids
+        self.prompt_suffix_toks = self.tkz_dec(' Answer:', add_special_tokens=False).input_ids
         self.prompt_budget = (
             self.max_prompt_toks
             - len(self.prompt_prefix_toks)
@@ -86,11 +97,11 @@ class QnaBaseDataset:
             f'max_prompt_toks={self.max_prompt_toks}.'
         )
 
-        # Multi-turn prompt formatting: 'Q: {q0} A: {a0}. Q: {q1} A: {a1}. ... Q: {qn} A:'
-        self.mt_q_prefix_toks = self.tkz('Q: ', add_special_tokens=False).input_ids
-        self.mt_a_infix_toks = self.tkz(' A: ', add_special_tokens=False).input_ids
-        self.mt_turn_sep_toks = self.tkz('. ', add_special_tokens=False).input_ids
-        self.mt_suffix_toks = self.tkz(' A:', add_special_tokens=False).input_ids
+        # Multi-turn prompt formatting (decoder vocab)
+        self.mt_q_prefix_toks = self.tkz_dec('Q: ', add_special_tokens=False).input_ids
+        self.mt_a_infix_toks = self.tkz_dec(' A: ', add_special_tokens=False).input_ids
+        self.mt_turn_sep_toks = self.tkz_dec('. ', add_special_tokens=False).input_ids
+        self.mt_suffix_toks = self.tkz_dec(' A:', add_special_tokens=False).input_ids
 
         # To be set by subclasses
         self.inds: np.ndarray = np.array([], dtype=np.int64)
@@ -119,8 +130,8 @@ class QnaBaseDataset:
     # --- Common tokenization ---
 
     def chunk_context(self, context: str) -> List[List[int]]:
-        """Tokenize context and split into chunks, each starting with CLS and ending with SEP."""
-        ctx_toks = self.tkz(context, add_special_tokens=False).input_ids
+        """Tokenize context with the encoder tokenizer and split into chunks (CLS .. SEP)."""
+        ctx_toks = self.tkz_enc(context, add_special_tokens=False).input_ids
         chunk_content_len = self.inp_len - 2  # reserve 1 for CLS and 1 for SEP
         chunks = []
         for start in range(0, len(ctx_toks), chunk_content_len):
@@ -148,15 +159,15 @@ class QnaBaseDataset:
         n = len(questions)
 
         if n == 1:
-            # Single-turn: existing format
-            q_toks = self.tkz(questions[0], add_special_tokens=False).input_ids
+            # Single-turn: existing format (decoder vocab)
+            q_toks = self.tkz_dec(questions[0], add_special_tokens=False).input_ids
             if len(q_toks) > self.prompt_budget:
                 q_toks = q_toks[-self.prompt_budget:]
             return self.prompt_prefix_toks + q_toks + self.prompt_suffix_toks
 
         # Multi-turn ----------------------------------------------------------
         # Current question block (always included)
-        cur_q_toks = self.tkz(questions[-1], add_special_tokens=False).input_ids
+        cur_q_toks = self.tkz_dec(questions[-1], add_special_tokens=False).input_ids
         cur_block = self.mt_q_prefix_toks + cur_q_toks + self.mt_suffix_toks
 
         # Truncate current question from the left if it alone exceeds budget
@@ -174,8 +185,8 @@ class QnaBaseDataset:
         # Add history turns from oldest to newest
         history_toks: List[int] = []
         for j in range(n - 2, -1, -1):
-            q_toks = self.tkz(questions[j], add_special_tokens=False).input_ids
-            a_toks = self.tkz(answers[j], add_special_tokens=False).input_ids
+            q_toks = self.tkz_dec(questions[j], add_special_tokens=False).input_ids
+            a_toks = self.tkz_dec(answers[j], add_special_tokens=False).input_ids
             turn_toks = (
                 self.mt_q_prefix_toks + q_toks
                 + self.mt_a_infix_toks + a_toks
@@ -189,10 +200,12 @@ class QnaBaseDataset:
         return history_toks + cur_block
 
     def tokenize_answer(self, answer: str) -> List[int]:
-        """Tokenize answer with SEP token at the end."""
-        toks = self.tkz(answer, add_special_tokens=True).input_ids[1:]
-        if len(toks) > self.max_ans_toks:
-            toks = toks[:self.max_ans_toks]
+        """Tokenize answer in decoder vocab and append the decoder's end token."""
+        toks = self.tkz_dec(answer, add_special_tokens=False).input_ids
+        if len(toks) > self.max_ans_toks - 1:
+            toks = toks[:self.max_ans_toks - 1]
+        if self.dec_answer_end_id is not None:
+            toks = toks + [self.dec_answer_end_id]
         return toks
 
     # --- Batching ---
@@ -217,10 +230,10 @@ class QnaBaseDataset:
             ans_toks_list.append(self.tokenize_answer(answers[-1]))
             answerable_list.append(is_answerable)
 
-        # Pad context chunks to inp_len
+        # Pad context chunks to inp_len (encoder vocab)
         total_chunks = len(all_chunks)
         ctx_chunks_t = torch.full(
-            (total_chunks, self.inp_len), self.pad_token_id, dtype=torch.long, device=self.device,
+            (total_chunks, self.inp_len), self.enc_pad_token_id, dtype=torch.long, device=self.device,
         )
         ctx_chunks_att = torch.zeros(
             (total_chunks, self.inp_len), dtype=torch.long, device=self.device,
@@ -230,11 +243,11 @@ class QnaBaseDataset:
             ctx_chunks_t[i, :n] = torch.tensor(chunk[:n], dtype=torch.long, device=self.device)
             ctx_chunks_att[i, :n] = 1
 
-        # Right-pad prompts
+        # Right-pad prompts (decoder vocab)
         prompt_lengths = [len(p) for p in prompt_toks_list]
         max_prompt_len = max(prompt_lengths)
         prompt_t = torch.full(
-            (batch_size, max_prompt_len), self.pad_token_id, dtype=torch.long, device=self.device,
+            (batch_size, max_prompt_len), self.dec_pad_token_id, dtype=torch.long, device=self.device,
         )
         prompt_att = torch.zeros(
             (batch_size, max_prompt_len), dtype=torch.long, device=self.device,
@@ -244,10 +257,10 @@ class QnaBaseDataset:
             prompt_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=self.device)
             prompt_att[i, :n] = 1
 
-        # Pad answers
+        # Pad answers (decoder vocab)
         max_ans_len = max(len(a) for a in ans_toks_list)
         ans_t = torch.full(
-            (batch_size, max_ans_len), self.pad_token_id, dtype=torch.long, device=self.device,
+            (batch_size, max_ans_len), self.dec_pad_token_id, dtype=torch.long, device=self.device,
         )
         ans_att = torch.zeros(
             (batch_size, max_ans_len), dtype=torch.long, device=self.device,
@@ -338,10 +351,10 @@ class QnaDatasetAgg:
             ans_toks_list.append(ds0.tokenize_answer(answers[-1]))
             answerable_list.append(is_answerable)
 
-        # Pad context chunks to inp_len
+        # Pad context chunks to inp_len (encoder vocab)
         total_chunks = len(all_chunks)
         ctx_chunks_t = torch.full(
-            (total_chunks, ds0.inp_len), ds0.pad_token_id, dtype=torch.long, device=self.device,
+            (total_chunks, ds0.inp_len), ds0.enc_pad_token_id, dtype=torch.long, device=self.device,
         )
         ctx_chunks_att = torch.zeros(
             (total_chunks, ds0.inp_len), dtype=torch.long, device=self.device,
@@ -351,11 +364,11 @@ class QnaDatasetAgg:
             ctx_chunks_t[i, :n] = torch.tensor(chunk[:n], dtype=torch.long, device=self.device)
             ctx_chunks_att[i, :n] = 1
 
-        # Right-pad prompts
+        # Right-pad prompts (decoder vocab)
         prompt_lengths = [len(p) for p in prompt_toks_list]
         max_prompt_len = max(prompt_lengths)
         prompt_t = torch.full(
-            (batch_size, max_prompt_len), ds0.pad_token_id, dtype=torch.long, device=self.device,
+            (batch_size, max_prompt_len), ds0.dec_pad_token_id, dtype=torch.long, device=self.device,
         )
         prompt_att = torch.zeros(
             (batch_size, max_prompt_len), dtype=torch.long, device=self.device,
@@ -365,10 +378,10 @@ class QnaDatasetAgg:
             prompt_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=self.device)
             prompt_att[i, :n] = 1
 
-        # Pad answers
+        # Pad answers (decoder vocab)
         max_ans_len = max(len(a) for a in ans_toks_list)
         ans_t = torch.full(
-            (batch_size, max_ans_len), ds0.pad_token_id, dtype=torch.long, device=self.device,
+            (batch_size, max_ans_len), ds0.dec_pad_token_id, dtype=torch.long, device=self.device,
         )
         ans_att = torch.zeros(
             (batch_size, max_ans_len), dtype=torch.long, device=self.device,
@@ -412,7 +425,7 @@ class QnaDatasetAgg:
 
 
 def load_qna_datasets(
-        tkz: PreTrainedTokenizer,
+        tkz_enc: PreTrainedTokenizer,
         inp_len: int,
         max_chunks: int,
         max_ans_toks: int = 100,
@@ -420,10 +433,14 @@ def load_qna_datasets(
         device: Optional[torch.device] = None,
         cache_dir: str | Path | None = None,
         sources: Tuple[QnaDatasetType, ...] = QNA_DATASETS_DEFAULT,
+        tkz_dec: Optional[PreTrainedTokenizer] = None,
 ) -> Tuple[QnaDatasetAgg, QnaDatasetAgg]:
     """Load QnA datasets and return aggregated train/val splits.
 
     Args:
+        tkz_enc: Encoder tokenizer (BERT-like) used for chunking the context.
+        tkz_dec: Decoder tokenizer (GPT-2 / BERT) used for prompt and answer.
+            Defaults to tkz_enc when None (legacy single-tokenizer setup).
         sources: Tuple of QnaDatasetType values to load. Defaults to all except SQuAD v1.
 
     Returns:
@@ -451,7 +468,7 @@ def load_qna_datasets(
         QnaDatasetType.SQUAD_V1: (load_squad_v1, SquadV1Dataset),
     }
 
-    ds_kwargs = dict(tkz=tkz, inp_len=inp_len, max_chunks=max_chunks,
+    ds_kwargs = dict(tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=inp_len, max_chunks=max_chunks,
                      max_ans_toks=max_ans_toks, max_prompt_toks=max_prompt_toks, device=device)
 
     train_datasets: List[QnaBaseDataset] = []

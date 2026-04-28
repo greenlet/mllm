@@ -39,15 +39,16 @@ class CoqaDataset(QnaBaseDataset):
     def __init__(
             self,
             ds: HfDataset,
-            tkz: PreTrainedTokenizer,
+            tkz_enc: PreTrainedTokenizer,
             inp_len: int,
             max_chunks: int,
             max_ans_toks: int = 100,
             max_prompt_toks: int = 100,
             device=None,
+            tkz_dec: PreTrainedTokenizer = None,
     ):
         super().__init__(
-            tkz=tkz, inp_len=inp_len, max_chunks=max_chunks,
+            tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=inp_len, max_chunks=max_chunks,
             max_ans_toks=max_ans_toks, max_prompt_toks=max_prompt_toks, device=device,
         )
         self.ds = ds

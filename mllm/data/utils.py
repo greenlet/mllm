@@ -229,6 +229,7 @@ class TokensSubsetV2:
     toks_src: list[int]
     inp_beg_ind: int
     inp_end_ind: int
+    # Encoder-vocab tokens (consumed by the BERT-like encoder).
     toks_inp: list[int]
     toks_inp_masked: list[int]
     cite_beg_ind: int
@@ -239,37 +240,67 @@ class TokensSubsetV2:
     toks_cite_end: list[int]
     prompt: str
     toks_prompt: list[int]
+    # Decoder-vocab tokens (consumed by the autoregressive decoder).
+    # Same logical content as toks_inp / toks_cite but tokenized with tkz_dec.
+    toks_inp_dec: list[int]
+    toks_inp_masked_dec: list[int]
+    toks_cite_dec: list[int]
+    toks_cite_masked_dec: list[int]
 
 
 class RandomInputTokenizerV2:
-    def __init__(self, tkz: PreTrainedTokenizer, max_len: int, n_random_toks: int, n_special_toks: int = 1000, mask_cfg: Optional[MaskCfg] = None):
-        self.tkz = tkz
+    def __init__(
+            self, tkz_enc: PreTrainedTokenizer, max_len: int, n_random_toks: int,
+            n_special_toks: int = 1000, mask_cfg: Optional[MaskCfg] = None,
+            tkz_dec: Optional[PreTrainedTokenizer] = None,
+    ):
+        """Builds tokenized cite-citation samples.
+
+        ``tkz_enc`` produces the tokens fed to the encoder (chunk inputs incl.
+        CLS/SEP and random anchor tokens). ``tkz_dec`` produces the tokens fed
+        to the decoder (prompt template + decoded anchor text + decoder-vocab
+        target/cite tokens). When ``tkz_dec is None`` the encoder tokenizer is
+        used on both sides (legacy single-tokenizer behaviour).
+        """
+        self.tkz = tkz_enc  # backward-compat alias
+        self.tkz_enc = tkz_enc
+        self.tkz_dec = tkz_dec if tkz_dec is not None else tkz_enc
+        self.same_vocab = self.tkz_enc is self.tkz_dec or len(self.tkz_enc) == len(self.tkz_dec)
         self.max_len = max_len
         self.n_random_toks = n_random_toks
         self.n_special_toks = n_special_toks
-        self.shuffled_tok_ids = np.random.permutation(np.arange(self.n_special_toks, len(tkz)))  # Exclude special tokens
+        self.shuffled_tok_ids = np.random.permutation(np.arange(self.n_special_toks, len(self.tkz_enc)))  # Exclude special tokens
         self.shuffled_tok_cur_ind = 0
         self.n_inp_toks = self.max_len - 2  # -2 for CLS and SEP
         self.n_cite_toks = self.n_inp_toks - 2 * self.n_random_toks
         assert self.n_cite_toks > 0, f'max_len={self.max_len} must be greater then total size: n_random_toks*2={self.n_random_toks * 2} + ' \
-            f'{self.tkz.cls_token}=1 + {self.tkz.sep_token}=1'
+            f'{self.tkz_enc.cls_token}=1 + {self.tkz_enc.sep_token}=1'
+        # Prompt templates are tokenized with the decoder tokenizer (decoder is the only consumer).
+        td = self.tkz_dec
         self.prompt_all_template_toks = {
-            'tag_begin': self.tkz('Cite tag begin: "', add_special_tokens=True).input_ids[:-1],
-            'tag_end': self.tkz('". Cite tag end: "', add_special_tokens=False).input_ids,
-            'rest': self.tkz('". Produce whole text containing these tags.', add_special_tokens=True).input_ids[1:],
+            'tag_begin': td('Cite tag begin: "', add_special_tokens=False).input_ids,
+            'tag_end': td('". Cite tag end: "', add_special_tokens=False).input_ids,
+            'rest': td('". Produce whole text containing these tags.', add_special_tokens=False).input_ids,
         }
         self.prompt_cite_template_toks = {
             'tag_begin': self.prompt_all_template_toks['tag_begin'],
             'tag_end': self.prompt_all_template_toks['tag_end'],
-            'rest': self.tkz('". Produce output text between these tags.', add_special_tokens=True).input_ids[1:],
+            'rest': td('". Produce output text between these tags.', add_special_tokens=False).input_ids,
         }
-        len_prompt_all_toks = sum(len(toks) for toks in self.prompt_all_template_toks.values()) + 2 * self.n_random_toks  # +2*n_random_toks for random tokens in prompt
-        len_prompt_cite_toks = sum(len(toks) for toks in self.prompt_cite_template_toks.values()) + 2 * self.n_random_toks
+        # Estimated upper bound on prompt size; anchor token text re-tokenized with tkz_dec
+        # may produce a different count than n_random_toks, so use a generous slack of 4x.
+        len_prompt_all_toks = sum(len(toks) for toks in self.prompt_all_template_toks.values()) + 8 * self.n_random_toks
+        len_prompt_cite_toks = sum(len(toks) for toks in self.prompt_cite_template_toks.values()) + 8 * self.n_random_toks
         assert len_prompt_all_toks < self.max_len, f'Prompt all toks length {len_prompt_all_toks} must be less than max_len={self.max_len}'
         assert len_prompt_cite_toks < self.max_len, f'Prompt cite toks length {len_prompt_cite_toks} must be less than max_len={self.max_len}'
         self.mask_cfg = mask_cfg
+        # Decoder special-token suffix appended to decoder-vocab target sequences.
+        # For BERT-like decoders this is [SEP] / [CLS]; for GPT-2 it is <|endoftext|>.
+        self.dec_end_token_id = (
+            self.tkz_dec.sep_token_id if self.tkz_dec.sep_token_id is not None
+            else self.tkz_dec.eos_token_id
+        )
 
-    
     def _next_random_tokens(self) -> list[int]:
         toks = self.shuffled_tok_ids[self.shuffled_tok_cur_ind:self.shuffled_tok_cur_ind + self.n_random_toks].tolist()
         self.shuffled_tok_cur_ind += len(toks)
@@ -281,10 +312,18 @@ class RandomInputTokenizerV2:
             self.shuffled_tok_cur_ind = 0
         return toks
 
-    
+    def _enc_to_dec(self, enc_ids: list[int]) -> list[int]:
+        """Convert encoder-vocab token IDs to decoder-vocab token IDs by decoding to text and re-tokenizing."""
+        if self.same_vocab:
+            return list(enc_ids)
+        if not enc_ids:
+            return []
+        text = self.tkz_enc.decode(enc_ids, skip_special_tokens=True)
+        return self.tkz_dec(text, add_special_tokens=False).input_ids
+
     def __call__(self, texts: list[str], prompt_all: bool = True) -> List[TokensSubsetV2]:
         batch_size = len(texts)
-        input_ids = self.tkz(texts, add_special_tokens=False).input_ids
+        input_ids = self.tkz_enc(texts, add_special_tokens=False).input_ids
         batch: list[TokensSubsetV2] = []
 
         for i in range(batch_size):
@@ -307,17 +346,43 @@ class RandomInputTokenizerV2:
             cite_end_ind = cite_beg_ind + n_cite_toks
             toks_cite = input_ids[i][cite_beg_ind:cite_end_ind]
 
-            toks_cite_masked, _ = mask_random_words_v2(np.array(toks_cite), self.tkz, self.mask_cfg)
+            toks_cite_masked, _ = mask_random_words_v2(np.array(toks_cite), self.tkz_enc, self.mask_cfg)
             toks_cite_masked = toks_cite_masked.tolist()
-            
-            toks_inp_nonmasked = [self.tkz.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
-                toks_cite + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz.sep_token_id]
-            toks_inp_masked = [self.tkz.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
-                toks_cite_masked + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz.sep_token_id]
+
+            toks_inp_nonmasked = [self.tkz_enc.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
+                toks_cite + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz_enc.sep_token_id]
+            toks_inp_masked = [self.tkz_enc.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
+                toks_cite_masked + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz_enc.sep_token_id]
+
+            # Decoder-vocab anchors: decode random IDs to text via tkz_enc, then tokenize with tkz_dec.
+            toks_cite_beg_dec = self._enc_to_dec(toks_cite_beg)
+            toks_cite_end_dec = self._enc_to_dec(toks_cite_end)
+
+            # Decoder-vocab cite content (re-tokenized).
+            toks_cite_dec = self._enc_to_dec(toks_cite)
+            toks_cite_masked_dec = self._enc_to_dec(toks_cite_masked) if self.same_vocab else list(toks_cite_dec)
+
+            # Decoder-vocab full input content (no encoder CLS/SEP; ends with decoder end token).
+            inp_prefix_dec = self._enc_to_dec(toks_inp[:sub_off])
+            inp_suffix_dec = self._enc_to_dec(toks_inp[sub_off + n_cite_toks:])
+            end_suffix = [self.dec_end_token_id] if self.dec_end_token_id is not None else []
+            toks_inp_dec = (
+                inp_prefix_dec + toks_cite_beg_dec + toks_cite_dec + toks_cite_end_dec + inp_suffix_dec + end_suffix
+            )
+            if self.same_vocab:
+                toks_inp_masked_dec = (
+                    inp_prefix_dec + toks_cite_beg_dec + toks_cite_masked_dec + toks_cite_end_dec + inp_suffix_dec + end_suffix
+                )
+            else:
+                toks_inp_masked_dec = list(toks_inp_dec)
 
             prompt_template_toks = self.prompt_all_template_toks if prompt_all else self.prompt_cite_template_toks
-            prompt_toks = prompt_template_toks['tag_begin'] + toks_cite_beg + prompt_template_toks['tag_end'] + toks_cite_end + prompt_template_toks['rest']
-            prompt = self.tkz.decode(prompt_toks, skip_special_tokens=False)
+            prompt_toks = (
+                prompt_template_toks['tag_begin'] + toks_cite_beg_dec
+                + prompt_template_toks['tag_end'] + toks_cite_end_dec
+                + prompt_template_toks['rest']
+            )
+            prompt = self.tkz_dec.decode(prompt_toks, skip_special_tokens=False)
 
             toks_sub = TokensSubsetV2(
                 toks_src=input_ids[i],
@@ -333,6 +398,10 @@ class RandomInputTokenizerV2:
                 toks_cite_end=toks_cite_end,
                 prompt=prompt,
                 toks_prompt=prompt_toks,
+                toks_inp_dec=toks_inp_dec,
+                toks_inp_masked_dec=toks_inp_masked_dec,
+                toks_cite_dec=toks_cite_dec,
+                toks_cite_masked_dec=toks_cite_masked_dec,
             )
             batch.append(toks_sub)
         return batch

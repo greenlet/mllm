@@ -28,62 +28,80 @@ from mllm.train.mask_utils import MaskCfg, mask_random_words_v2
 @dataclass(kw_only=True)
 class MaskedCiteBatch:
     tokens_subsets: List[TokensSubsetV2]
-    # (batch_size, seq_len)
+    # (batch_size, seq_len) - encoder vocab
     inp_toks: torch.Tensor
-    # (batch_size, seq_len)
+    # (batch_size, seq_len) - encoder vocab
     inp_masked_toks: torch.Tensor
-    # (batch_size, seq_len)
+    # (batch_size, seq_len) - decoder vocab
     prompts_toks: torch.Tensor
-    # (batch_size, seq_len)
+    # (batch_size, seq_len) - decoder vocab
     cites_toks: torch.Tensor
-    # (batch_size, seq_len)
+    # (batch_size, seq_len) - decoder vocab
     cites_masked_toks: torch.Tensor
-    # (batch_size, seq_len)
+    # (batch_size, seq_len) - encoder att mask for inp_toks / inp_masked_toks
     inp_att_mask: torch.Tensor
-    # (batch_size, seq_len)
+    # (batch_size, seq_len) - decoder att mask for prompts_toks
     prompts_att_mask: torch.Tensor
-    # (batch_size, seq_len)
+    # (batch_size, seq_len) - decoder att mask for cites_toks / cites_masked_toks
     cites_att_mask: torch.Tensor
+    # (batch_size, seq_len_dec) - decoder-vocab full input (used when prompt_all=True)
+    inp_toks_dec: torch.Tensor
+    # (batch_size, seq_len_dec) - decoder-vocab masked full input
+    inp_masked_toks_dec: torch.Tensor
+    # (batch_size, seq_len_dec) - att mask for inp_toks_dec
+    inp_dec_att_mask: torch.Tensor
     # (2, batch_size + 1)
     edge_inds: torch.Tensor
 
 
 class MaskedCiteDataset:
     def __init__(
-            self, dataset: Dataset, tkz: PreTrainedTokenizer, max_seq_len: int, n_special_toks: int = 1000, mask_cfg: Optional[MaskCfg] = None,
+            self, dataset: Dataset, tkz_enc: PreTrainedTokenizer, max_seq_len: int, n_special_toks: int = 1000, mask_cfg: Optional[MaskCfg] = None,
             prompt_all: bool = True, device: Optional[torch.device] = None,
+            tkz_dec: Optional[PreTrainedTokenizer] = None,
         ):
         '''Dataset for masked citation prediction with random input tokens.
          Args:
             dataset: HuggingFace dataset with 'text' field.
-            tkz: PreTrainedTokenizer for tokenization.
+            tkz_enc: Encoder tokenizer (BERT-like). Used for encoder chunk inputs.
             max_seq_len: Maximum sequence length.
             n_special_toks: Number of special tokens reserved in tokenizer. 1000 is the number of first BERT token ids reserved for special or unused tokens.
             mask_cfg: Optional MaskCfg for citation masking.
             prompt_all: If True, prompt asks for whole text; if False, prompt asks for citation only.
             device: Optional torch.device to move batches to.
+            tkz_dec: Decoder tokenizer (GPT-2 / BERT). Used for prompts, cites, and
+                decoder-vocab full input. If None, falls back to tkz_enc (legacy).
         '''
         self.dataset = dataset
-        self.tkz = tkz
+        self.tkz_enc = tkz_enc
+        self.tkz_dec = tkz_dec if tkz_dec is not None else tkz_enc
+        self.tkz = tkz_enc  # backward-compat alias
         self.size = len(self.dataset)
-        self.pad_token_id = tkz.pad_token_id
+        self.enc_pad_token_id = tkz_enc.pad_token_id
+        self.dec_pad_token_id = self.tkz_dec.pad_token_id
+        if self.dec_pad_token_id is None:
+            # GPT-2: pad with eos.
+            self.dec_pad_token_id = self.tkz_dec.eos_token_id
         self.max_seq_len = max_seq_len
-        self.mask_token_id = tkz.mask_token_id
+        self.mask_token_id = tkz_enc.mask_token_id
         self.mask_cfg = mask_cfg
         self.prompt_all = prompt_all
         self.device = device if device is not None else torch.device('cpu')
         self.inds = np.arange(self.size)
         self.random_inp_tkz = RandomInputTokenizerV2(
-            tkz, max_len=max_seq_len, n_random_toks=3, n_special_toks=n_special_toks, mask_cfg=mask_cfg,
+            tkz_enc, max_len=max_seq_len, n_random_toks=3, n_special_toks=n_special_toks, mask_cfg=mask_cfg,
+            tkz_dec=self.tkz_dec,
         )
 
     def __len__(self):
         return self.size
 
-    def toks_to_tensor(self, toks_list: List[List[int]], with_att_mask: bool) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def toks_to_tensor(self, toks_list: List[List[int]], with_att_mask: bool, pad_token_id: Optional[int] = None) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        if pad_token_id is None:
+            pad_token_id = self.enc_pad_token_id
         batch_size = len(toks_list)
         max_len = max(len(toks) for toks in toks_list)
-        toks_tensor = torch.full((batch_size, max_len), self.pad_token_id, dtype=torch.long, device=self.device)
+        toks_tensor = torch.full((batch_size, max_len), pad_token_id, dtype=torch.long, device=self.device)
         att_mask = None
         if with_att_mask:
             att_mask = torch.zeros((batch_size, max_len), dtype=torch.long, device=self.device)
@@ -102,11 +120,15 @@ class MaskedCiteDataset:
         tokens_subsets = self.random_inp_tkz(texts, prompt_all=self.prompt_all)
 
         batch_size = len(inds)
-        inp_toks, inp_att_mask = self.toks_to_tensor([item.toks_inp for item in tokens_subsets], with_att_mask=True)
-        inp_masked_toks, _ = self.toks_to_tensor([item.toks_inp_masked for item in tokens_subsets], with_att_mask=False)
-        prompts_toks, prompts_att_mask = self.toks_to_tensor([item.toks_prompt for item in tokens_subsets], with_att_mask=True)
-        cites_toks, cites_att_mask = self.toks_to_tensor([item.toks_cite for item in tokens_subsets], with_att_mask=True)
-        cites_masked_toks, _ = self.toks_to_tensor([item.toks_cite_masked for item in tokens_subsets], with_att_mask=False)
+        enc_pad = self.enc_pad_token_id
+        dec_pad = self.dec_pad_token_id
+        inp_toks, inp_att_mask = self.toks_to_tensor([item.toks_inp for item in tokens_subsets], with_att_mask=True, pad_token_id=enc_pad)
+        inp_masked_toks, _ = self.toks_to_tensor([item.toks_inp_masked for item in tokens_subsets], with_att_mask=False, pad_token_id=enc_pad)
+        prompts_toks, prompts_att_mask = self.toks_to_tensor([item.toks_prompt for item in tokens_subsets], with_att_mask=True, pad_token_id=dec_pad)
+        cites_toks, cites_att_mask = self.toks_to_tensor([item.toks_cite_dec for item in tokens_subsets], with_att_mask=True, pad_token_id=dec_pad)
+        cites_masked_toks, _ = self.toks_to_tensor([item.toks_cite_masked_dec for item in tokens_subsets], with_att_mask=False, pad_token_id=dec_pad)
+        inp_toks_dec, inp_dec_att_mask = self.toks_to_tensor([item.toks_inp_dec for item in tokens_subsets], with_att_mask=True, pad_token_id=dec_pad)
+        inp_masked_toks_dec, _ = self.toks_to_tensor([item.toks_inp_masked_dec for item in tokens_subsets], with_att_mask=False, pad_token_id=dec_pad)
         edge_inds = torch.stack([
             torch.arange(batch_size, device=self.device),
             torch.full((batch_size,), batch_size, device=self.device),
@@ -122,6 +144,9 @@ class MaskedCiteDataset:
             inp_att_mask=inp_att_mask,
             prompts_att_mask=prompts_att_mask,
             cites_att_mask=cites_att_mask,
+            inp_toks_dec=inp_toks_dec,
+            inp_masked_toks_dec=inp_masked_toks_dec,
+            inp_dec_att_mask=inp_dec_att_mask,
             edge_inds=edge_inds,
         )
 
@@ -138,6 +163,9 @@ def load_split_wiki_dataset(
         data_path: Path, tkz: PreTrainedTokenizer, max_seq_len: int, val_split_ratio: float,
         mask_cfg: Optional[MaskCfg] = None, random_seed: Optional[int] = 55,
     ) -> Tuple[Dataset, Dataset]:
+    # tkz parameter retained for backward compatibility but not used here
+    # (dataset construction does not require a tokenizer at load time).
+    del tkz
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
     dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))['train']
 

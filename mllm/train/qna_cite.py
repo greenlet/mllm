@@ -27,34 +27,44 @@ class QnaCiteDataset:
     """
 
     def __init__(
-            self, df: pd.DataFrame, inds: np.ndarray, tkz: PreTrainedTokenizer,
+            self, df: pd.DataFrame, inds: np.ndarray, tkz_enc: PreTrainedTokenizer,
             inp_len: int, max_chunks: int, max_ans_toks: int = 100,
             max_prompt_toks: int = 100, device: Optional[torch.device] = None,
+            tkz_dec: Optional[PreTrainedTokenizer] = None,
     ):
         self.df = df
         self.inds = inds.copy()
-        self.tkz = tkz
+        self.tkz_enc = tkz_enc
+        self.tkz_dec = tkz_dec if tkz_dec is not None else tkz_enc
+        self.tkz = tkz_enc  # backward-compat alias
         self.inp_len = inp_len
         self.max_chunks = max_chunks
         self.max_ans_toks = max_ans_toks
         self.max_prompt_toks = max_prompt_toks
         self.device = device if device is not None else torch.device('cpu')
-        self.pad_token_id = tkz.pad_token_id
-        self.cls_token_id = tkz.cls_token_id
-        self.sep_token_id = tkz.sep_token_id
+        self.enc_pad_token_id = tkz_enc.pad_token_id
+        self.dec_pad_token_id = self.tkz_dec.pad_token_id
+        if self.dec_pad_token_id is None:
+            self.dec_pad_token_id = self.tkz_dec.eos_token_id
+        self.cls_token_id = tkz_enc.cls_token_id
+        self.sep_token_id = tkz_enc.sep_token_id
         self.size = len(self.inds)
-        self.prompt_prefix_toks = self.tkz('Question: ', add_special_tokens=False).input_ids
-        self.prompt_suffix_toks = self.tkz(' Answer:', add_special_tokens=False).input_ids
+        self.prompt_prefix_toks = self.tkz_dec('Question: ', add_special_tokens=False).input_ids
+        self.prompt_suffix_toks = self.tkz_dec(' Answer:', add_special_tokens=False).input_ids
         self.prompt_budget = self.max_prompt_toks - len(self.prompt_prefix_toks) - len(self.prompt_suffix_toks)
         assert self.prompt_budget > 0, f'Not enough max_prompt_toks to fit prefix and suffix. prompt_budget={self.prompt_budget}. prefix_len={len(self.prompt_prefix_toks)}. suffix_len={len(self.prompt_suffix_toks)}. max_prompt_toks={self.max_prompt_toks}.'
-
+        # Decoder-side answer ending: BERT uses SEP; GPT-2 uses eos.
+        self.dec_answer_end_id = (
+            self.tkz_dec.sep_token_id if self.tkz_dec.sep_token_id is not None
+            else self.tkz_dec.eos_token_id
+        )
 
     def __len__(self):
         return self.size
 
     def _chunk_context(self, context: str) -> List[List[int]]:
-        """Tokenize context and split into chunks, each starting with CLS and ending with SEP."""
-        ctx_toks = self.tkz(context, add_special_tokens=False).input_ids
+        """Tokenize context with the encoder tokenizer and split into chunks (CLS .. SEP)."""
+        ctx_toks = self.tkz_enc(context, add_special_tokens=False).input_ids
         chunk_content_len = self.inp_len - 2  # reserve 1 for CLS and 1 for SEP
         chunks = []
         for start in range(0, len(ctx_toks), chunk_content_len):
@@ -66,23 +76,20 @@ class QnaCiteDataset:
         return chunks
 
     def _tokenize_prompt(self, question: str) -> List[int]:
-        """Tokenize question into prompt format: 'Question: {q} Answer:'.
-
-        If the full prompt does not fit into max_prompt_toks, the question is
-        truncated from the left so that the *last* part of the question is kept,
-        preserving the 'Question: ' prefix and ' Answer:' suffix.
-        """
-        q_toks = self.tkz(question, add_special_tokens=False).input_ids
+        """Tokenize question into decoder-vocab prompt: 'Question: {q} Answer:'."""
+        q_toks = self.tkz_dec(question, add_special_tokens=False).input_ids
 
         if len(q_toks) > self.prompt_budget:
             q_toks = q_toks[-self.prompt_budget:]  # keep the last (most relevant) part
         return self.prompt_prefix_toks + q_toks + self.prompt_suffix_toks
 
     def _tokenize_answer(self, answer: str) -> List[int]:
-        """Tokenize answer with SEP token at the end."""
-        toks = self.tkz(answer, add_special_tokens=True).input_ids[1:]
-        if len(toks) > self.max_ans_toks:
-            toks = toks[:self.max_ans_toks]
+        """Tokenize answer in decoder vocab with the decoder's end token appended."""
+        toks = self.tkz_dec(answer, add_special_tokens=False).input_ids
+        if len(toks) > self.max_ans_toks - 1:
+            toks = toks[:self.max_ans_toks - 1]
+        if self.dec_answer_end_id is not None:
+            toks = toks + [self.dec_answer_end_id]
         return toks
 
     def get_batch(self, inds: List[int]) -> QnaBatch:
@@ -110,28 +117,28 @@ class QnaCiteDataset:
             prompt_toks_list.append(self._tokenize_prompt(question))
             ans_toks_list.append(self._tokenize_answer(answer))
 
-        # Pad context chunks to inp_len
+        # Pad context chunks to inp_len (encoder vocab)
         total_chunks = len(all_chunks)
-        ctx_chunks_t = torch.full((total_chunks, self.inp_len), self.pad_token_id, dtype=torch.long, device=self.device)
+        ctx_chunks_t = torch.full((total_chunks, self.inp_len), self.enc_pad_token_id, dtype=torch.long, device=self.device)
         ctx_chunks_att = torch.zeros((total_chunks, self.inp_len), dtype=torch.long, device=self.device)
         for i, chunk in enumerate(all_chunks):
             n = min(len(chunk), self.inp_len)
             ctx_chunks_t[i, :n] = torch.tensor(chunk[:n], dtype=torch.long, device=self.device)
             ctx_chunks_att[i, :n] = 1
 
-        # Right-pad prompts; store actual lengths for per-sample sequence building
+        # Right-pad prompts (decoder vocab)
         prompt_lengths = [len(p) for p in prompt_toks_list]
         max_prompt_len = max(prompt_lengths)
-        prompt_t = torch.full((batch_size, max_prompt_len), self.pad_token_id, dtype=torch.long, device=self.device)
+        prompt_t = torch.full((batch_size, max_prompt_len), self.dec_pad_token_id, dtype=torch.long, device=self.device)
         prompt_att = torch.zeros((batch_size, max_prompt_len), dtype=torch.long, device=self.device)
         for i, toks in enumerate(prompt_toks_list):
             n = len(toks)
             prompt_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=self.device)
             prompt_att[i, :n] = 1
 
-        # Pad answers
+        # Pad answers (decoder vocab)
         max_ans_len = max(len(a) for a in ans_toks_list)
-        ans_t = torch.full((batch_size, max_ans_len), self.pad_token_id, dtype=torch.long, device=self.device)
+        ans_t = torch.full((batch_size, max_ans_len), self.dec_pad_token_id, dtype=torch.long, device=self.device)
         ans_att = torch.zeros((batch_size, max_ans_len), dtype=torch.long, device=self.device)
         for i, toks in enumerate(ans_toks_list):
             n = len(toks)

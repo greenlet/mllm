@@ -332,10 +332,15 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
     else:
         if rank == 0:
             to_yaml_file(train_path / MIXED_DECODER_MODEL_CFG_FNAME, model_cfg)
-    tkz = AutoTokenizer.from_pretrained(args.bert_model_name)
+    tkz_enc = AutoTokenizer.from_pretrained(args.bert_model_name)
+    tkz_dec = AutoTokenizer.from_pretrained(args.decoder_model_name)
+    # GPT-2 has no pad token; use eos as pad/delimiter/end-of-target.
+    if tkz_dec.pad_token is None:
+        tkz_dec.pad_token = tkz_dec.eos_token
+    tkz = tkz_enc  # legacy local alias for downstream references
 
     log(model_cfg)
-    model = MixedDecoder(model_cfg, tkz)
+    model = MixedDecoder(model_cfg, tkz_enc, tkz_dec)
 
     model.load_pretrained(checkpoint)
 
@@ -360,8 +365,8 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
 
     n_special_toks = 1000
     if args.train_ds_type == MixedDecoderDsType.Cite:
-        ds_train = MaskedCiteDataset(ds_train, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device)
-        ds_val = MaskedCiteDataset(ds_val, tkz, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device)
+        ds_train = MaskedCiteDataset(ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device, tkz_dec=tkz_dec)
+        ds_val = MaskedCiteDataset(ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device, tkz_dec=tkz_dec)
         ds_train.shuffle(seed=(args.random_seed or 0) + rank)
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
         train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
@@ -369,10 +374,10 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
     elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:
         max_chunks = max(args.emb_win_max_size, 1)
         ds_train = QnaCiteDataset(
-            df_sq, sq_inds_train, tkz, inp_len=args.inp_len, max_chunks=max_chunks, device=device,
+            df_sq, sq_inds_train, tkz_enc, inp_len=args.inp_len, max_chunks=max_chunks, device=device, tkz_dec=tkz_dec,
         )
         ds_val = QnaCiteDataset(
-            df_sq, sq_inds_val, tkz, inp_len=args.inp_len, max_chunks=max_chunks, device=device,
+            df_sq, sq_inds_val, tkz_enc, inp_len=args.inp_len, max_chunks=max_chunks, device=device, tkz_dec=tkz_dec,
         )
         ds_train.shuffle(seed=(args.random_seed or 0) + rank)
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
@@ -389,14 +394,14 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         val_batch_it = create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size)
     elif args.train_ds_type == MixedDecoderDsType.Next:
         ds_train = NextTokWikiDataset(
-            wiki_ds, wiki_inds_train, tkz, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
+            wiki_ds, wiki_inds_train, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
             emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
-            device=device,
+            device=device, tkz_dec=tkz_dec,
         )
         ds_val = NextTokWikiDataset(
-            wiki_ds, wiki_inds_val, tkz, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
+            wiki_ds, wiki_inds_val, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
             emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
-            device=device,
+            device=device, tkz_dec=tkz_dec,
         )
         ds_train.shuffle(seed=(args.random_seed or 0) + rank)
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
@@ -535,13 +540,16 @@ def main(args: ArgsMixedDecoderTrain) -> int:
             seq_max_len=args.mask_seq_max_len, n_last_toks=args.mask_n_last_toks,
         )
 
-    tkz = AutoTokenizer.from_pretrained(args.bert_model_name)
+    tkz_enc = AutoTokenizer.from_pretrained(args.bert_model_name)
+    tkz_dec = AutoTokenizer.from_pretrained(args.decoder_model_name)
+    if tkz_dec.pad_token is None:
+        tkz_dec.pad_token = tkz_dec.eos_token
 
     wiki_ds, wiki_inds_train, wiki_inds_val = None, None, None
     qna_agg_train, qna_agg_val = None, None
     if args.train_ds_type == MixedDecoderDsType.Cite:
         ds_train, ds_val = load_split_wiki_dataset(
-            data_path=args.data_path, tkz=tkz, max_seq_len=args.inp_len, val_split_ratio=0.05,
+            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
             mask_cfg=mask_cfg, random_seed=args.random_seed,
         )
         df_sq, sq_inds_train, sq_inds_val = None, None, None
@@ -553,7 +561,7 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         df_sq, sq_inds_train, sq_inds_val = None, None, None
         max_chunks = max(args.emb_win_max_size, 1)
         qna_agg_train, qna_agg_val = load_qna_datasets(
-            tkz=tkz, inp_len=args.inp_len, max_chunks=max_chunks,
+            tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=args.inp_len, max_chunks=max_chunks,
             cache_dir=str(args.data_path),
         )
     elif args.train_ds_type == MixedDecoderDsType.Next:
