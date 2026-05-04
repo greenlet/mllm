@@ -392,6 +392,15 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         print(f'qna_agg_train size: {len(qna_agg_train)}. qna_agg_val size: {len(qna_agg_val)}.')
         train_batch_it = create_qna_dataloader(qna_agg_train, batch_size=args.docs_batch_size)
         val_batch_it = create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size)
+    elif args.train_ds_type == MixedDecoderDsType.QnaAns:
+        qna_agg_train.device = device
+        qna_agg_val.device = device
+        max_chunks = max(args.emb_win_max_size, 1)
+        qna_agg_train.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
+        qna_agg_val.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
+        print(f'qna_agg_train size: {len(qna_agg_train)}. qna_agg_val size: {len(qna_agg_val)}.')
+        train_batch_it = create_qna_dataloader(qna_agg_train, batch_size=args.docs_batch_size)
+        val_batch_it = create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size)
     elif args.train_ds_type == MixedDecoderDsType.Next:
         ds_train = NextTokWikiDataset(
             wiki_ds, wiki_inds_train, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
@@ -563,6 +572,14 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         qna_agg_train, qna_agg_val = load_qna_datasets(
             tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=args.inp_len, max_chunks=max_chunks,
             cache_dir=str(args.data_path),
+        )
+    elif args.train_ds_type == MixedDecoderDsType.QnaAns:
+        ds_train, ds_val = None, None
+        df_sq, sq_inds_train, sq_inds_val = None, None, None
+        max_chunks = max(args.emb_win_max_size, 1)
+        qna_agg_train, qna_agg_val = load_qna_datasets(
+            tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=args.inp_len, max_chunks=max_chunks,
+            cache_dir=str(args.data_path), exclude_noanswer=True,
         )
     elif args.train_ds_type == MixedDecoderDsType.Next:
         wiki_ds, wiki_inds_train, wiki_inds_val = load_split_wiki_for_next(

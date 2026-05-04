@@ -30,6 +30,7 @@ train_ds_type=cite
 
 # train_ds_type=qnasqv2
 # train_ds_type=qnaall
+train_ds_type=qnaans
 # train_ds_type=next
 
 min_next_toks=64
@@ -60,6 +61,7 @@ pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbas
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260304_105309-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-decmgpt2-msl384-sepT-pallF-eer4-ewn10x10-frzencF-trn_lr5e-05_bs30
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260316_221645-pre_mixeddecoder20260304105309-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-trn_lr5e-05_bs40
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260319_130017-pre_mixeddecoder20260316221645-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs40
+pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260429_091845-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-msl384-sepF-pallF-eer4-ewn2x4-frzencF-dsCite-trn_lr5e-05_bs30
 # train_subdir=last
 
 # device=cpu
@@ -74,8 +76,8 @@ epochs=700
 train_epoch_steps=500
 val_epoch_steps=50
 # docs_batch_size=40
-docs_batch_size=30
-# docs_batch_size=20
+# docs_batch_size=30
+docs_batch_size=20
 # docs_batch_size=15
 world_size=4
 

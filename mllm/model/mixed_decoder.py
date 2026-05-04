@@ -912,7 +912,7 @@ class MixedDecoder(nn.Module):
     def forward(self, batch: Union[MaskedCiteBatch, QnaBatch, NextTokBatch], epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
         if self.cfg.train_ds_type == MixedDecoderDsType.Next:
             return self.run_on_next(batch, epoch)
-        if self.cfg.train_ds_type in (MixedDecoderDsType.QnaSquadV2, MixedDecoderDsType.QnaAll):
+        if self.cfg.train_ds_type in (MixedDecoderDsType.QnaSquadV2, MixedDecoderDsType.QnaAll, MixedDecoderDsType.QnaAns):
             return self.run_on_qna(batch, epoch)
         return self.run_on_text_citation(batch, epoch)
 

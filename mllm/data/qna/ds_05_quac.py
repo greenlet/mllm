@@ -36,6 +36,8 @@ class QuacDataset(QnaBaseDataset):
     the unanswerable token just like SQuAD v2.
     """
 
+    HAS_UNANSWERABLE = True
+
     def __init__(
             self,
             ds: HfDataset,
@@ -46,13 +48,17 @@ class QuacDataset(QnaBaseDataset):
             max_prompt_toks: int = 100,
             device=None,
             tkz_dec: PreTrainedTokenizer = None,
+            exclude_noanswer: bool = False,
+            cache_dir=None,
     ):
         super().__init__(
             tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=inp_len, max_chunks=max_chunks,
             max_ans_toks=max_ans_toks, max_prompt_toks=max_prompt_toks, device=device,
+            exclude_noanswer=exclude_noanswer, cache_dir=cache_dir,
         )
         self.ds = ds
         self.inds = np.arange(len(ds))
+        self._filter_noanswer()
 
     def _get_item(self, idx: int) -> Tuple[str, List[str], List[str], bool]:
         ex = self.ds[idx]

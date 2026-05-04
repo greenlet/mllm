@@ -15,6 +15,7 @@ from typing import Generator, List, Optional, Tuple
 
 import numpy as np
 import torch
+from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
 from mllm.data.qna.batch import QnaBatch
@@ -55,12 +56,21 @@ class QnaBaseDataset:
 
     NO_ANSWER_TEXT = 'noanswer'
 
+    # Whether the dataset can produce items with `is_answerable=False`.
+    # Subclasses with unanswerable items should override this to True so that
+    # `exclude_noanswer=True` triggers a filtering pass.
+    HAS_UNANSWERABLE: bool = False
+
     def __init__(
             self, tkz_enc: PreTrainedTokenizer,
             inp_len: int, max_chunks: int, max_ans_toks: int = 100,
             max_prompt_toks: int = 100, device: Optional[torch.device] = None,
             tkz_dec: Optional[PreTrainedTokenizer] = None,
+            exclude_noanswer: bool = False,
+            cache_dir: Optional[str | Path] = None,
     ):
+        self.exclude_noanswer = exclude_noanswer
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else None
         self.tkz_enc = tkz_enc
         self.tkz_dec = tkz_dec if tkz_dec is not None else tkz_enc
         self.tkz = tkz_enc  # backward-compat alias
@@ -290,6 +300,44 @@ class QnaBaseDataset:
             np.random.shuffle(self.inds)
         return self
 
+    def _filter_noanswer(self) -> None:
+        """Filter `self.inds` to keep only answerable items.
+
+        No-op unless `self.exclude_noanswer` is True and the subclass declares
+        `HAS_UNANSWERABLE = True`. Iterates with a tqdm progress bar.
+
+        When `self.cache_dir` is set, the filtered indices are cached at
+        ``<cache_dir>/qna_noanswer_cache/<ClassName>_n<original_size>.npy`` and
+        reused on subsequent runs.
+        """
+        if not self.exclude_noanswer or not self.HAS_UNANSWERABLE or len(self.inds) == 0:
+            return
+        name = type(self).__name__
+        before = len(self.inds)
+
+        cache_path: Optional[Path] = None
+        if self.cache_dir is not None:
+            cache_subdir = self.cache_dir / 'qna_noanswer_cache'
+            cache_subdir.mkdir(parents=True, exist_ok=True)
+            cache_path = cache_subdir / f'{name}_n{before}.npy'
+            if cache_path.exists():
+                self.inds = np.load(cache_path).astype(np.int64)
+                print(f'{name}: loaded noanswer-filtered inds from cache '
+                      f'{cache_path.name}: {len(self.inds)}/{before} items.')
+                return
+
+        kept: List[int] = []
+        for i in tqdm(self.inds, desc=f'Filtering noanswer [{name}]'):
+            if self._get_item(int(i))[3]:
+                kept.append(int(i))
+        self.inds = np.array(kept, dtype=np.int64)
+        if cache_path is not None:
+            np.save(cache_path, self.inds)
+            print(f'{name}: exclude_noanswer kept {len(self.inds)}/{before} items. '
+                  f'Cached to {cache_path.name}.')
+        else:
+            print(f'{name}: exclude_noanswer kept {len(self.inds)}/{before} items.')
+
 
 class QnaDatasetAgg:
     """Aggregator that combines multiple QnaBaseDataset instances under a single global index.
@@ -434,6 +482,7 @@ def load_qna_datasets(
         cache_dir: str | Path | None = None,
         sources: Tuple[QnaDatasetType, ...] = QNA_DATASETS_DEFAULT,
         tkz_dec: Optional[PreTrainedTokenizer] = None,
+        exclude_noanswer: bool = False,
 ) -> Tuple[QnaDatasetAgg, QnaDatasetAgg]:
     """Load QnA datasets and return aggregated train/val splits.
 
@@ -469,7 +518,8 @@ def load_qna_datasets(
     }
 
     ds_kwargs = dict(tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=inp_len, max_chunks=max_chunks,
-                     max_ans_toks=max_ans_toks, max_prompt_toks=max_prompt_toks, device=device)
+                     max_ans_toks=max_ans_toks, max_prompt_toks=max_prompt_toks, device=device,
+                     exclude_noanswer=exclude_noanswer, cache_dir=cache_dir)
 
     train_datasets: List[QnaBaseDataset] = []
     val_datasets: List[QnaBaseDataset] = []
