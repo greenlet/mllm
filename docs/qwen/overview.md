@@ -30,7 +30,7 @@ Qwen ("通义千问", *Tongyi Qianwen*) is the family of large language and mult
 
 ### 2.2 Tokenization, vocabulary, embedding & intrinsic dimensions
 
-Qwen uses a **byte‑level BPE** tokenizer ([Sennrich et al.][BPE], [Wang et al. byte‑level BPE][ByteBPE]) implemented in the [`tiktoken`][tiktoken] style, derived from the open‑sourced **Qwen tokenizer** (a.k.a. `qwen.tiktoken` / `Qwen2Tokenizer`).
+Qwen uses a **byte‑level BPE** tokenizer ([Sennrich et al.][BPE], [Wang et al. byte‑level BPE][ByteBPE]) implemented in the [`tiktoken`][tiktoken] style, derived from the open‑sourced **[Qwen tokenizer][QwenTokenizer]** (a.k.a. `qwen.tiktoken` / `Qwen2Tokenizer`).
 
 | Generation | Vocab size | Special tokens | Notes |
 |---|---|---|---|
@@ -88,7 +88,7 @@ Qwen uses a **byte‑level BPE** tokenizer ([Sennrich et al.][BPE], [Wang et al.
 ## 3. Inputs, outputs, modalities
 
 ### 3.1 Text‑only LLMs (Qwen, Qwen1.5, Qwen2, Qwen2.5, Qwen3)
-- **Input**: tokenized text ([byte‑level BPE][BPE]), **ChatML‑style** template (`<|im_start|>role … <|im_end|>`).
+- **Input**: tokenized text ([byte‑level BPE][BPE]), **[ChatML][ChatML]**‑style template (`<|im_start|>role … <|im_end|>`).
 - **Output**: text; structured JSON / tool‑calls supported natively (see [Qwen‑Agent][QwenAgent]).
 
 ### 3.2 Qwen‑VL / Qwen2‑VL / Qwen2.5‑VL — Vision–Language
@@ -113,10 +113,10 @@ Qwen uses a **byte‑level BPE** tokenizer ([Sennrich et al.][BPE], [Wang et al.
 
 ### 3.5 Specialist lines
 - **Qwen2.5‑Coder** (0.5B–32B): 5.5T code tokens; [FIM][FIM], repo‑level context, 92 languages ([Qwen2.5‑Coder Tech Report][Qwen2.5-Coder]).
-- **Qwen2.5‑Math** / **Qwen3‑Math**: tool‑integrated reasoning (TIR) with Python, [CoT][CoT] + [self‑consistency][SelfConsistency].
+- **Qwen2.5‑Math** / **Qwen3‑Math**: **tool‑integrated reasoning** ([TIR][TIR]) with Python, [CoT][CoT] + [self‑consistency][SelfConsistency].
 - **Qwen3‑Embedding / Qwen3‑Reranker** (0.6B / 4B / 8B): dense + multi‑vector embeddings with [MRL][MRL], top of [MTEB][MTEB] multilingual leaderboard at release.
-- **QwQ‑32B** (Nov 2024): research preview reasoning model, precursor to Qwen3 thinking mode.
-- **QVQ‑72B‑Preview**: visual reasoning ("think with images").
+- **[QwQ‑32B][QwQ]** (Nov 2024): research preview reasoning model, precursor to Qwen3 thinking mode.
+- **[QVQ‑72B‑Preview][QVQ]**: visual reasoning ("think with images").
 
 ---
 
@@ -192,11 +192,11 @@ Qwen uses a **byte‑level BPE** tokenizer ([Sennrich et al.][BPE], [Wang et al.
 - Long‑context extension via [YaRN][YaRN] + [DCA][DCA] needs only ~1B tokens of long sequences; see the recipe in [Qwen2.5‑1M][Qwen2.5-1M].
 
 ### 6.2 Supervised Fine‑Tuning (SFT)
-- ChatML formatting, loss masked on the assistant turn.
+- [ChatML][ChatML] formatting, loss masked on the assistant turn (cf. the [InstructGPT][RLHF] / [Alpaca][Alpaca] / [Vicuna][Vicuna] SFT recipe).
 - Recipes:
-  - Alibaba's official **[ms‑swift][ms-swift]** trainer (SFT, DPO, GRPO, LoRA, QLoRA, multi‑node).
+  - Alibaba's official **[ms‑swift][ms-swift]** trainer (SFT, [DPO][DPO], [GRPO][GRPO], [LoRA][LoRA], [QLoRA][QLoRA], multi‑node via [DeepSpeed][DeepSpeed] / [FSDP][FSDP]).
   - **[LLaMA‑Factory][LLaMAFactory]** — the most popular community framework with first‑class Qwen support.
-  - **[Axolotl][Axolotl]**, **[Unsloth][Unsloth]** (2× faster QLoRA), **[TRL][TRL]** from Hugging Face.
+  - **[Axolotl][Axolotl]**, **[Unsloth][Unsloth]** (2× faster [QLoRA][QLoRA]), **[TRL][TRL]** from Hugging Face.
 
 ### 6.3 Parameter‑efficient fine‑tuning (PEFT)
 Exploits the *low intrinsic dimensionality* of the adaptation problem ([Aghajanyan et al.][IntrinsicDimSGD]).
@@ -258,6 +258,16 @@ Always check the specific model card before commercial deployment.
 
 ---
 
+## 9. Threads
+
+In-depth threads grouping related references by lineage. Each thread doc has an evolution table and Qwen-specific notes; per-paper recaps live under [`docs/papers/`](../papers/).
+
+- [Positional encoding & long-context scaling](positional/positional.md) — RoPE → NTK-aware → YaRN → DCA. *Used in:* every Qwen text/vision model; powers the 32k→128k→1M context ladder.
+
+*(More threads will be added as their papers are recapped.)*
+
+---
+
 ## References
 
 ### Qwen technical reports
@@ -278,6 +288,9 @@ Always check the specific model card before commercial deployment.
 - [Qwen-Agent framework (GitHub)][QwenAgent]
 
 ### Architecture & attention
+
+**Thread:** [Positional encoding & long-context scaling](positional/positional.md)
+
 - [Vaswani et al., *Attention Is All You Need* (2017)][Transformer]
 - [Su et al., *RoFormer: Rotary Position Embedding* (2021)][RoPE]
 - [bloc97, *NTK-aware scaled RoPE* (2023)][NTK]
@@ -388,6 +401,17 @@ Always check the specific model card before commercial deployment.
 - [Axolotl][Axolotl]
 - [Unsloth][Unsloth]
 - [Hugging Face TRL][TRL]
+- [DeepSpeed][DeepSpeed]
+- [PyTorch FSDP][FSDP]
+
+### Misc references
+- [OpenAI ChatML format spec][ChatML]
+- [Qwen tokenizer (GitHub)][QwenTokenizer]
+- [QwQ-32B model card][QwQ]
+- [QVQ-72B-Preview model card][QVQ]
+- [Taori et al., *Stanford Alpaca* (2023)][Alpaca]
+- [Chiang et al., *Vicuna* (2023)][Vicuna]
+- [Gou et al., *ToRA / Tool-Integrated Reasoning* (2023)][TIR]
 
 ---
 
@@ -409,16 +433,16 @@ Always check the specific model card before commercial deployment.
 [Qwen3-Emb]: https://arxiv.org/abs/2506.05176 "Qwen3-Embedding/Reranker (2025)"
 [QwenAgent]: https://github.com/QwenLM/Qwen-Agent "Qwen-Agent framework"
 [Transformer]: https://arxiv.org/abs/1706.03762 "Vaswani et al., Attention Is All You Need (2017)"
-[RoPE]: https://arxiv.org/abs/2104.09864 "Su et al., RoFormer: Rotary Position Embedding (2021)"
-[NTK]: https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have/ "NTK-aware RoPE scaling (bloc97, 2023)"
-[YaRN]: https://arxiv.org/abs/2309.00071 "Peng et al., YaRN: Efficient Context Window Extension (2023)"
+[RoPE]: ../papers/p000_2021_positional_rope-roformer.md "Su et al., RoFormer: Rotary Position Embedding (2021) — local recap"
+[NTK]: ../papers/p001_2023_positional_ntk-aware-rope.md "NTK-aware RoPE scaling (bloc97, 2023) — local recap"
+[YaRN]: ../papers/p002_2023_positional_yarn-context-extension.md "Peng et al., YaRN: Efficient Context Window Extension (2023) — local recap"
 [GQA]: https://arxiv.org/abs/2305.13245 "Ainslie et al., GQA (2023)"
 [SwiGLU]: https://arxiv.org/abs/2002.05202 "Shazeer, GLU Variants Improve Transformer (2020)"
 [RMSNorm]: https://arxiv.org/abs/1910.07467 "Zhang & Sennrich, Root Mean Square Layer Normalization (2019)"
 [QKNorm]: https://arxiv.org/abs/2010.04245 "Henry et al., Query-Key Normalization for Transformers (2020)"
 [FlashAttn]: https://arxiv.org/abs/2307.08691 "Dao, FlashAttention-2 (2023)"
 [TiedEmb]: https://arxiv.org/abs/1608.05859 "Press & Wolf, Using the Output Embedding to Improve LMs (2016)"
-[DCA]: https://arxiv.org/abs/2402.17463 "An et al., Training-Free Long-Context Scaling via Dual Chunk Attention (2024)"
+[DCA]: ../papers/p003_2024_positional_dca-dual-chunk-attention.md "An et al., Training-Free Long-Context Scaling via Dual Chunk Attention (2024) — local recap"
 [BPE]: https://arxiv.org/abs/1508.07909 "Sennrich et al., Neural MT of Rare Words with Subword Units (BPE, 2015)"
 [ByteBPE]: https://arxiv.org/abs/1909.03341 "Wang et al., Neural MT with Byte-Level Subwords (2019)"
 [tiktoken]: https://github.com/openai/tiktoken "OpenAI tiktoken BPE library"
@@ -502,3 +526,12 @@ Always check the specific model card before commercial deployment.
 [Axolotl]: https://github.com/OpenAccess-AI-Collective/axolotl "Axolotl"
 [Unsloth]: https://github.com/unslothai/unsloth "Unsloth"
 [TRL]: https://github.com/huggingface/trl "Hugging Face TRL"
+[DeepSpeed]: https://github.com/microsoft/DeepSpeed "Microsoft DeepSpeed"
+[FSDP]: https://pytorch.org/docs/stable/fsdp.html "PyTorch Fully Sharded Data Parallel (FSDP)"
+[ChatML]: https://github.com/openai/openai-python/blob/release-v0.28.1/chatml.md "OpenAI ChatML format specification"
+[QwenTokenizer]: https://github.com/QwenLM/Qwen/blob/main/tokenization_note.md "Qwen tokenizer (qwen.tiktoken / Qwen2Tokenizer)"
+[QwQ]: https://huggingface.co/Qwen/QwQ-32B-Preview "QwQ-32B-Preview model card"
+[QVQ]: https://huggingface.co/Qwen/QVQ-72B-Preview "QVQ-72B-Preview model card"
+[Alpaca]: https://crfm.stanford.edu/2023/03/13/alpaca.html "Taori et al., Stanford Alpaca (2023)"
+[Vicuna]: https://lmsys.org/blog/2023-03-30-vicuna/ "Chiang et al., Vicuna (2023)"
+[TIR]: https://arxiv.org/abs/2309.17452 "Gou et al., ToRA: Tool-Integrated Reasoning Agent (2023)"
