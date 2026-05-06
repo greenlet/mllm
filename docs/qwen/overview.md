@@ -263,6 +263,15 @@ Always check the specific model card before commercial deployment.
 In-depth threads grouping related references by lineage. Each thread doc has an evolution table and Qwen-specific notes; per-paper recaps live under [`docs/papers/`](../papers/).
 
 - [Positional encoding & long-context scaling](positional/positional.md) — RoPE → NTK-aware → YaRN → DCA. *Used in:* every Qwen text/vision model; powers the 32k→128k→1M context ladder.
+  - [Su et al., *RoFormer: Rotary Position Embedding* (2021)](../papers/positional_2021_rope-roformer.md)
+  - [bloc97, *NTK-aware scaled RoPE* (2023)](../papers/positional_2023_ntk-aware-rope.md)
+  - [Peng et al., *YaRN: Efficient Context Window Extension* (2023)](../papers/positional_2023_yarn-context-extension.md)
+  - [An et al., *Training-Free Long-Context Scaling via Dual Chunk Attention* (2024)](../papers/positional_2024_dca-dual-chunk-attention.md)
+- [Sparse Mixture-of-Experts](moe/moe.md) — Sparsely-Gated MoE → GShard → Switch Transformer → DeepSeek-MoE. *Used in:* Qwen1.5-MoE-A2.7B, Qwen2-57B-A14B, Qwen3-30B-A3B, Qwen3-235B-A22B.
+  - [Shazeer et al., *Outrageously Large Neural Networks: Sparsely-Gated MoE* (2017)](../papers/moe_2017_sparsely-gated-moe.md)
+  - [Lepikhin et al., *GShard* (2020)](../papers/moe_2020_gshard.md)
+  - [Fedus et al., *Switch Transformer* (2021)](../papers/moe_2021_switch-transformer.md)
+  - [Dai et al., *DeepSeek-MoE* (2024)](../papers/moe_2024_deepseek-moe.md)
 
 *(More threads will be added as their papers are recapped.)*
 
@@ -433,24 +442,24 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Qwen3-Emb]: https://arxiv.org/abs/2506.05176 "Qwen3-Embedding/Reranker (2025)"
 [QwenAgent]: https://github.com/QwenLM/Qwen-Agent "Qwen-Agent framework"
 [Transformer]: https://arxiv.org/abs/1706.03762 "Vaswani et al., Attention Is All You Need (2017)"
-[RoPE]: ../papers/p000_2021_positional_rope-roformer.md "Su et al., RoFormer: Rotary Position Embedding (2021) — local recap"
-[NTK]: ../papers/p001_2023_positional_ntk-aware-rope.md "NTK-aware RoPE scaling (bloc97, 2023) — local recap"
-[YaRN]: ../papers/p002_2023_positional_yarn-context-extension.md "Peng et al., YaRN: Efficient Context Window Extension (2023) — local recap"
+[RoPE]: ../papers/positional_2021_rope-roformer.md "Su et al., RoFormer: Rotary Position Embedding (2021) — local recap"
+[NTK]: ../papers/positional_2023_ntk-aware-rope.md "NTK-aware RoPE scaling (bloc97, 2023) — local recap"
+[YaRN]: ../papers/positional_2023_yarn-context-extension.md "Peng et al., YaRN: Efficient Context Window Extension (2023) — local recap"
 [GQA]: https://arxiv.org/abs/2305.13245 "Ainslie et al., GQA (2023)"
 [SwiGLU]: https://arxiv.org/abs/2002.05202 "Shazeer, GLU Variants Improve Transformer (2020)"
 [RMSNorm]: https://arxiv.org/abs/1910.07467 "Zhang & Sennrich, Root Mean Square Layer Normalization (2019)"
 [QKNorm]: https://arxiv.org/abs/2010.04245 "Henry et al., Query-Key Normalization for Transformers (2020)"
 [FlashAttn]: https://arxiv.org/abs/2307.08691 "Dao, FlashAttention-2 (2023)"
 [TiedEmb]: https://arxiv.org/abs/1608.05859 "Press & Wolf, Using the Output Embedding to Improve LMs (2016)"
-[DCA]: ../papers/p003_2024_positional_dca-dual-chunk-attention.md "An et al., Training-Free Long-Context Scaling via Dual Chunk Attention (2024) — local recap"
+[DCA]: ../papers/positional_2024_dca-dual-chunk-attention.md "An et al., Training-Free Long-Context Scaling via Dual Chunk Attention (2024) — local recap"
 [BPE]: https://arxiv.org/abs/1508.07909 "Sennrich et al., Neural MT of Rare Words with Subword Units (BPE, 2015)"
 [ByteBPE]: https://arxiv.org/abs/1909.03341 "Wang et al., Neural MT with Byte-Level Subwords (2019)"
 [tiktoken]: https://github.com/openai/tiktoken "OpenAI tiktoken BPE library"
 [FIM]: https://arxiv.org/abs/2207.14255 "Bavarian et al., Efficient Training of LMs to Fill in the Middle (2022)"
-[MoE]: https://arxiv.org/abs/1701.06538 "Shazeer et al., Outrageously Large Neural Networks: Sparsely-Gated MoE (2017)"
-[GShard]: https://arxiv.org/abs/2006.16668 "Lepikhin et al., GShard (2020)"
-[Switch]: https://arxiv.org/abs/2101.03961 "Fedus et al., Switch Transformer (2021)"
-[DeepSeekMoE]: https://arxiv.org/abs/2401.06066 "Dai et al., DeepSeek-MoE (2024)"
+[MoE]: ../papers/moe_2017_sparsely-gated-moe.md "Shazeer et al., Outrageously Large Neural Networks: Sparsely-Gated MoE (2017)"
+[GShard]: ../papers/moe_2020_gshard.md "Lepikhin et al., GShard (2020)"
+[Switch]: ../papers/moe_2021_switch-transformer.md "Fedus et al., Switch Transformer (2021)"
+[DeepSeekMoE]: ../papers/moe_2024_deepseek-moe.md "Dai et al., DeepSeek-MoE (2024)"
 [ViT]: https://arxiv.org/abs/2010.11929 "Dosovitskiy et al., An Image Is Worth 16x16 Words (ViT, 2020)"
 [Swin]: https://arxiv.org/abs/2103.14030 "Liu et al., Swin Transformer (2021)"
 [PixelShuffle]: https://arxiv.org/abs/1609.05158 "Shi et al., Sub-Pixel CNN (PixelShuffle, 2016)"

@@ -55,7 +55,7 @@ Third-party validations (cited in §5 / blog companion) at modest scale show RoP
 (Numbers as reproduced in the EleutherAI write-up cited from the paper; CAIL2019-SCM exact scores not extracted from the arXiv abstract.)
 
 ## Limitations & follow-ups
-- **No native length extrapolation.** Inference at $m \gg L_{\text{train}}$ visits unseen rotation angles and degrades sharply — fixed by [Position Interpolation](https://arxiv.org/abs/2306.15595), [NTK-aware RoPE](p001_2023_positional_ntk-aware-rope.md), [YaRN](p002_2023_positional_yarn-context-extension.md), and training-free [DCA](p003_2024_positional_dca-dual-chunk-attention.md).
+- **No native length extrapolation.** Inference at $m \gg L_{\text{train}}$ visits unseen rotation angles and degrades sharply — fixed by [Position Interpolation](https://arxiv.org/abs/2306.15595), [NTK-aware RoPE](positional_2023_ntk-aware-rope.md), [YaRN](positional_2023_yarn-context-extension.md), and training-free [DCA](positional_2024_dca-dual-chunk-attention.md).
 - **Per-layer cost.** Naïve implementation is ~4–5× a single bias-add; with kernel fusion this falls to a 1–3 % overhead in large models.
 - **Variants in later models.** RoPE has been extended to multimodal axes (M-RoPE in Qwen2-VL; TMRoPE in Qwen2.5-Omni), to 2-D / 3-D images, and combined with QK-Norm in modern stacks.
 
@@ -69,4 +69,4 @@ Third-party validations (cited in §5 / blog companion) at modest scale show RoP
 - **OpenReview / venue page:** — (preprint)
 - **Papers-with-Code:** [paperswithcode.com/paper/roformer-enhanced-transformer-with-rotary](https://paperswithcode.com/paper/roformer-enhanced-transformer-with-rotary)
 - **BibTeX:** available from the arXiv abs page
-- **Related / successor papers:** Position Interpolation (Chen et al. 2306.15595) · [NTK-aware RoPE](p001_2023_positional_ntk-aware-rope.md) · [YaRN](p002_2023_positional_yarn-context-extension.md) · [DCA](p003_2024_positional_dca-dual-chunk-attention.md) · M-RoPE (in the Qwen2-VL paper, arXiv:2409.12191)
+- **Related / successor papers:** Position Interpolation (Chen et al. 2306.15595) · [NTK-aware RoPE](positional_2023_ntk-aware-rope.md) · [YaRN](positional_2023_yarn-context-extension.md) · [DCA](positional_2024_dca-dual-chunk-attention.md) · M-RoPE (in the Qwen2-VL paper, arXiv:2409.12191)

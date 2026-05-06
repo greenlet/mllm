@@ -1,6 +1,6 @@
 # NTK-aware Scaled RoPE — bloc97, 2023
 
-> **Origin:** Reddit `r/LocalLLaMA` post (Jun 2023) · **Formal treatment:** [YaRN, §3.1 + App. A.2](p002_2023_positional_yarn-context-extension.md) · **Author:** community handle `bloc97`
+> **Origin:** Reddit `r/LocalLLaMA` post (Jun 2023) · **Formal treatment:** [YaRN, §3.1 + App. A.2](positional_2023_yarn-context-extension.md) · **Author:** community handle `bloc97`
 
 ## TL;DR
 A one-line modification to RoPE that extends a model's usable context window **without any fine-tuning**: instead of *stretching* positions like Position Interpolation does (which destroys the high-frequency channels), scale RoPE's base $b$ from $10000$ to $b' = b\cdot s^{d/(d-2)}$. Low-frequency dimensions then get interpolated, high-frequency dimensions stay (almost) untouched, and most pretrained RoPE models survive a 2–8× context extension out-of-the-box.
@@ -66,7 +66,7 @@ Per YaRN's evaluation on LLaMA-7B / Proof-pile, sliding-window perplexity:
 ## Limitations & follow-ups
 - **Fine-tuning paradox.** The mechanism that makes NTK-aware great zero-shot (preserving high-freq dims) makes it hard to fine-tune cleanly: those dims get pushed beyond the values seen in pre-training.
 - **No principled tuning knob.** $b'$ is fixed by a closed-form derivation; you can't trade off interpolation/extrapolation per dimension.
-- **Superseded by [YaRN](p002_2023_positional_yarn-context-extension.md)**, which adds (i) a per-dimension ramp ("NTK-by-parts") and (ii) attention-temperature scaling to fix the entropy shift at long contexts.
+- **Superseded by [YaRN](positional_2023_yarn-context-extension.md)**, which adds (i) a per-dimension ramp ("NTK-by-parts") and (ii) attention-temperature scaling to fix the entropy shift at long contexts.
 
 ## Links
 - **Original Reddit post:** [r/LocalLLaMA — "NTK-Aware Scaled RoPE allows LLaMA models to have extended context …"](https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have/)
@@ -75,5 +75,5 @@ Per YaRN's evaluation on LLaMA-7B / Proof-pile, sliding-window perplexity:
 - **Code:** [`jquesnelle/scaled-rope`](https://github.com/jquesnelle/scaled-rope) (NTK-by-parts PR #1) · [`jquesnelle/yarn`](https://github.com/jquesnelle/yarn) (YaRN reference impl)
 - **Hugging Face:** Built into `transformers` LLaMA modelling under `rope_scaling={"type":"dynamic","factor": s}` (see [`modeling_llama.py`](https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py))
 - **Used in:** Code Llama (100k), Qwen-7B/14B (Dynamic NTK), many community LLaMA fine-tunes
-- **Related / successor papers:** [Position Interpolation (Chen et al.)](https://arxiv.org/abs/2306.15595) · [YaRN](p002_2023_positional_yarn-context-extension.md) · [Dual Chunk Attention](p003_2024_positional_dca-dual-chunk-attention.md) · NTK theory: [Tancik et al. 2020 — Fourier Features](https://arxiv.org/abs/2006.10739)
+- **Related / successor papers:** [Position Interpolation (Chen et al.)](https://arxiv.org/abs/2306.15595) · [YaRN](positional_2023_yarn-context-extension.md) · [Dual Chunk Attention](positional_2024_dca-dual-chunk-attention.md) · NTK theory: [Tancik et al. 2020 — Fourier Features](https://arxiv.org/abs/2006.10739)
 - **BibTeX:** none (community post); cite the Reddit URL plus YaRN App. A.2 for the formal version

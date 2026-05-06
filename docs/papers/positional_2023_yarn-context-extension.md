@@ -8,7 +8,7 @@ YaRN extends a RoPE LLM's context window to 64k–128k+ at **~10× less data and
 ## Problem & motivation
 Three preceding RoPE-extension recipes had complementary weaknesses (§3):
 - **PI** (Position Interpolation) — uniformly compresses all RoPE frequencies → kills high-frequency dimensions, caps at $s\!\approx\!8$.
-- **[NTK-aware](p001_2023_positional_ntk-aware-rope.md)** — preserves high frequencies via a base change, great zero-shot, but *partially extrapolates* high-freq dims, which destabilizes fine-tuning.
+- **[NTK-aware](positional_2023_ntk-aware-rope.md)** — preserves high frequencies via a base change, great zero-shot, but *partially extrapolates* high-freq dims, which destabilizes fine-tuning.
 - **NTK-by-parts** (predecessor of YaRN) — fixes the high-freq overshoot, but at very long contexts the *average attention entropy* still shifts, hurting log-likelihood.
 
 YaRN's contribution: combine NTK-by-parts with a tiny softmax-temperature trick that exactly compensates for that entropy shift.
@@ -37,7 +37,7 @@ Implementationally this is **free** — just rescale the rotated $q,k$ by $1/\sq
 
 The combination is depicted in the paper's method-summary diagram:
 
-![Figure 1: lineage from RoPE → PI/NTK-aware → NTK-by-parts → YaRN](_assets/p002_2023_positional_yarn-context-extension/fig2_method_lineage.png)
+![Figure 1: lineage from RoPE → PI/NTK-aware → NTK-by-parts → YaRN](_assets/positional_2023_yarn-context-extension/fig2_method_lineage.png)
 
 ## How it works
 - **Training-free path.** Just plug in $h(\theta_d)$ + temperature; works at inference time on any RoPE checkpoint ("Dynamic-YaRN").
@@ -71,7 +71,7 @@ PG-19, chunked into 64k-token contiguous windows; `bf16`, AdamW $\beta=(0.9, 0.9
 
 **Headline ppl-vs-context plot** (Figure 1, paper):
 
-![Figure 2: perplexity vs context length, YaRN-Llama 7B/13B at 64k and 128k vs CodeLlama and Together-LLaMA-32K](_assets/p002_2023_positional_yarn-context-extension/fig1_perplexity_vs_context.png)
+![Figure 2: perplexity vs context length, YaRN-Llama 7B/13B at 64k and 128k vs CodeLlama and Together-LLaMA-32K](_assets/positional_2023_yarn-context-extension/fig1_perplexity_vs_context.png)
 
 **Passkey retrieval** (§4.3, Table 9): YaRN-Llama-2-7B/13B at $s=32$ → **99.4 %** on a 128k-token passkey task — i.e. successful extrapolation past the trained 64k.
 
@@ -83,7 +83,7 @@ PG-19, chunked into 64k-token contiguous windows; `bf16`, AdamW $\beta=(0.9, 0.9
 - **Hyperparameter portability.** $\alpha=1,\beta=32$ are LLaMA-specific; the paper notes the ramp may need re-tuning per architecture (§3.2).
 - **Perplexity ≠ retrieval.** Sometimes passkey accuracy outpaces what perplexity alone would predict (App. B.5).
 - **Dynamic-YaRN trade-off.** The training-free variant can hurt very-short-context performance inside the original window (App. B.7).
-- **Successor / alternative.** [Dual Chunk Attention (DCA, An et al. 2024)](p003_2024_positional_dca-dual-chunk-attention.md) achieves comparable extension *without any training* and stacks on top of YaRN.
+- **Successor / alternative.** [Dual Chunk Attention (DCA, An et al. 2024)](positional_2024_dca-dual-chunk-attention.md) achieves comparable extension *without any training* and stacks on top of YaRN.
 - **Productionized in:** Qwen2 / Qwen2.5 long-context models (combined with DCA up to 128k, and with both up to 1M in Qwen2.5-1M).
 
 ## Links
@@ -96,4 +96,4 @@ PG-19, chunked into 64k-token contiguous windows; `bf16`, AdamW $\beta=(0.9, 0.9
 - **OpenReview / venue page:** —
 - **Papers-with-Code:** [paperswithcode.com/paper/yarn-efficient-context-window-extension-of](https://paperswithcode.com/paper/yarn-efficient-context-window-extension-of)
 - **BibTeX:** available from the arXiv abs page
-- **Related / successor papers:** [RoPE](p000_2021_positional_rope-roformer.md) · [NTK-aware RoPE](p001_2023_positional_ntk-aware-rope.md) · Position Interpolation ([Chen et al. 2306.15595](https://arxiv.org/abs/2306.15595)) · [DCA](p003_2024_positional_dca-dual-chunk-attention.md)
+- **Related / successor papers:** [RoPE](positional_2021_rope-roformer.md) · [NTK-aware RoPE](positional_2023_ntk-aware-rope.md) · Position Interpolation ([Chen et al. 2306.15595](https://arxiv.org/abs/2306.15595)) · [DCA](positional_2024_dca-dual-chunk-attention.md)

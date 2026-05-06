@@ -6,7 +6,7 @@ description: |
   project-agnostic. Triggers on phrases like "recap paper", "summarize paper",
   "add paper recap", "build recap thread", "generate paper review", "review this arXiv".
   Inputs: an arXiv ID, a paper title, or a URL. Output: a new file at
-  `docs/papers/p<NNN>_<YYYY>_<category>_<keywords>.md` plus optional figure assets.
+  `docs/papers/<category>_<YYYY>_<keywords>.md` plus optional figure assets.
 tools:
   - fetch_webpage
   - read_file
@@ -40,18 +40,16 @@ paper, parallelizing fetches via the `Explore` subagent.
 ## File naming convention
 
 ```
-docs/papers/p<NNN>_<YYYY>_<category>_<keywords>.md
-docs/papers/_assets/p<NNN>_<YYYY>_<category>_<keywords>/figureN.png
+docs/papers/<category>_<YYYY>_<keywords>.md
+docs/papers/_assets/<category>_<YYYY>_<keywords>/figureN.png
 ```
 
-- `<NNN>` — 3-digit zero-padded sequence number. Determine the next free number by
-  listing `docs/papers/p*.md` and incrementing the max. Reserve gaps if the user
-  asks for logical thread grouping.
-- `<YYYY>` — original publication year (arXiv v1 if multiple).
 - `<category>` — short identifying concept; 1–3 hyphen-joined tokens. Use the thread
-  name when the paper belongs to one (e.g. `positional`, `peft-lora`, `alignment-rl`,
-  `multimodal-vision`); otherwise the most descriptive concept (`qwen2`, `qwen2-vl`,
-  `tokenization`, `benchmark-math`).
+  name when the paper belongs to one (e.g. `positional`, `moe`, `peft-lora`,
+  `alignment-rl`, `multimodal-vision`); otherwise the most descriptive concept
+  (`qwen2`, `qwen2-vl`, `tokenization`, `benchmark-math`). **Listed first** so
+  files cluster by topic when sorted lexicographically inside `docs/papers/`.
+- `<YYYY>` — original publication year (arXiv v1 if multiple).
 - `<keywords>` — concise model/method name, hyphen-separated, lowercase, ASCII, 2–4
   tokens (e.g. `rope-roformer`, `lora-low-rank-adaptation`, `flash-attention-2`).
 
@@ -169,7 +167,7 @@ Replace e.g.
 ```
 with
 ```
-[RoPE]: ../papers/p002_2021_positional_rope-roformer.md "Su et al., RoFormer (2021)"
+[RoPE]: ../papers/positional_2021_rope-roformer.md "Su et al., RoFormer (2021)"
 ```
 
 (Path is computed relative to the file containing the link table — typically
@@ -185,10 +183,27 @@ subagent per paper to fetch the arXiv HTML and extract: abstract, method, key
 equations, hyperparameters, results table, and image URLs. Each subagent returns
 a structured summary. Then write each recap file sequentially.
 
+## Thread review rule (mandatory)
+
+A thread review (`docs/qwen/<thread>/<thread>.md`) is **not complete** without
+per-paper recaps for every entry in its evolution table. When asked to add or
+update a thread:
+
+1. Build the thread doc (evolution table, Qwen-specific notes, see-also).
+2. For each paper referenced in the evolution table, check whether a recap
+   file already exists in `docs/papers/`. If not, generate it via the
+   per-paper workflow (template + figures + cross-link repointing).
+3. After all per-paper recaps exist, replace external arXiv URLs in the thread
+   doc's evolution table and "papers" sub-bullet list (in `overview.md` §9)
+   with relative links to the local recaps.
+
+Never leave a thread review pointing only to external arXiv URLs when local
+recaps are feasible — the thread doc should be a hub of local recaps.
+
 ## Workflow checklist
 
 1. Resolve input → arXiv ID + canonical URL.
-2. Determine `<NNN>` (next free in `docs/papers/`).
+2. Choose `<category>_<keywords>` per the naming convention above.
 3. Fetch sources (arXiv HTML preferred; split by section if long).
 4. Identify 1–3 essential figures, download to `_assets/<full-stem>/`.
 5. Write recap file per template; KaTeX for equations; cite all numbers.

@@ -6,14 +6,14 @@
 **Dual Chunk Attention (DCA)** decomposes self-attention over a long sequence into three patterns over chunks of size $s$ that *only ever use position-id differences seen during pre-training*. The result: a Llama-2 / Llama-3 / Mistral checkpoint can be inferred at **8–50× its training context** with no training, no extra parameters, and no perceptible Flash-Attention overhead. On Llama-2-70B at 16k it reaches 94 % of GPT-3.5-Turbo-16k average score on L-Eval — without touching the weights.
 
 ## Problem & motivation
-RoPE-extension methods that work — PI, NTK-aware, [YaRN](p002_2023_positional_yarn-context-extension.md) — generally need at least a brief fine-tune (PG-19, ~400 steps) and still degrade past ~2× training length without it. Streaming methods (StreamingLLM, LM-Infinite) keep perplexity low at long lengths but discard distant tokens, so they can't actually use the long context.
+RoPE-extension methods that work — PI, NTK-aware, [YaRN](positional_2023_yarn-context-extension.md) — generally need at least a brief fine-tune (PG-19, ~400 steps) and still degrade past ~2× training length without it. Streaming methods (StreamingLLM, LM-Infinite) keep perplexity low at long lengths but discard distant tokens, so they can't actually use the long context.
 
 The question DCA asks: can we feed positions all the way out to 100k+ tokens to a 4k-pretrained model **without any training and without dropping tokens** — and still answer questions about token #80 000?
 
 ## Key idea
 Split the sequence into chunks of size $s$ (typically $s = \tfrac{3}{4}c$ where $c$ is the pre-training window — for Llama-2 4k, $s=3072$). Define three position-id remappings so that **every relative offset that appears in the attention matrix lies in $[0,c-1]$**, the range RoPE already understands.
 
-![Figure 1: the three DCA attention patterns (intra-, inter-, successive-chunk) — relative position matrix stays in [0, c-1]](_assets/p003_2024_positional_dca-dual-chunk-attention/fig2_dca_three_patterns.png)
+![Figure 1: the three DCA attention patterns (intra-, inter-, successive-chunk) — relative position matrix stays in [0, c-1]](_assets/positional_2024_dca-dual-chunk-attention/fig2_dca_three_patterns.png)
 
 **(a) Intra-chunk** — positions inside one chunk reuse $0,1,\dots,s-1$:
 $$P_q^{\text{intra}}=P_k=[0,1,\dots,l-1]\bmod s,\qquad M_{ij}=P_q^{\text{intra}}[i]-P_k[j].$$
@@ -37,7 +37,7 @@ $$
 
 Standard RoPE without DCA, by contrast, runs straight off the edge of trained positions:
 
-![Figure 2: vanilla RoPE relative-position matrix at sequence length 12 with pre-training context 6 — positions 6..11 are out-of-distribution](_assets/p003_2024_positional_dca-dual-chunk-attention/fig1_rope_extrapolation.png)
+![Figure 2: vanilla RoPE relative-position matrix at sequence length 12 with pre-training context 6 — positions 6..11 are out-of-distribution](_assets/positional_2024_dca-dual-chunk-attention/fig1_rope_extrapolation.png)
 
 ## How it works
 - **Inference-only.** Implemented as a Python monkey-patch on the model's attention module — no weights touched.
@@ -96,4 +96,4 @@ Training-free DCA-70B is within 0.1 avg-F1 of Meta's heavily fine-tuned Llama-2-
 - **OpenReview / venue page:** [ICML 2024 OpenReview entry](https://openreview.net/forum?id=GvXFu7AhpZ) (search if the linked id changes)
 - **Papers-with-Code:** [paperswithcode.com/paper/training-free-long-context-scaling-of-large](https://paperswithcode.com/paper/training-free-long-context-scaling-of-large)
 - **BibTeX:** available from the arXiv abs page
-- **Related / successor papers:** [RoPE](p000_2021_positional_rope-roformer.md) · [NTK-aware](p001_2023_positional_ntk-aware-rope.md) · [YaRN](p002_2023_positional_yarn-context-extension.md) · StreamingLLM (Xiao et al., arXiv:2309.17453) · LongLora (Chen et al., arXiv:2309.12307) · LM-Infinite (Han et al., arXiv:2308.16137)
+- **Related / successor papers:** [RoPE](positional_2021_rope-roformer.md) · [NTK-aware](positional_2023_ntk-aware-rope.md) · [YaRN](positional_2023_yarn-context-extension.md) · StreamingLLM (Xiao et al., arXiv:2309.17453) · LongLora (Chen et al., arXiv:2309.12307) · LM-Infinite (Han et al., arXiv:2308.16137)
