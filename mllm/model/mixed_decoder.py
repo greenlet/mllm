@@ -52,6 +52,27 @@ class MixedDecoder(nn.Module):
             self.word_embeddings = self.decoder.bert.embeddings.word_embeddings
             self.sep_token_id = tkz_dec.sep_token_id if tkz_dec.sep_token_id is not None else tkz_dec.cls_token_id
             d_dec = self.decoder.config.hidden_size
+        elif self.cfg.decoder_type == MixedDecoderType.Qwen:
+            from transformers import AutoModelForCausalLM
+            # Always load decoder weights in fp32; mixed-precision compute is handled
+            # via torch.cuda.amp.autocast at training time, keyed off cfg.decoder_dtype.
+            self.decoder = AutoModelForCausalLM.from_pretrained(
+                self.cfg.decoder_model_name, torch_dtype=torch.float32,
+            )
+            # Reduce activation memory: critical for fp32 1.5B+ on 32GB GPUs.
+            self.decoder.gradient_checkpointing_enable()
+            self.decoder.config.use_cache = False
+            self.word_embeddings = self.decoder.get_input_embeddings()
+            # Qwen has no SEP; use eos as delimiter (also serves as pad in Qwen2.5/Qwen3).
+            self.sep_token_id = tkz_dec.eos_token_id
+            d_dec = self.decoder.config.hidden_size
+            # Qwen vocab differs from BERT; cross-vocab masked targets cannot be aligned.
+            if self.cfg.train_cfg.mask_cfg is not None:
+                raise ValueError(
+                    'mask_cfg is not supported with decoder_type=qwen: encoder (BERT) and '
+                    'decoder (Qwen) tokenizers have disjoint vocabularies, so mask positions '
+                    'cannot be aligned. Disable token masking when training with a Qwen decoder.'
+                )
         else:
             raise ValueError(f'Decoder type {self.cfg.decoder_type} is not supported.')
 
@@ -73,8 +94,13 @@ class MixedDecoder(nn.Module):
             self.enc_proj = nn.Linear(self.cfg.d_model, d_dec, bias=False)
 
         self.d_dec = d_dec
-        # Learnable positional embeddings over the full combined sequence
-        self.pos_emb = nn.Embedding(cfg.max_seq_len, d_dec)
+        # Learnable positional embeddings over the full combined sequence.
+        # Qwen uses RoPE inside its attention layers, so adding a learned absolute
+        # positional embedding on top of inputs_embeds would corrupt the geometry.
+        if self.cfg.decoder_type == MixedDecoderType.Qwen:
+            self.pos_emb = None
+        else:
+            self.pos_emb = nn.Embedding(cfg.max_seq_len, d_dec)
 
         # Mask-aware loss: gives higher weight to [MASK] positions, lower to special tokens.
         # Special-token ids come from tkz_dec because the loss is computed over decoder targets.
@@ -267,10 +293,11 @@ class MixedDecoder(nn.Module):
         input_embs = torch.cat(parts_embs, dim=1)  # (batch_size, total_len, d_dec)
         attention_mask = torch.cat(parts_mask, dim=1)  # (batch_size, total_len)
 
-        # Add positional embeddings
-        pos_ids = torch.arange(total_len, device=device).unsqueeze(0)  # (1, total_len)
-        pos_embs = self.pos_emb(pos_ids)  # (1, total_len, d_dec)
-        input_embs = input_embs + pos_embs
+        # Add positional embeddings (skipped for decoders with built-in positional encoding, e.g. RoPE in Qwen).
+        if self.pos_emb is not None:
+            pos_ids = torch.arange(total_len, device=device).unsqueeze(0)  # (1, total_len)
+            pos_embs = self.pos_emb(pos_ids)  # (1, total_len, d_dec)
+            input_embs = input_embs + pos_embs
 
         # Build labels: -100 for prefix (context + sep + prompt), actual token ids for target
         labels = torch.full((batch_size, total_len), -100, dtype=torch.long, device=device)
@@ -302,6 +329,11 @@ class MixedDecoder(nn.Module):
             out = self.decoder(
                 inputs_embeds=input_embs, attention_mask=attention_mask,
                 return_dict=True,
+            )
+        elif self.cfg.decoder_type == MixedDecoderType.Qwen:
+            out = self.decoder(
+                inputs_embeds=input_embs, attention_mask=attention_mask,
+                use_cache=False, return_dict=True,
             )
         else:
             raise ValueError(f'Decoder type {self.cfg.decoder_type} is not supported.')

@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, TypeVar, Union, Optional
+from typing import Any, Dict, Tuple, TypeVar, Union, Optional
 
 import numpy as np
 import torch
@@ -2018,6 +2018,51 @@ class MixedDecoderDsType(str, Enum):
 class MixedDecoderType(str, Enum):
     Gpt2 = 'gpt2'
     BertDec = 'bertdec'
+    Qwen = 'qwen'
+
+
+class DecoderDtype(str, Enum):
+    Fp32 = 'fp32'
+    Fp16 = 'fp16'
+    Bf16 = 'bf16'
+
+
+def parse_decoder_spec(spec: str) -> Tuple['MixedDecoderType', str, 'DecoderDtype']:
+    """Parse a compound decoder spec string like 'qwen2.5-1.5B-fp32' or
+    'qwen2.5-1.5B-instruct-fp16' or 'gpt2-fp32' / 'gpt2-medium-fp32' /
+    'bert-base-uncased-fp32'.
+
+    Returns (decoder_type, hf_model_name, decoder_dtype).
+    """
+    if not spec:
+        raise ValueError('decoder_spec must be a non-empty string')
+    head_body, _, dtype_str = spec.rpartition('-')
+    if not head_body or dtype_str not in {d.value for d in DecoderDtype}:
+        raise ValueError(
+            f"decoder_spec must end with one of {[d.value for d in DecoderDtype]}, got: {spec!r}"
+        )
+    dtype = DecoderDtype(dtype_str)
+    body = head_body
+    body_lower = body.lower()
+
+    if body_lower.startswith('qwen2.5') or body_lower.startswith('qwen3') or body_lower.startswith('qwen2'):
+        # body example: 'qwen2.5-1.5B' or 'qwen2.5-1.5B-instruct'
+        segments = body.split('-')
+        family_lc = segments[0].lower()
+        # Capitalise just the leading 'q' -> 'Q'.
+        family_caps = 'Q' + family_lc[1:]
+        if len(segments) < 2:
+            raise ValueError(f'Qwen decoder_spec must include a size segment, got: {spec!r}')
+        size_part = segments[1]  # keep case (e.g. '1.5B', '0.6B')
+        suffix_parts = [p.capitalize() for p in segments[2:]]  # e.g. 'instruct' -> 'Instruct'
+        suffix = ('-' + '-'.join(suffix_parts)) if suffix_parts else ''
+        hf_id = f'Qwen/{family_caps}-{size_part}{suffix}'
+        return MixedDecoderType.Qwen, hf_id, dtype
+    if body_lower.startswith('gpt2'):
+        return MixedDecoderType.Gpt2, body_lower, dtype
+    if body_lower.startswith('bert'):
+        return MixedDecoderType.BertDec, body_lower, dtype
+    raise ValueError(f'Unknown decoder family in spec: {spec!r}')
 
 
 class MixedDecoderTrainCfg(BaseModel):
@@ -2035,6 +2080,7 @@ class MixedDecoderCfg(BaseModel):
     enc_bert: EncBertCfg
     decoder_type: MixedDecoderType = MixedDecoderType.Gpt2
     decoder_model_name: str = 'gpt2'
+    decoder_dtype: DecoderDtype = DecoderDtype.Fp32
     max_seq_len: int = 384
     use_sep: bool = True
     prompt_all: bool = True
@@ -2181,6 +2227,7 @@ def gen_prefpostfix_genmixemb(
 def create_mixed_decoder_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
         inp_len: int = 128, decoder_type: MixedDecoderType = MixedDecoderType.Gpt2, decoder_model_name: str = 'gpt2',
+        decoder_dtype: DecoderDtype = DecoderDtype.Fp32,
         max_seq_len: int = 384, use_sep: bool = True, prompt_all: bool = True, emb_exp_rate: int = 0,
         emb_win_min_size: int = 0, emb_win_max_size: int = 0, min_next_toks: int = 64,
         train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite,
@@ -2225,6 +2272,7 @@ def create_mixed_decoder_cfg(
         enc_bert=cfg_enc,
         decoder_type=decoder_type,
         decoder_model_name=decoder_model_name,
+        decoder_dtype=decoder_dtype,
         max_seq_len=max_seq_len,
         use_sep=use_sep,
         prompt_all=prompt_all,
@@ -2243,6 +2291,7 @@ def create_mixed_decoder_cfg(
 def copy_override_mixed_decoder_cfg(
         cfg: MixedDecoderCfg, pretrained_model_name: Optional[str] = None, emb_type: Optional[BertEmbType] = None,
         inp_len: Optional[int] = None, decoder_type: Optional[MixedDecoderType] = None, decoder_model_name: Optional[str] = None,
+        decoder_dtype: Optional[DecoderDtype] = None,
         max_seq_len: Optional[int] = None, use_sep: Optional[bool] = None, prompt_all: Optional[bool] = None, emb_exp_rate: Optional[int] = None,
         emb_win_min_size: Optional[int] = None, emb_win_max_size: Optional[int] = None, min_next_toks: Optional[int] = None,
         train_ds_type: Optional[MixedDecoderDsType] = None,
@@ -2259,6 +2308,7 @@ def copy_override_mixed_decoder_cfg(
     inp_len = coalesce(inp_len, enc.inp_len)
     decoder_type = coalesce(decoder_type, cfg.decoder_type)
     decoder_model_name = coalesce(decoder_model_name, cfg.decoder_model_name)
+    decoder_dtype = coalesce(decoder_dtype, cfg.decoder_dtype)
     max_seq_len = coalesce(max_seq_len, cfg.max_seq_len)
     use_sep = coalesce(use_sep, cfg.use_sep)
     prompt_all = coalesce(prompt_all, cfg.prompt_all)
@@ -2283,6 +2333,7 @@ def copy_override_mixed_decoder_cfg(
     return create_mixed_decoder_cfg(
         pretrained_model_name=pretrained_model_name, emb_type=emb_type, inp_len=inp_len,
         decoder_type=decoder_type, decoder_model_name=decoder_model_name,
+        decoder_dtype=decoder_dtype,
         max_seq_len=max_seq_len, use_sep=use_sep, prompt_all=prompt_all, emb_exp_rate=emb_exp_rate,
         emb_win_min_size=emb_win_min_size, emb_win_max_size=emb_win_max_size, min_next_toks=min_next_toks,
         train_ds_type=train_ds_type,
@@ -2322,6 +2373,8 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
     postfix_parts.append(f'inp{enc.inp_len}')
     postfix_parts.append(f'dec{model_cfg.decoder_model_name.replace("-", "").capitalize()}')
     postfix_parts.append(f'msl{model_cfg.max_seq_len}')
+    if model_cfg.decoder_dtype != DecoderDtype.Fp32:
+        postfix_parts.append(f'dtype{model_cfg.decoder_dtype.value.capitalize()}')
     postfix_parts.append(bool_param_to_str('sep', model_cfg.use_sep))
     postfix_parts.append(bool_param_to_str('pall', model_cfg.prompt_all))
     if not model_cfg.decoder_only:

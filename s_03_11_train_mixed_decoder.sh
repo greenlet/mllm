@@ -25,6 +25,17 @@ decoder_model_name=gpt2
 # decoder_type=bertdec
 # decoder_model_name=bert-base-uncased
 
+# Compound decoder spec: <family>-<size>[-instruct]-<precision>
+# Examples:
+#   decoder_spec=qwen2.5-1.5B-fp32          # full fp32, single 1.5B Qwen2.5 base
+#   decoder_spec=qwen2.5-1.5B-fp16          # AMP fp16 + GradScaler (V100-friendly)
+#   decoder_spec=qwen2.5-1.5B-instruct-fp16 # instruct variant, AMP fp16
+#   decoder_spec=qwen2.5-0.5B-fp32          # smoke-test size
+#   decoder_spec=qwen3-0.6B-fp32
+#   decoder_spec=gpt2-fp32                  # equivalent to the legacy gpt2 path
+# When decoder_spec is non-empty it overrides decoder_type / decoder_model_name above.
+decoder_spec=
+
 # pip install datasets==3.6.0
 train_ds_type=cite
 
@@ -117,6 +128,7 @@ python s_03_11_train_mixed_decoder.py \
   --inp-len $inp_len \
   --decoder-type $decoder_type \
   --decoder-model-name $decoder_model_name \
+  --decoder-spec "$decoder_spec" \
   --max-seq-len $max_seq_len \
   --freeze-encoder $freeze_encoder \
   --use-sep $use_sep \

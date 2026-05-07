@@ -19,7 +19,7 @@ from tqdm import trange
 from transformers import AutoTokenizer
 
 from mllm.config.model import MixedDecoderCfg, MixedDecoderDsType, MixedDecoderType, BertEmbType, \
-    copy_override_mixed_decoder_cfg, gen_prefpostfix_mixed_decoder
+    DecoderDtype, copy_override_mixed_decoder_cfg, gen_prefpostfix_mixed_decoder, parse_decoder_spec
 from mllm.exp.args import MIXED_DECODER_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, \
     mask_tokens_ARG
 from mllm.model.mixed_decoder import MixedDecoder
@@ -90,6 +90,14 @@ class ArgsMixedDecoderTrain(BaseModel):
         'gpt2',
         description='Pretrained decoder model name (e.g. "gpt2", "bert-base-uncased").',
         cli=('--decoder-model-name',),
+    )
+    decoder_spec: str = Field(
+        '',
+        description='Compound decoder spec of the form `<family>-<size>[-instruct]-<precision>`, '
+            'e.g. `qwen2.5-1.5B-fp32`, `qwen2.5-1.5B-instruct-fp16`, `qwen3-0.6B-fp32`, `gpt2-fp32`. '
+            'When set, overrides --decoder-type, --decoder-model-name and selects the AMP precision '
+            '(fp32: no autocast; fp16: autocast(fp16) + GradScaler; bf16: autocast(bf16)).',
+        cli=('--decoder-spec',),
     )
     max_seq_len: int = Field(
         384,
@@ -295,10 +303,21 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             seq_max_len=args.mask_seq_max_len, n_last_toks=args.mask_n_last_toks,
         )
 
+    # Resolve compound spec (if provided) into discrete (decoder_type, decoder_model_name, decoder_dtype).
+    if args.decoder_spec:
+        decoder_type, decoder_model_name, decoder_dtype = parse_decoder_spec(args.decoder_spec)
+        log(f'Parsed decoder_spec={args.decoder_spec!r} -> type={decoder_type.value}, '
+            f'model={decoder_model_name}, dtype={decoder_dtype.value}')
+    else:
+        decoder_type = args.decoder_type
+        decoder_model_name = args.decoder_model_name
+        decoder_dtype = DecoderDtype.Fp32
+
     model_cfg = parse_yaml_file_as(MixedDecoderCfg, args.model_cfg_fpath)
     model_cfg = copy_override_mixed_decoder_cfg(
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type,
-        inp_len=args.inp_len, decoder_type=args.decoder_type, decoder_model_name=args.decoder_model_name,
+        inp_len=args.inp_len, decoder_type=decoder_type, decoder_model_name=decoder_model_name,
+        decoder_dtype=decoder_dtype,
         max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, emb_exp_rate=args.emb_exp_rate,
         emb_win_min_size=args.emb_win_min_size, emb_win_max_size=args.emb_win_max_size,
         min_next_toks=args.min_next_toks, train_ds_type=args.train_ds_type,
@@ -333,7 +352,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         if rank == 0:
             to_yaml_file(train_path / MIXED_DECODER_MODEL_CFG_FNAME, model_cfg)
     tkz_enc = AutoTokenizer.from_pretrained(args.bert_model_name)
-    tkz_dec = AutoTokenizer.from_pretrained(args.decoder_model_name)
+    tkz_dec = AutoTokenizer.from_pretrained(decoder_model_name)
     # GPT-2 has no pad token; use eos as pad/delimiter/end-of-target.
     if tkz_dec.pad_token is None:
         tkz_dec.pad_token = tkz_dec.eos_token
@@ -354,6 +373,13 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
     params = ddp_model.parameters()
     optimizer = instantiate_torch_optimizer(args.optimizer_name, params, lr=args.learning_rate, **args.optimizer_params)
     scheduler = instantiate_torch_lr_scheduler(args.learning_rate_scheduler_name, optimizer, **args.learning_rate_scheduler_params)
+
+    # Mixed-precision setup. Decoder weights stay fp32; autocast wraps the forward.
+    # GradScaler is required only for fp16 (bf16 has fp32-comparable dynamic range).
+    amp_enabled = decoder_dtype in (DecoderDtype.Fp16, DecoderDtype.Bf16) and device.type == 'cuda'
+    amp_dtype = {DecoderDtype.Fp16: torch.float16, DecoderDtype.Bf16: torch.bfloat16}.get(decoder_dtype)
+    scaler = torch.cuda.amp.GradScaler(enabled=(amp_enabled and decoder_dtype == DecoderDtype.Fp16))
+    log(f'AMP: enabled={amp_enabled}, dtype={amp_dtype}, scaler_enabled={scaler.is_enabled()}')
 
     last_epoch, val_loss_min, shuffle = -1, None, False
     if checkpoint is not None:
@@ -444,9 +470,15 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             batch = next(train_batch_it)
 
             optimizer.zero_grad()
-            loss_dict, _ = ddp_model(batch)
-            loss = loss_dict['loss']
-            loss.backward()
+            if amp_enabled:
+                with torch.cuda.amp.autocast(dtype=amp_dtype):
+                    loss_dict, _ = ddp_model(batch)
+                loss = loss_dict['loss']
+                scaler.scale(loss).backward()
+            else:
+                loss_dict, _ = ddp_model(batch)
+                loss = loss_dict['loss']
+                loss.backward()
 
             if rank == 0:
                 if grad_log_ind % grad_log_interval == 0:
@@ -454,7 +486,11 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                     grad_log_step += 1
                 grad_log_ind += 1
 
-            optimizer.step()
+            if amp_enabled and scaler.is_enabled():
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                optimizer.step()
             train_loss += loss.item()
             train_losses.update_dict(loss_dict)
 
@@ -481,8 +517,9 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             batch = next(val_batch_it)
 
             with torch.no_grad():
-                if args.world_size > 1:
-                    loss_dict, _ = ddp_model(batch)
+                if amp_enabled:
+                    with torch.cuda.amp.autocast(dtype=amp_dtype):
+                        loss_dict, _ = ddp_model(batch)
                 else:
                     loss_dict, _ = ddp_model(batch)
             loss = loss_dict['loss']
@@ -550,7 +587,11 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         )
 
     tkz_enc = AutoTokenizer.from_pretrained(args.bert_model_name)
-    tkz_dec = AutoTokenizer.from_pretrained(args.decoder_model_name)
+    if args.decoder_spec:
+        _, decoder_model_name_main, _ = parse_decoder_spec(args.decoder_spec)
+    else:
+        decoder_model_name_main = args.decoder_model_name
+    tkz_dec = AutoTokenizer.from_pretrained(decoder_model_name_main)
     if tkz_dec.pad_token is None:
         tkz_dec.pad_token = tkz_dec.eos_token
 
