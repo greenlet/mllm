@@ -353,6 +353,11 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             to_yaml_file(train_path / MIXED_DECODER_MODEL_CFG_FNAME, model_cfg)
     tkz_enc = AutoTokenizer.from_pretrained(args.bert_model_name)
     tkz_dec = AutoTokenizer.from_pretrained(decoder_model_name)
+    # We tokenize raw documents in full and chunk/truncate downstream, so HF's
+    # "Token indices sequence length is longer than the specified maximum"
+    # warning is just noise. Disable model_max_length cap on the tokenizer.
+    tkz_enc.model_max_length = int(1e9)
+    tkz_dec.model_max_length = int(1e9)
     # GPT-2 has no pad token; use eos as pad/delimiter/end-of-target.
     if tkz_dec.pad_token is None:
         tkz_dec.pad_token = tkz_dec.eos_token
@@ -365,8 +370,14 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
 
     model.to(device)
     if args.world_size > 1:
-        find_unused_parameters = True
-        ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=find_unused_parameters)
+        # Gradient checkpointing on the decoder uses use_reentrant=False
+        # (see MixedDecoder.__init__), which is DDP-safe. All MixedDecoder
+        # parameters participate in the loss in this codebase (decoder + encoder
+        # + emb_exp; enc_proj/pos_emb are None when used), so we leave
+        # find_unused_parameters=False. Setting it to True with non-reentrant
+        # checkpointing adds a per-iteration Int bitmap allreduce that has been
+        # observed to mismatch across ranks and tear down the gloo process group.
+        ddp_model = DDP(model, device_ids=[rank])
     else:
         ddp_model = model
 
@@ -592,6 +603,9 @@ def main(args: ArgsMixedDecoderTrain) -> int:
     else:
         decoder_model_name_main = args.decoder_model_name
     tkz_dec = AutoTokenizer.from_pretrained(decoder_model_name_main)
+    # See note in train(): suppress noisy 'longer than max length' tokenizer warning.
+    tkz_enc.model_max_length = int(1e9)
+    tkz_dec.model_max_length = int(1e9)
     if tkz_dec.pad_token is None:
         tkz_dec.pad_token = tkz_dec.eos_token
 

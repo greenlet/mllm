@@ -2371,7 +2371,7 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
     else:
         postfix_parts.append(f'embEnc{enc.emb_type.value.capitalize()}')
     postfix_parts.append(f'inp{enc.inp_len}')
-    postfix_parts.append(f'dec{model_cfg.decoder_model_name.replace("-", "").capitalize()}')
+    postfix_parts.append(f'dec{model_cfg.decoder_model_name.split("/")[-1].replace("-", "").capitalize()}')
     postfix_parts.append(f'msl{model_cfg.max_seq_len}')
     if model_cfg.decoder_dtype != DecoderDtype.Fp32:
         postfix_parts.append(f'dtype{model_cfg.decoder_dtype.value.capitalize()}')

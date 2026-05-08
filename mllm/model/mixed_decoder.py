@@ -60,7 +60,13 @@ class MixedDecoder(nn.Module):
                 self.cfg.decoder_model_name, torch_dtype=torch.float32,
             )
             # Reduce activation memory: critical for fp32 1.5B+ on 32GB GPUs.
-            self.decoder.gradient_checkpointing_enable()
+            # use_reentrant=False is required for DDP compatibility: the legacy
+            # reentrant checkpoint replays autograd inside backward, which makes
+            # DDP's per-parameter ready hooks fire twice and crash with
+            # "Expected to mark a variable ready only once".
+            self.decoder.gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs={'use_reentrant': False},
+            )
             self.decoder.config.use_cache = False
             self.word_embeddings = self.decoder.get_input_embeddings()
             # Qwen has no SEP; use eos as delimiter (also serves as pad in Qwen2.5/Qwen3).
@@ -154,6 +160,13 @@ class MixedDecoder(nn.Module):
         self.decoder.config.max_position_embeddings = new_max_len
 
     def load_pretrained(self, checkpoint: Optional[Dict[str, Any]] = None):
+        # Older checkpoints were saved with the BertModel pooler enabled
+        # (enc.bert_model.pooler.dense.{weight,bias}). EncoderBert now constructs
+        # BertModel with add_pooling_layer=False, so those keys are unexpected and
+        # must be stripped from any state-dict before strict loading.
+        def _is_stale_pooler_key(k: str) -> bool:
+            return 'bert_model.pooler.' in k
+
         if checkpoint is not None:
             checkpt_dict = checkpoint['model']
             cleaned_dict = {}
@@ -161,6 +174,8 @@ class MixedDecoder(nn.Module):
                 if key.startswith('module.'):
                     key = key[7:]
                 if self.decoder_only and (key.startswith('enc.') or key.startswith('emb_exp.') or key.startswith('enc_proj.')):
+                    continue
+                if _is_stale_pooler_key(key):
                     continue
                 cleaned_dict[key] = val
             print(f'Load {len(cleaned_dict)}')
@@ -184,6 +199,8 @@ class MixedDecoder(nn.Module):
                         key = key[6:]
                     if self.decoder_only and (key.startswith('enc.') or key.startswith('emb_exp.') or key.startswith('enc_proj.')):
                         continue
+                    if _is_stale_pooler_key(key):
+                        continue
                     cleaned_dict[key] = val
 
                 self.load_state_dict(cleaned_dict, strict=not self.decoder_only)
@@ -204,6 +221,8 @@ class MixedDecoder(nn.Module):
                         key = key[6:]
                     if key.startswith('enc_bert.'):
                         new_key = key[9:]
+                        if _is_stale_pooler_key(new_key):
+                            continue
                         enc_checkpt_dict[new_key] = val
 
                 self.enc.load_state_dict(enc_checkpt_dict, strict=True)
@@ -219,6 +238,12 @@ class MixedDecoder(nn.Module):
         if self.cfg.enc_bert.emb_type == BertEmbType.Cls:
             return out_enc_last_hidden_state[:, 0]
         elif self.cfg.enc_bert.emb_type == BertEmbType.Pooler:
+            if out_enc_pooler is None:
+                raise ValueError(
+                    'enc_bert.emb_type=pooler requires the BertModel pooler, but it was '
+                    'disabled (add_pooling_layer=False in EncoderBert). Re-enable the pooler '
+                    'or switch emb_type to cls.'
+                )
             return out_enc_pooler
         else:
             raise ValueError(f'Encoder BERT embedding type {self.cfg.enc_bert.emb_type} is not supported')
