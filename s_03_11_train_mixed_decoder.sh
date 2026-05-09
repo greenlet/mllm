@@ -28,13 +28,22 @@ decoder_model_name=gpt2
 # Compound decoder spec: <family>-<size>[-instruct]-<precision>
 # Examples:
 #   decoder_spec=qwen2.5-1.5B-fp32          # full fp32, single 1.5B Qwen2.5 base
-#   decoder_spec=qwen2.5-1.5B-fp16          # AMP fp16 + GradScaler (V100-friendly)
+#   decoder_spec=qwen2.5-1.5B-fp16          # AMP fp16 + GradScaler (V100-friendly, DDP only)
+#   decoder_spec=qwen2.5-1.5B-bf16          # bf16 (preferred with FSDP)
 #   decoder_spec=qwen2.5-1.5B-instruct-fp16 # instruct variant, AMP fp16
 #   decoder_spec=qwen2.5-0.5B-fp32          # smoke-test size
 #   decoder_spec=qwen3-0.6B-fp32
 #   decoder_spec=gpt2-fp32                  # equivalent to the legacy gpt2 path
 # When decoder_spec is non-empty it overrides decoder_type / decoder_model_name above.
-decoder_spec=qwen2.5-1.5B-fp16
+decoder_spec=qwen2.5-1.5B-bf16
+
+# Parallelism: 'ddp' (default, full replica per rank) or 'fsdp' (shards params/grads/
+# optimizer state across ranks; required to fit Qwen2.5-1.5B+BERT on 32GB GPUs).
+# fsdp_shard: 'full' (FULL_SHARD across all ranks, min memory) or 'hybrid' (HYBRID_SHARD,
+# shard within node and replicate across; higher throughput, higher memory).
+# FSDP path requires bf16 or fp32 (fp16 is unsupported here).
+parallel=fsdp
+fsdp_shard=full
 
 # pip install datasets==3.6.0
 train_ds_type=cite
@@ -167,5 +176,7 @@ python s_03_11_train_mixed_decoder.py \
   --random-seed $random_seed \
   --pretrained-encdec-model-path "$pretrained_encdec_model_path" \
   --pretrained-mixed-decoder-model-path "$pretrained_mixed_decoder_model_path" \
-  --world-size $world_size
+  --world-size $world_size \
+  --parallel $parallel \
+  --fsdp-shard $fsdp_shard
 

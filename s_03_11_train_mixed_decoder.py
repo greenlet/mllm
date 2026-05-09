@@ -9,11 +9,23 @@ from datasets import Dataset
 from pydantic import BaseModel, Field, validator
 from pydantic_cli import run_and_exit
 from pydantic_yaml import parse_yaml_file_as, to_yaml_file
+import functools
+
 import torch
 import torch.utils.tensorboard as tb
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from torch import nn
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.distributed.fsdp import (
+    FullyShardedDataParallel as FSDP,
+    MixedPrecision,
+    ShardingStrategy,
+    StateDictType,
+    FullStateDictConfig,
+    FullOptimStateDictConfig,
+)
+from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
@@ -265,6 +277,43 @@ class ArgsMixedDecoderTrain(BaseModel):
         description='Number of GPU instances to use for distributed training.',
         cli=('--world-size',),
     )
+    parallel: str = Field(
+        'ddp',
+        description='Parallelism mode for the model: "ddp" (replicate full model per rank, default) '
+                    'or "fsdp" (FullyShardedDataParallel, shards parameters/gradients/optimizer state '
+                    'across ranks). Use "fsdp" to fit Qwen2.5-1.5B + BERT on 32GB GPUs.',
+        cli=('--parallel',),
+    )
+    fsdp_shard: str = Field(
+        'full',
+        description='FSDP sharding strategy when --parallel fsdp: "full" (FULL_SHARD across all ranks, '
+                    'minimum memory) or "hybrid" (HYBRID_SHARD: shard within node, replicate across; '
+                    'higher throughput, more memory).',
+        cli=('--fsdp-shard',),
+    )
+
+
+_PARALLEL_DDP = 'ddp'
+_PARALLEL_FSDP = 'fsdp'
+
+
+def _resolve_transformer_layer_classes(module: nn.Module) -> set:
+    """Collect concrete nn.Module classes that should be wrapped together by FSDP.
+
+    Walks ``module`` and aggregates the names listed in ``_no_split_modules`` on any
+    ``PreTrainedModel`` ancestor (e.g. ``Qwen2DecoderLayer``, ``BertLayer``), then maps
+    those names back to live class objects found in the tree. Robust to import paths.
+    """
+    wanted_names: set = set()
+    for sub in module.modules():
+        names = getattr(sub, '_no_split_modules', None)
+        if names:
+            wanted_names.update(names)
+    found: set = set()
+    for sub in module.modules():
+        if type(sub).__name__ in wanted_names:
+            found.add(type(sub))
+    return found
 
 
 def setup(rank, world_size):
@@ -366,35 +415,121 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
     log(model_cfg)
     model = MixedDecoder(model_cfg, tkz_enc, tkz_dec)
 
+    parallel_mode = (args.parallel or _PARALLEL_DDP).lower()
+    if parallel_mode not in (_PARALLEL_DDP, _PARALLEL_FSDP):
+        raise ValueError(f'Unsupported --parallel value: {args.parallel!r}. Expected "ddp" or "fsdp".')
+    use_fsdp = (parallel_mode == _PARALLEL_FSDP)
+    if use_fsdp:
+        if args.world_size <= 1:
+            raise ValueError('--parallel fsdp requires --world-size > 1.')
+        if device.type != 'cuda':
+            raise ValueError('--parallel fsdp requires CUDA devices.')
+        if decoder_dtype == DecoderDtype.Fp16:
+            raise ValueError(
+                'FSDP path does not support fp16 (would need ShardedGradScaler). '
+                'Use a bf16 or fp32 decoder_spec, e.g. qwen2.5-1.5B-bf16.'
+            )
+
+    if checkpoint is not None and use_fsdp:
+        # Reload onto CPU; FSDP places sharded params on the right device during wrap.
+        log(f'FSDP: re-mapping checkpoint to CPU before load_pretrained')
+        checkpoint_cpu = torch.load(last_checkpoint_path, map_location='cpu')
+        # Replace the previously-loaded (device-mapped) tensors so load_pretrained
+        # consumes the CPU copy. Keep optimizer/scheduler state for later.
+        checkpoint = checkpoint_cpu
+
     model.load_pretrained(checkpoint)
 
-    model.to(device)
-    if args.world_size > 1:
-        # Gradient checkpointing on the decoder uses use_reentrant=False
-        # (see MixedDecoder.__init__), which is DDP-safe. All MixedDecoder
-        # parameters participate in the loss in this codebase (decoder + encoder
-        # + emb_exp; enc_proj/pos_emb are None when used), so we leave
-        # find_unused_parameters=False. Setting it to True with non-reentrant
-        # checkpointing adds a per-iteration Int bitmap allreduce that has been
-        # observed to mismatch across ranks and tear down the gloo process group.
-        ddp_model = DDP(model, device_ids=[rank])
+    if use_fsdp:
+        # Do NOT call model.to(device): FSDP will shard and place params via device_id.
+        layer_classes = _resolve_transformer_layer_classes(model)
+        if not layer_classes:
+            raise RuntimeError(
+                'FSDP: could not resolve any transformer layer classes from the model '
+                '(_no_split_modules empty). Cannot build a sane auto_wrap_policy.'
+            )
+        log(f'FSDP: auto_wrap_policy will wrap layer classes: '
+            f'{sorted(c.__name__ for c in layer_classes)}')
+
+        sharding_strategy = {
+            'full': ShardingStrategy.FULL_SHARD,
+            'hybrid': ShardingStrategy.HYBRID_SHARD,
+        }.get((args.fsdp_shard or 'full').lower())
+        if sharding_strategy is None:
+            raise ValueError(
+                f'Unsupported --fsdp-shard value: {args.fsdp_shard!r}. Expected "full" or "hybrid".'
+            )
+
+        # bf16 mixed precision when caller requested it; otherwise keep fp32 (no MP policy).
+        mp_policy = None
+        if decoder_dtype == DecoderDtype.Bf16:
+            mp_policy = MixedPrecision(
+                param_dtype=torch.bfloat16,
+                reduce_dtype=torch.bfloat16,
+                buffer_dtype=torch.bfloat16,
+            )
+
+        auto_wrap_policy = functools.partial(
+            transformer_auto_wrap_policy,
+            transformer_layer_cls=layer_classes,
+        )
+        ddp_model = FSDP(
+            model,
+            auto_wrap_policy=auto_wrap_policy,
+            sharding_strategy=sharding_strategy,
+            mixed_precision=mp_policy,
+            device_id=rank,
+            use_orig_params=True,
+        )
+        log(f'FSDP wrapped: strategy={sharding_strategy.name}, mp_policy={mp_policy}')
     else:
-        ddp_model = model
+        model.to(device)
+        if args.world_size > 1:
+            # Gradient checkpointing on the decoder uses use_reentrant=False
+            # (see MixedDecoder.__init__), which is DDP-safe. All MixedDecoder
+            # parameters participate in the loss in this codebase (decoder + encoder
+            # + emb_exp; enc_proj/pos_emb are None when used), so we leave
+            # find_unused_parameters=False. Setting it to True with non-reentrant
+            # checkpointing adds a per-iteration Int bitmap allreduce that has been
+            # observed to mismatch across ranks and tear down the gloo process group.
+            ddp_model = DDP(model, device_ids=[rank])
+        else:
+            ddp_model = model
 
     params = ddp_model.parameters()
     optimizer = instantiate_torch_optimizer(args.optimizer_name, params, lr=args.learning_rate, **args.optimizer_params)
     scheduler = instantiate_torch_lr_scheduler(args.learning_rate_scheduler_name, optimizer, **args.learning_rate_scheduler_params)
 
-    # Mixed-precision setup. Decoder weights stay fp32; autocast wraps the forward.
-    # GradScaler is required only for fp16 (bf16 has fp32-comparable dynamic range).
-    amp_enabled = decoder_dtype in (DecoderDtype.Fp16, DecoderDtype.Bf16) and device.type == 'cuda'
+    # Mixed-precision setup. For DDP: weights stay fp32, autocast wraps forward,
+    # GradScaler is used only with fp16. For FSDP: param/reduce/buffer dtypes are
+    # already governed by the FSDP MixedPrecision policy, so autocast and
+    # GradScaler are not needed (and disabled here).
+    amp_enabled = (
+        not use_fsdp
+        and decoder_dtype in (DecoderDtype.Fp16, DecoderDtype.Bf16)
+        and device.type == 'cuda'
+    )
     amp_dtype = {DecoderDtype.Fp16: torch.float16, DecoderDtype.Bf16: torch.bfloat16}.get(decoder_dtype)
     scaler = torch.cuda.amp.GradScaler(enabled=(amp_enabled and decoder_dtype == DecoderDtype.Fp16))
-    log(f'AMP: enabled={amp_enabled}, dtype={amp_dtype}, scaler_enabled={scaler.is_enabled()}')
+    log(f'AMP: enabled={amp_enabled}, dtype={amp_dtype}, scaler_enabled={scaler.is_enabled()}, '
+        f'parallel={parallel_mode}')
 
     last_epoch, val_loss_min, shuffle = -1, None, False
     if checkpoint is not None:
-        optimizer.load_state_dict(checkpoint['optimizer'])
+        if use_fsdp:
+            # FSDP needs to remap a full optimizer state-dict to its sharded layout.
+            with FSDP.state_dict_type(
+                ddp_model,
+                StateDictType.FULL_STATE_DICT,
+                FullStateDictConfig(rank0_only=False),
+                FullOptimStateDictConfig(rank0_only=False),
+            ):
+                sharded_optim_state = FSDP.optim_state_dict_to_load(
+                    ddp_model, optimizer, checkpoint['optimizer'],
+                )
+            optimizer.load_state_dict(sharded_optim_state)
+        else:
+            optimizer.load_state_dict(checkpoint['optimizer'])
         scheduler.load_state_dict(checkpoint['scheduler'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
@@ -570,19 +705,48 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 val_loss_min = val_loss
                 best = True
 
-            checkpoint = {
-                'model': ddp_model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'scheduler': scheduler.state_dict(),
-                'last_epoch': epoch,
-                'val_loss_min': val_loss_min,
-            }
-            print(f'Saving checkpoint to {last_checkpoint_path}')
-            torch.save(checkpoint, last_checkpoint_path)
+        if use_fsdp:
+            # Gather full (unsharded) state-dicts on rank 0 with CPU offload, so the
+            # saved checkpoint format stays compatible with the existing DDP loader
+            # in MixedDecoder.load_pretrained (which strips 'module.' prefixes).
+            with FSDP.state_dict_type(
+                ddp_model,
+                StateDictType.FULL_STATE_DICT,
+                FullStateDictConfig(offload_to_cpu=True, rank0_only=True),
+                FullOptimStateDictConfig(offload_to_cpu=True, rank0_only=True),
+            ):
+                model_state = ddp_model.state_dict()
+                optim_state = FSDP.optim_state_dict(ddp_model, optimizer)
+            if rank == 0:
+                checkpoint = {
+                    'model': model_state,
+                    'optimizer': optim_state,
+                    'scheduler': scheduler.state_dict(),
+                    'last_epoch': epoch,
+                    'val_loss_min': val_loss_min,
+                }
+                print(f'Saving checkpoint to {last_checkpoint_path}')
+                torch.save(checkpoint, last_checkpoint_path)
+                if best:
+                    print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
+                    shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
+            # Other ranks must not race past while rank 0 writes (matters for resume).
+            dist.barrier()
+        else:
+            if rank == 0:
+                checkpoint = {
+                    'model': ddp_model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'scheduler': scheduler.state_dict(),
+                    'last_epoch': epoch,
+                    'val_loss_min': val_loss_min,
+                }
+                print(f'Saving checkpoint to {last_checkpoint_path}')
+                torch.save(checkpoint, last_checkpoint_path)
 
-            if best:
-                print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
-                shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
+                if best:
+                    print(f'New val loss minimum: {val_loss_min:.6f}. Saving checkpoint to {best_checkpoint_path}')
+                    shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
 
     cleanup()
 
