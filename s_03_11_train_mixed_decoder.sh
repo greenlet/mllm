@@ -97,9 +97,9 @@ train_epoch_steps=500
 val_epoch_steps=50
 # docs_batch_size=40
 # docs_batch_size=30
-# docs_batch_size=20
+docs_batch_size=20
 # docs_batch_size=15
-docs_batch_size=5
+# docs_batch_size=5
 world_size=4
 
 
@@ -127,7 +127,8 @@ export NCCL_DEBUG=WARN          # downgrade INFO noise but keep warnings/errors
 # "Connection closed by peer" failures on this cluster. Use INFO; switch back to
 # DETAIL only when diagnosing DDP correctness issues (mark-ready-twice, missing
 # gradients, etc.).
-export TORCH_DISTRIBUTED_DEBUG=INFO
+# export TORCH_DISTRIBUTED_DEBUG=INFO
+export TORCH_DISTRIBUTED_DEBUG=OFF
 export CUDA_LAUNCH_BLOCKING=1   # so CUDA errors point at the real op
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export PYTHONFAULTHANDLER=1
