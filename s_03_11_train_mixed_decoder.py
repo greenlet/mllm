@@ -27,11 +27,16 @@ from torch.distributed.fsdp import (
     FullOptimStateDictConfig,
 )
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
+from torch.distributed.device_mesh import init_device_mesh
 import torch.distributed.checkpoint as dcp
 from torch.distributed.checkpoint.state_dict import (
+    StateDictOptions,
     get_state_dict,
     set_state_dict,
+    get_optimizer_state_dict,
+    set_optimizer_state_dict,
 )
+from torch.distributed.checkpoint.stateful import Stateful
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
@@ -504,6 +509,24 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             transformer_auto_wrap_policy,
             transformer_layer_cls=layer_classes,
         )
+        # Pass a DeviceMesh so FSDP emits DTensor state_dict instead of the
+        # legacy/deprecated ShardedTensor. Without this, get_state_dict()
+        # crashes inside _get_model_state_dict on tiny/uneven params (e.g.
+        # LayerNorm bias of dim 768, or any param whose leading dim < world
+        # size, or under HYBRID_SHARD) with:
+        #   NotImplementedError: Only single local shard is supported.
+        # See pytorch/pytorch#132366 and pytorch/pytorch#141799.
+        if sharding_strategy == ShardingStrategy.HYBRID_SHARD:
+            # 2D mesh: (replicate_across_nodes, shard_within_node).
+            # mp.spawn here is single-node, so the replicate dim is 1; this
+            # makes HYBRID effectively equivalent to FULL on a single node
+            # but keeps the API consistent if the script is later launched
+            # multi-node with the same world_size.
+            device_mesh = init_device_mesh(
+                'cuda', (1, args.world_size), mesh_dim_names=('replicate', 'shard'),
+            )
+        else:
+            device_mesh = init_device_mesh('cuda', (args.world_size,))
         ddp_model = FSDP(
             model,
             auto_wrap_policy=auto_wrap_policy,
@@ -511,8 +534,10 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             mixed_precision=mp_policy,
             device_id=rank,
             use_orig_params=True,
+            device_mesh=device_mesh,
         )
-        log(f'FSDP wrapped: strategy={sharding_strategy.name}, mp_policy={mp_policy}')
+        log(f'FSDP wrapped: strategy={sharding_strategy.name}, mp_policy={mp_policy}, '
+            f'device_mesh={device_mesh}')
     else:
         model.to(device)
         if args.world_size > 1:
@@ -546,44 +571,61 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         f'parallel={parallel_mode}')
 
     last_epoch, val_loss_min, shuffle = -1, None, False
+
     if resume_from_fsdp_shards:
-        # Load sharded model + optimizer state via the modern DCP state_dict
-        # helpers (torch >= 2.2). These use DTensor under FSDP with
-        # use_orig_params=True and avoid the deprecated ShardedTensor path
-        # whose rank-0 serialization was the source of the previous hang.
-        # All ranks read their own shard files in parallel.
-        log(f'FSDP: loading sharded checkpoint from {fsdp_last_dir}')
-        msd, osd = get_state_dict(ddp_model, optimizer)
-        state = {'model': msd, 'optim': osd}
-        dcp.load(
-            state_dict=state,
-            storage_reader=dcp.FileSystemReader(str(fsdp_last_dir)),
-        )
-        set_state_dict(
-            ddp_model, optimizer,
-            model_state_dict=state['model'],
-            optim_state_dict=state['optim'],
+        # Legacy: a previous run saved sharded DCP shards into `last_fsdp/`.
+        # We no longer write that format (see save block below); load the
+        # shards with the AppState/Stateful pattern just to migrate forward.
+        # New runs will overwrite `last.pth` on the next checkpoint.
+        _dcp = dcp
+        _sd_opts = StateDictOptions(cpu_offload=True)
+        class _AppState(Stateful):
+            def __init__(self, m, o):
+                self._m, self._o = m, o
+            def state_dict(self):
+                msd, osd = get_state_dict(self._m, self._o, options=_sd_opts)
+                return {'model': msd, 'optim': osd}
+            def load_state_dict(self, sd):
+                set_state_dict(
+                    self._m, self._o,
+                    model_state_dict=sd['model'],
+                    optim_state_dict=sd['optim'],
+                    options=_sd_opts,
+                )
+        log(f'FSDP: loading legacy sharded checkpoint from {fsdp_last_dir}')
+        app = _AppState(ddp_model, optimizer)
+        _dcp.load(
+            state_dict={'app': app},
+            storage_reader=_dcp.FileSystemReader(str(fsdp_last_dir)),
         )
         meta = torch.load(fsdp_last_meta_path, map_location='cpu')
         scheduler.load_state_dict(meta['scheduler'])
         last_epoch = meta['last_epoch']
         val_loss_min = meta['val_loss_min']
-        log(f'FSDP: sharded checkpoint loaded; resuming from epoch {last_epoch + 1}, '
-            f'val_loss_min={val_loss_min}')
+        log(f'FSDP: legacy sharded checkpoint loaded; resuming from epoch '
+            f'{last_epoch + 1}, val_loss_min={val_loss_min}')
     elif checkpoint is not None:
         if use_fsdp:
-            # Legacy path: resuming an FSDP run from a single-file full-state
-            # checkpoint produced before sharded saves were introduced.
-            with FSDP.state_dict_type(
+            # FSDP1 marks the outermost wrapper as _is_root only during the
+            # first forward (_lazy_init). set_optimizer_state_dict's verifier
+            # walks the module tree, finds auto-wrapped FSDP submodules, and
+            # then checks for an FSDP root -- which does not exist yet at this
+            # point in training. Force lazy init here so the verifier sees a
+            # proper root; otherwise it raises:
+            #   "The model has FSDP modules but no FSDP root module exists."
+            ddp_model._lazy_init()
+            # Counterpart to get_optimizer_state_dict in the save path: this
+            # takes the full (unsharded) optimizer state on every rank and
+            # re-shards it into the FSDP1 optimizer in-place. Mirrors the
+            # per-parameter DTensor gather and avoids FSDP.optim_state_dict_to_load,
+            # which goes through the same all_gather_object code path that
+            # caused the save-time hang.
+            set_optimizer_state_dict(
                 ddp_model,
-                StateDictType.FULL_STATE_DICT,
-                FullStateDictConfig(rank0_only=False),
-                FullOptimStateDictConfig(rank0_only=False),
-            ):
-                sharded_optim_state = FSDP.optim_state_dict_to_load(
-                    ddp_model, optimizer, checkpoint['optimizer'],
-                )
-            optimizer.load_state_dict(sharded_optim_state)
+                optimizer,
+                optim_state_dict=checkpoint['optimizer'],
+                options=StateDictOptions(full_state_dict=True, cpu_offload=True),
+            )
         else:
             optimizer.load_state_dict(checkpoint['optimizer'])
         scheduler.load_state_dict(checkpoint['scheduler'])
@@ -654,6 +696,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         log(ddp_model)
 
         grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
+        grad_log_interval = max(grad_log_interval, 1)
         prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
         if prev_train_steps > 0:
             grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
@@ -762,39 +805,119 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 best = True
 
         if use_fsdp:
-            # Sharded save via the modern DCP state_dict API. get_state_dict()
-            # returns DTensor-based shards (with use_orig_params=True under
-            # FSDP) and runs the heavy work in parallel across ranks. The
-            # previous SHARDED_STATE_DICT + FSDP.optim_state_dict() path went
-            # through the deprecated ShardedTensor flow, which serialized the
-            # optimizer-state conversion on rank 0 (GPU 0 at 100%, GPUs 1..N
-            # at 0% for hours).
-            msd, osd = get_state_dict(ddp_model, optimizer)
-            state = {'model': msd, 'optim': osd}
+            # Save via the standard FSDP full-state-dict + rank-0 torch.save
+            # pattern (this is what HF Trainer and Qwen's finetune.py use).
+            #
+            # All ranks enter the FSDP.state_dict_type context, then call
+            # ddp_model.state_dict() / FSDP.optim_state_dict() — these collectives
+            # gather all shards onto rank 0 (offload_to_cpu=True so the gather
+            # happens in CPU memory, ~3 GB for Qwen2.5-1.5B+BERT in bf16,
+            # avoiding GPU OOM). Rank 0 then writes a single .pth file in
+            # the same format as the non-FSDP path; resume goes through the
+            # existing `last_checkpoint_path` + `FSDP.optim_state_dict_to_load`
+            # branch above.
+            #
+            # Why not torch.distributed.checkpoint sharded save:
+            # On torch 2.3 + FSDP1 the DCP planner serialises a lot of
+            # Python work on the coordinator rank for billion-parameter
+            # models with many small tensors (LayerNorm/bias), which looks
+            # exactly like a hang (one GPU at 100%, others idle for many
+            # minutes). Full-state-dict + single-file save sidesteps the
+            # planner entirely and finishes in seconds.
+            import sys, time
+            def _rlog(msg: str):
+                print(f'[rank{rank}] {msg}', flush=True)
+                sys.stdout.flush()
+
+            dist.barrier()
+            t0 = time.time()
+            _rlog('ckpt: gathering model state_dict via DTensor.full_tensor()')
+            # Per-parameter gather pattern from the PyTorch FSDP tutorial:
+            #   https://docs.pytorch.org/tutorials/intermediate/FSDP_tutorial.html
+            # FSDP was wrapped with use_orig_params=True and a DeviceMesh, so
+            # `ddp_model.state_dict()` returns DTensor shards. We iterate the
+            # sharded dict and call `.full_tensor()` on each param to all-gather
+            # its full tensor across ranks; only rank 0 keeps a CPU copy so peak
+            # CPU memory is bounded to a single full param at a time on the
+            # other ranks (vs. holding the entire model on every rank with the
+            # legacy FULL_STATE_DICT + offload_to_cpu path).
+            sharded_msd = ddp_model.state_dict()
+            full_msd: dict = {}
+            for param_name, sharded_param in sharded_msd.items():
+                if hasattr(sharded_param, 'full_tensor'):
+                    full_param = sharded_param.full_tensor()
+                else:
+                    # Non-DTensor entries (e.g. plain buffers already replicated).
+                    full_param = sharded_param
+                if rank == 0:
+                    full_msd[param_name] = full_param.detach().cpu()
+                else:
+                    del full_param
+            del sharded_msd
+            _rlog(f'ckpt: model state_dict gather done in {time.time()-t0:.1f}s')
+
+            # Optimizer state: do NOT use FSDP.optim_state_dict(rank0_only=True)
+            # nor torch.distributed.checkpoint.state_dict.get_optimizer_state_dict.
+            # On torch 2.3 + FSDP1 + use_orig_params=True, both paths route
+            # through `gather_object` of pickled per-parameter state on the
+            # coordinator rank, which presents as a multi-minute hang with
+            # one CPU at 100% and the other ranks blocked in NCCL.
+            #
+            # Mirror the model gather: walk optimizer.state_dict() and call
+            # `.full_tensor()` on each DTensor entry. Non-tensor / non-DTensor
+            # entries (e.g. Adam's `step` scalar) are passed through. Param
+            # groups are kept verbatim. The resulting dict has the same shape
+            # as a non-distributed `Adam.state_dict()` and is consumed on
+            # resume by `set_optimizer_state_dict(full_state_dict=True, ...)`,
+            # which re-shards it back into the FSDP1 optimizer.
+            t0o = time.time()
+            _rlog('ckpt: gathering optim state_dict via per-tensor full_tensor()')
+            local_osd = optimizer.state_dict()
+            full_state: dict = {}
+            for pid, pstate in local_osd['state'].items():
+                gathered: dict = {}
+                for k, v in pstate.items():
+                    if hasattr(v, 'full_tensor'):
+                        full_v = v.full_tensor()
+                        if rank == 0:
+                            gathered[k] = full_v.detach().cpu()
+                        else:
+                            del full_v
+                    elif torch.is_tensor(v):
+                        if rank == 0:
+                            gathered[k] = v.detach().cpu()
+                    else:
+                        if rank == 0:
+                            gathered[k] = v
+                if rank == 0:
+                    full_state[pid] = gathered
+            full_osd = {
+                'state': full_state,
+                'param_groups': local_osd['param_groups'],
+            } if rank == 0 else {}
+            del local_osd
+            _rlog(f'ckpt: optim state_dict gather done in {time.time()-t0o:.1f}s')
+
             if rank == 0:
-                print(f'Saving FSDP sharded checkpoint to {fsdp_last_dir}')
-            dcp.save(
-                state_dict=state,
-                storage_writer=dcp.FileSystemWriter(str(fsdp_last_dir)),
-            )
-            if rank == 0:
-                torch.save(
-                    {
-                        'scheduler': scheduler.state_dict(),
-                        'last_epoch': epoch,
-                        'val_loss_min': val_loss_min,
-                    },
-                    fsdp_last_meta_path,
-                )
+                t1 = time.time()
+                checkpoint = {
+                    'model': full_msd,
+                    'optimizer': full_osd,
+                    'scheduler': scheduler.state_dict(),
+                    'last_epoch': epoch,
+                    'val_loss_min': val_loss_min,
+                }
+                print(f'Saving checkpoint to {last_checkpoint_path}', flush=True)
+                torch.save(checkpoint, last_checkpoint_path)
+                print(f'ckpt: torch.save done in {time.time()-t1:.1f}s', flush=True)
                 if best:
-                    print(f'New val loss minimum: {val_loss_min:.6f}. Copying sharded '
-                          f'checkpoint to {fsdp_best_dir}')
-                    if fsdp_best_dir.exists():
-                        shutil.rmtree(fsdp_best_dir)
-                    shutil.copytree(fsdp_last_dir, fsdp_best_dir)
-                    shutil.copyfile(fsdp_last_meta_path, fsdp_best_meta_path)
+                    print(f'New val loss minimum: {val_loss_min:.6f}. Saving '
+                          f'checkpoint to {best_checkpoint_path}', flush=True)
+                    shutil.copyfile(last_checkpoint_path, best_checkpoint_path)
+            # Free the gathered full state on rank 0 before the next epoch.
+            del full_msd, full_osd
             # Keep ranks in lockstep so the next epoch doesn't race ahead of
-            # rank 0's metadata write / best-copy.
+            # rank 0's write.
             dist.barrier()
         else:
             if rank == 0:

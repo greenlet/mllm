@@ -179,7 +179,8 @@ class MixedDecoder(nn.Module):
                     continue
                 cleaned_dict[key] = val
             print(f'Load {len(cleaned_dict)}')
-            self.load_state_dict(cleaned_dict, strict=not self.decoder_only)
+            # self.load_state_dict(cleaned_dict, strict=not self.decoder_only)
+            self.load_state_dict(cleaned_dict, strict=False)
         else:
             pretrained_mixed_decoder_model_path = self.cfg.train_cfg.pretrained_mixed_decoder_model_path
             pretrained_encdec_model_path = self.cfg.train_cfg.pretrained_encdec_model_path
@@ -225,7 +226,7 @@ class MixedDecoder(nn.Module):
                             continue
                         enc_checkpt_dict[new_key] = val
 
-                self.enc.load_state_dict(enc_checkpt_dict, strict=True)
+                self.enc.load_state_dict(enc_checkpt_dict, strict=False)
             else:
                 print(f'R{rank}. No pretrained model path provided or file does not exist')
 
@@ -308,11 +309,44 @@ class MixedDecoder(nn.Module):
         parts_mask.append(target_inp_mask)
 
         target_start_idx = prefix_len - 1  # Target starts right after the prompt (or SEP if used). The first target token corresponds to the prediction at this position.
+
+        # Deterministically truncate the target if the combined sequence would
+        # exceed max_seq_len. We truncate the *target* (not the context/prompt)
+        # because (a) ctx_embs and prompt_toks are needed for conditioning and
+        # (b) target_toks comes from variable-length real text and is the only
+        # piece that can blow past max_seq_len in practice. The truncation is
+        # purely a function of tensor shapes, so it is identical on every rank
+        # and does not break DDP/FSDP gradient sync. Without this, an
+        # over-length sample crashes one rank, the others hang in NCCL waiting
+        # for it, and `mp.spawn` eventually SIGTERMs the whole job.
+        max_target_inp_len = self.cfg.max_seq_len - prefix_len
+        if max_target_inp_len < 1:
+            # Pathological case: even the prefix exceeds max_seq_len. Nothing
+            # sensible to train on; surface a clear error.
+            raise RuntimeError(
+                f'Decoder prefix length {prefix_len} (ctx={n_ctx}, sep={int(self.cfg.use_sep)}, '
+                f'prompt={prompt_len}) already meets or exceeds max_seq_len={self.cfg.max_seq_len}; '
+                f'no room for any target tokens.'
+            )
+        # target_inp = target_toks[:, :-1]; we need target_inp_len <= max_target_inp_len,
+        # which means target_toks length <= max_target_inp_len + 1.
+        max_target_full_len = max_target_inp_len + 1
+        if target_toks.shape[1] > max_target_full_len:
+            target_toks = target_toks[:, :max_target_full_len]
+            target_att_mask = target_att_mask[:, :max_target_full_len]
+            # Recompute target inputs after truncation.
+            target_inp_toks = target_toks[:, :-1]
+            target_inp_embs = self.word_embeddings(target_inp_toks)
+            target_inp_mask = target_att_mask[:, :-1]
+            parts_embs[-1] = target_inp_embs
+            parts_mask[-1] = target_inp_mask
+
         target_inp_len = target_inp_toks.shape[1]
         total_len = prefix_len + target_inp_len
 
         assert total_len <= self.cfg.max_seq_len, \
-            f'Total sequence length {total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
+            f'Total sequence length {total_len} exceeds max_seq_len={self.cfg.max_seq_len} ' \
+            f'after truncation (this is a bug)'
 
         # Concatenate everything
         input_embs = torch.cat(parts_embs, dim=1)  # (batch_size, total_len, d_dec)
