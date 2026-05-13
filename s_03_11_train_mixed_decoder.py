@@ -332,6 +332,13 @@ def setup(rank, world_size):
         return
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
+    # Pin this rank to its GPU BEFORE NCCL init. Without this, NCCL may bind
+    # multiple ranks to the same device and fail with
+    #   ncclInvalidUsage: Duplicate GPU detected : rank N and rank M both on CUDA device ...
+    # which then makes any later collective (broadcast_object_list inside
+    # FSDP.optim_state_dict_to_load, etc.) crash.
+    if torch.cuda.is_available():
+        torch.cuda.set_device(rank)
     backend = 'nccl'
     # Default timeout is 30 min. FSDP's FULL_STATE_DICT save path with
     # rank0_only=True + offload_to_cpu=True can keep rank 0 busy for longer than
@@ -613,19 +620,80 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             # point in training. Force lazy init here so the verifier sees a
             # proper root; otherwise it raises:
             #   "The model has FSDP modules but no FSDP root module exists."
-            ddp_model._lazy_init()
-            # Counterpart to get_optimizer_state_dict in the save path: this
-            # takes the full (unsharded) optimizer state on every rank and
-            # re-shards it into the FSDP1 optimizer in-place. Mirrors the
-            # per-parameter DTensor gather and avoids FSDP.optim_state_dict_to_load,
-            # which goes through the same all_gather_object code path that
-            # caused the save-time hang.
-            set_optimizer_state_dict(
-                ddp_model,
-                optimizer,
-                optim_state_dict=checkpoint['optimizer'],
-                options=StateDictOptions(full_state_dict=True, cpu_offload=True),
-            )
+            # Note: FSDP._lazy_init was moved to torch.distributed.fsdp.
+            # _runtime_utils._lazy_init(state, root_module) in PyTorch 2.x.
+            from torch.distributed.fsdp._runtime_utils import _lazy_init as _fsdp_lazy_init
+            _fsdp_lazy_init(ddp_model, ddp_model)
+            # Normalize legacy optimizer state: older runs saved
+            # `optimizer.state_dict()` verbatim, which keys `state` by integer
+            # param ids and lists those same ids under each `param_groups`
+            # entry. `set_optimizer_state_dict(full_state_dict=True, ...)`
+            # expects `state` keyed by FQN and `param_groups[i]['params']` to
+            # be FQNs as well. Convert in-place; new-format checkpoints
+            # (already FQN-keyed) pass through unchanged.
+            opt_sd = checkpoint['optimizer']
+            opt_state = opt_sd.get('state', {})
+            if opt_state and all(isinstance(k, int) for k in opt_state.keys()):
+                # Build pid -> canonical FQN map. `named_parameters()` on an
+                # FSDP1 root with auto_wrap inserts `_fsdp_wrapped_module.`
+                # segments into the names, which do NOT match the FQNs that
+                # `set_optimizer_state_dict` looks up. DCP's `_get_fqns`
+                # strips FSDP/DDP/compiler prefixes the same way the loader
+                # does internally, so use it directly.
+                from torch.distributed.checkpoint.state_dict import _get_fqns
+                pid_to_fqn: dict = {}
+                for i, (raw_name, _) in enumerate(ddp_model.named_parameters()):
+                    fqns_set = _get_fqns(ddp_model, raw_name)
+                    # With use_orig_params=True, each parameter maps to exactly one FQN.
+                    assert len(fqns_set) == 1, (
+                        f'Expected 1 FQN for {raw_name!r}, got {fqns_set!r}.'
+                    )
+                    pid_to_fqn[i] = next(iter(fqns_set))
+                new_state = {pid_to_fqn[pid]: st for pid, st in opt_state.items() if pid in pid_to_fqn}
+                new_param_groups = []
+                for pg in opt_sd.get('param_groups', []):
+                    pg2 = dict(pg)
+                    pg2['params'] = [pid_to_fqn[p] for p in pg.get('params', []) if p in pid_to_fqn]
+                    new_param_groups.append(pg2)
+                opt_sd = {'state': new_state, 'param_groups': new_param_groups}
+            # Tolerate incomplete optimizer state: with FSDP1 + use_orig_params=True
+            # a parameter whose local shard is empty on the saving rank never
+            # had Adam state allocated, so its FQN can be missing from
+            # `state`. `_split_optim_state_dict` expects every parameter in
+            # `param_groups[*]['params']` to have an entry. We CANNOT just
+            # insert an empty dict for those entries either: with
+            # `full_state_dict=True` the loader allocates a 0-sized exp_avg
+            # tensor from `{}` and then `optimizer.step()` crashes with
+            #   RuntimeError: The size of tensor a (0) must match the size of
+            #   tensor b (N) at non-singleton dimension 0
+            # inside `torch._foreach_lerp_`.
+            #
+            # If we detect this corruption we skip the optimizer-state load
+            # entirely. Model weights, scheduler, last_epoch and val_loss_min
+            # are still restored from the checkpoint; only Adam's running
+            # moments are reset. The next save will write a complete
+            # state-dict (see save block: union over ranks), so this branch
+            # is only taken once when migrating from a legacy broken
+            # checkpoint.
+            opt_state = opt_sd.get('state', {})
+            opt_pgs = opt_sd.get('param_groups', [])
+            referenced_fqns: set = set()
+            for pg in opt_pgs:
+                referenced_fqns.update(pg.get('params', []))
+            missing = [fqn for fqn in referenced_fqns if fqn not in opt_state]
+            if missing:
+                log(f'FSDP resume: optimizer state is incomplete '
+                    f'({len(missing)}/{len(referenced_fqns)} entries missing, '
+                    f'e.g. {missing[:3]}). Skipping optimizer-state load; '
+                    f'Adam moments will reinitialize. Model weights, scheduler '
+                    f'and epoch counter are still restored.')
+            else:
+                set_optimizer_state_dict(
+                    ddp_model,
+                    optimizer,
+                    optim_state_dict=opt_sd,
+                    options=StateDictOptions(full_state_dict=True, cpu_offload=True),
+                )
         else:
             optimizer.load_state_dict(checkpoint['optimizer'])
         scheduler.load_state_dict(checkpoint['scheduler'])
@@ -866,13 +934,25 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             # Mirror the model gather: walk optimizer.state_dict() and call
             # `.full_tensor()` on each DTensor entry. Non-tensor / non-DTensor
             # entries (e.g. Adam's `step` scalar) are passed through. Param
-            # groups are kept verbatim. The resulting dict has the same shape
-            # as a non-distributed `Adam.state_dict()` and is consumed on
-            # resume by `set_optimizer_state_dict(full_state_dict=True, ...)`,
-            # which re-shards it back into the FSDP1 optimizer.
+            # groups are rewritten with FQNs (not int pids) so the resulting
+            # dict matches what `set_optimizer_state_dict(full_state_dict=True, ...)`
+            # expects on resume; it indexes `state` by FQN. Without this
+            # rewrite, loading crashes with
+            #   KeyError: 'enc.bert_model.embeddings.word_embeddings.weight'
+            # inside `_split_optim_state_dict`.
             t0o = time.time()
             _rlog('ckpt: gathering optim state_dict via per-tensor full_tensor()')
             local_osd = optimizer.state_dict()
+            # pid -> canonical FQN. `named_parameters()` on an FSDP1 root
+            # with auto_wrap returns names containing `_fsdp_wrapped_module.`;
+            # DCP's `_get_fqns` strips those (and DDP/compiler) prefixes the
+            # same way the loader does internally.
+            from torch.distributed.checkpoint.state_dict import _get_fqns as _dcp_get_fqns
+            pid_to_fqn: dict = {}
+            for i, (raw_name, _) in enumerate(ddp_model.named_parameters()):
+                _fqns = _dcp_get_fqns(ddp_model, raw_name)
+                assert len(_fqns) == 1, f'Expected 1 FQN for {raw_name!r}, got {_fqns!r}.'
+                pid_to_fqn[i] = next(iter(_fqns))
             full_state: dict = {}
             for pid, pstate in local_osd['state'].items():
                 gathered: dict = {}
@@ -890,11 +970,17 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                         if rank == 0:
                             gathered[k] = v
                 if rank == 0:
-                    full_state[pid] = gathered
-            full_osd = {
-                'state': full_state,
-                'param_groups': local_osd['param_groups'],
-            } if rank == 0 else {}
+                    fqn = pid_to_fqn.get(pid, pid)
+                    full_state[fqn] = gathered
+            if rank == 0:
+                remapped_pgs = []
+                for pg in local_osd['param_groups']:
+                    pg2 = dict(pg)
+                    pg2['params'] = [pid_to_fqn.get(p, p) for p in pg.get('params', [])]
+                    remapped_pgs.append(pg2)
+                full_osd = {'state': full_state, 'param_groups': remapped_pgs}
+            else:
+                full_osd = {}
             del local_osd
             _rlog(f'ckpt: optim state_dict gather done in {time.time()-t0o:.1f}s')
 
@@ -1008,3 +1094,4 @@ if __name__ == '__main__':
         ArgsMixedDecoderTrain, main, 'Train MixedDecoder model (Encoder-Decoder with causal attention) multi GPU training.', exception_handler=rethrow,
     )
 
+    
