@@ -272,6 +272,14 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
   - [Lepikhin et al., *GShard* (2020)](../papers/moe_2020_gshard.md)
   - [Fedus et al., *Switch Transformer* (2021)](../papers/moe_2021_switch-transformer.md)
   - [Dai et al., *DeepSeek-MoE* (2024)](../papers/moe_2024_deepseek-moe.md)
+- [Attention & normalization backbone](attention/attention.md) — Transformer → tied embeddings → RMSNorm → SwiGLU → QK-Norm → GQA → FlashAttention-2. *Used in:* every Qwen text/multimodal model; the invariant block recipe across Qwen 1 → Qwen 3.
+  - [Vaswani et al., *Attention Is All You Need* (2017)](../papers/attention_2017_transformer.md)
+  - [Press & Wolf, *Using the Output Embedding to Improve LMs* (2016)](../papers/attention_2016_tied-embeddings.md)
+  - [Zhang & Sennrich, *Root Mean Square Layer Normalization* (2019)](../papers/attention_2019_rmsnorm.md)
+  - [Shazeer, *GLU Variants Improve Transformer (SwiGLU)* (2020)](../papers/attention_2020_swiglu.md)
+  - [Henry et al., *Query-Key Normalization for Transformers* (2020)](../papers/attention_2020_qk-norm.md)
+  - [Ainslie et al., *GQA: Generalized Multi-Query Attention* (2023)](../papers/attention_2023_gqa.md)
+  - [Dao, *FlashAttention-2* (2023)](../papers/attention_2023_flash-attention-2.md)
 
 *(More threads will be added as their papers are recapped.)*
 
@@ -298,7 +306,8 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 
 ### Architecture & attention
 
-**Thread:** [Positional encoding & long-context scaling](positional/positional.md)
+**Thread:** [Attention & normalization backbone](attention/attention.md) (Transformer · tied embeddings · RMSNorm · SwiGLU · QK-Norm · GQA · FlashAttention-2)
+**Thread:** [Positional encoding & long-context scaling](positional/positional.md) (RoPE · NTK · YaRN · DCA)
 
 - [Vaswani et al., *Attention Is All You Need* (2017)][Transformer]
 - [Su et al., *RoFormer: Rotary Position Embedding* (2021)][RoPE]
@@ -441,16 +450,16 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
 [Qwen3-Emb]: https://arxiv.org/abs/2506.05176 "Qwen3-Embedding/Reranker (2025)"
 [QwenAgent]: https://github.com/QwenLM/Qwen-Agent "Qwen-Agent framework"
-[Transformer]: https://arxiv.org/abs/1706.03762 "Vaswani et al., Attention Is All You Need (2017)"
+[Transformer]: ../papers/attention_2017_transformer.md "Vaswani et al., Attention Is All You Need (2017) — local recap"
 [RoPE]: ../papers/positional_2021_rope-roformer.md "Su et al., RoFormer: Rotary Position Embedding (2021) — local recap"
 [NTK]: ../papers/positional_2023_ntk-aware-rope.md "NTK-aware RoPE scaling (bloc97, 2023) — local recap"
 [YaRN]: ../papers/positional_2023_yarn-context-extension.md "Peng et al., YaRN: Efficient Context Window Extension (2023) — local recap"
-[GQA]: https://arxiv.org/abs/2305.13245 "Ainslie et al., GQA (2023)"
-[SwiGLU]: https://arxiv.org/abs/2002.05202 "Shazeer, GLU Variants Improve Transformer (2020)"
-[RMSNorm]: https://arxiv.org/abs/1910.07467 "Zhang & Sennrich, Root Mean Square Layer Normalization (2019)"
-[QKNorm]: https://arxiv.org/abs/2010.04245 "Henry et al., Query-Key Normalization for Transformers (2020)"
-[FlashAttn]: https://arxiv.org/abs/2307.08691 "Dao, FlashAttention-2 (2023)"
-[TiedEmb]: https://arxiv.org/abs/1608.05859 "Press & Wolf, Using the Output Embedding to Improve LMs (2016)"
+[GQA]: ../papers/attention_2023_gqa.md "Ainslie et al., GQA (2023) — local recap"
+[SwiGLU]: ../papers/attention_2020_swiglu.md "Shazeer, GLU Variants Improve Transformer (2020) — local recap"
+[RMSNorm]: ../papers/attention_2019_rmsnorm.md "Zhang & Sennrich, Root Mean Square Layer Normalization (2019) — local recap"
+[QKNorm]: ../papers/attention_2020_qk-norm.md "Henry et al., Query-Key Normalization for Transformers (2020) — local recap"
+[FlashAttn]: ../papers/attention_2023_flash-attention-2.md "Dao, FlashAttention-2 (2023) — local recap"
+[TiedEmb]: ../papers/attention_2016_tied-embeddings.md "Press & Wolf, Using the Output Embedding to Improve LMs (2016) — local recap"
 [DCA]: ../papers/positional_2024_dca-dual-chunk-attention.md "An et al., Training-Free Long-Context Scaling via Dual Chunk Attention (2024) — local recap"
 [BPE]: https://arxiv.org/abs/1508.07909 "Sennrich et al., Neural MT of Rare Words with Subword Units (BPE, 2015)"
 [ByteBPE]: https://arxiv.org/abs/1909.03341 "Wang et al., Neural MT with Byte-Level Subwords (2019)"
