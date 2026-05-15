@@ -443,6 +443,44 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
     else:
         if rank == 0:
             to_yaml_file(train_path / MIXED_DECODER_MODEL_CFG_FNAME, model_cfg)
+
+    # Detect optimizer override on resume. If the checkpoint was produced with
+    # a different optimizer class or different optimizer kwargs than what the
+    # current CLI requests, we throw away the saved optimizer + scheduler state
+    # and build fresh ones from the CLI args. Use case: switching `Adam` ->
+    # `AdamW` and/or changing the learning rate mid-training. `learning_rate`
+    # alone is intentionally NOT part of the comparison: when the optimizer is
+    # unchanged we restore its state (which carries the LR), and the scheduler
+    # then continues from where it left off.
+    optimizer_changed = False
+    if checkpoint is not None:
+        prev_opt_name = checkpoint.get('optimizer_name')
+        prev_opt_params = checkpoint.get('optimizer_params')
+        if prev_opt_name is None:
+            # Legacy checkpoint (pre-override-support). Fall back to the
+            # persisted model-cfg YAML, which records the optimizer used by
+            # the run that wrote the checkpoint.
+            cfg_yaml_path = train_path / MIXED_DECODER_MODEL_CFG_FNAME
+            if cfg_yaml_path.exists():
+                try:
+                    prev_cfg = parse_yaml_file_as(MixedDecoderCfg, cfg_yaml_path)
+                    if prev_cfg.train_cfg.optimizer is not None:
+                        prev_opt_name = prev_cfg.train_cfg.optimizer.cls_name
+                        prev_opt_params = prev_cfg.train_cfg.optimizer.params
+                except Exception as e:
+                    log(f'Optimizer-change detection: failed to read prior cfg from '
+                        f'{cfg_yaml_path} ({e}); assuming no change.')
+        cur_params = dict(args.optimizer_params or {})
+        prv_params = dict(prev_opt_params or {})
+        if prev_opt_name != args.optimizer_name or prv_params != cur_params:
+            optimizer_changed = True
+            log(f'Optimizer change detected on resume: '
+                f'{prev_opt_name}({prv_params}) -> {args.optimizer_name}({cur_params}). '
+                f'Building fresh optimizer; resetting scheduler.')
+            if rank == 0:
+                # Refresh the persisted YAML so it matches the optimizer
+                # actually in use from this point on.
+                to_yaml_file(train_path / MIXED_DECODER_MODEL_CFG_FNAME, model_cfg)
     tkz_enc = AutoTokenizer.from_pretrained(args.bert_model_name)
     tkz_dec = AutoTokenizer.from_pretrained(decoder_model_name)
     # We tokenize raw documents in full and chunk/truncate downstream, so HF's
@@ -612,7 +650,12 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         log(f'FSDP: legacy sharded checkpoint loaded; resuming from epoch '
             f'{last_epoch + 1}, val_loss_min={val_loss_min}')
     elif checkpoint is not None:
-        if use_fsdp:
+        if optimizer_changed:
+            # User requested a different optimizer (and/or kwargs). Skip
+            # restoring optimizer + scheduler state entirely. Model weights,
+            # epoch counter and val_loss_min are still loaded below.
+            log('Skipping optimizer/scheduler state restore due to optimizer change.')
+        elif use_fsdp:
             # FSDP1 marks the outermost wrapper as _is_root only during the
             # first forward (_lazy_init). set_optimizer_state_dict's verifier
             # walks the module tree, finds auto-wrapped FSDP submodules, and
@@ -696,7 +739,8 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 )
         else:
             optimizer.load_state_dict(checkpoint['optimizer'])
-        scheduler.load_state_dict(checkpoint['scheduler'])
+        if not optimizer_changed:
+            scheduler.load_state_dict(checkpoint['scheduler'])
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
         del checkpoint
@@ -992,6 +1036,8 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                     'scheduler': scheduler.state_dict(),
                     'last_epoch': epoch,
                     'val_loss_min': val_loss_min,
+                    'optimizer_name': args.optimizer_name,
+                    'optimizer_params': dict(args.optimizer_params or {}),
                 }
                 print(f'Saving checkpoint to {last_checkpoint_path}', flush=True)
                 torch.save(checkpoint, last_checkpoint_path)
@@ -1013,6 +1059,8 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                     'scheduler': scheduler.state_dict(),
                     'last_epoch': epoch,
                     'val_loss_min': val_loss_min,
+                    'optimizer_name': args.optimizer_name,
+                    'optimizer_params': dict(args.optimizer_params or {}),
                 }
                 print(f'Saving checkpoint to {last_checkpoint_path}')
                 torch.save(checkpoint, last_checkpoint_path)
