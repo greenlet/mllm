@@ -104,6 +104,9 @@ world_size=4
 
 
 learning_rate=0.00005
+# If > 0, overrides the current learning rate by rebuilding optimizer and scheduler
+# from scratch (any restored optimizer/scheduler state from checkpoint is discarded).
+learning_rate_override=0
 random_seed=200
 
 # optimizer_name='AdamW'
@@ -168,6 +171,7 @@ python s_03_11_train_mixed_decoder.py \
   --device $device \
   --epochs $epochs \
   --learning-rate $learning_rate \
+  --learning-rate-override $learning_rate_override \
   --optimizer-name $optimizer_name \
   --optimizer-params "$optimizer_params" \
   --learning-rate-scheduler-name $learning_rate_scheduler_name \

@@ -230,6 +230,14 @@ class ArgsMixedDecoderTrain(BaseModel):
         description='Initial learning rate of the training process.',
         cli=('--learning-rate',)
     )
+    learning_rate_override: float = Field(
+        0.0,
+        description='If > 0, override the current learning rate by rebuilding optimizer and '
+            'scheduler from scratch with this LR (any restored optimizer/scheduler state from '
+            'checkpoint is discarded; last_epoch and val_loss_min are still honored). '
+            'If <= 0, no override is applied.',
+        cli=('--learning-rate-override',),
+    )
     optimizer_name: str = Field(
         'AdamW',
         description='Optimizer class name.',
@@ -744,6 +752,18 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         last_epoch = checkpoint['last_epoch']
         val_loss_min = checkpoint['val_loss_min']
         del checkpoint
+
+    if args.learning_rate_override > 0:
+        log(f'learning_rate_override={args.learning_rate_override} > 0: rebuilding optimizer '
+            f'({args.optimizer_name}) and scheduler ({args.learning_rate_scheduler_name}) from '
+            f'scratch; any restored optimizer/scheduler state is discarded.')
+        optimizer = instantiate_torch_optimizer(
+            args.optimizer_name, ddp_model.parameters(),
+            lr=args.learning_rate_override, **args.optimizer_params,
+        )
+        scheduler = instantiate_torch_lr_scheduler(
+            args.learning_rate_scheduler_name, optimizer, **args.learning_rate_scheduler_params,
+        )
 
     n_special_toks = 1000
     if args.train_ds_type == MixedDecoderDsType.Cite:
