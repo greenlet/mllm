@@ -204,7 +204,8 @@ class MixedDecoder(nn.Module):
                         continue
                     cleaned_dict[key] = val
 
-                self.load_state_dict(cleaned_dict, strict=not self.decoder_only)
+                # self.load_state_dict(cleaned_dict, strict=not self.decoder_only)
+                self.load_state_dict(cleaned_dict, strict=False)
             elif pretrained_encdec_model_path and pretrained_encdec_model_path.exists():
                 if self.decoder_only:
                     print(f'R{rank}. decoder_only=True: skipping encoder load from {pretrained_encdec_model_path}')
@@ -512,18 +513,19 @@ class MixedDecoder(nn.Module):
         assert max_total_len <= self.cfg.max_seq_len, \
             f'Total sequence length {max_total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
 
-        input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device)
-        attention_mask = torch.zeros((batch_size, max_total_len), dtype=torch.long, device=device)
-        labels = torch.full((batch_size, max_total_len), -100, dtype=torch.long, device=device)
-
         # Pre-compute all embeddings we can in batched form
         prompt_embs_all = self.word_embeddings(prompt_toks)  # (B, max_prompt, d_dec)
+        emb_dtype = prompt_embs_all.dtype
         target_inp_embs_all = self.word_embeddings(target_toks[:, :-1]) if target_toks.shape[1] > 1 \
-            else torch.zeros((batch_size, 0, self.d_dec), device=device)
+            else torch.zeros((batch_size, 0, self.d_dec), device=device, dtype=emb_dtype)
         if self.cfg.use_sep:
             sep_emb = self.word_embeddings(
                 torch.full((1, 1), self.sep_token_id, dtype=torch.long, device=device)
             )
+
+        input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device, dtype=emb_dtype)
+        attention_mask = torch.zeros((batch_size, max_total_len), dtype=torch.long, device=device)
+        labels = torch.full((batch_size, max_total_len), -100, dtype=torch.long, device=device)
 
         for i in range(batch_size):
             pos = 0
@@ -555,8 +557,9 @@ class MixedDecoder(nn.Module):
             tl = target_lengths[i]
             labels[i, target_start_i:target_start_i + tl] = target_toks[i, :tl]
 
-        pos_ids = torch.arange(max_total_len, device=device).unsqueeze(0)
-        input_embs = input_embs + self.pos_emb(pos_ids)
+        if self.pos_emb is not None:
+            pos_ids = torch.arange(max_total_len, device=device).unsqueeze(0)
+            input_embs = input_embs + self.pos_emb(pos_ids)
 
         logits = self.run_decoder(input_embs, attention_mask)
 
@@ -755,7 +758,7 @@ class MixedDecoder(nn.Module):
             own_embs_list.append(all_enc_embs[start:end])  # (n_own_i, d_model)
 
         # Build padded context embeddings of shape (batch_size, target_win_size, d_model)
-        ctx_embs_raw = torch.zeros((batch_size, target_win_size, self.cfg.d_model), device=device)
+        ctx_embs_raw = torch.zeros((batch_size, target_win_size, self.cfg.d_model), device=device, dtype=all_enc_embs.dtype)
         for i in range(batch_size):
             own = own_embs_list[i]
             n_own = min(own.shape[0], target_win_size)
@@ -782,7 +785,7 @@ class MixedDecoder(nn.Module):
                         # Only one sample with all chunks; pad with zeros
                         filler_inds = torch.tensor([], dtype=torch.long, device=device)
 
-                filler_embs = all_enc_embs[filler_inds] if filler_inds.numel() > 0 else torch.zeros((n_filler, self.cfg.d_model), device=device)
+                filler_embs = all_enc_embs[filler_inds] if filler_inds.numel() > 0 else torch.zeros((n_filler, self.cfg.d_model), device=device, dtype=all_enc_embs.dtype)
 
                 off = torch.randint(0, target_win_size - n_own + 1, (1,)).item()
                 ctx_embs_raw[i, off:off + n_own] = own[:n_own]
@@ -825,7 +828,7 @@ class MixedDecoder(nn.Module):
         assert max_total_len <= self.cfg.max_seq_len, \
             f'Total sequence length {max_total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
 
-        input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device)
+        input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device, dtype=prompt_embs_all.dtype)
         attention_mask = torch.zeros((batch_size, max_total_len), dtype=torch.long, device=device)
         labels = torch.full((batch_size, max_total_len), -100, dtype=torch.long, device=device)
 
@@ -862,8 +865,9 @@ class MixedDecoder(nn.Module):
             labels[i, target_start_i:target_start_i + al] = batch.ans_toks[i, :al]
 
         # Positional embeddings
-        pos_ids = torch.arange(max_total_len, device=device).unsqueeze(0)
-        input_embs = input_embs + self.pos_emb(pos_ids)
+        if self.pos_emb is not None:
+            pos_ids = torch.arange(max_total_len, device=device).unsqueeze(0)
+            input_embs = input_embs + self.pos_emb(pos_ids)
 
         # 6. Run decoder and compute loss
         logits = self.run_decoder(input_embs, attention_mask)
@@ -918,7 +922,7 @@ class MixedDecoder(nn.Module):
 
         max_win = max(batch.ctx_chunk_counts)
 
-        ctx_embs_raw = torch.zeros((batch_size, max_win, self.cfg.d_model), device=device)
+        ctx_embs_raw = torch.zeros((batch_size, max_win, self.cfg.d_model), device=device, dtype=all_enc_embs.dtype)
         for i in range(batch_size):
             start, end = chunk_offsets[i], chunk_offsets[i + 1]
             n_own = end - start
@@ -954,7 +958,7 @@ class MixedDecoder(nn.Module):
         assert max_total_len <= self.cfg.max_seq_len, \
             f'Total sequence length {max_total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
 
-        input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device)
+        input_embs = torch.zeros((batch_size, max_total_len, self.d_dec), device=device, dtype=prompt_embs_all.dtype)
         attention_mask = torch.zeros((batch_size, max_total_len), dtype=torch.long, device=device)
         labels = torch.full((batch_size, max_total_len), -100, dtype=torch.long, device=device)
 
@@ -991,8 +995,9 @@ class MixedDecoder(nn.Module):
             labels[i, target_start_i:target_start_i + al] = batch.target_toks[i, :al]
 
         # Positional embeddings
-        pos_ids = torch.arange(max_total_len, device=device).unsqueeze(0)
-        input_embs = input_embs + self.pos_emb(pos_ids)
+        if self.pos_emb is not None:
+            pos_ids = torch.arange(max_total_len, device=device).unsqueeze(0)
+            input_embs = input_embs + self.pos_emb(pos_ids)
 
         # 5. Run decoder and compute loss
         logits = self.run_decoder(input_embs, attention_mask)

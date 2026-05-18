@@ -50,7 +50,7 @@ train_ds_type=cite
 
 # train_ds_type=qnasqv2
 # train_ds_type=qnaall
-# train_ds_type=qnaans
+train_ds_type=qnaans
 # train_ds_type=next
 
 min_next_toks=64
@@ -82,6 +82,7 @@ pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbas
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260316_221645-pre_mixeddecoder20260304105309-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-trn_lr5e-05_bs40
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260319_130017-pre_mixeddecoder20260316221645-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs40
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260429_091845-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-msl384-sepF-pallF-eer4-ewn2x4-frzencF-dsCite-trn_lr5e-05_bs30
+pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260511_210529-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl384-dtypeBf16-sepF-pallF-eer4-ewn2x6-frzencF-dsCite-trn_lr5e-05_bs20
 # train_subdir=last
 
 # device=cpu
@@ -109,12 +110,12 @@ learning_rate=0.00005
 learning_rate_override=0
 random_seed=200
 
-# optimizer_name='AdamW'
-# optimizer_params='{}'
-optimizer_name='Adam'
+optimizer_name='AdamW'
 optimizer_params='{}'
+# optimizer_name='Adam'
+# optimizer_params='{}'
 learning_rate_scheduler_name='ReduceLROnPlateau'
-learning_rate_scheduler_params='{"mode": "min", "factor": 0.5, "patience": 10, "threshold": 1e-6, "min_lr": 1e-8}'
+learning_rate_scheduler_params='{"mode": "min", "factor": 0.5, "patience": 5, "threshold": 1e-6, "min_lr": 1e-8}'
 
 # optimizer_name='AdamW'
 # optimizer_params='{"weight_decay": 0.01, "betas": [0.9, 0.98], "eps": 1e-8}'
