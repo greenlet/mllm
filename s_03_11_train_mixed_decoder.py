@@ -745,6 +745,24 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                     optim_state_dict=opt_sd,
                     options=StateDictOptions(full_state_dict=True, cpu_offload=True),
                 )
+                # `set_optimizer_state_dict` routes through
+                # `FSDP.optim_state_dict_to_load` -> `optim.load_state_dict`,
+                # which is supposed to copy hyperparameters (lr, betas, ...)
+                # from the saved param_groups into the live optimizer. In
+                # practice, on the FSDP1 / DTensor path, the live optimizer's
+                # param_groups can end up retaining the freshly-instantiated
+                # hyperparameters (i.e. `args.learning_rate`) instead of the
+                # ones from the checkpoint. Force-copy the saved hyperparams
+                # here so resume behaviour matches the DDP branch below.
+                saved_pgs = opt_sd.get('param_groups', [])
+                for live_pg, saved_pg in zip(optimizer.param_groups, saved_pgs):
+                    for k, v in saved_pg.items():
+                        if k == 'params':
+                            continue
+                        live_pg[k] = v
+                if saved_pgs:
+                    log(f'FSDP resume: restored optimizer hyperparameters from '
+                        f'checkpoint; lr={optimizer.param_groups[0].get("lr")!r}.')
         else:
             optimizer.load_state_dict(checkpoint['optimizer'])
         if not optimizer_changed:
