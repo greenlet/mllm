@@ -85,33 +85,72 @@ class QnaBaseDataset:
             self.dec_pad_token_id = self.tkz_dec.eos_token_id
         self.cls_token_id = tkz_enc.cls_token_id
         self.sep_token_id = tkz_enc.sep_token_id
-        # Decoder-side answer end token: BERT uses SEP; GPT-2 uses eos.
-        self.dec_answer_end_id = (
-            self.tkz_dec.sep_token_id if self.tkz_dec.sep_token_id is not None
-            else self.tkz_dec.eos_token_id
+
+        # ChatML detection: when the decoder tokenizer has <|im_start|> and
+        # <|im_end|> (Qwen2 family), use ChatML formatting. Otherwise fall back
+        # to the legacy 'Question: ... Answer:' / 'Q: ... A:' text format
+        # (BERT / GPT-2 decoders).
+        unk_id = self.tkz_dec.unk_token_id
+        im_start_id = self.tkz_dec.convert_tokens_to_ids('<|im_start|>')
+        im_end_id = self.tkz_dec.convert_tokens_to_ids('<|im_end|>')
+        self.use_chatml = (
+            im_start_id is not None and im_end_id is not None
+            and im_start_id != unk_id and im_end_id != unk_id
         )
 
-        # Single-turn prompt formatting: 'Question: {q} Answer:' (decoder vocab)
-        self.prompt_prefix_toks = self.tkz_dec('Question: ', add_special_tokens=False).input_ids
-        self.prompt_suffix_toks = self.tkz_dec(' Answer:', add_special_tokens=False).input_ids
-        self.prompt_budget = (
-            self.max_prompt_toks
-            - len(self.prompt_prefix_toks)
-            - len(self.prompt_suffix_toks)
-        )
-        assert self.prompt_budget > 0, (
-            f'Not enough max_prompt_toks to fit prefix and suffix. '
-            f'prompt_budget={self.prompt_budget}. '
-            f'prefix_len={len(self.prompt_prefix_toks)}. '
-            f'suffix_len={len(self.prompt_suffix_toks)}. '
-            f'max_prompt_toks={self.max_prompt_toks}.'
-        )
+        if self.use_chatml:
+            # ChatML token fragments (decoder vocab). Prompt always ends with
+            # '<|im_start|>assistant\n' so the model generates the first answer
+            # token next.
+            self.chatml_user_open = self.tkz_dec(
+                '<|im_start|>user\n', add_special_tokens=False).input_ids
+            self.chatml_asst_open = self.tkz_dec(
+                '<|im_start|>assistant\n', add_special_tokens=False).input_ids
+            self.chatml_turn_close = self.tkz_dec(
+                '<|im_end|>\n', add_special_tokens=False).input_ids
+            self.im_end_id = im_end_id
+            # Answer target ends with <|im_end|> in ChatML.
+            self.dec_answer_end_id = im_end_id
+            # Budget for a single user-question payload in single-turn prompts.
+            self.prompt_budget = (
+                self.max_prompt_toks
+                - len(self.chatml_user_open)
+                - len(self.chatml_turn_close)
+                - len(self.chatml_asst_open)
+            )
+            assert self.prompt_budget > 0, (
+                f'Not enough max_prompt_toks to fit ChatML wrappers. '
+                f'prompt_budget={self.prompt_budget}. '
+                f'max_prompt_toks={self.max_prompt_toks}.'
+            )
+        else:
+            # Decoder-side answer end token: BERT uses SEP; GPT-2 uses eos.
+            self.dec_answer_end_id = (
+                self.tkz_dec.sep_token_id if self.tkz_dec.sep_token_id is not None
+                else self.tkz_dec.eos_token_id
+            )
 
-        # Multi-turn prompt formatting (decoder vocab)
-        self.mt_q_prefix_toks = self.tkz_dec('Q: ', add_special_tokens=False).input_ids
-        self.mt_a_infix_toks = self.tkz_dec(' A: ', add_special_tokens=False).input_ids
-        self.mt_turn_sep_toks = self.tkz_dec('. ', add_special_tokens=False).input_ids
-        self.mt_suffix_toks = self.tkz_dec(' A:', add_special_tokens=False).input_ids
+            # Single-turn prompt formatting: 'Question: {q} Answer:' (decoder vocab)
+            self.prompt_prefix_toks = self.tkz_dec('Question: ', add_special_tokens=False).input_ids
+            self.prompt_suffix_toks = self.tkz_dec(' Answer:', add_special_tokens=False).input_ids
+            self.prompt_budget = (
+                self.max_prompt_toks
+                - len(self.prompt_prefix_toks)
+                - len(self.prompt_suffix_toks)
+            )
+            assert self.prompt_budget > 0, (
+                f'Not enough max_prompt_toks to fit prefix and suffix. '
+                f'prompt_budget={self.prompt_budget}. '
+                f'prefix_len={len(self.prompt_prefix_toks)}. '
+                f'suffix_len={len(self.prompt_suffix_toks)}. '
+                f'max_prompt_toks={self.max_prompt_toks}.'
+            )
+
+            # Multi-turn prompt formatting (decoder vocab)
+            self.mt_q_prefix_toks = self.tkz_dec('Q: ', add_special_tokens=False).input_ids
+            self.mt_a_infix_toks = self.tkz_dec(' A: ', add_special_tokens=False).input_ids
+            self.mt_turn_sep_toks = self.tkz_dec('. ', add_special_tokens=False).input_ids
+            self.mt_suffix_toks = self.tkz_dec(' A:', add_special_tokens=False).input_ids
 
         # To be set by subclasses
         self.inds: np.ndarray = np.array([], dtype=np.int64)
@@ -155,19 +194,63 @@ class QnaBaseDataset:
     def tokenize_prompt(self, questions: List[str], answers: List[str]) -> List[int]:
         """Tokenize prompt from question/answer lists.
 
-        Single-turn (len == 1): 'Question: {q} Answer:'
-        Multi-turn  (len >  1): 'Q: {q0} A: {a0}. Q: {q1} A: {a1}. ... Q: {qn} A:'
+        When the decoder tokenizer supports ChatML (Qwen2 family), prompts use
+        '<|im_start|>user\\n{q}<|im_end|>\\n<|im_start|>assistant\\n' per turn
+        and always end with an open assistant block so the model continues
+        from the first answer token.
+
+        Otherwise (BERT / GPT-2 decoders) the legacy text format is used:
+            Single-turn (len == 1): 'Question: {q} Answer:'
+            Multi-turn  (len >  1): 'Q: {q0} A: {a0}. Q: {q1} A: {a1}. ... Q: {qn} A:'
 
         questions and answers have equal length.  answers[-1] is the generation
         target and does NOT appear in the prompt.
 
-        For multi-turn, history turns are added one by one from oldest to newest.
-        If a turn would exceed the token budget, remaining history is skipped.
-        The current question (questions[-1]) is always included.
+        For multi-turn, history turns are added from newest to oldest until
+        the token budget is exhausted; the current question (questions[-1]) is
+        always included.
         """
         assert len(questions) == len(answers)
         n = len(questions)
 
+        if self.use_chatml:
+            # Current (open) turn: user message + open assistant block.
+            cur_q_toks = self.tkz_dec(questions[-1], add_special_tokens=False).input_ids
+            wrap_len = (
+                len(self.chatml_user_open)
+                + len(self.chatml_turn_close)
+                + len(self.chatml_asst_open)
+            )
+            budget_for_q = self.max_prompt_toks - wrap_len
+            if budget_for_q < 1:
+                budget_for_q = 1
+            if len(cur_q_toks) > budget_for_q:
+                cur_q_toks = cur_q_toks[-budget_for_q:]
+            cur_block = (
+                self.chatml_user_open + cur_q_toks
+                + self.chatml_turn_close + self.chatml_asst_open
+            )
+
+            budget = self.max_prompt_toks - len(cur_block)
+
+            # Add history turns from newest (just before current) to oldest.
+            history_toks: List[int] = []
+            for j in range(n - 2, -1, -1):
+                q_toks = self.tkz_dec(questions[j], add_special_tokens=False).input_ids
+                a_toks = self.tkz_dec(answers[j], add_special_tokens=False).input_ids
+                turn_toks = (
+                    self.chatml_user_open + q_toks + self.chatml_turn_close
+                    + self.chatml_asst_open + a_toks + self.chatml_turn_close
+                )
+                if len(turn_toks) > budget:
+                    break
+                # Prepend so final order is oldest -> newest -> current.
+                history_toks = turn_toks + history_toks
+                budget -= len(turn_toks)
+
+            return history_toks + cur_block
+
+        # Legacy (non-ChatML) branch ----------------------------------------
         if n == 1:
             # Single-turn: existing format (decoder vocab)
             q_toks = self.tkz_dec(questions[0], add_special_tokens=False).input_ids
