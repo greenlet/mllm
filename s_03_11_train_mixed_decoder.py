@@ -3,7 +3,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 from pprint import pprint
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 import shutil
 
 from datasets import Dataset
@@ -42,7 +42,8 @@ from tqdm import trange
 from transformers import AutoTokenizer
 
 from mllm.config.model import MixedDecoderCfg, MixedDecoderDsType, MixedDecoderType, BertEmbType, \
-    DecoderDtype, copy_override_mixed_decoder_cfg, gen_prefpostfix_mixed_decoder, parse_decoder_spec
+    DecoderDtype, copy_override_mixed_decoder_cfg, gen_prefpostfix_mixed_decoder, parse_decoder_spec, \
+    MixedDecoderTrainCfg
 from mllm.exp.args import MIXED_DECODER_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, \
     mask_tokens_ARG
 from mllm.model.mixed_decoder import MixedDecoder
@@ -252,6 +253,42 @@ class ArgsMixedDecoderTrain(BaseModel):
     def parse_optimizer_params(cls, v):
         return parse_dict_str(v, 'optimizer_params')
 
+    weight_decay_decoder: float = Field(
+        0.0,
+        description='Weight decay applied to decoder matmul params (biases and norms excluded). '
+            '0 disables this knob.',
+        cli=('--weight-decay-decoder',),
+    )
+    weight_decay_other: float = Field(
+        0.0,
+        description='Weight decay applied to non-decoder matmul params (encoder, emb_exp, enc_proj, '
+            'pos_emb, ...; biases and norms excluded). 0 disables this knob.',
+        cli=('--weight-decay-other',),
+    )
+    llrd_decay: float = Field(
+        1.0,
+        description='Layer-wise LR decay multiplier for decoder layers. 1.0 disables LLRD. '
+            'lr_l = base_lr * llrd_decay ** (n_layers - 1 - l).',
+        cli=('--llrd-decay',),
+    )
+    attention_dropout: float = Field(
+        0.0,
+        description='Qwen self-attention dropout probability. 0 leaves the HF default unchanged. '
+            'Qwen-only knob; ignored for GPT-2 / BertDec decoders.',
+        cli=('--attention-dropout',),
+    )
+    label_smoothing: float = Field(
+        0.0,
+        description='Label smoothing for the cross-entropy loss in MixedDecoder.calc_loss. 0 disables.',
+        cli=('--label-smoothing',),
+    )
+    max_grad_norm: float = Field(
+        0.0,
+        description='Max gradient norm for clipping. 0 disables gradient clipping. '
+            'AMP- and FSDP-aware.',
+        cli=('--max-grad-norm',),
+    )
+
     learning_rate_scheduler_name: str = Field(
         'ReduceLROnPlateau',
         description='Learning rate scheduler class name.',
@@ -335,6 +372,117 @@ def _resolve_transformer_layer_classes(module: nn.Module) -> set:
     return found
 
 
+_NO_DECAY_NAME_PATTERNS = ('bias', 'LayerNorm.weight', 'layer_norm.weight', 'norm.weight')
+
+
+def _is_no_decay_param(name: str, param: torch.Tensor) -> bool:
+    """A parameter is excluded from weight decay if it is a bias, a norm weight,
+    or any 1-D tensor (catches RMSNorm weights named ``.norm.weight`` in Qwen as
+    well as legacy ``LayerNorm.weight``). Matches the HF Trainer / Qwen finetune
+    convention.
+    """
+    if param.ndim == 1:
+        return True
+    return any(p in name for p in _NO_DECAY_NAME_PATTERNS)
+
+
+def _get_decoder_layers(decoder: nn.Module, decoder_type: 'MixedDecoderType') -> Optional[list]:
+    """Return the ordered list of decoder transformer layers for the given decoder
+    type, or None if the structure is not recognised (e.g. decoder=None in
+    encoder-only mode). Used for LLRD bucketing.
+    """
+    if decoder is None:
+        return None
+    if decoder_type == MixedDecoderType.Qwen:
+        return list(decoder.model.layers)
+    if decoder_type == MixedDecoderType.Gpt2:
+        return list(decoder.transformer.h)
+    if decoder_type == MixedDecoderType.BertDec:
+        return list(decoder.bert.encoder.layer)
+    return None
+
+
+def build_param_groups(
+        model: nn.Module, train_cfg: 'MixedDecoderTrainCfg', decoder_type: 'MixedDecoderType', base_lr: float,
+) -> list:
+    """Build optimizer parameter groups with optional per-bucket weight decay and
+    layer-wise LR decay (LLRD) on the decoder.
+
+    Returns a single legacy group ``[{'params': all_params}]`` when none of
+    ``weight_decay_decoder``, ``weight_decay_other``, ``llrd_decay`` deviate from
+    their defaults — this preserves optimizer-state shape for resume from
+    pre-regularization checkpoints.
+
+    Otherwise emits groups split by:
+      - bucket: per-decoder-layer index (when LLRD is on) OR ``decoder_nonlayer``
+        (decoder embeddings / final norm / lm_head) OR ``other`` (everything not
+        inside the decoder).
+      - decay vs. no_decay (biases and norms get weight_decay=0 regardless).
+
+    Each group dict carries ``lr``, ``weight_decay``, and a debug ``name`` field.
+    """
+    wd_dec = train_cfg.weight_decay_decoder
+    wd_oth = train_cfg.weight_decay_other
+    llrd = train_cfg.llrd_decay
+    legacy = (wd_dec == 0.0 and wd_oth == 0.0 and llrd == 1.0)
+    if legacy:
+        return [{'params': [p for p in model.parameters() if p.requires_grad]}]
+
+    base = model.module if hasattr(model, 'module') else model
+    decoder = getattr(base, 'decoder', None)
+    decoder_param_ids: set = set(id(p) for p in decoder.parameters()) if decoder is not None else set()
+
+    layers = _get_decoder_layers(decoder, decoder_type)
+    n_layers = len(layers) if layers is not None else 0
+    # Map param id -> layer index for params inside any decoder layer.
+    layer_idx_by_id: Dict[int, int] = {}
+    if layers is not None:
+        for li, layer in enumerate(layers):
+            for p in layer.parameters():
+                layer_idx_by_id[id(p)] = li
+
+    # Bucket key -> (decay_params, nodecay_params, lr, name)
+    buckets: Dict[str, dict] = {}
+
+    def _bucket(name: str, lr: float, wd: float) -> dict:
+        if name not in buckets:
+            buckets[name] = {
+                'decay': [], 'nodecay': [], 'lr': lr, 'wd_decay': wd, 'wd_nodecay': 0.0,
+            }
+        return buckets[name]
+
+    for n, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        is_dec = id(p) in decoder_param_ids
+        is_nd = _is_no_decay_param(n, p)
+        if is_dec and id(p) in layer_idx_by_id:
+            li = layer_idx_by_id[id(p)]
+            # LLRD: layers near the top (closer to output) keep base_lr; deeper layers shrink.
+            lr_l = base_lr * (llrd ** (n_layers - 1 - li))
+            bk = _bucket(f'dec_L{li}', lr_l, wd_dec)
+        elif is_dec:
+            # decoder embeddings, final norm, lm_head — keep base_lr.
+            bk = _bucket('dec_nonlayer', base_lr, wd_dec)
+        else:
+            bk = _bucket('other', base_lr, wd_oth)
+        (bk['nodecay'] if is_nd else bk['decay']).append(p)
+
+    groups = []
+    for name, bk in buckets.items():
+        if bk['decay']:
+            groups.append({
+                'params': bk['decay'], 'lr': bk['lr'], 'weight_decay': bk['wd_decay'],
+                'name': f'{name}_decay',
+            })
+        if bk['nodecay']:
+            groups.append({
+                'params': bk['nodecay'], 'lr': bk['lr'], 'weight_decay': bk['wd_nodecay'],
+                'name': f'{name}_nodecay',
+            })
+    return groups
+
+
 def setup(rank, world_size):
     if world_size <= 1:
         return
@@ -415,6 +563,12 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         optimizer_name=args.optimizer_name, optimizer_params=args.optimizer_params,
         lrs_name=args.learning_rate_scheduler_name, lrs_params=args.learning_rate_scheduler_params,
         batch_size=args.docs_batch_size,
+        weight_decay_decoder=args.weight_decay_decoder,
+        weight_decay_other=args.weight_decay_other,
+        llrd_decay=args.llrd_decay,
+        attention_dropout=args.attention_dropout,
+        label_smoothing=args.label_smoothing,
+        max_grad_norm=args.max_grad_norm,
     )
     if rank == 0:
         pprint(model_cfg.dict())
@@ -605,9 +759,22 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         else:
             ddp_model = model
 
-    params = ddp_model.parameters()
-    optimizer = instantiate_torch_optimizer(args.optimizer_name, params, lr=args.learning_rate, **args.optimizer_params)
+    params = build_param_groups(ddp_model, model_cfg.train_cfg, decoder_type, base_lr=args.learning_rate)
+    # `weight_decay` is now sourced per-group when regularization knobs are enabled,
+    # so any `weight_decay` passed via --optimizer-params would double-apply or
+    # override the per-bucket settings. Strip + warn.
+    opt_params = dict(args.optimizer_params)
+    if 'weight_decay' in opt_params and len(params) > 1:
+        log(f'WARNING: stripping weight_decay={opt_params["weight_decay"]} from --optimizer-params; '
+            f'per-bucket weight_decay (decoder={model_cfg.train_cfg.weight_decay_decoder}, '
+            f'other={model_cfg.train_cfg.weight_decay_other}) is used instead.')
+        opt_params.pop('weight_decay')
+    optimizer = instantiate_torch_optimizer(args.optimizer_name, params, lr=args.learning_rate, **opt_params)
     scheduler = instantiate_torch_lr_scheduler(args.learning_rate_scheduler_name, optimizer, **args.learning_rate_scheduler_params)
+    if rank == 0 and len(params) > 1:
+        log(f'Optimizer param groups ({len(optimizer.param_groups)}):')
+        for g in optimizer.param_groups:
+            log(f'  {g.get("name", "?")}: lr={g["lr"]:.3e}, wd={g.get("weight_decay", 0):.4g}, n_params={len(g["params"])}')
 
     # Mixed-precision setup. For DDP: weights stay fp32, autocast wraps forward,
     # GradScaler is used only with fp16. For FSDP: param/reduce/buffer dtypes are
@@ -775,9 +942,15 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         log(f'learning_rate_override={args.learning_rate_override} > 0: rebuilding optimizer '
             f'({args.optimizer_name}) and scheduler ({args.learning_rate_scheduler_name}) from '
             f'scratch; any restored optimizer/scheduler state is discarded.')
+        params = build_param_groups(
+            ddp_model, model_cfg.train_cfg, decoder_type, base_lr=args.learning_rate_override,
+        )
+        opt_params = dict(args.optimizer_params)
+        if 'weight_decay' in opt_params and len(params) > 1:
+            opt_params.pop('weight_decay')
         optimizer = instantiate_torch_optimizer(
-            args.optimizer_name, ddp_model.parameters(),
-            lr=args.learning_rate_override, **args.optimizer_params,
+            args.optimizer_name, params,
+            lr=args.learning_rate_override, **opt_params,
         )
         scheduler = instantiate_torch_lr_scheduler(
             args.learning_rate_scheduler_name, optimizer, **args.learning_rate_scheduler_params,
@@ -880,6 +1053,18 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                     log_weights_grads_stats(grad_log_step, ddp_model, tbsw)
                     grad_log_step += 1
                 grad_log_ind += 1
+
+            # Gradient clipping (AMP- and FSDP-aware). Disabled when max_grad_norm <= 0.
+            max_grad_norm = model_cfg.train_cfg.max_grad_norm
+            if max_grad_norm > 0:
+                if amp_enabled and scaler.is_enabled():
+                    # Must unscale before measuring/clipping the unscaled grads.
+                    scaler.unscale_(optimizer)
+                if use_fsdp:
+                    # FSDP's own method correctly all-reduces the norm across shards.
+                    ddp_model.clip_grad_norm_(max_grad_norm)
+                else:
+                    torch.nn.utils.clip_grad_norm_(ddp_model.parameters(), max_grad_norm)
 
             if amp_enabled and scaler.is_enabled():
                 scaler.step(optimizer)

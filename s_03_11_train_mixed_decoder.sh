@@ -55,7 +55,7 @@ train_ds_type=qnaans
 
 min_next_toks=64
 
-max_seq_len=384
+max_seq_len=400
 freeze_encoder=false
 # use_sep=true
 use_sep=false
@@ -122,6 +122,21 @@ learning_rate_scheduler_params='{"mode": "min", "factor": 0.5, "patience": 5, "t
 # learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
 # learning_rate_scheduler_params='{"T_0": 30, "T_mult": 2, "eta_min": 1e-7}'
 
+# Regularization knobs (all default to no-op).
+# Recommended "Qwen2.5-1.5B regularized" preset:
+#   weight_decay_decoder=0.1
+#   weight_decay_other=0.01
+#   llrd_decay=0.9
+#   attention_dropout=0.1
+#   label_smoothing=0.1
+#   max_grad_norm=1.0
+weight_decay_decoder=0.1
+weight_decay_other=0.01
+llrd_decay=0.9
+attention_dropout=0.1
+label_smoothing=0.1
+max_grad_norm=0.0
+
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
 
@@ -177,6 +192,12 @@ python s_03_11_train_mixed_decoder.py \
   --optimizer-params "$optimizer_params" \
   --learning-rate-scheduler-name $learning_rate_scheduler_name \
   --learning-rate-scheduler-params "$learning_rate_scheduler_params" \
+  --weight-decay-decoder $weight_decay_decoder \
+  --weight-decay-other $weight_decay_other \
+  --llrd-decay $llrd_decay \
+  --attention-dropout $attention_dropout \
+  --label-smoothing $label_smoothing \
+  --max-grad-norm $max_grad_norm \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed \

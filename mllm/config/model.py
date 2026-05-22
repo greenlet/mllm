@@ -2074,6 +2074,20 @@ class MixedDecoderTrainCfg(BaseModel):
     learning_rate_scheduler: Optional[PyClassCfg] = None
     batch_size: int = 10
     freeze_encoder: bool = True
+    # --- Regularization knobs (defaults are no-ops; legacy YAMLs load unchanged) ---
+    # Weight decay applied to decoder matmul params (excludes biases/norms).
+    weight_decay_decoder: float = 0.0
+    # Weight decay applied to non-decoder matmul params (encoder, emb_exp, enc_proj, pos_emb, ...).
+    weight_decay_other: float = 0.0
+    # Per-decoder-layer LR decay. 1.0 = LLRD off.
+    # lr_l = base_lr * llrd_decay ** (n_layers - 1 - l).
+    llrd_decay: float = 1.0
+    # Qwen self-attention dropout probability (0 = unchanged HF default).
+    attention_dropout: float = 0.0
+    # Label smoothing for the plain CE loss path in MixedDecoder.calc_loss.
+    label_smoothing: float = 0.0
+    # Max gradient norm. 0 disables clipping.
+    max_grad_norm: float = 0.0
 
 
 class MixedDecoderCfg(BaseModel):
@@ -2237,6 +2251,8 @@ def create_mixed_decoder_cfg(
         mask_cfg: Optional[MaskCfg] = None,
         learning_rate: float = 1e-4, optimizer_name: str = 'AdamW', optimizer_params: Optional[Dict[str, Any]] = None,
         lrs_name: str = 'ReduceLROnPlateau', lrs_params: Optional[Dict[str, Any]] = None, batch_size: int = 10,
+        weight_decay_decoder: float = 0.0, weight_decay_other: float = 0.0, llrd_decay: float = 1.0,
+        attention_dropout: float = 0.0, label_smoothing: float = 0.0, max_grad_norm: float = 0.0,
 ) -> MixedDecoderCfg:
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
@@ -2266,6 +2282,12 @@ def create_mixed_decoder_cfg(
         ),
         batch_size=batch_size,
         freeze_encoder=freeze_encoder,
+        weight_decay_decoder=weight_decay_decoder,
+        weight_decay_other=weight_decay_other,
+        llrd_decay=llrd_decay,
+        attention_dropout=attention_dropout,
+        label_smoothing=label_smoothing,
+        max_grad_norm=max_grad_norm,
     )
 
     cfg = MixedDecoderCfg(
@@ -2301,6 +2323,9 @@ def copy_override_mixed_decoder_cfg(
         mask_cfg: Optional[MaskCfg] = None, learning_rate: Optional[float] = None,
         optimizer_name: Optional[str] = None, optimizer_params: Optional[Dict[str, Any]] = None,
         lrs_name: Optional[str] = None, lrs_params: Optional[Dict[str, Any]] = None, batch_size: Optional[int] = None,
+        weight_decay_decoder: Optional[float] = None, weight_decay_other: Optional[float] = None,
+        llrd_decay: Optional[float] = None, attention_dropout: Optional[float] = None,
+        label_smoothing: Optional[float] = None, max_grad_norm: Optional[float] = None,
 ) -> MixedDecoderCfg:
     enc = cfg.enc_bert
     pretrained_model_name = coalesce(pretrained_model_name, enc.pretrained_model_name)
@@ -2329,6 +2354,12 @@ def copy_override_mixed_decoder_cfg(
         lrs_name = coalesce(lrs_name, cfg.train_cfg.learning_rate_scheduler.cls_name)
         lrs_params = {**(cfg.train_cfg.learning_rate_scheduler.params or {}), **(lrs_params or {})}
     batch_size = coalesce(batch_size, cfg.train_cfg.batch_size)
+    weight_decay_decoder = coalesce(weight_decay_decoder, cfg.train_cfg.weight_decay_decoder)
+    weight_decay_other = coalesce(weight_decay_other, cfg.train_cfg.weight_decay_other)
+    llrd_decay = coalesce(llrd_decay, cfg.train_cfg.llrd_decay)
+    attention_dropout = coalesce(attention_dropout, cfg.train_cfg.attention_dropout)
+    label_smoothing = coalesce(label_smoothing, cfg.train_cfg.label_smoothing)
+    max_grad_norm = coalesce(max_grad_norm, cfg.train_cfg.max_grad_norm)
 
     return create_mixed_decoder_cfg(
         pretrained_model_name=pretrained_model_name, emb_type=emb_type, inp_len=inp_len,
@@ -2343,6 +2374,9 @@ def copy_override_mixed_decoder_cfg(
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
         mask_cfg=mask_cfg, learning_rate=learning_rate, optimizer_name=optimizer_name, optimizer_params=optimizer_params,
         lrs_name=lrs_name, lrs_params=lrs_params, batch_size=batch_size,
+        weight_decay_decoder=weight_decay_decoder, weight_decay_other=weight_decay_other,
+        llrd_decay=llrd_decay, attention_dropout=attention_dropout,
+        label_smoothing=label_smoothing, max_grad_norm=max_grad_norm,
     )
 
 
@@ -2397,6 +2431,18 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
     lr = np.round(train.learning_rate, 9)
     train_parts.append(f'lr{lr}')
     train_parts.append(f'bs{train.batch_size}')
+    if train.weight_decay_decoder > 0:
+        train_parts.append(f'wdD{np.round(train.weight_decay_decoder, 4)}')
+    if train.weight_decay_other > 0:
+        train_parts.append(f'wdO{np.round(train.weight_decay_other, 4)}')
+    if train.llrd_decay != 1.0:
+        train_parts.append(f'llrd{np.round(train.llrd_decay, 4)}')
+    if train.attention_dropout > 0:
+        train_parts.append(f'attdp{np.round(train.attention_dropout, 4)}')
+    if train.label_smoothing > 0:
+        train_parts.append(f'ls{np.round(train.label_smoothing, 4)}')
+    if train.max_grad_norm > 0:
+        train_parts.append(f'gc{np.round(train.max_grad_norm, 4)}')
     postfix_parts.append('_'.join(train_parts))
 
     postfix = '-'.join(postfix_parts)

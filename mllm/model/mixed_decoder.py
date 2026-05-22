@@ -72,6 +72,13 @@ class MixedDecoder(nn.Module):
             # Qwen has no SEP; use eos as delimiter (also serves as pad in Qwen2.5/Qwen3).
             self.sep_token_id = tkz_dec.eos_token_id
             d_dec = self.decoder.config.hidden_size
+            # Apply self-attention dropout if requested (Qwen-only knob; Qwen2/2.5/3
+            # expose only `attention_dropout` — no separate residual/MLP dropout).
+            attn_dp = self.cfg.train_cfg.attention_dropout
+            if attn_dp > 0:
+                self.decoder.config.attention_dropout = attn_dp
+                for layer in self.decoder.model.layers:
+                    layer.self_attn.attention_dropout = attn_dp
             # Qwen vocab differs from BERT; cross-vocab masked targets cannot be aligned.
             if self.cfg.train_cfg.mask_cfg is not None:
                 raise ValueError(
@@ -429,7 +436,10 @@ class MixedDecoder(nn.Module):
         # Flatten
         logits_flat = logits.view(-1, logits.shape[-1])  # (batch_size * total_len, n_vocab)
         labels_flat = labels.view(-1)  # (batch_size * total_len)
-        loss = F.cross_entropy(logits_flat, labels_flat, ignore_index=-100)
+        loss = F.cross_entropy(
+            logits_flat, labels_flat, ignore_index=-100,
+            label_smoothing=self.cfg.train_cfg.label_smoothing,
+        )
         return {'loss': loss}
 
     def _build_ctx_tokens_decoder_only(
