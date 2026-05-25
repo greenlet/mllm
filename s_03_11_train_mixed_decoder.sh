@@ -50,7 +50,7 @@ train_ds_type=cite
 
 # train_ds_type=qnasqv2
 # train_ds_type=qnaall
-train_ds_type=qnaans
+# train_ds_type=qnaans
 # train_ds_type=next
 
 min_next_toks=64
@@ -69,7 +69,7 @@ decoder_only=false
 # inp_len * emb_win_max_size * emb_exp_rate
 # max_seq_len=$((max_seq_len + inp_len * emb_win_max_size * emb_exp_rate))
 
-mask_tokens=false
+mask_tokens=true
 mask_sep_freq=0.5
 mask_sep_frac=0.15
 mask_seq_freq=0.5
@@ -82,8 +82,7 @@ pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbas
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260316_221645-pre_mixeddecoder20260304105309-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-trn_lr5e-05_bs40
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260319_130017-pre_mixeddecoder20260316221645-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs40
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260429_091845-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-msl384-sepF-pallF-eer4-ewn2x4-frzencF-dsCite-trn_lr5e-05_bs30
-pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260511_210529-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl384-dtypeBf16-sepF-pallF-eer4-ewn2x6-frzencF-dsCite-trn_lr5e-05_bs20
-# train_subdir=last
+train_subdir=last
 
 # device=cpu
 # epochs=5
@@ -130,11 +129,11 @@ learning_rate_scheduler_params='{"mode": "min", "factor": 0.5, "patience": 5, "t
 #   attention_dropout=0.1
 #   label_smoothing=0.1
 #   max_grad_norm=1.0
-weight_decay_decoder=0.1
-weight_decay_other=0.01
-llrd_decay=0.9
+weight_decay_decoder=0.0
+weight_decay_other=0.0
+llrd_decay=1.0
 attention_dropout=0.1
-label_smoothing=0.1
+label_smoothing=0.0
 max_grad_norm=0.0
 
 
@@ -148,7 +147,11 @@ export NCCL_DEBUG=WARN          # downgrade INFO noise but keep warnings/errors
 # gradients, etc.).
 # export TORCH_DISTRIBUTED_DEBUG=INFO
 export TORCH_DISTRIBUTED_DEBUG=OFF
-export CUDA_LAUNCH_BLOCKING=1   # so CUDA errors point at the real op
+# CUDA_LAUNCH_BLOCKING=1 forces every CUDA op to be synchronous, which kills the
+# comm/compute overlap that FSDP relies on (per-layer all-gather meant to run
+# concurrently with the previous layer's matmul). It also slows DDP a bit, but
+# the impact on FSDP is severe (~3-4x). Re-enable only for debugging CUDA errors.
+# export CUDA_LAUNCH_BLOCKING=1
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export PYTHONFAULTHANDLER=1
 

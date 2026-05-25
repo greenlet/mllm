@@ -25,6 +25,7 @@ from torch.distributed.fsdp import (
     StateDictType,
     FullStateDictConfig,
     FullOptimStateDictConfig,
+    BackwardPrefetch,
 )
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from torch.distributed.device_mesh import init_device_mesh
@@ -356,17 +357,26 @@ _PARALLEL_FSDP = 'fsdp'
 def _resolve_transformer_layer_classes(module: nn.Module) -> set:
     """Collect concrete nn.Module classes that should be wrapped together by FSDP.
 
-    Walks ``module`` and aggregates the names listed in ``_no_split_modules`` on any
-    ``PreTrainedModel`` ancestor (e.g. ``Qwen2DecoderLayer``, ``BertLayer``), then maps
-    those names back to live class objects found in the tree. Robust to import paths.
+    Restricted to the *decoder* subtree: walks ``module.decoder`` (the large causal
+    LM — Qwen / GPT-2 / BertGenerationDecoder) and aggregates the names listed in
+    ``_no_split_modules`` on any ``PreTrainedModel`` ancestor (e.g.
+    ``Qwen2DecoderLayer``), then maps those names back to live class objects.
+
+    The encoder (BERT-base, ~110M) is intentionally **excluded** from sharding:
+    its layers are small (~7M params each) and sharding them across N ranks gives
+    a terrible comm:compute ratio (an all-gather to do ~1 ms of matmul). Leaving
+    the encoder unsharded means FSDP replicates it (same as DDP for that subtree)
+    while still sharding the large decoder where the memory savings matter.
     """
+    decoder = getattr(module, 'decoder', None)
+    search_root = decoder if decoder is not None else module
     wanted_names: set = set()
-    for sub in module.modules():
+    for sub in search_root.modules():
         names = getattr(sub, '_no_split_modules', None)
         if names:
             wanted_names.update(names)
     found: set = set()
-    for sub in module.modules():
+    for sub in search_root.modules():
         if type(sub).__name__ in wanted_names:
             found.add(type(sub))
     return found
@@ -742,9 +752,18 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             device_id=rank,
             use_orig_params=True,
             device_mesh=device_mesh,
+            # Comm/compute overlap knobs: prefetch the next layer's all-gather
+            # while the current layer computes (forward), and the previous
+            # layer's all-gather while the current layer's backward runs.
+            # limit_all_gathers caps in-flight all-gathers to avoid memory spikes
+            # without serializing them.
+            forward_prefetch=True,
+            backward_prefetch=BackwardPrefetch.BACKWARD_PRE,
+            limit_all_gathers=True,
         )
         log(f'FSDP wrapped: strategy={sharding_strategy.name}, mp_policy={mp_policy}, '
-            f'device_mesh={device_mesh}')
+            f'device_mesh={device_mesh}, forward_prefetch=True, '
+            f'backward_prefetch=BACKWARD_PRE, limit_all_gathers=True')
     else:
         model.to(device)
         if args.world_size > 1:
@@ -1365,4 +1384,3 @@ if __name__ == '__main__':
         ArgsMixedDecoderTrain, main, 'Train MixedDecoder model (Encoder-Decoder with causal attention) multi GPU training.', exception_handler=rethrow,
     )
 
-    

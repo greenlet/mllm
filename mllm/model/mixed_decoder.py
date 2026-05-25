@@ -79,13 +79,10 @@ class MixedDecoder(nn.Module):
                 self.decoder.config.attention_dropout = attn_dp
                 for layer in self.decoder.model.layers:
                     layer.self_attn.attention_dropout = attn_dp
-            # Qwen vocab differs from BERT; cross-vocab masked targets cannot be aligned.
-            if self.cfg.train_cfg.mask_cfg is not None:
-                raise ValueError(
-                    'mask_cfg is not supported with decoder_type=qwen: encoder (BERT) and '
-                    'decoder (Qwen) tokenizers have disjoint vocabularies, so mask positions '
-                    'cannot be aligned. Disable token masking when training with a Qwen decoder.'
-                )
+            # Qwen vocab differs from BERT, so the mask-aware decoder loss cannot be
+            # used (mask positions / vocab IDs do not transfer). mask_cfg is still
+            # honored on the encoder side (encoder receives inp_masked_toks); the
+            # decoder simply trains with plain cross-entropy on the unmasked target.
         else:
             raise ValueError(f'Decoder type {self.cfg.decoder_type} is not supported.')
 
@@ -117,27 +114,24 @@ class MixedDecoder(nn.Module):
 
         # Mask-aware loss: gives higher weight to [MASK] positions, lower to special tokens.
         # Special-token ids come from tkz_dec because the loss is computed over decoder targets.
+        # The mask-aware loss requires the encoder and decoder to share a tokenizer
+        # (so mask positions / vocab IDs align). When they don't (e.g. BERT encoder
+        # + GPT-2 / Qwen decoder) we still honor mask_cfg on the encoder side
+        # (encoder receives inp_masked_toks) but fall back to standard cross-entropy
+        # on the unmasked decoder target.
         self.mask_loss_fn = None
         if self.cfg.train_cfg.mask_cfg is not None:
-            if tkz_dec.mask_token_id is None:
-                raise ValueError(
-                    f'mask_cfg is set but the decoder tokenizer ({type(tkz_dec).__name__}) has no '
-                    f'[MASK] token. Disable token masking when training with this decoder.'
+            same_vocab = tkz_enc is tkz_dec or len(tkz_enc) == len(tkz_dec)
+            if same_vocab and tkz_dec.mask_token_id is not None:
+                spc_ids = [
+                    tid for tid in (tkz_dec.pad_token_id, tkz_dec.cls_token_id, tkz_dec.sep_token_id)
+                    if tid is not None
+                ]
+                self.mask_loss_fn = EncdecMaskPadItemLoss(
+                    msk_tok_id=cast(int, tkz_dec.mask_token_id),
+                    spc_tok_ids=spc_ids,
+                    reg_weight=1, msk_weight=5, spc_weight=0.1,
                 )
-            if tkz_enc is not tkz_dec and len(tkz_enc) != len(tkz_dec):
-                raise ValueError(
-                    'mask_cfg is set but encoder and decoder tokenizers differ. Mask positions '
-                    'cannot be aligned across split vocabs; disable token masking in this setup.'
-                )
-            spc_ids = [
-                tid for tid in (tkz_dec.pad_token_id, tkz_dec.cls_token_id, tkz_dec.sep_token_id)
-                if tid is not None
-            ]
-            self.mask_loss_fn = EncdecMaskPadItemLoss(
-                msk_tok_id=cast(int, tkz_dec.mask_token_id),
-                spc_tok_ids=spc_ids,
-                reg_weight=1, msk_weight=5, spc_weight=0.1,
-            )
 
     def _extend_bert_position_embeddings(self, new_max_len: int):
         """Extend BertGenerationDecoder positional embeddings if new_max_len exceeds
