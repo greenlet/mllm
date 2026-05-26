@@ -22,22 +22,14 @@ from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
     MixedPrecision,
     ShardingStrategy,
-    StateDictType,
-    FullStateDictConfig,
-    FullOptimStateDictConfig,
     BackwardPrefetch,
 )
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from torch.distributed.device_mesh import init_device_mesh
-import torch.distributed.checkpoint as dcp
 from torch.distributed.checkpoint.state_dict import (
     StateDictOptions,
-    get_state_dict,
-    set_state_dict,
-    get_optimizer_state_dict,
     set_optimizer_state_dict,
 )
-from torch.distributed.checkpoint.stateful import Stateful
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 from transformers import AutoTokenizer
@@ -588,27 +580,25 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
     log(f'train_path: {train_path}')
 
     last_checkpoint_path, best_checkpoint_path = train_path / 'last.pth', train_path / 'best.pth'
-    # FSDP sharded checkpoint layout (one directory per snapshot containing per-rank
-    # shard files written by torch.distributed.checkpoint, plus a small meta pickle
-    # written by rank 0 with scalar bookkeeping).
-    fsdp_last_dir = train_path / 'last_fsdp'
-    fsdp_best_dir = train_path / 'best_fsdp'
-    fsdp_last_meta_path = train_path / 'last_fsdp_meta.pth'
-    fsdp_best_meta_path = train_path / 'best_fsdp_meta.pth'
+    # ---- Resume / override decision matrix ------------------------------------
+    # Three independent knobs control how a new run relates to an existing
+    # train subdir:
+    #   1. last.pth presence            -> resume model + (maybe) optimizer/scheduler
+    #   2. optimizer_name / params diff -> drop saved optimizer & scheduler state
+    #                                      on resume, build fresh from CLI args.
+    #   3. --learning-rate-override > 0 -> after the above, REBUILD optimizer +
+    #                                      scheduler from scratch with that LR;
+    #                                      any restored state is discarded. Epoch
+    #                                      counter and val_loss_min are kept.
+    # Both (1) and (2) are decided here so the rest of the function can stay
+    # simple; (3) is applied below, after the optimizer has been instantiated.
     checkpoint = None
-    # True iff we have a resumable sharded FSDP checkpoint on disk. When set, we
-    # skip the legacy DDP-style full-file load (which is what was hanging on
-    # rank 0) and instead load model+optimizer shards via DCP *after* FSDP has
-    # wrapped the model.
-    resume_from_fsdp_shards = fsdp_last_dir.exists() and fsdp_last_meta_path.exists()
     if args.train_subdir == 'last':
-        assert last_checkpoint_path.exists() or resume_from_fsdp_shards, \
-            (f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
-             f'but neither {last_checkpoint_path} nor {fsdp_last_dir} exists.')
-
-    if resume_from_fsdp_shards:
-        log(f'Found FSDP sharded checkpoint at {fsdp_last_dir}; will load after FSDP wrap.')
-    elif last_checkpoint_path.exists():
+        assert last_checkpoint_path.exists(), (
+            f'train_subdir = `last`, train subdirectory found ({train_path.name}), '
+            f'but {last_checkpoint_path} does not exist.'
+        )
+    if last_checkpoint_path.exists():
         log(f'Loading checkpoint from {last_checkpoint_path}')
         checkpoint = torch.load(last_checkpoint_path, map_location=device)
         log(f'Checkpoint with keys {list(checkpoint.keys())} loaded')
@@ -616,32 +606,18 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         if rank == 0:
             to_yaml_file(train_path / MIXED_DECODER_MODEL_CFG_FNAME, model_cfg)
 
-    # Detect optimizer override on resume. If the checkpoint was produced with
-    # a different optimizer class or different optimizer kwargs than what the
-    # current CLI requests, we throw away the saved optimizer + scheduler state
-    # and build fresh ones from the CLI args. Use case: switching `Adam` ->
-    # `AdamW` and/or changing the learning rate mid-training. `learning_rate`
-    # alone is intentionally NOT part of the comparison: when the optimizer is
-    # unchanged we restore its state (which carries the LR), and the scheduler
-    # then continues from where it left off.
+    # optimizer_changed: if the saved checkpoint used a different optimizer class
+    # or different optimizer kwargs than what the CLI requests now, drop the
+    # saved optimizer + scheduler state on resume and build fresh ones. Use case:
+    # switching `Adam` -> `AdamW` and/or changing the learning rate mid-training.
+    # `learning_rate` itself is NOT part of this comparison: when the optimizer
+    # is unchanged we restore its state (which carries the LR) and the scheduler
+    # continues from where it left off. Use --learning-rate-override to force a
+    # rebuild without changing the optimizer class.
     optimizer_changed = False
     if checkpoint is not None:
         prev_opt_name = checkpoint.get('optimizer_name')
         prev_opt_params = checkpoint.get('optimizer_params')
-        if prev_opt_name is None:
-            # Legacy checkpoint (pre-override-support). Fall back to the
-            # persisted model-cfg YAML, which records the optimizer used by
-            # the run that wrote the checkpoint.
-            cfg_yaml_path = train_path / MIXED_DECODER_MODEL_CFG_FNAME
-            if cfg_yaml_path.exists():
-                try:
-                    prev_cfg = parse_yaml_file_as(MixedDecoderCfg, cfg_yaml_path)
-                    if prev_cfg.train_cfg.optimizer is not None:
-                        prev_opt_name = prev_cfg.train_cfg.optimizer.cls_name
-                        prev_opt_params = prev_cfg.train_cfg.optimizer.params
-                except Exception as e:
-                    log(f'Optimizer-change detection: failed to read prior cfg from '
-                        f'{cfg_yaml_path} ({e}); assuming no change.')
         cur_params = dict(args.optimizer_params or {})
         prv_params = dict(prev_opt_params or {})
         if prev_opt_name != args.optimizer_name or prv_params != cur_params:
@@ -811,43 +787,16 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
 
     last_epoch, val_loss_min, shuffle = -1, None, False
 
-    if resume_from_fsdp_shards:
-        # Legacy: a previous run saved sharded DCP shards into `last_fsdp/`.
-        # We no longer write that format (see save block below); load the
-        # shards with the AppState/Stateful pattern just to migrate forward.
-        # New runs will overwrite `last.pth` on the next checkpoint.
-        _dcp = dcp
-        _sd_opts = StateDictOptions(cpu_offload=True)
-        class _AppState(Stateful):
-            def __init__(self, m, o):
-                self._m, self._o = m, o
-            def state_dict(self):
-                msd, osd = get_state_dict(self._m, self._o, options=_sd_opts)
-                return {'model': msd, 'optim': osd}
-            def load_state_dict(self, sd):
-                set_state_dict(
-                    self._m, self._o,
-                    model_state_dict=sd['model'],
-                    optim_state_dict=sd['optim'],
-                    options=_sd_opts,
-                )
-        log(f'FSDP: loading legacy sharded checkpoint from {fsdp_last_dir}')
-        app = _AppState(ddp_model, optimizer)
-        _dcp.load(
-            state_dict={'app': app},
-            storage_reader=_dcp.FileSystemReader(str(fsdp_last_dir)),
-        )
-        meta = torch.load(fsdp_last_meta_path, map_location='cpu')
-        scheduler.load_state_dict(meta['scheduler'])
-        last_epoch = meta['last_epoch']
-        val_loss_min = meta['val_loss_min']
-        log(f'FSDP: legacy sharded checkpoint loaded; resuming from epoch '
-            f'{last_epoch + 1}, val_loss_min={val_loss_min}')
-    elif checkpoint is not None:
+    # ---- Phase 2: restore optimizer / scheduler / epoch counter from checkpoint.
+    # Model weights were already restored above via `model.load_pretrained(checkpoint)`.
+    # Here we decide what to do with optimizer + scheduler state:
+    #   * optimizer_changed -> keep model + epoch + val_loss_min only;
+    #                          optimizer & scheduler stay freshly-built.
+    #   * otherwise         -> restore optimizer + scheduler (FSDP path uses
+    #                          set_optimizer_state_dict; DDP path uses the plain
+    #                          optimizer.load_state_dict).
+    if checkpoint is not None:
         if optimizer_changed:
-            # User requested a different optimizer (and/or kwargs). Skip
-            # restoring optimizer + scheduler state entirely. Model weights,
-            # epoch counter and val_loss_min are still loaded below.
             log('Skipping optimizer/scheduler state restore due to optimizer change.')
         elif use_fsdp:
             # FSDP1 marks the outermost wrapper as _is_root only during the
@@ -857,98 +806,33 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             # point in training. Force lazy init here so the verifier sees a
             # proper root; otherwise it raises:
             #   "The model has FSDP modules but no FSDP root module exists."
-            # Note: FSDP._lazy_init was moved to torch.distributed.fsdp.
-            # _runtime_utils._lazy_init(state, root_module) in PyTorch 2.x.
             from torch.distributed.fsdp._runtime_utils import _lazy_init as _fsdp_lazy_init
             _fsdp_lazy_init(ddp_model, ddp_model)
-            # Normalize legacy optimizer state: older runs saved
-            # `optimizer.state_dict()` verbatim, which keys `state` by integer
-            # param ids and lists those same ids under each `param_groups`
-            # entry. `set_optimizer_state_dict(full_state_dict=True, ...)`
-            # expects `state` keyed by FQN and `param_groups[i]['params']` to
-            # be FQNs as well. Convert in-place; new-format checkpoints
-            # (already FQN-keyed) pass through unchanged.
             opt_sd = checkpoint['optimizer']
-            opt_state = opt_sd.get('state', {})
-            if opt_state and all(isinstance(k, int) for k in opt_state.keys()):
-                # Build pid -> canonical FQN map. `named_parameters()` on an
-                # FSDP1 root with auto_wrap inserts `_fsdp_wrapped_module.`
-                # segments into the names, which do NOT match the FQNs that
-                # `set_optimizer_state_dict` looks up. DCP's `_get_fqns`
-                # strips FSDP/DDP/compiler prefixes the same way the loader
-                # does internally, so use it directly.
-                from torch.distributed.checkpoint.state_dict import _get_fqns
-                pid_to_fqn: dict = {}
-                for i, (raw_name, _) in enumerate(ddp_model.named_parameters()):
-                    fqns_set = _get_fqns(ddp_model, raw_name)
-                    # With use_orig_params=True, each parameter maps to exactly one FQN.
-                    assert len(fqns_set) == 1, (
-                        f'Expected 1 FQN for {raw_name!r}, got {fqns_set!r}.'
-                    )
-                    pid_to_fqn[i] = next(iter(fqns_set))
-                new_state = {pid_to_fqn[pid]: st for pid, st in opt_state.items() if pid in pid_to_fqn}
-                new_param_groups = []
-                for pg in opt_sd.get('param_groups', []):
-                    pg2 = dict(pg)
-                    pg2['params'] = [pid_to_fqn[p] for p in pg.get('params', []) if p in pid_to_fqn]
-                    new_param_groups.append(pg2)
-                opt_sd = {'state': new_state, 'param_groups': new_param_groups}
-            # Tolerate incomplete optimizer state: with FSDP1 + use_orig_params=True
-            # a parameter whose local shard is empty on the saving rank never
-            # had Adam state allocated, so its FQN can be missing from
-            # `state`. `_split_optim_state_dict` expects every parameter in
-            # `param_groups[*]['params']` to have an entry. We CANNOT just
-            # insert an empty dict for those entries either: with
-            # `full_state_dict=True` the loader allocates a 0-sized exp_avg
-            # tensor from `{}` and then `optimizer.step()` crashes with
-            #   RuntimeError: The size of tensor a (0) must match the size of
-            #   tensor b (N) at non-singleton dimension 0
-            # inside `torch._foreach_lerp_`.
-            #
-            # If we detect this corruption we skip the optimizer-state load
-            # entirely. Model weights, scheduler, last_epoch and val_loss_min
-            # are still restored from the checkpoint; only Adam's running
-            # moments are reset. The next save will write a complete
-            # state-dict (see save block: union over ranks), so this branch
-            # is only taken once when migrating from a legacy broken
-            # checkpoint.
-            opt_state = opt_sd.get('state', {})
-            opt_pgs = opt_sd.get('param_groups', [])
-            referenced_fqns: set = set()
-            for pg in opt_pgs:
-                referenced_fqns.update(pg.get('params', []))
-            missing = [fqn for fqn in referenced_fqns if fqn not in opt_state]
-            if missing:
-                log(f'FSDP resume: optimizer state is incomplete '
-                    f'({len(missing)}/{len(referenced_fqns)} entries missing, '
-                    f'e.g. {missing[:3]}). Skipping optimizer-state load; '
-                    f'Adam moments will reinitialize. Model weights, scheduler '
-                    f'and epoch counter are still restored.')
-            else:
-                set_optimizer_state_dict(
-                    ddp_model,
-                    optimizer,
-                    optim_state_dict=opt_sd,
-                    options=StateDictOptions(full_state_dict=True, cpu_offload=True),
-                )
-                # `set_optimizer_state_dict` routes through
-                # `FSDP.optim_state_dict_to_load` -> `optim.load_state_dict`,
-                # which is supposed to copy hyperparameters (lr, betas, ...)
-                # from the saved param_groups into the live optimizer. In
-                # practice, on the FSDP1 / DTensor path, the live optimizer's
-                # param_groups can end up retaining the freshly-instantiated
-                # hyperparameters (i.e. `args.learning_rate`) instead of the
-                # ones from the checkpoint. Force-copy the saved hyperparams
-                # here so resume behaviour matches the DDP branch below.
-                saved_pgs = opt_sd.get('param_groups', [])
-                for live_pg, saved_pg in zip(optimizer.param_groups, saved_pgs):
-                    for k, v in saved_pg.items():
-                        if k == 'params':
-                            continue
-                        live_pg[k] = v
-                if saved_pgs:
-                    log(f'FSDP resume: restored optimizer hyperparameters from '
-                        f'checkpoint; lr={optimizer.param_groups[0].get("lr")!r}.')
+            set_optimizer_state_dict(
+                ddp_model,
+                optimizer,
+                optim_state_dict=opt_sd,
+                options=StateDictOptions(full_state_dict=True, cpu_offload=True),
+            )
+            # `set_optimizer_state_dict` routes through
+            # `FSDP.optim_state_dict_to_load` -> `optim.load_state_dict`,
+            # which is supposed to copy hyperparameters (lr, betas, ...) from
+            # the saved param_groups into the live optimizer. In practice, on
+            # the FSDP1 / DTensor path, the live optimizer's param_groups can
+            # end up retaining the freshly-instantiated hyperparameters
+            # (i.e. `args.learning_rate`) instead of the ones from the
+            # checkpoint. Force-copy the saved hyperparams here so resume
+            # behaviour matches the DDP branch below.
+            saved_pgs = opt_sd.get('param_groups', [])
+            for live_pg, saved_pg in zip(optimizer.param_groups, saved_pgs):
+                for k, v in saved_pg.items():
+                    if k == 'params':
+                        continue
+                    live_pg[k] = v
+            if saved_pgs:
+                log(f'FSDP resume: restored optimizer hyperparameters from '
+                    f'checkpoint; lr={optimizer.param_groups[0].get("lr")!r}.')
         else:
             optimizer.load_state_dict(checkpoint['optimizer'])
         if not optimizer_changed:
@@ -957,6 +841,10 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         val_loss_min = checkpoint['val_loss_min']
         del checkpoint
 
+    # ---- Phase 3: --learning-rate-override (applied AFTER any restore).
+    # Rebuild optimizer + scheduler from scratch with the given LR; any restored
+    # state is discarded. last_epoch and val_loss_min are kept so the run
+    # continues counting epochs and tracking best-val from where it left off.
     if args.learning_rate_override > 0:
         log(f'learning_rate_override={args.learning_rate_override} > 0: rebuilding optimizer '
             f'({args.optimizer_name}) and scheduler ({args.learning_rate_scheduler_name}) from '
