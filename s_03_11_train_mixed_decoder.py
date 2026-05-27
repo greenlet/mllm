@@ -809,6 +809,19 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             from torch.distributed.fsdp._runtime_utils import _lazy_init as _fsdp_lazy_init
             _fsdp_lazy_init(ddp_model, ddp_model)
             opt_sd = checkpoint['optimizer']
+            # Backward-compat for checkpoints produced with incorrect FQN remap:
+            # set_optimizer_state_dict expects every FQN referenced by
+            # param_groups to exist in state. Fill any missing entries with
+            # empty per-param state so resume can proceed (those params will
+            # rebuild optimizer moments from scratch).
+            if isinstance(opt_sd, dict):
+                st = opt_sd.get('state')
+                pgs = opt_sd.get('param_groups')
+                if isinstance(st, dict) and isinstance(pgs, list):
+                    for pg in pgs:
+                        for fqn in pg.get('params', []):
+                            if fqn not in st:
+                                st[fqn] = {}
             set_optimizer_state_dict(
                 ddp_model,
                 optimizer,
@@ -1122,11 +1135,23 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             # DCP's `_get_fqns` strips those (and DDP/compiler) prefixes the
             # same way the loader does internally.
             from torch.distributed.checkpoint.state_dict import _get_fqns as _dcp_get_fqns
-            pid_to_fqn: dict = {}
-            for i, (raw_name, _) in enumerate(ddp_model.named_parameters()):
+            param_id_to_fqn: dict = {}
+            for raw_name, p in ddp_model.named_parameters():
                 _fqns = _dcp_get_fqns(ddp_model, raw_name)
                 assert len(_fqns) == 1, f'Expected 1 FQN for {raw_name!r}, got {_fqns!r}.'
-                pid_to_fqn[i] = next(iter(_fqns))
+                param_id_to_fqn[id(p)] = next(iter(_fqns))
+            # Optimizer.state_dict() uses integer ids assigned by iterating
+            # optimizer.param_groups in order. Rebuild that exact id -> FQN map
+            # from optimizer.param_groups (not from named_parameters order),
+            # otherwise multi-group optimizers produce mismatched checkpoints.
+            pid_to_fqn: dict = {}
+            pid = 0
+            for pg in optimizer.param_groups:
+                for p in pg.get('params', []):
+                    fqn = param_id_to_fqn.get(id(p))
+                    if fqn is not None:
+                        pid_to_fqn[pid] = fqn
+                    pid += 1
             full_state: dict = {}
             for pid, pstate in local_osd['state'].items():
                 gathered: dict = {}
