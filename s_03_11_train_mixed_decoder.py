@@ -485,6 +485,31 @@ def build_param_groups(
     return groups
 
 
+def sanitize_optimizer_state_for_model(optimizer: torch.optim.Optimizer, model: nn.Module) -> int:
+    """Clear invalid per-parameter optimizer state entries.
+
+    This guards resume from checkpoints whose optimizer state was saved with a
+    different parameter ordering/shapes. AdamW foreach kernels require moment
+    tensors to have the same shape as the current parameter gradients.
+    """
+    bad_count = 0
+    for pg in optimizer.param_groups:
+        for p in pg.get('params', []):
+            pstate = optimizer.state.get(p)
+            if not isinstance(pstate, dict) or not pstate:
+                continue
+            bad = False
+            for sk in ('exp_avg', 'exp_avg_sq', 'max_exp_avg_sq'):
+                sv = pstate.get(sk)
+                if torch.is_tensor(sv) and tuple(sv.shape) != tuple(p.shape):
+                    bad = True
+                    break
+            if bad:
+                optimizer.state[p] = {}
+                bad_count += 1
+    return bad_count
+
+
 def setup(rank, world_size):
     if world_size <= 1:
         return
@@ -818,10 +843,64 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 st = opt_sd.get('state')
                 pgs = opt_sd.get('param_groups')
                 if isinstance(st, dict) and isinstance(pgs, list):
+                    # Build canonical FQN -> live parameter map (same canonicalization
+                    # that DCP/FSDP loader uses internally).
+                    from torch.distributed.checkpoint.state_dict import _get_fqns as _dcp_get_fqns
+                    fqn_to_param: dict = {}
+                    param_id_to_fqn: dict = {}
+                    for raw_name, p in ddp_model.named_parameters():
+                        _fqns = _dcp_get_fqns(ddp_model, raw_name)
+                        if len(_fqns) == 1:
+                            fqn = next(iter(_fqns))
+                            fqn_to_param[fqn] = p
+                            param_id_to_fqn[id(p)] = fqn
+                    # Legacy checkpoints can still have optimizer.state keyed by
+                    # integer ids. Remap to canonical FQNs using the exact pid
+                    # assignment order used by optimizer.state_dict() (walk
+                    # optimizer.param_groups in order).
+                    if st and all(isinstance(k, int) for k in st.keys()):
+                        pid_to_fqn: dict = {}
+                        pid = 0
+                        for lpg in optimizer.param_groups:
+                            for lp in lpg.get('params', []):
+                                fqn = param_id_to_fqn.get(id(lp))
+                                if fqn is not None:
+                                    pid_to_fqn[pid] = fqn
+                                pid += 1
+                        new_state: dict = {}
+                        for pid, pstate in st.items():
+                            fqn = pid_to_fqn.get(pid)
+                            if fqn is not None:
+                                new_state[fqn] = pstate
+                        new_pgs: list = []
+                        for pg in pgs:
+                            pg2 = dict(pg)
+                            pg2['params'] = [pid_to_fqn[p] for p in pg.get('params', []) if p in pid_to_fqn]
+                            new_pgs.append(pg2)
+                        st = new_state
+                        pgs = new_pgs
+                        opt_sd = {'state': st, 'param_groups': pgs}
                     for pg in pgs:
                         for fqn in pg.get('params', []):
                             if fqn not in st:
                                 st[fqn] = {}
+                    # Some older checkpoints have wrong-but-present optimizer
+                    # entries (state from parameter A stored under parameter B
+                    # FQN). Detect this by validating Adam moments against the
+                    # live parameter shape; when mismatched, clear state so the
+                    # optimizer re-initializes moments on the next step.
+                    for fqn, pstate in st.items():
+                        p = fqn_to_param.get(fqn)
+                        if p is None or not isinstance(pstate, dict):
+                            continue
+                        bad = False
+                        for sk in ('exp_avg', 'exp_avg_sq', 'max_exp_avg_sq'):
+                            sv = pstate.get(sk)
+                            if torch.is_tensor(sv) and tuple(sv.shape) != tuple(p.shape):
+                                bad = True
+                                break
+                        if bad:
+                            st[fqn] = {}
             set_optimizer_state_dict(
                 ddp_model,
                 optimizer,
@@ -848,6 +927,11 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                     f'checkpoint; lr={optimizer.param_groups[0].get("lr")!r}.')
         else:
             optimizer.load_state_dict(checkpoint['optimizer'])
+        if not optimizer_changed:
+            n_bad_states = sanitize_optimizer_state_for_model(optimizer, ddp_model)
+            if n_bad_states:
+                log(f'Resume: cleared {n_bad_states} invalid optimizer state entries '
+                    f'(shape mismatch vs current parameters).')
         if not optimizer_changed:
             scheduler.load_state_dict(checkpoint['scheduler'])
         last_epoch = checkpoint['last_epoch']
