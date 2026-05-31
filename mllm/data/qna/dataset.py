@@ -435,7 +435,8 @@ class QnaDatasetAgg:
         self.datasets = datasets
         self.device = device if device is not None else torch.device('cpu')
 
-        # Build 2-column numpy array: [ds_idx, local_idx] per global index
+        # Build 2-column numpy array: [ds_idx, local_pos] per global index,
+        # where local_pos indexes into each child dataset's filtered `inds`.
         ds_lens = [len(ds) for ds in self.datasets]
         total = sum(ds_lens)
         self._map = np.empty((total, 2), dtype=np.int64)
@@ -455,8 +456,10 @@ class QnaDatasetAgg:
         return self.size
 
     def _get_item(self, idx: int) -> Tuple[str, List[str], List[str], bool]:
-        ds_idx, local_idx = self._map[idx]
-        return self.datasets[ds_idx]._get_item(local_idx)
+        ds_idx, local_pos = self._map[idx]
+        ds = self.datasets[ds_idx]
+        item_idx = int(ds.inds[local_pos])
+        return ds._get_item(item_idx)
 
     def get_batch(self, inds: List[int]) -> QnaBatch:
         """Build a batch by delegating to the first dataset's batching logic."""
