@@ -37,7 +37,7 @@ REPO_ROOT = Path(__file__).parent.resolve()
 DATA_PATH = REPO_ROOT / 'data'
 TRAIN_ROOT = DATA_PATH / 'train_mllm_encdec_bert'
 RUN_DIR = TRAIN_ROOT / (
-    'mixeddecoder-20260530_113509-pre_mixeddecoder20260523180218'
+    'mixeddecoder-20260531_191822-pre_mixeddecoder20260523180218'
     '-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400'
     '-dtypeBf16-sepF-pallF-eer4-ewn2x6-frzencF-dsQnaans'
     '-trn_lr5e-05_bs20_attdp0.1'
