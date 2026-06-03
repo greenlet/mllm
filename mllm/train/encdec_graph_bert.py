@@ -167,7 +167,7 @@ def load_split_wiki_dataset(
     # (dataset construction does not require a tokenizer at load time).
     del tkz
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
-    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))['train']
+    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path), trust_remote_code=True)['train']
 
     if random_seed is not None:
         dataset = dataset.shuffle(seed=random_seed)

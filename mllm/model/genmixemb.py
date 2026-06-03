@@ -985,7 +985,7 @@ def run_gpt2_train():
     # Load dataset
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
     # dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(DATA_PATH))
-    dataset = load_dataset('wikitext', 'wikitext-2-raw-v1', cache_dir=str(DATA_PATH))
+    dataset = load_dataset('wikitext', 'wikitext-2-raw-v1', cache_dir=str(DATA_PATH), trust_remote_code=True)
 
     # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained('gpt2')

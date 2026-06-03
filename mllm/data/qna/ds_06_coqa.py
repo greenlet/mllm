@@ -104,6 +104,7 @@ def load_coqa(
     kwargs = {}
     if cache_dir is not None:
         kwargs['cache_dir'] = str(cache_dir)
+    kwargs['trust_remote_code'] = True
     ds_train = load_dataset(COQA_HF_ID, split='train', **kwargs)
     ds_val = load_dataset(COQA_HF_ID, split='validation', **kwargs)
     n_train_turns = sum(len(ds_train[i]['questions']) for i in range(len(ds_train)))

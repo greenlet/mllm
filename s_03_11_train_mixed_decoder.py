@@ -3,7 +3,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 from pprint import pprint
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Generator, Optional
 import shutil
 
 from datasets import Dataset
@@ -146,6 +146,16 @@ class ArgsMixedDecoderTrain(BaseModel):
         64,
         description='Minimum number of tokens reserved for next-token prediction target (used with train_ds_type=next).',
         cli=('--min-next-toks',),
+    )
+    qnaanscite_cite_batches_per_cycle: int = Field(
+        1,
+        description='For train_ds_type=qnaanscite: number of Cite batches emitted per cycle.',
+        cli=('--qnaanscite-cite-batches-per-cycle',),
+    )
+    qnaanscite_qna_batches_per_cycle: int = Field(
+        1,
+        description='For train_ds_type=qnaanscite: number of QnA batches emitted per cycle.',
+        cli=('--qnaanscite-qna-batches-per-cycle',),
     )
 
     freeze_encoder_STR: str = create_bool_str_field(*freeze_encoder_ARG)
@@ -344,6 +354,25 @@ class ArgsMixedDecoderTrain(BaseModel):
 
 _PARALLEL_DDP = 'ddp'
 _PARALLEL_FSDP = 'fsdp'
+
+
+def _is_qna_batch(batch: Any) -> bool:
+    return hasattr(batch, 'ans_toks')
+
+
+def create_qnaanscite_dataloader(
+        cite_batch_it: Generator,
+        qna_batch_it: Generator,
+        cite_batches_per_cycle: int,
+        qna_batches_per_cycle: int,
+) -> Generator:
+    assert cite_batches_per_cycle > 0, 'qnaanscite_cite_batches_per_cycle must be > 0'
+    assert qna_batches_per_cycle > 0, 'qnaanscite_qna_batches_per_cycle must be > 0'
+    while True:
+        for _ in range(cite_batches_per_cycle):
+            yield next(cite_batch_it)
+        for _ in range(qna_batches_per_cycle):
+            yield next(qna_batch_it)
 
 
 def _resolve_transformer_layer_classes(module: nn.Module) -> set:
@@ -998,6 +1027,30 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         print(f'qna_agg_train size: {len(qna_agg_train)}. qna_agg_val size: {len(qna_agg_val)}.')
         train_batch_it = create_qna_dataloader(qna_agg_train, batch_size=args.docs_batch_size)
         val_batch_it = create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size)
+    elif args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
+        assert ds_train is not None and ds_val is not None, 'QnaAnsCite requires cite train/val datasets'
+        assert qna_agg_train is not None and qna_agg_val is not None, 'QnaAnsCite requires qna train/val datasets'
+        ds_train = MaskedCiteDataset(ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device, tkz_dec=tkz_dec)
+        ds_val = MaskedCiteDataset(ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device, tkz_dec=tkz_dec)
+        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
+        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
+        qna_agg_train.device = device
+        qna_agg_val.device = device
+        qna_agg_train.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
+        qna_agg_val.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
+        print(f'qna_agg_train size: {len(qna_agg_train)}. qna_agg_val size: {len(qna_agg_val)}.')
+        train_cite_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
+        train_qna_batch_it = create_qna_dataloader(qna_agg_train, batch_size=args.docs_batch_size)
+        val_cite_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
+        val_qna_batch_it = create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size)
+        train_batch_it = create_qnaanscite_dataloader(
+            train_cite_batch_it, train_qna_batch_it,
+            args.qnaanscite_cite_batches_per_cycle, args.qnaanscite_qna_batches_per_cycle,
+        )
+        val_batch_it = create_qnaanscite_dataloader(
+            val_cite_batch_it, val_qna_batch_it,
+            args.qnaanscite_cite_batches_per_cycle, args.qnaanscite_qna_batches_per_cycle,
+        )
     elif args.train_ds_type == MixedDecoderDsType.Next:
         ds_train = NextTokWikiDataset(
             wiki_ds, wiki_inds_train, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
@@ -1034,6 +1087,10 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         ddp_model.train()
         train_losses = LossesStats()
         train_loss = 0.0
+        train_cite_loss = 0.0
+        train_qna_loss = 0.0
+        train_cite_batches = 0
+        train_qna_batches = 0
         if rank == 0:
             pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         else:
@@ -1076,6 +1133,12 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             else:
                 optimizer.step()
             train_loss += loss.item()
+            if _is_qna_batch(batch):
+                train_qna_loss += loss.item()
+                train_qna_batches += 1
+            else:
+                train_cite_loss += loss.item()
+                train_cite_batches += 1
             train_losses.update_dict(loss_dict)
 
             if rank == 0:
@@ -1086,6 +1149,12 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         if rank == 0:
             pbar.close()
             train_losses.log_to_tb('Train', epoch, tbsw)
+            if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
+                train_cite_mean = train_cite_loss / train_cite_batches if train_cite_batches else 0.0
+                train_qna_mean = train_qna_loss / train_qna_batches if train_qna_batches else 0.0
+                tbsw.add_scalar('Train/cite_loss', train_cite_mean, epoch)
+                tbsw.add_scalar('Train/qna_loss', train_qna_mean, epoch)
+                tbsw.add_scalar('Train/overall_loss', train_loss, epoch)
 
         ddp_model.eval()
         if device.type == 'cuda':
@@ -1093,6 +1162,10 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
 
         val_losses = LossesStats()
         val_loss = 0.0
+        val_cite_loss = 0.0
+        val_qna_loss = 0.0
+        val_cite_batches = 0
+        val_qna_batches = 0
         if rank == 0:
             pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         else:
@@ -1109,6 +1182,12 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             loss = loss_dict['loss']
 
             val_loss += loss.item()
+            if _is_qna_batch(batch):
+                val_qna_loss += loss.item()
+                val_qna_batches += 1
+            else:
+                val_cite_loss += loss.item()
+                val_cite_batches += 1
             val_losses.update_dict(loss_dict)
 
             if rank == 0:
@@ -1119,6 +1198,12 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         if rank == 0:
             pbar.close()
             val_losses.log_to_tb('Val', epoch, tbsw)
+            if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
+                val_cite_mean = val_cite_loss / val_cite_batches if val_cite_batches else 0.0
+                val_qna_mean = val_qna_loss / val_qna_batches if val_qna_batches else 0.0
+                tbsw.add_scalar('Val/cite_loss', val_cite_mean, epoch)
+                tbsw.add_scalar('Val/qna_loss', val_qna_mean, epoch)
+                tbsw.add_scalar('Val/overall_loss', val_loss, epoch)
 
         if isinstance(scheduler, ReduceLROnPlateau):
             scheduler.step(val_loss)
@@ -1130,6 +1215,17 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
             print(f'Train mean loss: {train_loss:.6f}. Val mean loss: {val_loss:.6f}')
+            if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
+                train_cite_mean = train_cite_loss / train_cite_batches if train_cite_batches else 0.0
+                train_qna_mean = train_qna_loss / train_qna_batches if train_qna_batches else 0.0
+                val_cite_mean = val_cite_loss / val_cite_batches if val_cite_batches else 0.0
+                val_qna_mean = val_qna_loss / val_qna_batches if val_qna_batches else 0.0
+                print(
+                    f'Mixed losses. Train cite: {train_cite_mean:.6f} ({train_cite_batches} batches). '
+                    f'Train qna: {train_qna_mean:.6f} ({train_qna_batches} batches). '
+                    f'Val cite: {val_cite_mean:.6f} ({val_cite_batches} batches). '
+                    f'Val qna: {val_qna_mean:.6f} ({val_qna_batches} batches).'
+                )
             train_losses_str = train_losses.to_cli_str(aggregate=True)
             val_losses_str = val_losses.to_cli_str(aggregate=True)
             print(f'Train mean losses: {train_losses_str}')
@@ -1354,6 +1450,17 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         )
     elif args.train_ds_type == MixedDecoderDsType.QnaAns:
         ds_train, ds_val = None, None
+        df_sq, sq_inds_train, sq_inds_val = None, None, None
+        max_chunks = max(args.emb_win_max_size, 1)
+        qna_agg_train, qna_agg_val = load_qna_datasets(
+            tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=args.inp_len, max_chunks=max_chunks,
+            cache_dir=str(args.data_path), exclude_noanswer=True,
+        )
+    elif args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
+        ds_train, ds_val = load_split_wiki_dataset(
+            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
+            mask_cfg=mask_cfg, random_seed=args.random_seed,
+        )
         df_sq, sq_inds_train, sq_inds_val = None, None, None
         max_chunks = max(args.emb_win_max_size, 1)
         qna_agg_train, qna_agg_val = load_qna_datasets(

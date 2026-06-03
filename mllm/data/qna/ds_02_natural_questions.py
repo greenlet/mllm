@@ -192,6 +192,7 @@ def load_nq(
     kwargs = {}
     if cache_dir is not None:
         kwargs['cache_dir'] = str(cache_dir)
+    kwargs['trust_remote_code'] = True
     ds_train = load_dataset(NQ_HF_ID, split='train', **kwargs)
     ds_val = load_dataset(NQ_HF_ID, split='validation', **kwargs)
     print(f'NQ loaded: train={len(ds_train)}, val={len(ds_val)}')

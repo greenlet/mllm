@@ -36,12 +36,26 @@ import torch
 REPO_ROOT = Path(__file__).parent.resolve()
 DATA_PATH = REPO_ROOT / 'data'
 TRAIN_ROOT = DATA_PATH / 'train_mllm_encdec_bert'
-RUN_DIR = TRAIN_ROOT / (
-    'mixeddecoder-20260531_191822-pre_mixeddecoder20260523180218'
-    '-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400'
-    '-dtypeBf16-sepF-pallF-eer4-ewn2x6-frzencF-dsQnaans'
-    '-trn_lr5e-05_bs20_attdp0.1'
-)
+
+
+def _resolve_latest_qnaanscite_run_dir(train_root: Path) -> Path:
+    """Return the latest mixeddecoder run dir trained on dsQnaanscite."""
+    candidates = sorted(
+        [
+            p for p in train_root.glob('mixeddecoder-*')
+            if p.is_dir() and 'dsQnaanscite' in p.name
+        ],
+        key=lambda p: p.name,
+        reverse=True,
+    )
+    if not candidates:
+        raise FileNotFoundError(
+            f'No mixeddecoder run directory with dsQnaanscite found under {train_root}'
+        )
+    return candidates[0]
+
+
+RUN_DIR = _resolve_latest_qnaanscite_run_dir(TRAIN_ROOT)
 BEST_CKPT = RUN_DIR / 'best.pth'
 MODEL_CFG_YAML = RUN_DIR / 'mixed_decoder_model_cfg.yaml'
 CACHE_DIR = DATA_PATH  # cache subdir = DATA_PATH/qna_noanswer_cache/

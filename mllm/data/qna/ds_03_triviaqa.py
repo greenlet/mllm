@@ -135,6 +135,7 @@ def load_triviaqa(
     kwargs = {}
     if cache_dir is not None:
         kwargs['cache_dir'] = str(cache_dir)
+    kwargs['trust_remote_code'] = True
     ds_train = load_dataset(TRIVIAQA_HF_ID, TRIVIAQA_SUBSET, split='train', **kwargs)
     ds_val = load_dataset(TRIVIAQA_HF_ID, TRIVIAQA_SUBSET, split='validation', **kwargs)
     print(f'TriviaQA loaded: train={len(ds_train)}, val={len(ds_val)}')

@@ -179,7 +179,10 @@ def main(args: ArgsEncdecHgTrain) -> int:
     pad_tok, mask_tok = tok_dict['pad'], tok_dict['mask']
     print(f'Loading Wikipedia dataset: {args.wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
-    dss = load_dataset(wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(args.data_path))
+    dss = load_dataset(
+        wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner',
+        cache_dir=str(args.data_path), trust_remote_code=True,
+    )
     ds = dss['train']
     n_docs = len(ds)
     print(f'Wikipedia {args.wiki_ds_name} docs: {n_docs}')

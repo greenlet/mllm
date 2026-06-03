@@ -96,6 +96,7 @@ def load_newsqa(
     kwargs = {}
     if cache_dir is not None:
         kwargs['cache_dir'] = str(cache_dir)
+    kwargs['trust_remote_code'] = True
     ds_train = load_dataset(NEWSQA_HF_ID, split='train', **kwargs)
     ds_val = load_dataset(NEWSQA_HF_ID, split='validation', **kwargs)
     print(f'NewsQA loaded: train={len(ds_train)}, val={len(ds_val)}')

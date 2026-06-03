@@ -12,7 +12,7 @@ from transformers import AutoTokenizer, DataCollatorForSeq2Seq, AutoModelForSeq2
 
 
 def train_billsum_encdec():
-    billsum = load_dataset("billsum")
+    billsum = load_dataset("billsum", trust_remote_code=True)
     checkpoint = "google-t5/t5-small"
     tokenizer = AutoTokenizer.from_pretrained(checkpoint)
     prefix = "summarize: "

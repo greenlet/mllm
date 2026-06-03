@@ -111,6 +111,116 @@ PYTHONPATH=. /usr/bin/python3 -u s_03_12_eval_mixed_decoder.py | tee /tmp/qna_ev
 - OVERALL mean val loss: `2.2906`
 - OVERALL gap (val - train): `+0.8558`
 
+## Run 3 (2026-06-03) — Latest QnaansCite-Trained Checkpoint, Evaluated On Qnaans
+
+### Script And Run Info
+
+- Script: `s_03_12_eval_mixed_decoder.py`
+- Run command:
+
+```bash
+cd /scratch/azureml/cr/j/69afa6bb42064469926aa31f99dac9a6/exe/wd
+PYTHONPATH=. /usr/bin/python3 -u s_03_12_eval_mixed_decoder.py | tee /tmp/qna_eval_2026-06-03_qnaanscite.log
+```
+
+- Python: `Python 3.10.12` (system python)
+- Log: `/tmp/qna_eval_2026-06-03_qnaanscite.log`
+- Status: `Done.` (exit code `0`)
+- Checkpoint: `mixeddecoder-20260602_213658-pre_mixeddecoder20260523180218-...-dsQnaanscite-.../best.pth`
+
+### Dataset Analysis Summary
+
+| Dataset | TrnN | ValN | AnsLen(trn) mean±std [min,max] | AnsLen(val) mean±std [min,max] | AggAnsRate (trn/val) |
+|---|---:|---:|---|---|---|
+| squad_v2 | 86821 | 5928 | 6.1±4.4 [2,31] | 5.9±4.1 [2,31] | 0.68/0.46 |
+| natural_questions | 152148 | 5499 | 61.3±43.1 [2,100] | 53.7±43.2 [2,100] | 0.51/0.69 |
+| triviaqa | 138384 | 17944 | 5.5±3.8 [2,70] | 5.4±2.4 [2,24] | 1.00/1.00 |
+| newsqa | 74160 | 4212 | 7.3±5.9 [2,48] | 6.6±5.0 [2,35] | 1.00/1.00 |
+| mrqa | 190312 | 22881 | 4.5±2.9 [2,48] | 4.2±1.8 [2,13] | 1.00/1.00 |
+| adversarialqa | 30000 | 3000 | 6.5±7.7 [2,100] | 5.3±4.5 [2,48] | 1.00/1.00 |
+| quac | 9430 | 787 | 19.7±12.3 [2,51] | 19.5±11.6 [2,59] | 0.83/0.79 |
+| coqa | 7092 | 497 | 4.7±3.7 [2,32] | 4.6±3.1 [2,26] | 0.98/1.00 |
+
+- Total filtered size: train `688347`, val `60748`
+
+### Evaluation Summary (Loss/PPL)
+
+| Dataset | Split | N | Loss mean | Loss std | PPL |
+|---|---|---:|---:|---:|---:|
+| squad_v2 | train | 86821 | 1.8582 | 0.5440 | 6.41 |
+| squad_v2 | val | 5928 | 2.4678 | 0.5178 | 11.80 |
+| natural_questions | train | 152148 | 1.3438 | 0.4075 | 3.83 |
+| natural_questions | val | 5499 | 1.8091 | 0.4902 | 6.11 |
+| triviaqa | train | 138384 | 2.6088 | 0.4797 | 13.58 |
+| triviaqa | val | 17944 | 2.9165 | 0.6354 | 18.48 |
+| newsqa | train | 74160 | 1.9961 | 0.4833 | 7.36 |
+| newsqa | val | 4212 | 2.6918 | 0.4538 | 14.76 |
+| mrqa | train | 190312 | 1.1088 | 0.3981 | 3.03 |
+| mrqa | val | 22881 | 1.3998 | 0.4499 | 4.05 |
+| adversarialqa | train | 30000 | 1.9796 | 0.4487 | 7.24 |
+| adversarialqa | val | 3000 | 2.9224 | 0.5230 | 18.59 |
+| quac | train | 9430 | 2.3423 | 0.4174 | 10.40 |
+| quac | val | 787 | 2.4565 | 0.3802 | 11.66 |
+| coqa | train | 7092 | 2.7320 | 0.5058 | 15.36 |
+| coqa | val | 497 | 2.6830 | 0.5616 | 14.63 |
+
+- OVERALL mean train loss: `1.9962`
+- OVERALL mean val loss: `2.4184`
+- OVERALL gap (val - train): `+0.4222`
+
+## Joined Comparison Table (2026-06-01 vs 2026-06-03)
+
+### Per Dataset/Split: Loss Mean, Loss Std, PPL, And Deltas
+
+Delta definition: `Run3 - Run2`.
+
+| Dataset | Split | Loss mean (06-01) | Loss mean (06-03) | Δ Loss mean | Loss std (06-01) | Loss std (06-03) | Δ Loss std | PPL (06-01) | PPL (06-03) | Δ PPL |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| squad_v2 | train | 1.0719 | 1.8582 | +0.7863 | 0.3926 | 0.5440 | +0.1514 | 2.92 | 6.41 | +3.49 |
+| squad_v2 | val | 2.4990 | 2.4678 | -0.0312 | 0.5450 | 0.5178 | -0.0272 | 12.17 | 11.80 | -0.37 |
+| natural_questions | train | 0.9171 | 1.3438 | +0.4267 | 0.3552 | 0.4075 | +0.0523 | 2.50 | 3.83 | +1.33 |
+| natural_questions | val | 1.5614 | 1.8091 | +0.2477 | 0.4679 | 0.4902 | +0.0223 | 4.77 | 6.11 | +1.34 |
+| triviaqa | train | 1.8933 | 2.6088 | +0.7155 | 0.4362 | 0.4797 | +0.0435 | 6.64 | 13.58 | +6.94 |
+| triviaqa | val | 2.6066 | 2.9165 | +0.3099 | 0.5506 | 0.6354 | +0.0848 | 13.55 | 18.48 | +4.93 |
+| newsqa | train | 1.2643 | 1.9961 | +0.7318 | 0.4696 | 0.4833 | +0.0137 | 3.54 | 7.36 | +3.82 |
+| newsqa | val | 2.5500 | 2.6918 | +0.1418 | 0.5708 | 0.4538 | -0.1170 | 12.81 | 14.76 | +1.95 |
+| mrqa | train | 0.5334 | 1.1088 | +0.5754 | 0.3064 | 0.3981 | +0.0917 | 1.70 | 3.03 | +1.33 |
+| mrqa | val | 1.1976 | 1.3998 | +0.2022 | 0.4528 | 0.4499 | -0.0029 | 3.31 | 4.05 | +0.74 |
+| adversarialqa | train | 1.2434 | 1.9796 | +0.7362 | 0.4229 | 0.4487 | +0.0258 | 3.47 | 7.24 | +3.77 |
+| adversarialqa | val | 2.9392 | 2.9224 | -0.0168 | 0.5621 | 0.5230 | -0.0391 | 18.90 | 18.59 | -0.31 |
+| quac | train | 2.0978 | 2.3423 | +0.2445 | 0.3926 | 0.4174 | +0.0248 | 8.15 | 10.40 | +2.25 |
+| quac | val | 2.4692 | 2.4565 | -0.0127 | 0.4110 | 0.3802 | -0.0308 | 11.81 | 11.66 | -0.15 |
+| coqa | train | 2.4571 | 2.7320 | +0.2749 | 0.6575 | 0.5058 | -0.1517 | 11.67 | 15.36 | +3.69 |
+| coqa | val | 2.5015 | 2.6830 | +0.1815 | 0.5995 | 0.5616 | -0.0379 | 12.20 | 14.63 | +2.43 |
+
+### Per Dataset: Train-Val Gap Comparison
+
+Gap definition: `val loss - train loss`.
+
+| Dataset | Gap (06-01) | Gap (06-03) | Δ Gap |
+|---|---:|---:|---:|
+| squad_v2 | +1.4270 | +0.6095 | -0.8175 |
+| natural_questions | +0.6443 | +0.4653 | -0.1790 |
+| triviaqa | +0.7133 | +0.3077 | -0.4056 |
+| newsqa | +1.2857 | +0.6957 | -0.5900 |
+| mrqa | +0.6642 | +0.2910 | -0.3732 |
+| adversarialqa | +1.6958 | +0.9428 | -0.7530 |
+| quac | +0.3714 | +0.1142 | -0.2572 |
+| coqa | +0.0444 | -0.0490 | -0.0934 |
+
+### Dataset Analysis Comparison: AggAnsRate
+
+| Dataset | AggAnsRate trn/val (06-01) | AggAnsRate trn/val (06-03) |
+|---|---|---|
+| squad_v2 | 0.68/0.46 | 0.68/0.46 |
+| natural_questions | 0.51/0.69 | 0.51/0.69 |
+| triviaqa | 1.00/1.00 | 1.00/1.00 |
+| newsqa | 1.00/1.00 | 1.00/1.00 |
+| mrqa | 1.00/1.00 | 1.00/1.00 |
+| adversarialqa | 1.00/1.00 | 1.00/1.00 |
+| quac | 0.83/0.78 | 0.83/0.79 |
+| coqa | 0.99/0.99 | 0.98/1.00 |
+
 ## Joined Comparison Table (2026-05-31 vs 2026-06-01)
 
 ### Per Dataset/Split: Loss Mean, Loss Std, PPL, And Deltas

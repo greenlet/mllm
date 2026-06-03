@@ -51,7 +51,11 @@ train_ds_type=cite
 # train_ds_type=qnasqv2
 # train_ds_type=qnaall
 train_ds_type=qnaans
+# train_ds_type=qnaanscite
 # train_ds_type=next
+
+qnaanscite_cite_batches_per_cycle=1
+qnaanscite_qna_batches_per_cycle=1
 
 min_next_toks=64
 
@@ -180,6 +184,8 @@ python s_03_11_train_mixed_decoder.py \
   --emb-win-max-size $emb_win_max_size \
   --train-ds-type $train_ds_type \
   --min-next-toks $min_next_toks \
+  --qnaanscite-cite-batches-per-cycle $qnaanscite_cite_batches_per_cycle \
+  --qnaanscite-qna-batches-per-cycle $qnaanscite_qna_batches_per_cycle \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

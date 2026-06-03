@@ -17,7 +17,7 @@ def get_split_wiki_ds(data_path: Path, val_ratio: float = 0.05, shuffle: bool = 
     # wiki_ds_name, wiki_ds_subdir = '20200501.en', 'wikipedia'
     # dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
     wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
-    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))
+    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path), trust_remote_code=True)
     ds = dss['train']
     n_docs = len(ds)
     print(f'Wikipedia {wiki_ds_name} docs: {n_docs}')

@@ -88,6 +88,7 @@ def load_mrqa(
     kwargs = {}
     if cache_dir is not None:
         kwargs['cache_dir'] = str(cache_dir)
+    kwargs['trust_remote_code'] = True
     ds_train = load_dataset(MRQA_HF_ID, split='train', **kwargs)
     ds_val = load_dataset(MRQA_HF_ID, split='validation', **kwargs)
     ds_train = _filter_subsets(ds_train, MRQA_KEEP_SUBSETS)

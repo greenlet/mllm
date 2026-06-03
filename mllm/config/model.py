@@ -2012,6 +2012,7 @@ class MixedDecoderDsType(str, Enum):
     QnaSquadV2 = 'qnasqv2'
     QnaAll = 'qnaall'
     QnaAns = 'qnaans'
+    QnaAnsCite = 'qnaanscite'
     Next = 'next'
 
 

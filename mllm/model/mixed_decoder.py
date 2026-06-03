@@ -1014,5 +1014,9 @@ class MixedDecoder(nn.Module):
             return self.run_on_next(batch, epoch)
         if self.cfg.train_ds_type in (MixedDecoderDsType.QnaSquadV2, MixedDecoderDsType.QnaAll, MixedDecoderDsType.QnaAns):
             return self.run_on_qna(batch, epoch)
+        if self.cfg.train_ds_type == MixedDecoderDsType.QnaAnsCite:
+            if isinstance(batch, QnaBatch) or hasattr(batch, 'ans_toks'):
+                return self.run_on_qna(batch, epoch)
+            return self.run_on_text_citation(batch, epoch)
         return self.run_on_text_citation(batch, epoch)
 

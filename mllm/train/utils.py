@@ -312,7 +312,7 @@ def get_wiki_ds_batch_iterators(
     print(f'Loading Wikipedia dataset: {wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
     # dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
-    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))
+    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path), trust_remote_code=True)
     ds = dss['train']
     n_docs = len(ds)
     print(f'Wikipedia {wiki_ds_name} docs: {n_docs}')
@@ -454,7 +454,7 @@ def get_wiki_ds_batch_iterators2(
     print(f'Loading Wikipedia dataset: {wiki_ds_name}')
     wiki_ds_subdir = 'wikipedia'
     # dss = load_dataset(wiki_ds_subdir, wiki_ds_name, beam_runner='DirectRunner', cache_dir=str(data_path))
-    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))
+    dss = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path), trust_remote_code=True)
     ds = dss['train']
     n_docs = len(ds)
     print(f'Wikipedia {wiki_ds_name} docs: {n_docs}')
@@ -763,7 +763,7 @@ def gen_loss(logits: torch.Tensor, tokens: torch.Tensor, sep_token_id: int = 102
 
 def get_billsum_df() -> pd.DataFrame:
     ds_name = 'billsum'
-    billsum = load_dataset(ds_name)
+    billsum = load_dataset(ds_name, trust_remote_code=True)
     df = pd.concat([billsum['train'].to_pandas(), billsum['test'].to_pandas(), billsum['ca_test'].to_pandas()], axis=0)
     return df
 

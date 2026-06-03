@@ -82,6 +82,7 @@ def load_squad_v1(
     kwargs = {}
     if cache_dir is not None:
         kwargs['cache_dir'] = str(cache_dir)
+    kwargs['trust_remote_code'] = True
     ds_train = load_dataset(SQUAD_V1_HF_ID, split='train', **kwargs)
     ds_val = load_dataset(SQUAD_V1_HF_ID, split='validation', **kwargs)
     print(f'SQuAD v1.1 loaded: train={len(ds_train)}, val={len(ds_val)}')

@@ -82,6 +82,7 @@ def load_adversarialqa(
     kwargs = {}
     if cache_dir is not None:
         kwargs['cache_dir'] = str(cache_dir)
+    kwargs['trust_remote_code'] = True
     ds_train = load_dataset(ADVERSARIALQA_HF_ID, ADVERSARIALQA_SUBSET, split='train', **kwargs)
     ds_val = load_dataset(ADVERSARIALQA_HF_ID, ADVERSARIALQA_SUBSET, split='validation', **kwargs)
     print(f'AdversarialQA loaded: train={len(ds_train)}, val={len(ds_val)}')

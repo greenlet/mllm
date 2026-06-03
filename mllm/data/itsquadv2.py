@@ -11,7 +11,7 @@ from mllm.data.utils import split_df
 
 def get_squadv2_df(exclude_empty_answers: bool = False) -> pd.DataFrame:
     ds_name = 'squad_v2'
-    ds_sq = load_dataset(ds_name)
+    ds_sq = load_dataset(ds_name, trust_remote_code=True)
     df_sq = pd.concat([ds_sq['train'].to_pandas(), ds_sq['validation'].to_pandas()], axis=0)
     n_total = len(df_sq)
     # df_sq = df_sq.sample(n_total, random_state=random_state)
