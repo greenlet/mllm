@@ -106,8 +106,8 @@ def load_masked_wiki_dataset(
         data_path: Path, tkz: PreTrainedTokenizer, max_seq_len: int, val_split_ratio: float,
         mask_cfg: Optional[MaskCfg] = None, random_seed: Optional[int] = 55,
     ) -> Tuple[Dataset, Dataset]:
-    wiki_ds_name, wiki_ds_subdir = '20220301.en', 'wikipedia'
-    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path), trust_remote_code=True)['train']
+    wiki_ds_name, wiki_ds_subdir = '20231101.en', 'wikimedia/wikipedia'
+    dataset = load_dataset(wiki_ds_subdir, wiki_ds_name, cache_dir=str(data_path))['train']
 
     if random_seed is not None:
         dataset = dataset.shuffle(seed=random_seed)

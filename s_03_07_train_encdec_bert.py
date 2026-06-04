@@ -33,8 +33,8 @@ class ArgsEncdecBertTrain(BaseModel):
         cli=('--data-path',),
     )
     wiki_ds_name: str = Field(
-        '20200501.en',
-        description='Wikipedia dataset name of the format YYYYMMDD.LANG, for example: 20220301.en',
+        '20231101.en',
+        description='Wikipedia dataset name of the format YYYYMMDD.LANG, for example: 20231101.en',
         cli=('--wiki-ds-name',),
     )
     train_root_path: Path = Field(

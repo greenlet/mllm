@@ -30,8 +30,8 @@ class ArgsEncdecHgTrain(BaseModel):
         cli=('--data-path',),
     )
     wiki_ds_name: str = Field(
-        '20200501.en',
-        description='Wikipedia dataset name of the format YYYYMMDD.LANG, for example: 20220301.en',
+        '20231101.en',
+        description='Wikipedia dataset name of the format YYYYMMDD.LANG, for example: 20231101.en',
         cli=('--wiki-ds-name',),
     )
     train_root_path: Path = Field(
@@ -178,10 +178,10 @@ def main(args: ArgsEncdecHgTrain) -> int:
     tok_dict = tkz_cfg.custom_tokens
     pad_tok, mask_tok = tok_dict['pad'], tok_dict['mask']
     print(f'Loading Wikipedia dataset: {args.wiki_ds_name}')
-    wiki_ds_subdir = 'wikipedia'
+    wiki_ds_subdir = 'wikimedia/wikipedia'
     dss = load_dataset(
         wiki_ds_subdir, args.wiki_ds_name, beam_runner='DirectRunner',
-        cache_dir=str(args.data_path), trust_remote_code=True,
+        cache_dir=str(args.data_path),
     )
     ds = dss['train']
     n_docs = len(ds)

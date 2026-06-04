@@ -51,7 +51,7 @@ train_ds_type=cite
 # train_ds_type=qnasqv2
 # train_ds_type=qnaall
 train_ds_type=qnaans
-# train_ds_type=qnaanscite
+train_ds_type=qnaanscite
 # train_ds_type=next
 
 qnaanscite_cite_batches_per_cycle=1
