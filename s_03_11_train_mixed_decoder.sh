@@ -50,12 +50,14 @@ train_ds_type=cite
 
 # train_ds_type=qnasqv2
 # train_ds_type=qnaall
-train_ds_type=qnaans
+# train_ds_type=qnaans
 train_ds_type=qnaanscite
 # train_ds_type=next
 
 qnaanscite_cite_batches_per_cycle=1
 qnaanscite_qna_batches_per_cycle=1
+qnaanscite_cite_loss_weight=2.0
+qnaanscite_qna_loss_weight=1.0
 
 min_next_toks=64
 
@@ -65,15 +67,15 @@ freeze_encoder=false
 use_sep=false
 prompt_all=false
 emb_exp_rate=4
-emb_win_min_size=2
-emb_win_max_size=6
+emb_win_min_size=10
+emb_win_max_size=10
 
 decoder_only=false
 # decoder_only=true
 # inp_len * emb_win_max_size * emb_exp_rate
 # max_seq_len=$((max_seq_len + inp_len * emb_win_max_size * emb_exp_rate))
 
-mask_tokens=false
+mask_tokens=true
 mask_sep_freq=0.5
 mask_sep_frac=0.15
 mask_seq_freq=0.5
@@ -186,6 +188,8 @@ python s_03_11_train_mixed_decoder.py \
   --min-next-toks $min_next_toks \
   --qnaanscite-cite-batches-per-cycle $qnaanscite_cite_batches_per_cycle \
   --qnaanscite-qna-batches-per-cycle $qnaanscite_qna_batches_per_cycle \
+  --qnaanscite-cite-loss-weight $qnaanscite_cite_loss_weight \
+  --qnaanscite-qna-loss-weight $qnaanscite_qna_loss_weight \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

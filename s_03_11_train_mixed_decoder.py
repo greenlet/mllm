@@ -157,6 +157,16 @@ class ArgsMixedDecoderTrain(BaseModel):
         description='For train_ds_type=qnaanscite: number of QnA batches emitted per cycle.',
         cli=('--qnaanscite-qna-batches-per-cycle',),
     )
+    qnaanscite_cite_loss_weight: float = Field(
+        1.0,
+        description='For train_ds_type=qnaanscite: weight multiplier for Cite batch loss.',
+        cli=('--qnaanscite-cite-loss-weight',),
+    )
+    qnaanscite_qna_loss_weight: float = Field(
+        1.0,
+        description='For train_ds_type=qnaanscite: weight multiplier for QnA batch loss.',
+        cli=('--qnaanscite-qna-loss-weight',),
+    )
 
     freeze_encoder_STR: str = create_bool_str_field(*freeze_encoder_ARG)
     @property
@@ -1097,16 +1107,25 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             pbar = range(args.train_epoch_steps)
         for i in pbar:
             batch = next(train_batch_it)
+            is_qna_batch = _is_qna_batch(batch)
 
             optimizer.zero_grad()
             if amp_enabled:
                 with torch.cuda.amp.autocast(dtype=amp_dtype):
                     loss_dict, _ = ddp_model(batch)
-                loss = loss_dict['loss']
+                batch_loss = loss_dict['loss']
+                loss = batch_loss
+                if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
+                    loss_weight = args.qnaanscite_qna_loss_weight if is_qna_batch else args.qnaanscite_cite_loss_weight
+                    loss = loss * loss_weight
                 scaler.scale(loss).backward()
             else:
                 loss_dict, _ = ddp_model(batch)
-                loss = loss_dict['loss']
+                batch_loss = loss_dict['loss']
+                loss = batch_loss
+                if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
+                    loss_weight = args.qnaanscite_qna_loss_weight if is_qna_batch else args.qnaanscite_cite_loss_weight
+                    loss = loss * loss_weight
                 loss.backward()
 
             if rank == 0:
@@ -1133,11 +1152,11 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             else:
                 optimizer.step()
             train_loss += loss.item()
-            if _is_qna_batch(batch):
-                train_qna_loss += loss.item()
+            if is_qna_batch:
+                train_qna_loss += batch_loss.item()
                 train_qna_batches += 1
             else:
-                train_cite_loss += loss.item()
+                train_cite_loss += batch_loss.item()
                 train_cite_batches += 1
             train_losses.update_dict(loss_dict)
 
@@ -1172,6 +1191,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             pbar = range(args.val_epoch_steps)
         for i in pbar:
             batch = next(val_batch_it)
+            is_qna_batch = _is_qna_batch(batch)
 
             with torch.no_grad():
                 if amp_enabled:
@@ -1179,14 +1199,18 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                         loss_dict, _ = ddp_model(batch)
                 else:
                     loss_dict, _ = ddp_model(batch)
-            loss = loss_dict['loss']
+            batch_loss = loss_dict['loss']
+            loss = batch_loss
+            if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
+                loss_weight = args.qnaanscite_qna_loss_weight if is_qna_batch else args.qnaanscite_cite_loss_weight
+                loss = loss * loss_weight
 
             val_loss += loss.item()
-            if _is_qna_batch(batch):
-                val_qna_loss += loss.item()
+            if is_qna_batch:
+                val_qna_loss += batch_loss.item()
                 val_qna_batches += 1
             else:
-                val_cite_loss += loss.item()
+                val_cite_loss += batch_loss.item()
                 val_cite_batches += 1
             val_losses.update_dict(loss_dict)
 
