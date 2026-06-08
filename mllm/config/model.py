@@ -2022,6 +2022,13 @@ class MixedDecoderType(str, Enum):
     Qwen = 'qwen'
 
 
+class InteractiveExtractorAttnType(str, Enum):
+    # Soft-token slots attend to the prompt only (slots = query, prompt = key/value).
+    Cross = 'cross'
+    # Slots and prompt jointly self-attend; slots are sliced back out afterwards.
+    SelfAttn = 'self'
+
+
 class DecoderDtype(str, Enum):
     Fp32 = 'fp32'
     Fp16 = 'fp16'
@@ -2106,6 +2113,24 @@ class MixedDecoderCfg(BaseModel):
     d_model: int = 768
     train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite
     decoder_only: bool = False
+    # --- InteractiveExtractor (v1): query-conditioned soft-token bridge ---
+    # When enabled, replaces the plain `emb_exp` linear expansion: each of the N
+    # context embeddings is expanded into `ie_exp_rate` decoder-space slots
+    # (N -> N*ie_exp_rate), then those slots VISIT the prompt through
+    # `ie_num_layers` attention blocks before being prepended to the decoder.
+    use_interactive_extractor: bool = False
+    ie_exp_rate: int = 4
+    ie_num_layers: int = 2
+    ie_attn_type: InteractiveExtractorAttnType = InteractiveExtractorAttnType.Cross
+    ie_n_heads: int = 8
+    ie_mlp_ratio: float = 4.0
+    ie_dropout: float = 0.1
+    ie_norm_first: bool = True
+    ie_slot_pos_emb: bool = True
+    # When False, the prompt is seen ONLY by the extractor's VISIT step and is not
+    # also inserted into the causal stream after the soft tokens (forces the answer
+    # to flow through the extracted soft tokens). When True, layout is unchanged.
+    ie_prompt_in_stream: bool = True
     train_cfg: MixedDecoderTrainCfg
 
 
@@ -2247,6 +2272,10 @@ def create_mixed_decoder_cfg(
         emb_win_min_size: int = 0, emb_win_max_size: int = 0, min_next_toks: int = 64,
         train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite,
         decoder_only: bool = False,
+        use_interactive_extractor: bool = False, ie_exp_rate: int = 4, ie_num_layers: int = 2,
+        ie_attn_type: InteractiveExtractorAttnType = InteractiveExtractorAttnType.Cross,
+        ie_n_heads: int = 8, ie_mlp_ratio: float = 4.0, ie_dropout: float = 0.1,
+        ie_norm_first: bool = True, ie_slot_pos_emb: bool = True, ie_prompt_in_stream: bool = True,
         freeze_encoder: bool = True,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
@@ -2306,6 +2335,16 @@ def create_mixed_decoder_cfg(
         d_model=d_model,
         train_ds_type=train_ds_type,
         decoder_only=decoder_only,
+        use_interactive_extractor=use_interactive_extractor,
+        ie_exp_rate=ie_exp_rate,
+        ie_num_layers=ie_num_layers,
+        ie_attn_type=ie_attn_type,
+        ie_n_heads=ie_n_heads,
+        ie_mlp_ratio=ie_mlp_ratio,
+        ie_dropout=ie_dropout,
+        ie_norm_first=ie_norm_first,
+        ie_slot_pos_emb=ie_slot_pos_emb,
+        ie_prompt_in_stream=ie_prompt_in_stream,
         train_cfg=cfg_train,
     )
     return cfg
@@ -2319,6 +2358,11 @@ def copy_override_mixed_decoder_cfg(
         emb_win_min_size: Optional[int] = None, emb_win_max_size: Optional[int] = None, min_next_toks: Optional[int] = None,
         train_ds_type: Optional[MixedDecoderDsType] = None,
         decoder_only: Optional[bool] = None,
+        use_interactive_extractor: Optional[bool] = None, ie_exp_rate: Optional[int] = None,
+        ie_num_layers: Optional[int] = None, ie_attn_type: Optional[InteractiveExtractorAttnType] = None,
+        ie_n_heads: Optional[int] = None, ie_mlp_ratio: Optional[float] = None, ie_dropout: Optional[float] = None,
+        ie_norm_first: Optional[bool] = None, ie_slot_pos_emb: Optional[bool] = None,
+        ie_prompt_in_stream: Optional[bool] = None,
         freeze_encoder: Optional[bool] = None,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None, learning_rate: Optional[float] = None,
@@ -2344,6 +2388,16 @@ def copy_override_mixed_decoder_cfg(
     min_next_toks = coalesce(min_next_toks, cfg.min_next_toks)
     train_ds_type = coalesce(train_ds_type, cfg.train_ds_type)
     decoder_only = coalesce(decoder_only, cfg.decoder_only)
+    use_interactive_extractor = coalesce(use_interactive_extractor, cfg.use_interactive_extractor)
+    ie_exp_rate = coalesce(ie_exp_rate, cfg.ie_exp_rate)
+    ie_num_layers = coalesce(ie_num_layers, cfg.ie_num_layers)
+    ie_attn_type = coalesce(ie_attn_type, cfg.ie_attn_type)
+    ie_n_heads = coalesce(ie_n_heads, cfg.ie_n_heads)
+    ie_mlp_ratio = coalesce(ie_mlp_ratio, cfg.ie_mlp_ratio)
+    ie_dropout = coalesce(ie_dropout, cfg.ie_dropout)
+    ie_norm_first = coalesce(ie_norm_first, cfg.ie_norm_first)
+    ie_slot_pos_emb = coalesce(ie_slot_pos_emb, cfg.ie_slot_pos_emb)
+    ie_prompt_in_stream = coalesce(ie_prompt_in_stream, cfg.ie_prompt_in_stream)
     freeze_encoder = coalesce(freeze_encoder, cfg.train_cfg.freeze_encoder)
     pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
     pretrained_mixed_decoder_model_path = coalesce(pretrained_mixed_decoder_model_path, cfg.train_cfg.pretrained_mixed_decoder_model_path)
@@ -2370,6 +2424,10 @@ def copy_override_mixed_decoder_cfg(
         emb_win_min_size=emb_win_min_size, emb_win_max_size=emb_win_max_size, min_next_toks=min_next_toks,
         train_ds_type=train_ds_type,
         decoder_only=decoder_only,
+        use_interactive_extractor=use_interactive_extractor, ie_exp_rate=ie_exp_rate,
+        ie_num_layers=ie_num_layers, ie_attn_type=ie_attn_type, ie_n_heads=ie_n_heads,
+        ie_mlp_ratio=ie_mlp_ratio, ie_dropout=ie_dropout, ie_norm_first=ie_norm_first,
+        ie_slot_pos_emb=ie_slot_pos_emb, ie_prompt_in_stream=ie_prompt_in_stream,
         freeze_encoder=freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
@@ -2417,6 +2475,13 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
             postfix_parts.append(f'eer{model_cfg.emb_exp_rate}')
         if model_cfg.emb_win_max_size > 0 and model_cfg.emb_win_min_size <= model_cfg.emb_win_max_size:
             postfix_parts.append(f'ewn{model_cfg.emb_win_min_size}x{model_cfg.emb_win_max_size}')
+        if model_cfg.use_interactive_extractor:
+            postfix_parts.append(
+                f'ie{model_cfg.ie_attn_type.value.capitalize()}'
+                f'_eer{model_cfg.ie_exp_rate}_nl{model_cfg.ie_num_layers}_nh{model_cfg.ie_n_heads}'
+                f'_mlp{np.round(model_cfg.ie_mlp_ratio, 2)}'
+            )
+            postfix_parts.append(bool_param_to_str('ieStrm', model_cfg.ie_prompt_in_stream))
         postfix_parts.append(bool_param_to_str('frzenc', train.freeze_encoder))
     postfix_parts.append(f'ds{model_cfg.train_ds_type.value.capitalize()}')
     if model_cfg.train_ds_type == MixedDecoderDsType.Next:

@@ -36,7 +36,7 @@ from transformers import AutoTokenizer
 
 from mllm.config.model import MixedDecoderCfg, MixedDecoderDsType, MixedDecoderType, BertEmbType, \
     DecoderDtype, copy_override_mixed_decoder_cfg, gen_prefpostfix_mixed_decoder, parse_decoder_spec, \
-    MixedDecoderTrainCfg
+    MixedDecoderTrainCfg, InteractiveExtractorAttnType
 from mllm.exp.args import MIXED_DECODER_MODEL_CFG_FNAME, create_bool_str_field, get_pretrained_model_path, is_arg_true, \
     mask_tokens_ARG
 from mllm.model.mixed_decoder import MixedDecoder
@@ -54,6 +54,14 @@ freeze_encoder_ARG = '--freeze-encoder', 'Freeze encoder weights during training
 use_sep_ARG = '--use-sep', 'Insert SEP/EOS embedding between context embeddings and prompt tokens'
 prompt_all_ARG = '--prompt-all', 'Target is whole input chunk (true) or citation only (false)'
 decoder_only_ARG = '--decoder-only', 'Train decoder without encoder (raw context tokens fed directly to decoder, encoder is not instantiated).'
+use_interactive_extractor_ARG = '--use-interactive-extractor', \
+    'Enable the InteractiveExtractor query-conditioned soft-token bridge (replaces emb_exp).'
+ie_slot_pos_emb_ARG = '--ie-slot-pos-emb', \
+    'InteractiveExtractor: add a learned per-slot positional embedding over the ie_exp_rate slots.'
+ie_prompt_in_stream_ARG = '--ie-prompt-in-stream', \
+    'InteractiveExtractor: keep the prompt in the causal stream after the soft tokens (false = VISIT only).'
+ie_norm_first_ARG = '--ie-norm-first', \
+    'InteractiveExtractor: use pre-LayerNorm residual blocks (false = post-LayerNorm).'
 
 
 class ArgsMixedDecoderTrain(BaseModel):
@@ -137,6 +145,37 @@ class ArgsMixedDecoderTrain(BaseModel):
         description='Maximum embedding window size. Active when emb_win_min_size <= emb_win_max_size > 0.',
         cli=('--emb-win-max-size',),
     )
+    ie_exp_rate: int = Field(
+        4,
+        description='InteractiveExtractor: initial expansion rate. Each context embedding becomes ie_exp_rate '
+            'decoder-space slots (active only with --use-interactive-extractor true).',
+        cli=('--ie-exp-rate',),
+    )
+    ie_num_layers: int = Field(
+        2,
+        description='InteractiveExtractor: number of attention blocks where soft-token slots VISIT the prompt.',
+        cli=('--ie-num-layers',),
+    )
+    ie_attn_type: InteractiveExtractorAttnType = Field(
+        InteractiveExtractorAttnType.Cross,
+        description=f'InteractiveExtractor attention type. Can have values: {list(x.value for x in InteractiveExtractorAttnType)}',
+        cli=('--ie-attn-type',),
+    )
+    ie_n_heads: int = Field(
+        8,
+        description='InteractiveExtractor: number of attention heads (must divide d_dec).',
+        cli=('--ie-n-heads',),
+    )
+    ie_mlp_ratio: float = Field(
+        4.0,
+        description='InteractiveExtractor: per-block FFN hidden size = ie_mlp_ratio * d_dec. 0 disables the FFN.',
+        cli=('--ie-mlp-ratio',),
+    )
+    ie_dropout: float = Field(
+        0.1,
+        description='InteractiveExtractor: dropout probability for attention and FFN.',
+        cli=('--ie-dropout',),
+    )
     train_ds_type: MixedDecoderDsType = Field(
         MixedDecoderDsType.Cite,
         description=f'Training dataset type. Can have values: {list(x.value for x in MixedDecoderDsType)}',
@@ -187,6 +226,26 @@ class ArgsMixedDecoderTrain(BaseModel):
     @property
     def decoder_only(self) -> bool:
         return is_arg_true(decoder_only_ARG[0], self.decoder_only_STR)
+
+    use_interactive_extractor_STR: str = create_bool_str_field(*use_interactive_extractor_ARG)
+    @property
+    def use_interactive_extractor(self) -> bool:
+        return is_arg_true(use_interactive_extractor_ARG[0], self.use_interactive_extractor_STR)
+
+    ie_slot_pos_emb_STR: str = create_bool_str_field(*ie_slot_pos_emb_ARG)
+    @property
+    def ie_slot_pos_emb(self) -> bool:
+        return is_arg_true(ie_slot_pos_emb_ARG[0], self.ie_slot_pos_emb_STR)
+
+    ie_prompt_in_stream_STR: str = create_bool_str_field(*ie_prompt_in_stream_ARG)
+    @property
+    def ie_prompt_in_stream(self) -> bool:
+        return is_arg_true(ie_prompt_in_stream_ARG[0], self.ie_prompt_in_stream_STR)
+
+    ie_norm_first_STR: str = create_bool_str_field(*ie_norm_first_ARG)
+    @property
+    def ie_norm_first(self) -> bool:
+        return is_arg_true(ie_norm_first_ARG[0], self.ie_norm_first_STR)
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
@@ -622,6 +681,11 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         emb_win_min_size=args.emb_win_min_size, emb_win_max_size=args.emb_win_max_size,
         min_next_toks=args.min_next_toks, train_ds_type=args.train_ds_type,
         decoder_only=args.decoder_only,
+        use_interactive_extractor=args.use_interactive_extractor,
+        ie_exp_rate=args.ie_exp_rate, ie_num_layers=args.ie_num_layers, ie_attn_type=args.ie_attn_type,
+        ie_n_heads=args.ie_n_heads, ie_mlp_ratio=args.ie_mlp_ratio, ie_dropout=args.ie_dropout,
+        ie_norm_first=args.ie_norm_first, ie_slot_pos_emb=args.ie_slot_pos_emb,
+        ie_prompt_in_stream=args.ie_prompt_in_stream,
         freeze_encoder=args.freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,

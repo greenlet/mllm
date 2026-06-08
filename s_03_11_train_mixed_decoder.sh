@@ -70,6 +70,22 @@ emb_exp_rate=4
 emb_win_min_size=10
 emb_win_max_size=10
 
+# --- InteractiveExtractor (query-conditioned soft-token bridge) ---
+# When use_interactive_extractor=true it replaces the plain emb_exp expansion:
+# each context embedding -> ie_exp_rate decoder-space slots that VISIT the prompt
+# through ie_num_layers attention blocks (ie_attn_type: cross|self).
+use_interactive_extractor=false
+ie_exp_rate=4
+ie_num_layers=2
+ie_attn_type=cross
+ie_n_heads=8
+ie_mlp_ratio=4.0
+ie_dropout=0.1
+ie_norm_first=true
+ie_slot_pos_emb=true
+# false = prompt seen ONLY by the extractor VISIT step (not in the causal stream)
+ie_prompt_in_stream=true
+
 decoder_only=false
 # decoder_only=true
 # inp_len * emb_win_max_size * emb_exp_rate
@@ -184,6 +200,16 @@ python s_03_11_train_mixed_decoder.py \
   --emb-exp-rate $emb_exp_rate \
   --emb-win-min-size $emb_win_min_size \
   --emb-win-max-size $emb_win_max_size \
+  --use-interactive-extractor $use_interactive_extractor \
+  --ie-exp-rate $ie_exp_rate \
+  --ie-num-layers $ie_num_layers \
+  --ie-attn-type $ie_attn_type \
+  --ie-n-heads $ie_n_heads \
+  --ie-mlp-ratio $ie_mlp_ratio \
+  --ie-dropout $ie_dropout \
+  --ie-norm-first $ie_norm_first \
+  --ie-slot-pos-emb $ie_slot_pos_emb \
+  --ie-prompt-in-stream $ie_prompt_in_stream \
   --train-ds-type $train_ds_type \
   --min-next-toks $min_next_toks \
   --qnaanscite-cite-batches-per-cycle $qnaanscite_cite_batches_per_cycle \

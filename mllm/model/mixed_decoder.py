@@ -8,13 +8,122 @@ from torch import Tensor, nn
 import torch.distributed as dist
 from transformers import PreTrainedTokenizer
 
-from mllm.config.model import MixedDecoderCfg, MixedDecoderDsType, MixedDecoderType, BertEmbType
+from mllm.config.model import MixedDecoderCfg, MixedDecoderDsType, MixedDecoderType, BertEmbType, \
+    InteractiveExtractorAttnType
 from mllm.model.encdec_ranker_hg import EncoderBert
 from mllm.model.gpt2 import GPT2LMHeadModel
 from mllm.model.losses import EncdecMaskPadItemLoss
 from mllm.train.encdec_graph_bert import MaskedCiteBatch
 from mllm.train.next_tok_wiki import NextTokBatch
 from mllm.data.qna.batch import QnaBatch
+
+
+class InteractiveExtractor(nn.Module):
+    """Query-conditioned soft-token bridge (v1).
+
+    Replaces the plain linear `emb_exp` expansion. Each of the ``N`` context
+    embeddings (``d_model``) is first expanded into ``exp_rate`` decoder-space
+    slots (``N -> N*exp_rate`` vectors of ``d_dec``); the slots then VISIT the
+    prompt through ``num_layers`` attention blocks before being prepended to the
+    decoder as soft tokens.
+
+    No pooling is performed in this version: the output keeps all
+    ``N*exp_rate`` slots.
+
+    forward:
+        chunk_embs:  (B, N, d_model)        raw context embeddings (pre-expansion)
+        prompt_embs: (B, L_q, d_dec)        prompt token embeddings (decoder space)
+        prompt_pad:  (B, L_q) bool or None  True at padding positions to ignore
+      returns:       (B, N*exp_rate, d_dec) query-conditioned soft tokens
+    """
+
+    def __init__(
+            self, d_model: int, d_dec: int, exp_rate: int, num_layers: int,
+            attn_type: InteractiveExtractorAttnType, n_heads: int, mlp_ratio: float,
+            dropout: float, norm_first: bool, slot_pos_emb: bool,
+    ):
+        super().__init__()
+        assert exp_rate > 0, 'InteractiveExtractor requires exp_rate > 0'
+        assert num_layers > 0, 'InteractiveExtractor requires num_layers > 0'
+        assert d_dec % n_heads == 0, f'd_dec ({d_dec}) must be divisible by n_heads ({n_heads})'
+        self.d_model = d_model
+        self.d_dec = d_dec
+        self.exp_rate = exp_rate
+        self.num_layers = num_layers
+        self.attn_type = attn_type
+
+        # EXPAND: one embedding -> exp_rate decoder-space slots.
+        self.expand = nn.Linear(d_model, exp_rate * d_dec, bias=False)
+
+        # Learned per-slot positional embedding to break the symmetry between the
+        # exp_rate slots produced from the same source embedding.
+        self.slot_pos_emb = nn.Parameter(torch.zeros(exp_rate, d_dec)) if slot_pos_emb else None
+        if self.slot_pos_emb is not None:
+            nn.init.normal_(self.slot_pos_emb, std=0.02)
+
+        self.attns = nn.ModuleList(
+            nn.MultiheadAttention(d_dec, n_heads, dropout=dropout, batch_first=True)
+            for _ in range(num_layers)
+        )
+        self.attn_norms = nn.ModuleList(nn.LayerNorm(d_dec) for _ in range(num_layers))
+
+        # Optional per-block feed-forward network (mlp_ratio <= 0 disables it).
+        self.use_ffn = mlp_ratio > 0
+        if self.use_ffn:
+            hidden = int(round(mlp_ratio * d_dec))
+            self.ffns = nn.ModuleList(
+                nn.Sequential(
+                    nn.Linear(d_dec, hidden), nn.GELU(), nn.Dropout(dropout),
+                    nn.Linear(hidden, d_dec), nn.Dropout(dropout),
+                )
+                for _ in range(num_layers)
+            )
+            self.ffn_norms = nn.ModuleList(nn.LayerNorm(d_dec) for _ in range(num_layers))
+        self.norm_first = norm_first
+        self.dropout = nn.Dropout(dropout)
+
+    def _attend(
+            self, idx: int, x: Tensor, prompt_embs: Tensor, prompt_pad: Optional[Tensor],
+    ) -> Tensor:
+        """Run one VISIT attention block on the slots ``x``."""
+        attn = self.attns[idx]
+        if self.attn_type == InteractiveExtractorAttnType.Cross:
+            # Slots query the prompt (keys/values = prompt).
+            out, _ = attn(query=x, key=prompt_embs, value=prompt_embs, key_padding_mask=prompt_pad)
+            return out
+        # Self-attention over concat[slots, prompt]; slice the slots back out.
+        n_slots = x.shape[1]
+        joint = torch.cat([x, prompt_embs], dim=1)
+        if prompt_pad is not None:
+            slots_pad = torch.zeros((x.shape[0], n_slots), dtype=torch.bool, device=x.device)
+            joint_pad = torch.cat([slots_pad, prompt_pad], dim=1)
+        else:
+            joint_pad = None
+        out, _ = attn(query=joint, key=joint, value=joint, key_padding_mask=joint_pad)
+        return out[:, :n_slots]
+
+    def forward(
+            self, chunk_embs: Tensor, prompt_embs: Tensor, prompt_pad: Optional[Tensor] = None,
+    ) -> Tensor:
+        b, n, _ = chunk_embs.shape
+        # EXPAND -> (B, N, exp_rate, d_dec) -> (B, N*exp_rate, d_dec)
+        x = self.expand(chunk_embs).view(b, n, self.exp_rate, self.d_dec)
+        if self.slot_pos_emb is not None:
+            x = x + self.slot_pos_emb
+        x = x.reshape(b, n * self.exp_rate, self.d_dec)
+
+        for i in range(self.num_layers):
+            # VISIT (cross- or self-attention), pre-/post-LN residual.
+            if self.norm_first:
+                x = x + self.dropout(self._attend(i, self.attn_norms[i](x), prompt_embs, prompt_pad))
+            else:
+                x = self.attn_norms[i](x + self.dropout(self._attend(i, x, prompt_embs, prompt_pad)))
+            if self.use_ffn:
+                if self.norm_first:
+                    x = x + self.ffns[i](self.ffn_norms[i](x))
+                else:
+                    x = self.ffn_norms[i](x + self.ffns[i](x))
+        return x
 
 
 class MixedDecoder(nn.Module):
@@ -98,9 +207,23 @@ class MixedDecoder(nn.Module):
         if not self.decoder_only and self.cfg.emb_exp_rate > 0:
             self.emb_exp = nn.Linear(self.cfg.d_model, self.cfg.emb_exp_rate * d_dec, bias=False)
 
+        # InteractiveExtractor: query-conditioned soft-token bridge. When enabled it
+        # replaces both the plain emb_exp expansion and the enc_proj projection
+        # (its output is already in decoder space d_dec).
+        self.interactive_extractor = None
+        if not self.decoder_only and self.cfg.use_interactive_extractor:
+            self.interactive_extractor = InteractiveExtractor(
+                d_model=self.cfg.d_model, d_dec=d_dec, exp_rate=self.cfg.ie_exp_rate,
+                num_layers=self.cfg.ie_num_layers, attn_type=self.cfg.ie_attn_type,
+                n_heads=self.cfg.ie_n_heads, mlp_ratio=self.cfg.ie_mlp_ratio,
+                dropout=self.cfg.ie_dropout, norm_first=self.cfg.ie_norm_first,
+                slot_pos_emb=self.cfg.ie_slot_pos_emb,
+            )
+
         # If encoder d_model differs from decoder d_model, add a projection layer (only when no emb expansion)
         self.enc_proj = None
-        if not self.decoder_only and self.cfg.emb_exp_rate <= 0 and self.cfg.d_model != d_dec:
+        if (not self.decoder_only and self.interactive_extractor is None
+                and self.cfg.emb_exp_rate <= 0 and self.cfg.d_model != d_dec):
             self.enc_proj = nn.Linear(self.cfg.d_model, d_dec, bias=False)
 
         self.d_dec = d_dec
@@ -253,7 +376,7 @@ class MixedDecoder(nn.Module):
 
     def build_decoder_input(
             self, ctx_embs: Tensor, prompt_toks: Tensor, prompt_att_mask: Tensor,
-            target_toks: Tensor, target_att_mask: Tensor,
+            target_toks: Tensor, target_att_mask: Tensor, include_prompt: bool = True,
     ) -> Tuple[Tensor, Tensor, Tensor, int]:
         """Build the concatenated decoder input sequence.
 
@@ -298,10 +421,11 @@ class MixedDecoder(nn.Module):
 
         # Prompt token embeddings
         prompt_embs = self.word_embeddings(prompt_toks)  # (batch_size, prompt_len, d_dec)
-        parts_embs.append(prompt_embs)
-        parts_mask.append(prompt_att_mask)
         prompt_len = prompt_toks.shape[1]
-        prefix_len += prompt_len
+        if include_prompt:
+            parts_embs.append(prompt_embs)
+            parts_mask.append(prompt_att_mask)
+            prefix_len += prompt_len
 
         # Target token embeddings (shifted: input is target[:-1], labels are target)
         target_inp_toks = target_toks[:, :-1]  # (batch_size, target_len - 1)
@@ -638,7 +762,17 @@ class MixedDecoder(nn.Module):
                 # Ensures each sample's own embedding is always at position offset_before
                 win_indices = (sample_idx.unsqueeze(1) - offset_before + j_idx.unsqueeze(0)) % batch_size
 
-        if self.cfg.emb_exp_rate > 0:
+        if self.interactive_extractor is not None:
+            # Build the raw windowed context (B, N, d_model), then let the extractor
+            # expand each embedding into ie_exp_rate slots that VISIT the prompt.
+            if win_indices is not None:
+                ctx_embs_raw = inp_enc_embs[win_indices]  # (batch_size, win_size, d_model)
+            else:
+                ctx_embs_raw = inp_enc_embs.unsqueeze(0).expand(batch_size, -1, -1)  # (batch_size, batch_size, d_model)
+            prompt_embs = self.word_embeddings(batch.prompts_toks)
+            prompt_pad = batch.prompts_att_mask == 0
+            ctx_embs = self.interactive_extractor(ctx_embs_raw, prompt_embs, prompt_pad)
+        elif self.cfg.emb_exp_rate > 0:
             # Expand each CLS embedding from 1 vector to emb_exp_rate vectors
             # inp_enc_embs: (batch_size, d_model) -> (batch_size, emb_exp_rate * d_dec)
             exp_embs = self.emb_exp(inp_enc_embs)
@@ -671,10 +805,13 @@ class MixedDecoder(nn.Module):
             target_toks = batch.cites_toks  # (batch_size, cite_len)
             target_att_mask = batch.cites_att_mask  # (batch_size, cite_len)
 
-        # Build decoder input
+        # Build decoder input. When the InteractiveExtractor already consumed the
+        # prompt and ie_prompt_in_stream is False, omit the prompt from the causal
+        # stream so the answer must flow through the extracted soft tokens.
+        include_prompt = self.interactive_extractor is None or self.cfg.ie_prompt_in_stream
         input_embs, attention_mask, labels, target_start_idx = self.build_decoder_input(
             ctx_embs, batch.prompts_toks, batch.prompts_att_mask,
-            target_toks, target_att_mask,
+            target_toks, target_att_mask, include_prompt=include_prompt,
         )
 
         # Run decoder
@@ -797,8 +934,15 @@ class MixedDecoder(nn.Module):
                 if off + n_own < target_win_size:
                     ctx_embs_raw[i, off + n_own:] = filler_embs[off:n_filler]
 
-        # 4. Apply emb_exp expansion or projection
-        if self.cfg.emb_exp_rate > 0:
+        # 4. Apply InteractiveExtractor, emb_exp expansion, or projection
+        if self.interactive_extractor is not None:
+            # ctx_embs_raw: (batch_size, target_win_size, d_model)
+            prompt_embs = self.word_embeddings(batch.prompt_toks)
+            max_pl = batch.prompt_toks.shape[1]
+            prompt_lens_t = torch.as_tensor(batch.prompt_lengths, device=device).unsqueeze(1)
+            prompt_pad = torch.arange(max_pl, device=device).unsqueeze(0) >= prompt_lens_t  # (bs, max_pl)
+            ctx_embs = self.interactive_extractor(ctx_embs_raw, prompt_embs, prompt_pad)
+        elif self.cfg.emb_exp_rate > 0:
             # ctx_embs_raw: (batch_size, target_win_size, d_model)
             # Expand each embedding from d_model to emb_exp_rate * d_dec
             exp_embs = self.emb_exp(ctx_embs_raw)  # (batch_size, target_win_size, emb_exp_rate * d_dec)
@@ -826,8 +970,13 @@ class MixedDecoder(nn.Module):
         prompt_lens = batch.prompt_lengths
         ans_lens = [int(batch.ans_att_mask[i].sum().item()) for i in range(batch_size)]
 
+        # When the InteractiveExtractor already consumed the prompt and
+        # ie_prompt_in_stream is False, omit the prompt from the causal stream.
+        prompt_in_stream = self.interactive_extractor is None or self.cfg.ie_prompt_in_stream
+        stream_prompt_lens = prompt_lens if prompt_in_stream else [0] * batch_size
+
         # Compute per-sample total length and max
-        total_lens = [n_ctx + sep_len + prompt_lens[i] + max(ans_lens[i] - 1, 0) for i in range(batch_size)]
+        total_lens = [n_ctx + sep_len + stream_prompt_lens[i] + max(ans_lens[i] - 1, 0) for i in range(batch_size)]
         max_total_len = max(total_lens)
         assert max_total_len <= self.cfg.max_seq_len, \
             f'Total sequence length {max_total_len} exceeds max_seq_len={self.cfg.max_seq_len}'
@@ -849,12 +998,14 @@ class MixedDecoder(nn.Module):
                 attention_mask[i, pos:pos + 1] = 1
                 pos += 1
 
-            # Prompt tokens (actual length, no padding)
-            pl = prompt_lens[i]
-            input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
-            attention_mask[i, pos:pos + pl] = 1
+            # Prompt tokens (actual length, no padding); optionally omitted from the stream
+            pl = stream_prompt_lens[i]
+            if pl > 0:
+                input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
+                attention_mask[i, pos:pos + pl] = 1
 
-            target_start_i = pos + pl - 1  # last prompt pos predicts first answer token
+            # The last prefix position predicts the first answer token.
+            target_start_i = pos + pl - 1
             pos += pl
 
             # Target input tokens (shifted: first ans_len-1 tokens)
