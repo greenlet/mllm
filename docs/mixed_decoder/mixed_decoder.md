@@ -122,6 +122,8 @@ MixedDecoder's Phase 3 fails on all three: low capacity, reconstruction-not-quer
 
 ### 3.1 Multimodal soft-token bridges (the closest analogy)
 
+> **Thread:** [Multimodal soft-token bridges](multimodal/multimodal.md) — evolution table and MixedDecoder-specific notes.
+
 The user's mental model — "do with text what models do with images" — is exactly the VLM bridge problem, and the literature is unambiguous about what makes it work.
 
 **Flamingo** ([local recap](../papers/multimodal_2022_flamingo-perceiver-resampler.md), Alayrac et al. 2022). A frozen vision encoder produces a variable-length feature grid; a **Perceiver Resampler** maps it to a *fixed, small* set of latent tokens (e.g. 64) via cross-attention from learned latent queries; the frozen LM ingests them through **gated cross-attention** inserted between its existing layers. The `tanh`-gating is initialized at zero so the pretrained LM is unperturbed at step 0 and the visual pathway is introduced gradually. **Four lessons:** (i) the bridge emits *many* tokens, not one; (ii) the LM is **frozen**, forcing the bridge to do the representation work; (iii) conditioning enters at *every* layer via cross-attention, not only as a prefix; (iv) zero-init gating stabilizes the cold-start of a new modality.
@@ -348,6 +350,9 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 ## 6. References
 
 ### 6.1 Multimodal soft-token bridges
+
+**Thread:** [Multimodal soft-token bridges](multimodal/multimodal.md) (Perceiver · Flamingo · BLIP-2/Q-Former · LLaVA · InstructBLIP · Honeybee)
+
 - Alayrac et al. *Flamingo: a Visual Language Model for Few-Shot Learning.* arXiv:2204.14198, 2022. ([local recap](../papers/multimodal_2022_flamingo-perceiver-resampler.md))
 - Li et al. *BLIP-2: Bootstrapping Language-Image Pre-training with Frozen Image Encoders and Large Language Models.* arXiv:2301.12597, ICML 2023. ([local recap](../papers/multimodal_2023_blip2-qformer.md))
 - Jaegle et al. *Perceiver: General Perception with Iterative Attention.* arXiv:2103.03206, 2021.
