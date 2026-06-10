@@ -128,16 +128,16 @@ The user's mental model — "do with text what models do with images" — is exa
 
 **Flamingo** ([local recap](../papers/multimodal_2022_flamingo-perceiver-resampler.md), Alayrac et al. 2022). A frozen vision encoder produces a variable-length feature grid; a **Perceiver Resampler** maps it to a *fixed, small* set of latent tokens (e.g. 64) via cross-attention from learned latent queries; the frozen LM ingests them through **gated cross-attention** inserted between its existing layers. The `tanh`-gating is initialized at zero so the pretrained LM is unperturbed at step 0 and the visual pathway is introduced gradually. **Four lessons:** (i) the bridge emits *many* tokens, not one; (ii) the LM is **frozen**, forcing the bridge to do the representation work; (iii) conditioning enters at *every* layer via cross-attention, not only as a prefix; (iv) zero-init gating stabilizes the cold-start of a new modality.
 
-**Perceiver / Perceiver IO** (Jaegle et al. 2021). The architectural ancestor: a fixed set of latent vectors cross-attends to an arbitrarily large input array, decoupling compute from input size. The key idea reused everywhere downstream is *learned latent queries as an information bottleneck* — exactly the component MixedDecoder is missing between BERT and Qwen.
+**Perceiver / Perceiver IO** ([local recap](../papers/multimodal_2021_perceiver.md), Jaegle et al. 2021). The architectural ancestor: a fixed set of latent vectors cross-attends to an arbitrarily large input array, decoupling compute from input size. The key idea reused everywhere downstream is *learned latent queries as an information bottleneck* — exactly the component MixedDecoder is missing between BERT and Qwen.
 
 **BLIP-2 / Q-Former** ([local recap](../papers/multimodal_2023_blip2-qformer.md), Li et al. 2023). The single most relevant paper. A small Querying Transformer holds **K = 32 learned query embeddings** that cross-attend to the frozen image features and emit 32 soft tokens to a frozen LLM. Three design points map directly onto MixedDecoder's failure:
 - **Multiple independent queries.** 32 queries each attend to the *whole* input and specialize — unlike MixedDecoder's single `[CLS]` blown up linearly into 4 rank-≤1 copies of the same vector. This is the *addressability* fix.
 - **Two-stage curriculum that separates *extract* from *express*.** Stage 1 trains the bridge with representation losses (ITC/ITM/ITG) against the encoder *only*; Stage 2 bridges to the frozen LLM. BLIP-2 explicitly argues that forcing the bridge to learn *what to extract* and *how to express it* simultaneously (Flamingo's single LM loss) is sample-inefficient — exactly the regime MixedDecoder's Phase 3 is stuck in.
 - **Masking patterns as objective control.** The three Stage-1 objectives differ only by the self-attention mask over queries↔text, showing how much can be taught with one architecture and a careful mask schedule.
 
-**LLaVA / LLaVA-1.5** (Liu et al. 2023). The counterpoint: it keeps **all** patch tokens (no learned-query bottleneck) and a simple MLP (later 2-layer GELU) projector, and fine-tunes the LLM with visual instruction data. It works because it does *not* compress — it pays full token cost. The lesson for MixedDecoder: if you insist on heavy compression you need Q-Former-style machinery; a linear/MLP projector alone (LLaVA-style) only works at *low* compression. MixedDecoder currently uses a LLaVA-grade projector at a Q-Former-grade compression ratio — the worst of both.
+**LLaVA / LLaVA-1.5** ([local recaps](../papers/multimodal_2023_llava.md): [LLaVA](../papers/multimodal_2023_llava.md), [LLaVA-1.5](../papers/multimodal_2023_llava-1.5.md); Liu et al. 2023). The counterpoint: it keeps **all** patch tokens (no learned-query bottleneck) and a simple MLP (later 2-layer GELU) projector, and fine-tunes the LLM with visual instruction data. It works because it does *not* compress — it pays full token cost. The lesson for MixedDecoder: if you insist on heavy compression you need Q-Former-style machinery; a linear/MLP projector alone (LLaVA-style) only works at *low* compression. MixedDecoder currently uses a LLaVA-grade projector at a Q-Former-grade compression ratio — the worst of both.
 
-**Honeybee** (Cha et al. 2023) and **Q-Former ablations.** Later VLM work (e.g. Honeybee's "locality-enhanced projector") finds that abstractor design — whether the bridge preserves *spatial/positional locality* — measurably affects downstream fine-grained tasks (OCR, counting). The text analog: a bridge that preserves *token-order locality* should help recall of specific spans (names/numbers). This argues for slot-per-region pooling rather than a single global `[CLS]`.
+**Honeybee** ([local recap](../papers/multimodal_2023_honeybee.md), Cha et al. 2023) and **Q-Former ablations.** Later VLM work (e.g. Honeybee's "locality-enhanced projector") finds that abstractor design — whether the bridge preserves *spatial/positional locality* — measurably affects downstream fine-grained tasks (OCR, counting). The text analog: a bridge that preserves *token-order locality* should help recall of specific spans (names/numbers). This argues for slot-per-region pooling rather than a single global `[CLS]`.
 
 > **Takeaway for MixedDecoder:** replace single-`[CLS]` + linear expansion with a *real resampler* (K learned queries cross-attending to the encoder's full 128-token hidden states), freeze/LoRA the decoder, and consider layer-wise cross-attention (Flamingo) instead of prefix-only conditioning.
 
@@ -355,12 +355,12 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 
 - Alayrac et al. *Flamingo: a Visual Language Model for Few-Shot Learning.* arXiv:2204.14198, 2022. ([local recap](../papers/multimodal_2022_flamingo-perceiver-resampler.md))
 - Li et al. *BLIP-2: Bootstrapping Language-Image Pre-training with Frozen Image Encoders and Large Language Models.* arXiv:2301.12597, ICML 2023. ([local recap](../papers/multimodal_2023_blip2-qformer.md))
-- Jaegle et al. *Perceiver: General Perception with Iterative Attention.* arXiv:2103.03206, 2021.
-- Jaegle et al. *Perceiver IO: A General Architecture for Structured Inputs & Outputs.* arXiv:2107.14795, 2021.
-- Liu et al. *Visual Instruction Tuning (LLaVA).* arXiv:2304.08485, 2023.
-- Liu et al. *Improved Baselines with Visual Instruction Tuning (LLaVA-1.5).* arXiv:2310.03744, 2023.
-- Dai et al. *InstructBLIP.* arXiv:2305.06500, 2023.
-- Cha et al. *Honeybee: Locality-enhanced Projector for Multimodal LLM.* arXiv:2312.06742, 2023.
+- Jaegle et al. *Perceiver: General Perception with Iterative Attention.* arXiv:2103.03206, 2021. ([local recap](../papers/multimodal_2021_perceiver.md))
+- Jaegle et al. *Perceiver IO: A General Architecture for Structured Inputs & Outputs.* arXiv:2107.14795, 2021. ([local recap](../papers/multimodal_2021_perceiver.md))
+- Liu et al. *Visual Instruction Tuning (LLaVA).* arXiv:2304.08485, 2023. ([local recap](../papers/multimodal_2023_llava.md))
+- Liu et al. *Improved Baselines with Visual Instruction Tuning (LLaVA-1.5).* arXiv:2310.03744, 2023. ([local recap](../papers/multimodal_2023_llava-1.5.md))
+- Dai et al. *InstructBLIP.* arXiv:2305.06500, 2023. ([local recap](../papers/multimodal_2023_instructblip.md))
+- Cha et al. *Honeybee: Locality-enhanced Projector for Multimodal LLM.* arXiv:2312.06742, 2023. ([local recap](../papers/multimodal_2023_honeybee.md))
 
 ### 6.2 Text context compression into embeddings
 - Mu, Li, Goodman. *Learning to Compress Prompts with Gist Tokens.* arXiv:2304.08467, 2023.
