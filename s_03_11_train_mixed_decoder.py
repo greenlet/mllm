@@ -1145,15 +1145,21 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
 
     lr = optimizer.param_groups[0]['lr']
     log(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
+    tbsw = None
     if rank == 0:
         tbsw = tb.SummaryWriter(log_dir=str(train_path))
         log(ddp_model)
 
-        grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
-        grad_log_interval = max(grad_log_interval, 1)
-        prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
-        if prev_train_steps > 0:
-            grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
+    # Grad/weight logging counters are tracked on ALL ranks (deterministic step
+    # counters), because under FSDP log_weights_grads_stats() runs a collective
+    # (summon_full_params) that every rank must enter — even though only rank 0
+    # writes to TensorBoard. Keeping the counters rank-local would desync the
+    # collective and hang training.
+    grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
+    grad_log_interval = max(grad_log_interval, 1)
+    prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
+    if prev_train_steps > 0:
+        grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
 
     if args.world_size > 1:
         dist.barrier()
@@ -1192,11 +1198,12 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                     loss = loss * loss_weight
                 loss.backward()
 
-            if rank == 0:
-                if grad_log_ind % grad_log_interval == 0:
-                    log_weights_grads_stats(grad_log_step, ddp_model, tbsw)
-                    grad_log_step += 1
-                grad_log_ind += 1
+            # Run on ALL ranks: under FSDP this performs a summon_full_params
+            # collective that every rank must enter (only rank 0 writes metrics).
+            if grad_log_ind % grad_log_interval == 0:
+                log_weights_grads_stats(grad_log_step, ddp_model, tbsw, rank=rank)
+                grad_log_step += 1
+            grad_log_ind += 1
 
             # Gradient clipping (AMP- and FSDP-aware). Disabled when max_grad_norm <= 0.
             max_grad_norm = model_cfg.train_cfg.max_grad_norm

@@ -1,5 +1,6 @@
 import os.path
 import re
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -10,6 +11,7 @@ from mllm.data.itsquadv2 import get_squadv2_df
 import numpy as np
 import pandas as pd
 import torch
+import torch.distributed as dist
 import torch.utils.tensorboard as tb
 from datasets import Dataset, load_dataset
 from torch import nn
@@ -164,7 +166,7 @@ def calc_params_grads_stats(params: torch.nn.Parameter) -> tuple[float, Optional
     return param_mean, param_std, grad_mean, grad_std
 
 
-def log_weights_grads_stats(step: int, model: torch.nn.Module, tbsw: tb.SummaryWriter):
+def _write_params_grads_stats(step: int, model: torch.nn.Module, tbsw: tb.SummaryWriter):
     for i, (pname, params) in enumerate(model.named_parameters()):
         pname = f'{i:02d}-{pname}'
         weight_mean, weight_std, grad_mean, grad_std = calc_params_grads_stats(params)
@@ -175,6 +177,94 @@ def log_weights_grads_stats(step: int, model: torch.nn.Module, tbsw: tb.SummaryW
             tbsw.add_scalar(f'{pname}/GradMean', grad_mean, step)
         if grad_std is not None:
             tbsw.add_scalar(f'{pname}/GradStd', grad_std, step)
+
+
+def _log_fsdp_sharded_stats(
+        step: int, model: torch.nn.Module, tbsw: Optional[tb.SummaryWriter], rank: int, group,
+):
+    """Compute exact weight/grad mean+std under FSDP without materialising any full
+    parameter.
+
+    Each rank holds only its *local shard* of every original parameter (a 0-numel
+    view for params it doesn't own). Instead of all-gathering the full tensors, we
+    compute per-shard partial reductions ``[sum, sumsq, count]`` for the weights and
+    grads, pack them into a single ``(num_params, 6)`` tensor and run ONE
+    ``all_reduce(SUM)``. Rank 0 then turns the reduced sums into global mean/std:
+
+        mean = sum / count
+        std  = sqrt((sumsq - count * mean^2) / (count - 1))   # unbiased, matches .std()
+
+    The reduction runs over ``group`` = the FSDP *shard* process group, so every
+    element is counted exactly once for both FULL_SHARD and HYBRID_SHARD (the
+    cross-node replicas in HYBRID live on a different group and are not summed).
+    All ranks must enter the ``all_reduce``; only rank 0 writes the scalars.
+    """
+    names: list[str] = []
+    rows: list[torch.Tensor] = []
+    for name, p in model.named_parameters():
+        pf = p.detach().float().reshape(-1)
+        device = pf.device
+        s, ss = pf.sum(), pf.square().sum()
+        c = torch.tensor(float(pf.numel()), device=device)
+        if p.grad is not None:
+            gf = p.grad.detach().float().reshape(-1)
+            gs, gss = gf.sum(), gf.square().sum()
+            gc = torch.tensor(float(gf.numel()), device=device)
+        else:
+            z = torch.zeros((), device=device)
+            gs, gss, gc = z, z.clone(), z.clone()
+        names.append(name.replace('_fsdp_wrapped_module.', ''))
+        rows.append(torch.stack([s, ss, c, gs, gss, gc]))
+
+    if not rows:
+        return
+    stats = torch.stack(rows, dim=0)
+    if dist.is_initialized():
+        dist.all_reduce(stats, op=dist.ReduceOp.SUM, group=group)
+    if rank != 0 or tbsw is None:
+        return
+
+    stats = stats.cpu()
+    for i, name in enumerate(names):
+        s, ss, c, gs, gss, gc = stats[i].tolist()
+        pname = f'{i:02d}-{name}'
+        if c > 0:
+            wmean = s / c
+            tbsw.add_scalar(f'{pname}/WeightMean', wmean, step)
+            if c > 1:
+                wvar = max((ss - c * wmean * wmean) / (c - 1.0), 0.0)
+                tbsw.add_scalar(f'{pname}/WeightStd', math.sqrt(wvar), step)
+        if gc > 0:
+            gmean = gs / gc
+            tbsw.add_scalar(f'{pname}/GradMean', gmean, step)
+            if gc > 1:
+                gvar = max((gss - gc * gmean * gmean) / (gc - 1.0), 0.0)
+                tbsw.add_scalar(f'{pname}/GradStd', math.sqrt(gvar), step)
+
+
+def log_weights_grads_stats(
+        step: int, model: torch.nn.Module, tbsw: Optional[tb.SummaryWriter], rank: int = 0,
+):
+    """Log per-parameter weight/grad mean+std to TensorBoard.
+
+    FSDP note: under FullyShardedDataParallel(FULL_SHARD, use_orig_params=True),
+    ``named_parameters()`` returns each original parameter's *local shard* only, so
+    on a given rank every parameter whose data lives on other ranks is exposed as a
+    0-numel view and ``.mean()/.std()`` return NaN (this produced the all-NaN
+    InteractiveExtractor / partial decoder weight metrics).
+
+    To get the true, unsharded statistics we do NOT all-gather the full parameters.
+    Instead each rank reduces its local shard to scalar partial sums and a single
+    collective ``all_reduce`` combines them (see ``_log_fsdp_sharded_stats``). This
+    is a *collective*: ALL ranks must call this function with the same model so the
+    ``all_reduce`` matches, even though only rank 0 (passing a real ``tbsw``) writes.
+    """
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+    if isinstance(model, FSDP):
+        group = getattr(model, 'process_group', None)
+        _log_fsdp_sharded_stats(step, model, tbsw, rank, group)
+    elif rank == 0 and tbsw is not None:
+        _write_params_grads_stats(step, model, tbsw)
 
 
 Activation = Callable[..., nn.Module]
