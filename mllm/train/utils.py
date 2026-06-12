@@ -153,118 +153,120 @@ def remove_tokens(chunks: torch.Tensor, mask_tok: int, rem_ratio: float = 0.15, 
     return res
 
 
-def calc_params_grads_stats(params: torch.nn.Parameter) -> tuple[float, Optional[float], Optional[float], Optional[float]]:
-    param_mean = params.mean().detach().cpu().item()
-    param_std = None
-    if params.numel() > 1:
-        param_std = params.std().detach().cpu().item()
-    grad_mean, grad_std = None, None
-    if params.grad is not None:
-        grad_mean = params.grad.mean().detach().cpu().item()
-        if params.grad.numel() > 1:
-            grad_std = params.grad.std().detach().cpu().item()
-    return param_mean, param_std, grad_mean, grad_std
+# Matches a transformer block index inside a parameter name (e.g. `model.layers.7.`,
+# `transformer.h.3.`, `bert.encoder.layer.11.`) so params can be bucketed per block.
+_BLOCK_IDX_RE = re.compile(r'(?:^|\.)(?:layers|layer|h|block|blocks)\.(\d+)(?:\.|$)')
 
 
-def _write_params_grads_stats(step: int, model: torch.nn.Module, tbsw: tb.SummaryWriter):
-    for i, (pname, params) in enumerate(model.named_parameters()):
-        pname = f'{i:02d}-{pname}'
-        weight_mean, weight_std, grad_mean, grad_std = calc_params_grads_stats(params)
-        tbsw.add_scalar(f'{pname}/WeightMean', weight_mean, step)
-        if weight_std is not None:
-            tbsw.add_scalar(f'{pname}/WeightStd', weight_std, step)
-        if grad_mean is not None:
-            tbsw.add_scalar(f'{pname}/GradMean', grad_mean, step)
-        if grad_std is not None:
-            tbsw.add_scalar(f'{pname}/GradStd', grad_std, step)
+def _param_bucket(name: str) -> str:
+    """Map a parameter name to a logical bucket: the top-level submodule, refined to a
+    per-block bucket when a transformer block index is present.
 
-
-def _log_fsdp_sharded_stats(
-        step: int, model: torch.nn.Module, tbsw: Optional[tb.SummaryWriter], rank: int, group,
-):
-    """Compute exact weight/grad mean+std under FSDP without materialising any full
-    parameter.
-
-    Each rank holds only its *local shard* of every original parameter (a 0-numel
-    view for params it doesn't own). Instead of all-gathering the full tensors, we
-    compute per-shard partial reductions ``[sum, sumsq, count]`` for the weights and
-    grads, pack them into a single ``(num_params, 6)`` tensor and run ONE
-    ``all_reduce(SUM)``. Rank 0 then turns the reduced sums into global mean/std:
-
-        mean = sum / count
-        std  = sqrt((sumsq - count * mean^2) / (count - 1))   # unbiased, matches .std()
-
-    The reduction runs over ``group`` = the FSDP *shard* process group, so every
-    element is counted exactly once for both FULL_SHARD and HYBRID_SHARD (the
-    cross-node replicas in HYBRID live on a different group and are not summed).
-    All ranks must enter the ``all_reduce``; only rank 0 writes the scalars.
+    Distributed wrapper prefixes are stripped first (``module.`` inserted by DDP,
+    ``_fsdp_wrapped_module.`` inserted by FSDP at each wrap boundary) so the bucket
+    names are identical across single-GPU, DDP and FSDP runs.
     """
-    names: list[str] = []
+    name = name.replace('_fsdp_wrapped_module.', '')
+    while name.startswith('module.'):
+        name = name[len('module.'):]
+    top = name.split('.', 1)[0]
+    m = _BLOCK_IDX_RE.search(name)
+    if m is not None:
+        return f'{top}.block{int(m.group(1)):02d}'
+    return top
+
+
+def _collect_param_sumsq(model: torch.nn.Module) -> tuple[list[str], torch.Tensor]:
+    """Return the per-parameter bucket names and a ``(num_params, 2)`` tensor of
+    partial reductions ``[sum(w^2), sum(g^2)]``.
+
+    Squared sums are additive across FSDP shards: a parameter not owned by this rank
+    is exposed as a 0-numel local shard whose squared sum is 0, so a single
+    ``all_reduce(SUM)`` over the shard group reconstructs the exact global squared
+    norms without ever materialising a full parameter.
+    """
+    buckets: list[str] = []
     rows: list[torch.Tensor] = []
     for name, p in model.named_parameters():
         pf = p.detach().float().reshape(-1)
-        device = pf.device
-        s, ss = pf.sum(), pf.square().sum()
-        c = torch.tensor(float(pf.numel()), device=device)
+        wss = pf.square().sum()
         if p.grad is not None:
-            gf = p.grad.detach().float().reshape(-1)
-            gs, gss = gf.sum(), gf.square().sum()
-            gc = torch.tensor(float(gf.numel()), device=device)
+            gss = p.grad.detach().float().reshape(-1).square().sum()
         else:
-            z = torch.zeros((), device=device)
-            gs, gss, gc = z, z.clone(), z.clone()
-        names.append(name.replace('_fsdp_wrapped_module.', ''))
-        rows.append(torch.stack([s, ss, c, gs, gss, gc]))
-
+            gss = torch.zeros((), device=pf.device)
+        buckets.append(_param_bucket(name))
+        rows.append(torch.stack([wss, gss]))
     if not rows:
-        return
-    stats = torch.stack(rows, dim=0)
-    if dist.is_initialized():
-        dist.all_reduce(stats, op=dist.ReduceOp.SUM, group=group)
-    if rank != 0 or tbsw is None:
-        return
+        return buckets, torch.empty(0)
+    return buckets, torch.stack(rows, dim=0)
 
+
+def _write_bucketed_stats(
+        step: int, buckets: list[str], stats: torch.Tensor, tbsw: tb.SummaryWriter,
+        learning_rate: Optional[float],
+):
+    """Aggregate per-parameter squared sums into per-bucket L2 norms and write
+    ``GradNorm`` / ``WeightNorm`` (plus the ``lr*||g||/||w||`` update-to-weight ratio
+    when ``learning_rate`` is given), along with a single ``Global/*`` summary across
+    all parameters. The update ratio (~1e-3 is healthy) is the scale-free diagnostic
+    for whether the learning rate is sane per bucket; comparing per-block ``GradNorm``
+    curves reveals vanishing/exploding gradients along depth.
+    """
     stats = stats.cpu()
-    for i, name in enumerate(names):
-        s, ss, c, gs, gss, gc = stats[i].tolist()
-        pname = f'{i:02d}-{name}'
-        if c > 0:
-            wmean = s / c
-            tbsw.add_scalar(f'{pname}/WeightMean', wmean, step)
-            if c > 1:
-                wvar = max((ss - c * wmean * wmean) / (c - 1.0), 0.0)
-                tbsw.add_scalar(f'{pname}/WeightStd', math.sqrt(wvar), step)
-        if gc > 0:
-            gmean = gs / gc
-            tbsw.add_scalar(f'{pname}/GradMean', gmean, step)
-            if gc > 1:
-                gvar = max((gss - gc * gmean * gmean) / (gc - 1.0), 0.0)
-                tbsw.add_scalar(f'{pname}/GradStd', math.sqrt(gvar), step)
+    bucket_wss: dict[str, float] = {}
+    bucket_gss: dict[str, float] = {}
+    for i, b in enumerate(buckets):
+        wss, gss = stats[i].tolist()
+        bucket_wss[b] = bucket_wss.get(b, 0.0) + wss
+        bucket_gss[b] = bucket_gss.get(b, 0.0) + gss
+
+    total_wss = total_gss = 0.0
+    for b in sorted(bucket_wss):
+        wss, gss = bucket_wss[b], bucket_gss[b]
+        total_wss += wss
+        total_gss += gss
+        wnorm, gnorm = math.sqrt(wss), math.sqrt(gss)
+        tbsw.add_scalar(f'{b}/WeightNorm', wnorm, step)
+        tbsw.add_scalar(f'{b}/GradNorm', gnorm, step)
+        if learning_rate is not None and wnorm > 0:
+            tbsw.add_scalar(f'{b}/UpdateRatio', learning_rate * gnorm / wnorm, step)
+
+    wnorm, gnorm = math.sqrt(total_wss), math.sqrt(total_gss)
+    tbsw.add_scalar('Global/WeightNorm', wnorm, step)
+    tbsw.add_scalar('Global/GradNorm', gnorm, step)
+    if learning_rate is not None and wnorm > 0:
+        tbsw.add_scalar('Global/UpdateRatio', learning_rate * gnorm / wnorm, step)
 
 
 def log_weights_grads_stats(
         step: int, model: torch.nn.Module, tbsw: Optional[tb.SummaryWriter], rank: int = 0,
+        learning_rate: Optional[float] = None,
 ):
-    """Log per-parameter weight/grad mean+std to TensorBoard.
+    """Log per-bucket weight/grad L2 norms (and ``lr*||g||/||w||`` update ratios) to
+    TensorBoard to track gradient dynamics. Parameters are grouped into logical
+    buckets (top-level submodule, refined per transformer block) rather than emitting
+    one noisy series per tensor.
 
-    FSDP note: under FullyShardedDataParallel(FULL_SHARD, use_orig_params=True),
-    ``named_parameters()`` returns each original parameter's *local shard* only, so
-    on a given rank every parameter whose data lives on other ranks is exposed as a
-    0-numel view and ``.mean()/.std()`` return NaN (this produced the all-NaN
-    InteractiveExtractor / partial decoder weight metrics).
-
-    To get the true, unsharded statistics we do NOT all-gather the full parameters.
-    Instead each rank reduces its local shard to scalar partial sums and a single
-    collective ``all_reduce`` combines them (see ``_log_fsdp_sharded_stats``). This
-    is a *collective*: ALL ranks must call this function with the same model so the
-    ``all_reduce`` matches, even though only rank 0 (passing a real ``tbsw``) writes.
+    FSDP note: under FullyShardedDataParallel each rank holds only its local shard of
+    every parameter. We never materialise the full tensors; instead each rank reduces
+    its shard to per-parameter squared sums ``[sum(w^2), sum(g^2)]`` and a single
+    ``all_reduce(SUM)`` over the shard process group reconstructs the exact global
+    norms. This is a *collective*: ALL ranks must call this function with the same
+    model so the ``all_reduce`` matches, even though only rank 0 (passing a real
+    ``tbsw``) writes the scalars.
     """
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
     if isinstance(model, FSDP):
         group = getattr(model, 'process_group', None)
-        _log_fsdp_sharded_stats(step, model, tbsw, rank, group)
+        buckets, stats = _collect_param_sumsq(model)
+        if stats.numel() and dist.is_initialized():
+            dist.all_reduce(stats, op=dist.ReduceOp.SUM, group=group)
+        if rank == 0 and tbsw is not None and stats.numel():
+            _write_bucketed_stats(step, buckets, stats, tbsw, learning_rate)
     elif rank == 0 and tbsw is not None:
-        _write_params_grads_stats(step, model, tbsw)
+        buckets, stats = _collect_param_sumsq(model)
+        if stats.numel():
+            _write_bucketed_stats(step, buckets, stats, tbsw, learning_rate)
 
 
 Activation = Callable[..., nn.Module]

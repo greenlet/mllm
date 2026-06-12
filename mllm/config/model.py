@@ -2126,7 +2126,13 @@ class MixedDecoderCfg(BaseModel):
     ie_mlp_ratio: float = 4.0
     ie_dropout: float = 0.1
     ie_norm_first: bool = True
-    ie_slot_pos_emb: bool = True
+    # Sizing for the InteractiveExtractor's shared learned positional table:
+    # the table has ie_max_ctx*ie_exp_rate slot rows + ie_max_prompt_len prompt rows.
+    # ie_max_ctx must be >= the largest context-window size seen at train time
+    # (emb_win_max_size, or batch_size / max chunk count when windowing is off);
+    # ie_max_prompt_len must be >= the longest (padded) prompt.
+    ie_max_ctx: int = 64
+    ie_max_prompt_len: int = 128
     # When False, the prompt is seen ONLY by the extractor's VISIT step and is not
     # also inserted into the causal stream after the soft tokens (forces the answer
     # to flow through the extracted soft tokens). When True, layout is unchanged.
@@ -2275,7 +2281,8 @@ def create_mixed_decoder_cfg(
         use_interactive_extractor: bool = False, ie_exp_rate: int = 4, ie_num_layers: int = 2,
         ie_attn_type: InteractiveExtractorAttnType = InteractiveExtractorAttnType.Cross,
         ie_n_heads: int = 8, ie_mlp_ratio: float = 4.0, ie_dropout: float = 0.1,
-        ie_norm_first: bool = True, ie_slot_pos_emb: bool = True, ie_prompt_in_stream: bool = True,
+        ie_norm_first: bool = True, ie_max_ctx: int = 64, ie_max_prompt_len: int = 128,
+        ie_prompt_in_stream: bool = True,
         freeze_encoder: bool = True,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
         mask_cfg: Optional[MaskCfg] = None,
@@ -2343,7 +2350,8 @@ def create_mixed_decoder_cfg(
         ie_mlp_ratio=ie_mlp_ratio,
         ie_dropout=ie_dropout,
         ie_norm_first=ie_norm_first,
-        ie_slot_pos_emb=ie_slot_pos_emb,
+        ie_max_ctx=ie_max_ctx,
+        ie_max_prompt_len=ie_max_prompt_len,
         ie_prompt_in_stream=ie_prompt_in_stream,
         train_cfg=cfg_train,
     )
@@ -2361,7 +2369,8 @@ def copy_override_mixed_decoder_cfg(
         use_interactive_extractor: Optional[bool] = None, ie_exp_rate: Optional[int] = None,
         ie_num_layers: Optional[int] = None, ie_attn_type: Optional[InteractiveExtractorAttnType] = None,
         ie_n_heads: Optional[int] = None, ie_mlp_ratio: Optional[float] = None, ie_dropout: Optional[float] = None,
-        ie_norm_first: Optional[bool] = None, ie_slot_pos_emb: Optional[bool] = None,
+        ie_norm_first: Optional[bool] = None, ie_max_ctx: Optional[int] = None,
+        ie_max_prompt_len: Optional[int] = None,
         ie_prompt_in_stream: Optional[bool] = None,
         freeze_encoder: Optional[bool] = None,
         pretrained_encdec_model_path: Optional[Path] = None, pretrained_mixed_decoder_model_path: Optional[Path] = None,
@@ -2396,7 +2405,8 @@ def copy_override_mixed_decoder_cfg(
     ie_mlp_ratio = coalesce(ie_mlp_ratio, cfg.ie_mlp_ratio)
     ie_dropout = coalesce(ie_dropout, cfg.ie_dropout)
     ie_norm_first = coalesce(ie_norm_first, cfg.ie_norm_first)
-    ie_slot_pos_emb = coalesce(ie_slot_pos_emb, cfg.ie_slot_pos_emb)
+    ie_max_ctx = coalesce(ie_max_ctx, cfg.ie_max_ctx)
+    ie_max_prompt_len = coalesce(ie_max_prompt_len, cfg.ie_max_prompt_len)
     ie_prompt_in_stream = coalesce(ie_prompt_in_stream, cfg.ie_prompt_in_stream)
     freeze_encoder = coalesce(freeze_encoder, cfg.train_cfg.freeze_encoder)
     pretrained_encdec_model_path = coalesce(pretrained_encdec_model_path, cfg.train_cfg.pretrained_encdec_model_path)
@@ -2427,7 +2437,7 @@ def copy_override_mixed_decoder_cfg(
         use_interactive_extractor=use_interactive_extractor, ie_exp_rate=ie_exp_rate,
         ie_num_layers=ie_num_layers, ie_attn_type=ie_attn_type, ie_n_heads=ie_n_heads,
         ie_mlp_ratio=ie_mlp_ratio, ie_dropout=ie_dropout, ie_norm_first=ie_norm_first,
-        ie_slot_pos_emb=ie_slot_pos_emb, ie_prompt_in_stream=ie_prompt_in_stream,
+        ie_max_ctx=ie_max_ctx, ie_max_prompt_len=ie_max_prompt_len, ie_prompt_in_stream=ie_prompt_in_stream,
         freeze_encoder=freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
         pretrained_mixed_decoder_model_path=pretrained_mixed_decoder_model_path,
@@ -2471,7 +2481,7 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
     postfix_parts.append(bool_param_to_str('sep', model_cfg.use_sep))
     postfix_parts.append(bool_param_to_str('pall', model_cfg.prompt_all))
     if not model_cfg.decoder_only:
-        if model_cfg.emb_exp_rate > 0:
+        if not model_cfg.use_interactive_extractor and model_cfg.emb_exp_rate > 0:
             postfix_parts.append(f'eer{model_cfg.emb_exp_rate}')
         if model_cfg.emb_win_max_size > 0 and model_cfg.emb_win_min_size <= model_cfg.emb_win_max_size:
             postfix_parts.append(f'ewn{model_cfg.emb_win_min_size}x{model_cfg.emb_win_max_size}')

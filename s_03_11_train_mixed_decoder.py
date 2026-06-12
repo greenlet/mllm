@@ -56,8 +56,6 @@ prompt_all_ARG = '--prompt-all', 'Target is whole input chunk (true) or citation
 decoder_only_ARG = '--decoder-only', 'Train decoder without encoder (raw context tokens fed directly to decoder, encoder is not instantiated).'
 use_interactive_extractor_ARG = '--use-interactive-extractor', \
     'Enable the InteractiveExtractor query-conditioned soft-token bridge (replaces emb_exp).'
-ie_slot_pos_emb_ARG = '--ie-slot-pos-emb', \
-    'InteractiveExtractor: add a learned per-slot positional embedding over the ie_exp_rate slots.'
 ie_prompt_in_stream_ARG = '--ie-prompt-in-stream', \
     'InteractiveExtractor: keep the prompt in the causal stream after the soft tokens (false = VISIT only).'
 ie_norm_first_ARG = '--ie-norm-first', \
@@ -176,6 +174,18 @@ class ArgsMixedDecoderTrain(BaseModel):
         description='InteractiveExtractor: dropout probability for attention and FFN.',
         cli=('--ie-dropout',),
     )
+    ie_max_ctx: int = Field(
+        64,
+        description='InteractiveExtractor: max number of context embeddings the positional table covers. '
+            'Must be >= the largest context-window size at train time (emb_win_max_size, or batch_size / '
+            'max chunk count when windowing is off).',
+        cli=('--ie-max-ctx',),
+    )
+    ie_max_prompt_len: int = Field(
+        128,
+        description='InteractiveExtractor: max (padded) prompt length the positional table covers.',
+        cli=('--ie-max-prompt-len',),
+    )
     train_ds_type: MixedDecoderDsType = Field(
         MixedDecoderDsType.Cite,
         description=f'Training dataset type. Can have values: {list(x.value for x in MixedDecoderDsType)}',
@@ -231,11 +241,6 @@ class ArgsMixedDecoderTrain(BaseModel):
     @property
     def use_interactive_extractor(self) -> bool:
         return is_arg_true(use_interactive_extractor_ARG[0], self.use_interactive_extractor_STR)
-
-    ie_slot_pos_emb_STR: str = create_bool_str_field(*ie_slot_pos_emb_ARG)
-    @property
-    def ie_slot_pos_emb(self) -> bool:
-        return is_arg_true(ie_slot_pos_emb_ARG[0], self.ie_slot_pos_emb_STR)
 
     ie_prompt_in_stream_STR: str = create_bool_str_field(*ie_prompt_in_stream_ARG)
     @property
@@ -684,7 +689,8 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         use_interactive_extractor=args.use_interactive_extractor,
         ie_exp_rate=args.ie_exp_rate, ie_num_layers=args.ie_num_layers, ie_attn_type=args.ie_attn_type,
         ie_n_heads=args.ie_n_heads, ie_mlp_ratio=args.ie_mlp_ratio, ie_dropout=args.ie_dropout,
-        ie_norm_first=args.ie_norm_first, ie_slot_pos_emb=args.ie_slot_pos_emb,
+        ie_norm_first=args.ie_norm_first, ie_max_ctx=args.ie_max_ctx,
+        ie_max_prompt_len=args.ie_max_prompt_len,
         ie_prompt_in_stream=args.ie_prompt_in_stream,
         freeze_encoder=args.freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
@@ -1152,9 +1158,9 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
 
     # Grad/weight logging counters are tracked on ALL ranks (deterministic step
     # counters), because under FSDP log_weights_grads_stats() runs a collective
-    # (summon_full_params) that every rank must enter — even though only rank 0
-    # writes to TensorBoard. Keeping the counters rank-local would desync the
-    # collective and hang training.
+    # (all_reduce) that every rank must enter — even though only rank 0 writes to
+    # TensorBoard. Keeping the counters rank-local would desync the collective and
+    # hang training.
     grad_log_interval, grad_log_step, grad_log_ind = args.train_epoch_steps // 10, 0, 0
     grad_log_interval = max(grad_log_interval, 1)
     prev_train_steps = args.train_epoch_steps * (last_epoch + 1)
@@ -1171,6 +1177,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         train_qna_loss = 0.0
         train_cite_batches = 0
         train_qna_batches = 0
+        clip_events = 0
         if rank == 0:
             pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         else:
@@ -1198,10 +1205,15 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                     loss = loss * loss_weight
                 loss.backward()
 
-            # Run on ALL ranks: under FSDP this performs a summon_full_params
-            # collective that every rank must enter (only rank 0 writes metrics).
-            if grad_log_ind % grad_log_interval == 0:
-                log_weights_grads_stats(grad_log_step, ddp_model, tbsw, rank=rank)
+            # Run on ALL ranks: under FSDP this performs an all_reduce collective
+            # that every rank must enter (only rank 0 writes metrics).
+            log_grads_now = grad_log_ind % grad_log_interval == 0
+            cur_grad_log_step = grad_log_step
+            if log_grads_now:
+                log_weights_grads_stats(
+                    grad_log_step, ddp_model, tbsw, rank=rank,
+                    learning_rate=optimizer.param_groups[0]['lr'],
+                )
                 grad_log_step += 1
             grad_log_ind += 1
 
@@ -1213,9 +1225,16 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                     scaler.unscale_(optimizer)
                 if use_fsdp:
                     # FSDP's own method correctly all-reduces the norm across shards.
-                    ddp_model.clip_grad_norm_(max_grad_norm)
+                    total_norm = ddp_model.clip_grad_norm_(max_grad_norm)
                 else:
-                    torch.nn.utils.clip_grad_norm_(ddp_model.parameters(), max_grad_norm)
+                    total_norm = torch.nn.utils.clip_grad_norm_(ddp_model.parameters(), max_grad_norm)
+                # Clip diagnostics are logged only because clipping is enabled here.
+                if rank == 0:
+                    total_norm = float(total_norm)
+                    if total_norm > max_grad_norm:
+                        clip_events += 1
+                    if log_grads_now and tbsw is not None:
+                        tbsw.add_scalar('Global/PreClipGradNorm', total_norm, cur_grad_log_step)
 
             if amp_enabled and scaler.is_enabled():
                 scaler.step(optimizer)
@@ -1239,6 +1258,8 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         if rank == 0:
             pbar.close()
             train_losses.log_to_tb('Train', epoch, tbsw)
+            if model_cfg.train_cfg.max_grad_norm > 0:
+                tbsw.add_scalar('Train/clip_fraction', clip_events / args.train_epoch_steps, epoch)
             if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
                 train_cite_mean = train_cite_loss / train_cite_batches if train_cite_batches else 0.0
                 train_qna_mean = train_qna_loss / train_qna_batches if train_qna_batches else 0.0

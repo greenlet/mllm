@@ -40,12 +40,14 @@ class InteractiveExtractor(nn.Module):
     def __init__(
             self, d_model: int, d_dec: int, exp_rate: int, num_layers: int,
             attn_type: InteractiveExtractorAttnType, n_heads: int, mlp_ratio: float,
-            dropout: float, norm_first: bool, slot_pos_emb: bool,
+            dropout: float, norm_first: bool, max_ctx: int, max_prompt_len: int,
     ):
         super().__init__()
         assert exp_rate > 0, 'InteractiveExtractor requires exp_rate > 0'
         assert num_layers > 0, 'InteractiveExtractor requires num_layers > 0'
         assert d_dec % n_heads == 0, f'd_dec ({d_dec}) must be divisible by n_heads ({n_heads})'
+        assert max_ctx > 0, 'InteractiveExtractor requires max_ctx > 0'
+        assert max_prompt_len > 0, 'InteractiveExtractor requires max_prompt_len > 0'
         self.d_model = d_model
         self.d_dec = d_dec
         self.exp_rate = exp_rate
@@ -55,11 +57,14 @@ class InteractiveExtractor(nn.Module):
         # EXPAND: one embedding -> exp_rate decoder-space slots.
         self.expand = nn.Linear(d_model, exp_rate * d_dec, bias=False)
 
-        # Learned per-slot positional embedding to break the symmetry between the
-        # exp_rate slots produced from the same source embedding.
-        self.slot_pos_emb = nn.Parameter(torch.zeros(exp_rate, d_dec)) if slot_pos_emb else None
-        if self.slot_pos_emb is not None:
-            nn.init.normal_(self.slot_pos_emb, std=0.02)
+        # Single learned absolute positional table shared by the soft-token slots
+        # and the prompt. The first `max_slots = max_ctx * exp_rate` rows position
+        # the expanded context slots (so each slot knows which of the N context
+        # chunks it came from AND which of the exp_rate copies it is); the next
+        # `max_prompt_len` rows position the prompt tokens before the VISIT step.
+        self.max_slots = max_ctx * exp_rate
+        self.max_prompt_len = max_prompt_len
+        self.pos_emb = nn.Parameter(torch.zeros(self.max_slots + max_prompt_len, d_dec))
 
         self.attns = nn.ModuleList(
             nn.MultiheadAttention(d_dec, n_heads, dropout=dropout, batch_first=True)
@@ -81,6 +86,28 @@ class InteractiveExtractor(nn.Module):
             self.ffn_norms = nn.ModuleList(nn.LayerNorm(d_dec) for _ in range(num_layers))
         self.norm_first = norm_first
         self.dropout = nn.Dropout(dropout)
+        self._init_weights()
+
+    def _init_weights(self):
+        """Xavier/Glorot init for all linear projections (zero bias) and a small
+        normal init for the learned positional table."""
+        nn.init.normal_(self.pos_emb, std=0.02)
+        nn.init.xavier_uniform_(self.expand.weight)
+        for attn in self.attns:
+            # MultiheadAttention packs q/k/v into in_proj_weight; out_proj is a Linear.
+            nn.init.xavier_uniform_(attn.in_proj_weight)
+            if attn.in_proj_bias is not None:
+                nn.init.zeros_(attn.in_proj_bias)
+            nn.init.xavier_uniform_(attn.out_proj.weight)
+            if attn.out_proj.bias is not None:
+                nn.init.zeros_(attn.out_proj.bias)
+        if self.use_ffn:
+            for ffn in self.ffns:
+                for module in ffn:
+                    if isinstance(module, nn.Linear):
+                        nn.init.xavier_uniform_(module.weight)
+                        if module.bias is not None:
+                            nn.init.zeros_(module.bias)
 
     def _attend(
             self, idx: int, x: Tensor, prompt_embs: Tensor, prompt_pad: Optional[Tensor],
@@ -106,11 +133,25 @@ class InteractiveExtractor(nn.Module):
             self, chunk_embs: Tensor, prompt_embs: Tensor, prompt_pad: Optional[Tensor] = None,
     ) -> Tensor:
         b, n, _ = chunk_embs.shape
+        n_slots = n * self.exp_rate
+        l_q = prompt_embs.shape[1]
+        assert n_slots <= self.max_slots, (
+            f'InteractiveExtractor: {n} context embeddings * exp_rate {self.exp_rate} = '
+            f'{n_slots} slots exceed max_slots={self.max_slots} (increase ie_max_ctx).'
+        )
+        assert l_q <= self.max_prompt_len, (
+            f'InteractiveExtractor: prompt length {l_q} exceeds '
+            f'max_prompt_len={self.max_prompt_len} (increase ie_max_prompt_len).'
+        )
+
         # EXPAND -> (B, N, exp_rate, d_dec) -> (B, N*exp_rate, d_dec)
         x = self.expand(chunk_embs).view(b, n, self.exp_rate, self.d_dec)
-        if self.slot_pos_emb is not None:
-            x = x + self.slot_pos_emb
-        x = x.reshape(b, n * self.exp_rate, self.d_dec)
+        x = x.reshape(b, n_slots, self.d_dec)
+        # Add the slot region of the shared positional table.
+        x = x + self.pos_emb[:n_slots]
+
+        # Add the prompt region of the shared positional table (once, before VISIT).
+        prompt_embs = prompt_embs + self.pos_emb[self.max_slots:self.max_slots + l_q]
 
         for i in range(self.num_layers):
             # VISIT (cross- or self-attention), pre-/post-LN residual.
@@ -202,9 +243,10 @@ class MixedDecoder(nn.Module):
             f'decoder tokenizer come from the same model family.'
         )
 
-        # Embedding expansion: each CLS embedding (d_model) → (emb_exp_rate, d_dec)
+        # Embedding expansion: each CLS embedding (d_model) → (emb_exp_rate, d_dec).
+        # Skipped entirely when the InteractiveExtractor is enabled (it replaces emb_exp).
         self.emb_exp = None
-        if not self.decoder_only and self.cfg.emb_exp_rate > 0:
+        if not self.decoder_only and not self.cfg.use_interactive_extractor and self.cfg.emb_exp_rate > 0:
             self.emb_exp = nn.Linear(self.cfg.d_model, self.cfg.emb_exp_rate * d_dec, bias=False)
 
         # InteractiveExtractor: query-conditioned soft-token bridge. When enabled it
@@ -217,7 +259,7 @@ class MixedDecoder(nn.Module):
                 num_layers=self.cfg.ie_num_layers, attn_type=self.cfg.ie_attn_type,
                 n_heads=self.cfg.ie_n_heads, mlp_ratio=self.cfg.ie_mlp_ratio,
                 dropout=self.cfg.ie_dropout, norm_first=self.cfg.ie_norm_first,
-                slot_pos_emb=self.cfg.ie_slot_pos_emb,
+                max_ctx=self.cfg.ie_max_ctx, max_prompt_len=self.cfg.ie_max_prompt_len,
             )
 
         # If encoder d_model differs from decoder d_model, add a projection layer (only when no emb expansion)
