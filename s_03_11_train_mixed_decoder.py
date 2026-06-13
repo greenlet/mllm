@@ -303,6 +303,14 @@ class ArgsMixedDecoderTrain(BaseModel):
         description='Number of training epochs.',
         cli=('--epochs',),
     )
+    freeze_decoder_epochs: int = Field(
+        0,
+        description='Number of initial epochs during which the decoder weights are frozen '
+            '(not updated). Gradients still flow THROUGH the decoder so the encoder / '
+            'InteractiveExtractor bridge keep training; only the decoder parameter grads are '
+            'dropped before the optimizer step. 0 disables freezing.',
+        cli=('--freeze-decoder-epochs',),
+    )
     learning_rate: float = Field(
         0.001,
         description='Initial learning rate of the training process.',
@@ -1167,10 +1175,28 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
     if prev_train_steps > 0:
         grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
 
+    # Decoder-freeze support. Collect the live decoder parameters once (these are
+    # the same objects whose `.grad` is populated by backward under DDP and FSDP
+    # use_orig_params=True). During the first `freeze_decoder_epochs` epochs we drop
+    # their grads before each optimizer step, keeping the decoder weights fixed while
+    # gradients still propagate through it to the encoder / InteractiveExtractor.
+    _freeze_base = ddp_model.module if hasattr(ddp_model, 'module') else ddp_model
+    _freeze_decoder = getattr(_freeze_base, 'decoder', None)
+    decoder_params = list(_freeze_decoder.parameters()) if _freeze_decoder is not None else []
+    if args.freeze_decoder_epochs > 0:
+        log(f'Decoder freeze enabled: decoder weights fixed for the first '
+            f'{args.freeze_decoder_epochs} epoch(s) ({len(decoder_params)} param tensors).')
+
     if args.world_size > 1:
         dist.barrier()
     for epoch in range(last_epoch + 1, args.epochs):
         ddp_model.train()
+        decoder_frozen = epoch < args.freeze_decoder_epochs and len(decoder_params) > 0
+        if args.freeze_decoder_epochs > 0 and rank == 0:
+            if decoder_frozen:
+                log(f'Epoch {epoch}: decoder FROZEN ({epoch + 1}/{args.freeze_decoder_epochs}).')
+            elif epoch == args.freeze_decoder_epochs:
+                log(f'Epoch {epoch}: decoder UNFROZEN; now training all weights.')
         train_losses = LossesStats()
         train_loss = 0.0
         train_cite_loss = 0.0
@@ -1204,6 +1230,15 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                     loss_weight = args.qnaanscite_qna_loss_weight if is_qna_batch else args.qnaanscite_cite_loss_weight
                     loss = loss * loss_weight
                 loss.backward()
+
+            # Decoder freeze: drop decoder parameter grads so the optimizer leaves
+            # the decoder weights unchanged this epoch. Gradients already flowed
+            # through the decoder during backward (to the bridge/encoder); we only
+            # discard the decoder's own grads. AdamW skips params whose grad is None,
+            # and grad clipping / unscaling naturally ignore them too.
+            if decoder_frozen:
+                for p in decoder_params:
+                    p.grad = None
 
             # Run on ALL ranks: under FSDP this performs an all_reduce collective
             # that every rank must enter (only rank 0 writes metrics).

@@ -84,8 +84,10 @@ ie_dropout=0.1
 ie_norm_first=true
 ie_max_ctx=64
 ie_max_prompt_len=128
-# false = prompt seen ONLY by the extractor VISIT step (not in the causal stream)
-ie_prompt_in_stream=true
+# false = prompt seen ONLY by the extractor VISIT step (not in the causal stream).
+# Set false to break the in-stream shortcut: the citation must flow through the
+# soft tokens, which keeps encoder/extractor gradients alive (anti vanishing).
+ie_prompt_in_stream=false
 
 decoder_only=false
 # decoder_only=true
@@ -117,6 +119,9 @@ pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbas
 
 device=cuda
 epochs=700
+# Number of initial epochs to keep the decoder weights frozen (encoder/extractor
+# bridge still train; gradients flow through the decoder). 0 disables.
+freeze_decoder_epochs=10
 train_epoch_steps=500
 val_epoch_steps=50
 # docs_batch_size=40
@@ -159,6 +164,8 @@ llrd_decay=1.0
 attention_dropout=0.1
 label_smoothing=0.0
 max_grad_norm=0.0
+# label_smoothing=0.1
+# max_grad_norm=1.0
 
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
@@ -228,6 +235,7 @@ python s_03_11_train_mixed_decoder.py \
   --docs-batch-size $docs_batch_size \
   --device $device \
   --epochs $epochs \
+  --freeze-decoder-epochs $freeze_decoder_epochs \
   --learning-rate $learning_rate \
   --learning-rate-override $learning_rate_override \
   --optimizer-name $optimizer_name \
