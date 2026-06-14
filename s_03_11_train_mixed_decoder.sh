@@ -133,6 +133,7 @@ world_size=4
 
 
 learning_rate=0.00005
+learning_rate=0.00001
 # If > 0, overrides the current learning rate by rebuilding optimizer and scheduler
 # from scratch (any restored optimizer/scheduler state from checkpoint is discarded).
 learning_rate_override=0

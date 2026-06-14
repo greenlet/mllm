@@ -2455,16 +2455,16 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
     enc = model_cfg.enc_bert
     train = model_cfg.train_cfg
 
-    pretrained_model_path = None
-    if train.pretrained_mixed_decoder_model_path is not None:
-        pretrained_model_path = train.pretrained_mixed_decoder_model_path
-    elif train.pretrained_encdec_model_path is not None:
-        pretrained_model_path = train.pretrained_encdec_model_path
-    if pretrained_model_path is not None:
-        dname = pretrained_model_path.parent.name
-        m = checkpoint_fname_pat.match(dname)
-        assert m is not None, f'Cannot parse checkpoint folder name "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
-        postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
+    # pretrained_model_path = None
+    # if train.pretrained_mixed_decoder_model_path is not None:
+    #     pretrained_model_path = train.pretrained_mixed_decoder_model_path
+    # elif train.pretrained_encdec_model_path is not None:
+    #     pretrained_model_path = train.pretrained_encdec_model_path
+    # if pretrained_model_path is not None:
+    #     dname = pretrained_model_path.parent.name
+    #     m = checkpoint_fname_pat.match(dname)
+    #     assert m is not None, f'Cannot parse checkpoint folder name "{dname}". Expected format: <prefix>-YYYYMMDD_HHmmSS-<postfix>'
+    #     postfix_parts.append(f'pre_{m.group(1)}{m.group(2)}{m.group(3)}')
 
     brt_str = enc.pretrained_model_name.replace('-', '')
     postfix_parts.append(brt_str)
