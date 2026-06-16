@@ -42,6 +42,7 @@ from mllm.exp.args import MIXED_DECODER_MODEL_CFG_FNAME, create_bool_str_field, 
 from mllm.model.mixed_decoder import MixedDecoder
 from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
+from mllm.train.key_val_recall import KeyValRecallCfg, KeyValRecallDataset, create_key_val_recall_dataloader
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.next_tok_wiki import NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next
 from mllm.data.qna.dataset import QnaDatasetAgg, load_qna_datasets, create_qna_dataloader
@@ -195,6 +196,21 @@ class ArgsMixedDecoderTrain(BaseModel):
         64,
         description='Minimum number of tokens reserved for next-token prediction target (used with train_ds_type=next).',
         cli=('--min-next-toks',),
+    )
+    keyval_min_pairs: int = Field(
+        4,
+        description='For train_ds_type=keyval: minimum number of key:value pairs per record (difficulty knob lower bound).',
+        cli=('--keyval-min-pairs',),
+    )
+    keyval_max_pairs: int = Field(
+        12,
+        description='For train_ds_type=keyval: maximum number of key:value pairs per record (difficulty knob upper bound).',
+        cli=('--keyval-max-pairs',),
+    )
+    keyval_value_max_words: int = Field(
+        3,
+        description='For train_ds_type=keyval: maximum number of consecutive real words forming a value span.',
+        cli=('--keyval-value-max-words',),
     )
     qnaanscite_cite_batches_per_cycle: int = Field(
         1,
@@ -1085,6 +1101,24 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
         train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
         val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
+    elif args.train_ds_type == MixedDecoderDsType.KeyVal:
+        assert not args.prompt_all, 'KeyVal requires --prompt-all false: the target is the queried value, not the whole record.'
+        keyval_cfg = KeyValRecallCfg(
+            min_pairs=args.keyval_min_pairs, max_pairs=args.keyval_max_pairs,
+            value_max_words=args.keyval_value_max_words,
+        )
+        ds_train = KeyValRecallDataset(
+            ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+            cfg=keyval_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
+        )
+        ds_val = KeyValRecallDataset(
+            ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+            cfg=keyval_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
+        )
+        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
+        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
+        train_batch_it = create_key_val_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
+        val_batch_it = create_key_val_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
     elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:
         max_chunks = max(args.emb_win_max_size, 1)
         ds_train = QnaCiteDataset(
@@ -1586,6 +1620,12 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         ds_train, ds_val = load_split_wiki_dataset(
             data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
             mask_cfg=mask_cfg, random_seed=args.random_seed,
+        )
+        df_sq, sq_inds_train, sq_inds_val = None, None, None
+    elif args.train_ds_type == MixedDecoderDsType.KeyVal:
+        ds_train, ds_val = load_split_wiki_dataset(
+            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
+            mask_cfg=None, random_seed=args.random_seed,
         )
         df_sq, sq_inds_train, sq_inds_val = None, None, None
     elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:

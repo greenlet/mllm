@@ -2014,6 +2014,7 @@ class MixedDecoderDsType(str, Enum):
     QnaAns = 'qnaans'
     QnaAnsCite = 'qnaanscite'
     Next = 'next'
+    KeyVal = 'keyval'
 
 
 class MixedDecoderType(str, Enum):

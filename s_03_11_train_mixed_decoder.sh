@@ -53,6 +53,7 @@ train_ds_type=cite
 # train_ds_type=qnaans
 # train_ds_type=qnaanscite
 # train_ds_type=next
+# train_ds_type=keyval   # key-value recall (requires prompt_all=false)
 
 qnaanscite_cite_batches_per_cycle=1
 qnaanscite_qna_batches_per_cycle=1
@@ -60,6 +61,11 @@ qnaanscite_cite_loss_weight=2.0
 qnaanscite_qna_loss_weight=1.0
 
 min_next_toks=64
+
+# --- key-value recall (train_ds_type=keyval) difficulty knobs ---
+keyval_min_pairs=4
+keyval_max_pairs=12
+keyval_value_max_words=3
 
 max_seq_len=400
 freeze_encoder=false
@@ -222,6 +228,9 @@ python s_03_11_train_mixed_decoder.py \
   --ie-prompt-in-stream $ie_prompt_in_stream \
   --train-ds-type $train_ds_type \
   --min-next-toks $min_next_toks \
+  --keyval-min-pairs $keyval_min_pairs \
+  --keyval-max-pairs $keyval_max_pairs \
+  --keyval-value-max-words $keyval_value_max_words \
   --qnaanscite-cite-batches-per-cycle $qnaanscite_cite_batches_per_cycle \
   --qnaanscite-qna-batches-per-cycle $qnaanscite_qna_batches_per_cycle \
   --qnaanscite-cite-loss-weight $qnaanscite_cite_loss_weight \
