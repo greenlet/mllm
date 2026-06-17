@@ -54,6 +54,7 @@ train_ds_type=cite
 # train_ds_type=qnaanscite
 # train_ds_type=next
 # train_ds_type=keyval   # key-value recall (requires prompt_all=false)
+# train_ds_type=jsonfield   # JSON field extraction (requires prompt_all=false)
 
 qnaanscite_cite_batches_per_cycle=1
 qnaanscite_qna_batches_per_cycle=1
@@ -66,6 +67,13 @@ min_next_toks=64
 keyval_min_pairs=4
 keyval_max_pairs=12
 keyval_value_max_words=3
+
+# --- JSON field recall (train_ds_type=jsonfield) difficulty knobs ---
+jsonfield_min_fields=4
+jsonfield_max_fields=10
+jsonfield_max_depth=3
+jsonfield_max_array_len=4
+jsonfield_value_max_words=3
 
 max_seq_len=400
 freeze_encoder=false
@@ -231,6 +239,11 @@ python s_03_11_train_mixed_decoder.py \
   --keyval-min-pairs $keyval_min_pairs \
   --keyval-max-pairs $keyval_max_pairs \
   --keyval-value-max-words $keyval_value_max_words \
+  --jsonfield-min-fields $jsonfield_min_fields \
+  --jsonfield-max-fields $jsonfield_max_fields \
+  --jsonfield-max-depth $jsonfield_max_depth \
+  --jsonfield-max-array-len $jsonfield_max_array_len \
+  --jsonfield-value-max-words $jsonfield_value_max_words \
   --qnaanscite-cite-batches-per-cycle $qnaanscite_cite_batches_per_cycle \
   --qnaanscite-qna-batches-per-cycle $qnaanscite_qna_batches_per_cycle \
   --qnaanscite-cite-loss-weight $qnaanscite_cite_loss_weight \

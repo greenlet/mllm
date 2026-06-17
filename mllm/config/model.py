@@ -2015,6 +2015,7 @@ class MixedDecoderDsType(str, Enum):
     QnaAnsCite = 'qnaanscite'
     Next = 'next'
     KeyVal = 'keyval'
+    JsonField = 'jsonfield'
 
 
 class MixedDecoderType(str, Enum):

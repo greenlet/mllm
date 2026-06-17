@@ -43,6 +43,7 @@ from mllm.model.mixed_decoder import MixedDecoder
 from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
 from mllm.train.key_val_recall import KeyValRecallCfg, KeyValRecallDataset, create_key_val_recall_dataloader
+from mllm.train.json_field_recall import JsonFieldRecallCfg, JsonFieldRecallDataset, create_json_field_recall_dataloader
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.next_tok_wiki import NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next
 from mllm.data.qna.dataset import QnaDatasetAgg, load_qna_datasets, create_qna_dataloader
@@ -211,6 +212,31 @@ class ArgsMixedDecoderTrain(BaseModel):
         3,
         description='For train_ds_type=keyval: maximum number of consecutive real words forming a value span.',
         cli=('--keyval-value-max-words',),
+    )
+    jsonfield_min_fields: int = Field(
+        4,
+        description='For train_ds_type=jsonfield: minimum number of top-level fields in a generated JSON record.',
+        cli=('--jsonfield-min-fields',),
+    )
+    jsonfield_max_fields: int = Field(
+        10,
+        description='For train_ds_type=jsonfield: maximum number of top-level fields in a generated JSON record.',
+        cli=('--jsonfield-max-fields',),
+    )
+    jsonfield_max_depth: int = Field(
+        3,
+        description='For train_ds_type=jsonfield: maximum JSON nesting depth.',
+        cli=('--jsonfield-max-depth',),
+    )
+    jsonfield_max_array_len: int = Field(
+        4,
+        description='For train_ds_type=jsonfield: maximum array length for generated JSON arrays.',
+        cli=('--jsonfield-max-array-len',),
+    )
+    jsonfield_value_max_words: int = Field(
+        3,
+        description='For train_ds_type=jsonfield: maximum number of consecutive words in string scalar values.',
+        cli=('--jsonfield-value-max-words',),
     )
     qnaanscite_cite_batches_per_cycle: int = Field(
         1,
@@ -1119,6 +1145,27 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
         train_batch_it = create_key_val_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
         val_batch_it = create_key_val_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
+    elif args.train_ds_type == MixedDecoderDsType.JsonField:
+        assert not args.prompt_all, 'JsonField requires --prompt-all false: the target is the queried JSON field value.'
+        jsonfield_cfg = JsonFieldRecallCfg(
+            min_fields=args.jsonfield_min_fields,
+            max_fields=args.jsonfield_max_fields,
+            max_depth=args.jsonfield_max_depth,
+            max_array_len=args.jsonfield_max_array_len,
+            value_max_words=args.jsonfield_value_max_words,
+        )
+        ds_train = JsonFieldRecallDataset(
+            ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+            cfg=jsonfield_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
+        )
+        ds_val = JsonFieldRecallDataset(
+            ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+            cfg=jsonfield_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
+        )
+        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
+        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
+        train_batch_it = create_json_field_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
+        val_batch_it = create_json_field_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
     elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:
         max_chunks = max(args.emb_win_max_size, 1)
         ds_train = QnaCiteDataset(
@@ -1623,6 +1670,12 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         )
         df_sq, sq_inds_train, sq_inds_val = None, None, None
     elif args.train_ds_type == MixedDecoderDsType.KeyVal:
+        ds_train, ds_val = load_split_wiki_dataset(
+            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
+            mask_cfg=None, random_seed=args.random_seed,
+        )
+        df_sq, sq_inds_train, sq_inds_val = None, None, None
+    elif args.train_ds_type == MixedDecoderDsType.JsonField:
         ds_train, ds_val = load_split_wiki_dataset(
             data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
             mask_cfg=None, random_seed=args.random_seed,
