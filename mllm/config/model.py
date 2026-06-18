@@ -2016,6 +2016,7 @@ class MixedDecoderDsType(str, Enum):
     Next = 'next'
     KeyVal = 'keyval'
     JsonField = 'jsonfield'
+    Jsonata = 'jsonata'
 
 
 class MixedDecoderType(str, Enum):

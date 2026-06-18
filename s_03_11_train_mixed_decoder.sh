@@ -55,6 +55,7 @@ train_ds_type=cite
 # train_ds_type=next
 # train_ds_type=keyval   # key-value recall (requires prompt_all=false)
 # train_ds_type=jsonfield   # JSON field extraction (requires prompt_all=false)
+# train_ds_type=jsonata   # JSONata/jq-like selection+transform (requires prompt_all=false)
 
 qnaanscite_cite_batches_per_cycle=1
 qnaanscite_qna_batches_per_cycle=1
@@ -74,6 +75,14 @@ jsonfield_max_fields=10
 jsonfield_max_depth=3
 jsonfield_max_array_len=4
 jsonfield_value_max_words=3
+
+# --- JSONata/jq selection+transform (train_ds_type=jsonata) knobs ---
+jsonata_min_fields=4
+jsonata_max_fields=10
+jsonata_max_depth=3
+jsonata_max_array_len=5
+jsonata_value_max_words=3
+jsonata_transform_prob=0.35
 
 max_seq_len=400
 freeze_encoder=false
@@ -244,6 +253,12 @@ python s_03_11_train_mixed_decoder.py \
   --jsonfield-max-depth $jsonfield_max_depth \
   --jsonfield-max-array-len $jsonfield_max_array_len \
   --jsonfield-value-max-words $jsonfield_value_max_words \
+  --jsonata-min-fields $jsonata_min_fields \
+  --jsonata-max-fields $jsonata_max_fields \
+  --jsonata-max-depth $jsonata_max_depth \
+  --jsonata-max-array-len $jsonata_max_array_len \
+  --jsonata-value-max-words $jsonata_value_max_words \
+  --jsonata-transform-prob $jsonata_transform_prob \
   --qnaanscite-cite-batches-per-cycle $qnaanscite_cite_batches_per_cycle \
   --qnaanscite-qna-batches-per-cycle $qnaanscite_qna_batches_per_cycle \
   --qnaanscite-cite-loss-weight $qnaanscite_cite_loss_weight \

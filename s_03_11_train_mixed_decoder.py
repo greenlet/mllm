@@ -44,6 +44,7 @@ from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
 from mllm.train.key_val_recall import KeyValRecallCfg, KeyValRecallDataset, create_key_val_recall_dataloader
 from mllm.train.json_field_recall import JsonFieldRecallCfg, JsonFieldRecallDataset, create_json_field_recall_dataloader
+from mllm.train.jsonata_recall import JsonataRecallCfg, JsonataRecallDataset, create_jsonata_recall_dataloader
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.next_tok_wiki import NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next
 from mllm.data.qna.dataset import QnaDatasetAgg, load_qna_datasets, create_qna_dataloader
@@ -237,6 +238,36 @@ class ArgsMixedDecoderTrain(BaseModel):
         3,
         description='For train_ds_type=jsonfield: maximum number of consecutive words in string scalar values.',
         cli=('--jsonfield-value-max-words',),
+    )
+    jsonata_min_fields: int = Field(
+        4,
+        description='For train_ds_type=jsonata: minimum number of top-level fields in generated JSON records.',
+        cli=('--jsonata-min-fields',),
+    )
+    jsonata_max_fields: int = Field(
+        10,
+        description='For train_ds_type=jsonata: maximum number of top-level fields in generated JSON records.',
+        cli=('--jsonata-max-fields',),
+    )
+    jsonata_max_depth: int = Field(
+        3,
+        description='For train_ds_type=jsonata: maximum JSON nesting depth.',
+        cli=('--jsonata-max-depth',),
+    )
+    jsonata_max_array_len: int = Field(
+        5,
+        description='For train_ds_type=jsonata: maximum array length in generated JSON arrays.',
+        cli=('--jsonata-max-array-len',),
+    )
+    jsonata_value_max_words: int = Field(
+        3,
+        description='For train_ds_type=jsonata: maximum number of consecutive words in string values.',
+        cli=('--jsonata-value-max-words',),
+    )
+    jsonata_transform_prob: float = Field(
+        0.35,
+        description='For train_ds_type=jsonata: probability of Tier-C transform queries (count/sum/max) vs Tier-E selection.',
+        cli=('--jsonata-transform-prob',),
     )
     qnaanscite_cite_batches_per_cycle: int = Field(
         1,
@@ -1166,6 +1197,28 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
         train_batch_it = create_json_field_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
         val_batch_it = create_json_field_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
+    elif args.train_ds_type == MixedDecoderDsType.Jsonata:
+        assert not args.prompt_all, 'Jsonata requires --prompt-all false: the target is the query result value.'
+        jsonata_cfg = JsonataRecallCfg(
+            min_fields=args.jsonata_min_fields,
+            max_fields=args.jsonata_max_fields,
+            max_depth=args.jsonata_max_depth,
+            max_array_len=args.jsonata_max_array_len,
+            value_max_words=args.jsonata_value_max_words,
+            transform_prob=args.jsonata_transform_prob,
+        )
+        ds_train = JsonataRecallDataset(
+            ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+            cfg=jsonata_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
+        )
+        ds_val = JsonataRecallDataset(
+            ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+            cfg=jsonata_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
+        )
+        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
+        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
+        train_batch_it = create_jsonata_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
+        val_batch_it = create_jsonata_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
     elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:
         max_chunks = max(args.emb_win_max_size, 1)
         ds_train = QnaCiteDataset(
@@ -1676,6 +1729,12 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         )
         df_sq, sq_inds_train, sq_inds_val = None, None, None
     elif args.train_ds_type == MixedDecoderDsType.JsonField:
+        ds_train, ds_val = load_split_wiki_dataset(
+            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
+            mask_cfg=None, random_seed=args.random_seed,
+        )
+        df_sq, sq_inds_train, sq_inds_val = None, None, None
+    elif args.train_ds_type == MixedDecoderDsType.Jsonata:
         ds_train, ds_val = load_split_wiki_dataset(
             data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
             mask_cfg=None, random_seed=args.random_seed,
