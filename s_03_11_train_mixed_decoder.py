@@ -45,6 +45,7 @@ from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_d
 from mllm.train.key_val_recall import KeyValRecallCfg, KeyValRecallDataset, create_key_val_recall_dataloader
 from mllm.train.json_field_recall import JsonFieldRecallCfg, JsonFieldRecallDataset, create_json_field_recall_dataloader
 from mllm.train.jsonata_recall import JsonataRecallCfg, JsonataRecallDataset, create_jsonata_recall_dataloader
+from mllm.train.xml_xpath_recall import XmlXpathRecallCfg, XmlXpathRecallDataset, create_xml_xpath_recall_dataloader
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.next_tok_wiki import NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next
 from mllm.data.qna.dataset import QnaDatasetAgg, load_qna_datasets, create_qna_dataloader
@@ -268,6 +269,31 @@ class ArgsMixedDecoderTrain(BaseModel):
         0.35,
         description='For train_ds_type=jsonata: probability of Tier-C transform queries (count/sum/max) vs Tier-E selection.',
         cli=('--jsonata-transform-prob',),
+    )
+    xmlxpath_min_nodes: int = Field(
+        4,
+        description='For train_ds_type=xmlxpath: minimum number of XML nodes per generated record.',
+        cli=('--xmlxpath-min-nodes',),
+    )
+    xmlxpath_max_nodes: int = Field(
+        12,
+        description='For train_ds_type=xmlxpath: maximum number of XML nodes per generated record.',
+        cli=('--xmlxpath-max-nodes',),
+    )
+    xmlxpath_max_depth: int = Field(
+        4,
+        description='For train_ds_type=xmlxpath: maximum XML nesting depth.',
+        cli=('--xmlxpath-max-depth',),
+    )
+    xmlxpath_max_children: int = Field(
+        4,
+        description='For train_ds_type=xmlxpath: maximum number of children per XML node.',
+        cli=('--xmlxpath-max-children',),
+    )
+    xmlxpath_value_max_words: int = Field(
+        3,
+        description='For train_ds_type=xmlxpath: maximum number of consecutive words in text/attribute values.',
+        cli=('--xmlxpath-value-max-words',),
     )
     qnaanscite_cite_batches_per_cycle: int = Field(
         1,
@@ -1219,6 +1245,27 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
         train_batch_it = create_jsonata_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
         val_batch_it = create_jsonata_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
+    elif args.train_ds_type == MixedDecoderDsType.XmlXpath:
+        assert not args.prompt_all, 'XmlXpath requires --prompt-all false: the target is the XPath-selected value.'
+        xml_cfg = XmlXpathRecallCfg(
+            min_nodes=args.xmlxpath_min_nodes,
+            max_nodes=args.xmlxpath_max_nodes,
+            max_depth=args.xmlxpath_max_depth,
+            max_children=args.xmlxpath_max_children,
+            value_max_words=args.xmlxpath_value_max_words,
+        )
+        ds_train = XmlXpathRecallDataset(
+            ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+            cfg=xml_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
+        )
+        ds_val = XmlXpathRecallDataset(
+            ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+            cfg=xml_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
+        )
+        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
+        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
+        train_batch_it = create_xml_xpath_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
+        val_batch_it = create_xml_xpath_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
     elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:
         max_chunks = max(args.emb_win_max_size, 1)
         ds_train = QnaCiteDataset(
@@ -1735,6 +1782,12 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         )
         df_sq, sq_inds_train, sq_inds_val = None, None, None
     elif args.train_ds_type == MixedDecoderDsType.Jsonata:
+        ds_train, ds_val = load_split_wiki_dataset(
+            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
+            mask_cfg=None, random_seed=args.random_seed,
+        )
+        df_sq, sq_inds_train, sq_inds_val = None, None, None
+    elif args.train_ds_type == MixedDecoderDsType.XmlXpath:
         ds_train, ds_val = load_split_wiki_dataset(
             data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
             mask_cfg=None, random_seed=args.random_seed,

@@ -56,6 +56,7 @@ train_ds_type=cite
 # train_ds_type=keyval   # key-value recall (requires prompt_all=false)
 # train_ds_type=jsonfield   # JSON field extraction (requires prompt_all=false)
 # train_ds_type=jsonata   # JSONata/jq-like selection+transform (requires prompt_all=false)
+# train_ds_type=xmlxpath   # XML/XPath extraction (requires prompt_all=false)
 
 qnaanscite_cite_batches_per_cycle=1
 qnaanscite_qna_batches_per_cycle=1
@@ -83,6 +84,13 @@ jsonata_max_depth=3
 jsonata_max_array_len=5
 jsonata_value_max_words=3
 jsonata_transform_prob=0.35
+
+# --- XML/XPath extraction (train_ds_type=xmlxpath) knobs ---
+xmlxpath_min_nodes=4
+xmlxpath_max_nodes=12
+xmlxpath_max_depth=4
+xmlxpath_max_children=4
+xmlxpath_value_max_words=3
 
 max_seq_len=400
 freeze_encoder=false
@@ -259,6 +267,11 @@ python s_03_11_train_mixed_decoder.py \
   --jsonata-max-array-len $jsonata_max_array_len \
   --jsonata-value-max-words $jsonata_value_max_words \
   --jsonata-transform-prob $jsonata_transform_prob \
+  --xmlxpath-min-nodes $xmlxpath_min_nodes \
+  --xmlxpath-max-nodes $xmlxpath_max_nodes \
+  --xmlxpath-max-depth $xmlxpath_max_depth \
+  --xmlxpath-max-children $xmlxpath_max_children \
+  --xmlxpath-value-max-words $xmlxpath_value_max_words \
   --qnaanscite-cite-batches-per-cycle $qnaanscite_cite_batches_per_cycle \
   --qnaanscite-qna-batches-per-cycle $qnaanscite_qna_batches_per_cycle \
   --qnaanscite-cite-loss-weight $qnaanscite_cite_loss_weight \
