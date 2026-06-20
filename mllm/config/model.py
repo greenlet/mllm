@@ -2018,6 +2018,7 @@ class MixedDecoderDsType(str, Enum):
     JsonField = 'jsonfield'
     Jsonata = 'jsonata'
     XmlXpath = 'xmlxpath'
+    Sql = 'sql'
 
 
 class MixedDecoderType(str, Enum):

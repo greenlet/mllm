@@ -46,6 +46,7 @@ from mllm.train.key_val_recall import KeyValRecallCfg, KeyValRecallDataset, crea
 from mllm.train.json_field_recall import JsonFieldRecallCfg, JsonFieldRecallDataset, create_json_field_recall_dataloader
 from mllm.train.jsonata_recall import JsonataRecallCfg, JsonataRecallDataset, create_jsonata_recall_dataloader
 from mllm.train.xml_xpath_recall import XmlXpathRecallCfg, XmlXpathRecallDataset, create_xml_xpath_recall_dataloader
+from mllm.train.sql_select_recall import SqlSelectRecallCfg, SqlSelectRecallDataset, create_sql_select_recall_dataloader
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.next_tok_wiki import NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next
 from mllm.data.qna.dataset import QnaDatasetAgg, load_qna_datasets, create_qna_dataloader
@@ -294,6 +295,36 @@ class ArgsMixedDecoderTrain(BaseModel):
         3,
         description='For train_ds_type=xmlxpath: maximum number of consecutive words in text/attribute values.',
         cli=('--xmlxpath-value-max-words',),
+    )
+    sql_min_rows: int = Field(
+        4,
+        description='For train_ds_type=sql: minimum table row count.',
+        cli=('--sql-min-rows',),
+    )
+    sql_max_rows: int = Field(
+        8,
+        description='For train_ds_type=sql: maximum table row count.',
+        cli=('--sql-max-rows',),
+    )
+    sql_min_cols: int = Field(
+        3,
+        description='For train_ds_type=sql: minimum table column count (including id).',
+        cli=('--sql-min-cols',),
+    )
+    sql_max_cols: int = Field(
+        5,
+        description='For train_ds_type=sql: maximum table column count (including id).',
+        cli=('--sql-max-cols',),
+    )
+    sql_value_max_words: int = Field(
+        3,
+        description='For train_ds_type=sql: maximum number of consecutive words in text-cell values.',
+        cli=('--sql-value-max-words',),
+    )
+    sql_transform_prob: float = Field(
+        0.30,
+        description='For train_ds_type=sql: probability of Tier-C aggregate queries (COUNT/SUM/MAX) vs Tier-E cell selection.',
+        cli=('--sql-transform-prob',),
     )
     qnaanscite_cite_batches_per_cycle: int = Field(
         1,
@@ -1266,6 +1297,28 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         ds_val.shuffle(seed=(args.random_seed or 0) + rank)
         train_batch_it = create_xml_xpath_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
         val_batch_it = create_xml_xpath_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
+    elif args.train_ds_type == MixedDecoderDsType.Sql:
+        assert not args.prompt_all, 'Sql requires --prompt-all false: the target is the SQL query answer.'
+        sql_cfg = SqlSelectRecallCfg(
+            min_rows=args.sql_min_rows,
+            max_rows=args.sql_max_rows,
+            min_cols=args.sql_min_cols,
+            max_cols=args.sql_max_cols,
+            value_max_words=args.sql_value_max_words,
+            transform_prob=args.sql_transform_prob,
+        )
+        ds_train = SqlSelectRecallDataset(
+            ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+            cfg=sql_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
+        )
+        ds_val = SqlSelectRecallDataset(
+            ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+            cfg=sql_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
+        )
+        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
+        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
+        train_batch_it = create_sql_select_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
+        val_batch_it = create_sql_select_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
     elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:
         max_chunks = max(args.emb_win_max_size, 1)
         ds_train = QnaCiteDataset(
@@ -1788,6 +1841,12 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         )
         df_sq, sq_inds_train, sq_inds_val = None, None, None
     elif args.train_ds_type == MixedDecoderDsType.XmlXpath:
+        ds_train, ds_val = load_split_wiki_dataset(
+            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
+            mask_cfg=None, random_seed=args.random_seed,
+        )
+        df_sq, sq_inds_train, sq_inds_val = None, None, None
+    elif args.train_ds_type == MixedDecoderDsType.Sql:
         ds_train, ds_val = load_split_wiki_dataset(
             data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
             mask_cfg=None, random_seed=args.random_seed,
