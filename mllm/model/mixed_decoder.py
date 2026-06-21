@@ -1203,13 +1203,12 @@ class MixedDecoder(nn.Module):
         return loss_dict, logits
 
     def forward(self, batch: Union[MaskedCiteBatch, QnaBatch, NextTokBatch], epoch: int = -1) -> Tuple[Dict[str, Tensor], Tensor]:
-        if self.cfg.train_ds_type == MixedDecoderDsType.Next:
-            return self.run_on_next(batch, epoch)
-        if self.cfg.train_ds_type in (MixedDecoderDsType.QnaSquadV2, MixedDecoderDsType.QnaAll, MixedDecoderDsType.QnaAns):
+        # Dispatch by batch class so compound (multi-dataset) training routes each
+        # batch to the correct run_* regardless of the configured train_ds_types.
+        if isinstance(batch, QnaBatch) or hasattr(batch, 'ans_toks'):
             return self.run_on_qna(batch, epoch)
-        if self.cfg.train_ds_type == MixedDecoderDsType.QnaAnsCite:
-            if isinstance(batch, QnaBatch) or hasattr(batch, 'ans_toks'):
-                return self.run_on_qna(batch, epoch)
-            return self.run_on_text_citation(batch, epoch)
+        if isinstance(batch, NextTokBatch):
+            return self.run_on_next(batch, epoch)
+        # MaskedCiteBatch and synthetic-extraction batches.
         return self.run_on_text_citation(batch, epoch)
 

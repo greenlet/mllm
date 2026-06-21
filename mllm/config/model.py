@@ -2117,6 +2117,10 @@ class MixedDecoderCfg(BaseModel):
     min_next_toks: int = 64
     d_model: int = 768
     train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite
+    # Compound training: list of dataset types mixed during a single run. Kept
+    # separate from the legacy scalar `train_ds_type` (left intact so older YAML
+    # configs still load). When empty it falls back to `[train_ds_type]`.
+    train_ds_types: list[MixedDecoderDsType] = []
     decoder_only: bool = False
     # --- InteractiveExtractor (v1): query-conditioned soft-token bridge ---
     # When enabled, replaces the plain `emb_exp` linear expansion: each of the N
@@ -2282,6 +2286,7 @@ def create_mixed_decoder_cfg(
         max_seq_len: int = 384, use_sep: bool = True, prompt_all: bool = True, emb_exp_rate: int = 0,
         emb_win_min_size: int = 0, emb_win_max_size: int = 0, min_next_toks: int = 64,
         train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite,
+        train_ds_types: Optional[list[MixedDecoderDsType]] = None,
         decoder_only: bool = False,
         use_interactive_extractor: bool = False, ie_exp_rate: int = 4, ie_num_layers: int = 2,
         ie_attn_type: InteractiveExtractorAttnType = InteractiveExtractorAttnType.Cross,
@@ -2296,6 +2301,13 @@ def create_mixed_decoder_cfg(
         weight_decay_decoder: float = 0.0, weight_decay_other: float = 0.0, llrd_decay: float = 1.0,
         attention_dropout: float = 0.0, label_smoothing: float = 0.0, max_grad_norm: float = 0.0,
 ) -> MixedDecoderCfg:
+    # Compound training: keep the scalar `train_ds_type` (primary type) consistent
+    # with `train_ds_types` so legacy consumers and folder naming stay correct.
+    if train_ds_types:
+        train_ds_type = train_ds_types[0]
+    else:
+        train_ds_types = [train_ds_type]
+
     model = BertModel.from_pretrained(pretrained_model_name, torch_dtype=torch.float32)
     bert_cfg: BertConfig = model.config
     d_model = bert_cfg.hidden_size
@@ -2346,6 +2358,7 @@ def create_mixed_decoder_cfg(
         min_next_toks=min_next_toks,
         d_model=d_model,
         train_ds_type=train_ds_type,
+        train_ds_types=train_ds_types,
         decoder_only=decoder_only,
         use_interactive_extractor=use_interactive_extractor,
         ie_exp_rate=ie_exp_rate,
@@ -2370,6 +2383,7 @@ def copy_override_mixed_decoder_cfg(
         max_seq_len: Optional[int] = None, use_sep: Optional[bool] = None, prompt_all: Optional[bool] = None, emb_exp_rate: Optional[int] = None,
         emb_win_min_size: Optional[int] = None, emb_win_max_size: Optional[int] = None, min_next_toks: Optional[int] = None,
         train_ds_type: Optional[MixedDecoderDsType] = None,
+        train_ds_types: Optional[list[MixedDecoderDsType]] = None,
         decoder_only: Optional[bool] = None,
         use_interactive_extractor: Optional[bool] = None, ie_exp_rate: Optional[int] = None,
         ie_num_layers: Optional[int] = None, ie_attn_type: Optional[InteractiveExtractorAttnType] = None,
@@ -2401,6 +2415,7 @@ def copy_override_mixed_decoder_cfg(
     emb_win_max_size = coalesce(emb_win_max_size, cfg.emb_win_max_size)
     min_next_toks = coalesce(min_next_toks, cfg.min_next_toks)
     train_ds_type = coalesce(train_ds_type, cfg.train_ds_type)
+    train_ds_types = coalesce(train_ds_types, cfg.train_ds_types)
     decoder_only = coalesce(decoder_only, cfg.decoder_only)
     use_interactive_extractor = coalesce(use_interactive_extractor, cfg.use_interactive_extractor)
     ie_exp_rate = coalesce(ie_exp_rate, cfg.ie_exp_rate)
@@ -2438,6 +2453,7 @@ def copy_override_mixed_decoder_cfg(
         max_seq_len=max_seq_len, use_sep=use_sep, prompt_all=prompt_all, emb_exp_rate=emb_exp_rate,
         emb_win_min_size=emb_win_min_size, emb_win_max_size=emb_win_max_size, min_next_toks=min_next_toks,
         train_ds_type=train_ds_type,
+        train_ds_types=train_ds_types,
         decoder_only=decoder_only,
         use_interactive_extractor=use_interactive_extractor, ie_exp_rate=ie_exp_rate,
         ie_num_layers=ie_num_layers, ie_attn_type=ie_attn_type, ie_n_heads=ie_n_heads,
@@ -2498,8 +2514,9 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
             )
             postfix_parts.append(bool_param_to_str('ieStrm', model_cfg.ie_prompt_in_stream))
         postfix_parts.append(bool_param_to_str('frzenc', train.freeze_encoder))
-    postfix_parts.append(f'ds{model_cfg.train_ds_type.value.capitalize()}')
-    if model_cfg.train_ds_type == MixedDecoderDsType.Next:
+    ds_types = model_cfg.train_ds_types or [model_cfg.train_ds_type]
+    postfix_parts.append('ds' + '_'.join(t.value.capitalize() for t in ds_types))
+    if any(t == MixedDecoderDsType.Next for t in ds_types):
         postfix_parts.append(f'mnt{model_cfg.min_next_toks}')
 
     if train.mask_cfg is not None:

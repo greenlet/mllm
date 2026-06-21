@@ -3,7 +3,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 from pprint import pprint
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Generator, Optional, Tuple
 import shutil
 
 from datasets import Dataset
@@ -42,11 +42,6 @@ from mllm.exp.args import MIXED_DECODER_MODEL_CFG_FNAME, create_bool_str_field, 
 from mllm.model.mixed_decoder import MixedDecoder
 from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
-from mllm.train.key_val_recall import KeyValRecallCfg, KeyValRecallDataset, create_key_val_recall_dataloader
-from mllm.train.json_field_recall import JsonFieldRecallCfg, JsonFieldRecallDataset, create_json_field_recall_dataloader
-from mllm.train.jsonata_recall import JsonataRecallCfg, JsonataRecallDataset, create_jsonata_recall_dataloader
-from mllm.train.xml_xpath_recall import XmlXpathRecallCfg, XmlXpathRecallDataset, create_xml_xpath_recall_dataloader
-from mllm.train.sql_select_recall import SqlSelectRecallCfg, SqlSelectRecallDataset, create_sql_select_recall_dataloader
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.next_tok_wiki import NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next
 from mllm.data.qna.dataset import QnaDatasetAgg, load_qna_datasets, create_qna_dataloader
@@ -61,10 +56,14 @@ prompt_all_ARG = '--prompt-all', 'Target is whole input chunk (true) or citation
 decoder_only_ARG = '--decoder-only', 'Train decoder without encoder (raw context tokens fed directly to decoder, encoder is not instantiated).'
 use_interactive_extractor_ARG = '--use-interactive-extractor', \
     'Enable the InteractiveExtractor query-conditioned soft-token bridge (replaces emb_exp).'
+ie_slot_pos_emb_ARG = '--ie-slot-pos-emb', \
+    'InteractiveExtractor: add a learned per-slot positional embedding over the ie_exp_rate slots.'
 ie_prompt_in_stream_ARG = '--ie-prompt-in-stream', \
     'InteractiveExtractor: keep the prompt in the causal stream after the soft tokens (false = VISIT only).'
 ie_norm_first_ARG = '--ie-norm-first', \
     'InteractiveExtractor: use pre-LayerNorm residual blocks (false = post-LayerNorm).'
+normalize_train_ds_loss_weights_ARG = '--normalize-train-ds-loss-weights', \
+    'Normalize train_ds_loss_weights so that they sum to 1.'
 
 
 class ArgsMixedDecoderTrain(BaseModel):
@@ -179,172 +178,30 @@ class ArgsMixedDecoderTrain(BaseModel):
         description='InteractiveExtractor: dropout probability for attention and FFN.',
         cli=('--ie-dropout',),
     )
-    ie_max_ctx: int = Field(
-        64,
-        description='InteractiveExtractor: max number of context embeddings the positional table covers. '
-            'Must be >= the largest context-window size at train time (emb_win_max_size, or batch_size / '
-            'max chunk count when windowing is off).',
-        cli=('--ie-max-ctx',),
-    )
-    ie_max_prompt_len: int = Field(
-        128,
-        description='InteractiveExtractor: max (padded) prompt length the positional table covers.',
-        cli=('--ie-max-prompt-len',),
-    )
-    train_ds_type: MixedDecoderDsType = Field(
-        MixedDecoderDsType.Cite,
-        description=f'Training dataset type. Can have values: {list(x.value for x in MixedDecoderDsType)}',
-        cli=('--train-ds-type',),
+    train_ds_types: list[MixedDecoderDsType] = Field(
+        [MixedDecoderDsType.Cite],
+        description=f'Training dataset type(s). One or more of: {list(x.value for x in MixedDecoderDsType)}. '
+            'When more than one is given, batches from each type are mixed in a round-robin cycle '
+            '(see --train-ds-batches-per-cycle) and each type loss is scaled by --train-ds-loss-weights.',
+        cli=('--train-ds-types',),
     )
     min_next_toks: int = Field(
         64,
-        description='Minimum number of tokens reserved for next-token prediction target (used with train_ds_type=next).',
+        description='Minimum number of tokens reserved for next-token prediction target (used when train_ds_types contains "next").',
         cli=('--min-next-toks',),
     )
-    keyval_min_pairs: int = Field(
-        4,
-        description='For train_ds_type=keyval: minimum number of key:value pairs per record (difficulty knob lower bound).',
-        cli=('--keyval-min-pairs',),
+    train_ds_batches_per_cycle: list[int] = Field(
+        [1],
+        description='Number of batches emitted per cycle for each entry in --train-ds-types. '
+            'Length must be 1 (broadcast to all types) or exactly len(train_ds_types).',
+        cli=('--train-ds-batches-per-cycle',),
     )
-    keyval_max_pairs: int = Field(
-        12,
-        description='For train_ds_type=keyval: maximum number of key:value pairs per record (difficulty knob upper bound).',
-        cli=('--keyval-max-pairs',),
-    )
-    keyval_value_max_words: int = Field(
-        3,
-        description='For train_ds_type=keyval: maximum number of consecutive real words forming a value span.',
-        cli=('--keyval-value-max-words',),
-    )
-    jsonfield_min_fields: int = Field(
-        4,
-        description='For train_ds_type=jsonfield: minimum number of top-level fields in a generated JSON record.',
-        cli=('--jsonfield-min-fields',),
-    )
-    jsonfield_max_fields: int = Field(
-        10,
-        description='For train_ds_type=jsonfield: maximum number of top-level fields in a generated JSON record.',
-        cli=('--jsonfield-max-fields',),
-    )
-    jsonfield_max_depth: int = Field(
-        3,
-        description='For train_ds_type=jsonfield: maximum JSON nesting depth.',
-        cli=('--jsonfield-max-depth',),
-    )
-    jsonfield_max_array_len: int = Field(
-        4,
-        description='For train_ds_type=jsonfield: maximum array length for generated JSON arrays.',
-        cli=('--jsonfield-max-array-len',),
-    )
-    jsonfield_value_max_words: int = Field(
-        3,
-        description='For train_ds_type=jsonfield: maximum number of consecutive words in string scalar values.',
-        cli=('--jsonfield-value-max-words',),
-    )
-    jsonata_min_fields: int = Field(
-        4,
-        description='For train_ds_type=jsonata: minimum number of top-level fields in generated JSON records.',
-        cli=('--jsonata-min-fields',),
-    )
-    jsonata_max_fields: int = Field(
-        10,
-        description='For train_ds_type=jsonata: maximum number of top-level fields in generated JSON records.',
-        cli=('--jsonata-max-fields',),
-    )
-    jsonata_max_depth: int = Field(
-        3,
-        description='For train_ds_type=jsonata: maximum JSON nesting depth.',
-        cli=('--jsonata-max-depth',),
-    )
-    jsonata_max_array_len: int = Field(
-        5,
-        description='For train_ds_type=jsonata: maximum array length in generated JSON arrays.',
-        cli=('--jsonata-max-array-len',),
-    )
-    jsonata_value_max_words: int = Field(
-        3,
-        description='For train_ds_type=jsonata: maximum number of consecutive words in string values.',
-        cli=('--jsonata-value-max-words',),
-    )
-    jsonata_transform_prob: float = Field(
-        0.35,
-        description='For train_ds_type=jsonata: probability of Tier-C transform queries (count/sum/max) vs Tier-E selection.',
-        cli=('--jsonata-transform-prob',),
-    )
-    xmlxpath_min_nodes: int = Field(
-        4,
-        description='For train_ds_type=xmlxpath: minimum number of XML nodes per generated record.',
-        cli=('--xmlxpath-min-nodes',),
-    )
-    xmlxpath_max_nodes: int = Field(
-        12,
-        description='For train_ds_type=xmlxpath: maximum number of XML nodes per generated record.',
-        cli=('--xmlxpath-max-nodes',),
-    )
-    xmlxpath_max_depth: int = Field(
-        4,
-        description='For train_ds_type=xmlxpath: maximum XML nesting depth.',
-        cli=('--xmlxpath-max-depth',),
-    )
-    xmlxpath_max_children: int = Field(
-        4,
-        description='For train_ds_type=xmlxpath: maximum number of children per XML node.',
-        cli=('--xmlxpath-max-children',),
-    )
-    xmlxpath_value_max_words: int = Field(
-        3,
-        description='For train_ds_type=xmlxpath: maximum number of consecutive words in text/attribute values.',
-        cli=('--xmlxpath-value-max-words',),
-    )
-    sql_min_rows: int = Field(
-        4,
-        description='For train_ds_type=sql: minimum table row count.',
-        cli=('--sql-min-rows',),
-    )
-    sql_max_rows: int = Field(
-        8,
-        description='For train_ds_type=sql: maximum table row count.',
-        cli=('--sql-max-rows',),
-    )
-    sql_min_cols: int = Field(
-        3,
-        description='For train_ds_type=sql: minimum table column count (including id).',
-        cli=('--sql-min-cols',),
-    )
-    sql_max_cols: int = Field(
-        5,
-        description='For train_ds_type=sql: maximum table column count (including id).',
-        cli=('--sql-max-cols',),
-    )
-    sql_value_max_words: int = Field(
-        3,
-        description='For train_ds_type=sql: maximum number of consecutive words in text-cell values.',
-        cli=('--sql-value-max-words',),
-    )
-    sql_transform_prob: float = Field(
-        0.30,
-        description='For train_ds_type=sql: probability of Tier-C aggregate queries (COUNT/SUM/MAX) vs Tier-E cell selection.',
-        cli=('--sql-transform-prob',),
-    )
-    qnaanscite_cite_batches_per_cycle: int = Field(
-        1,
-        description='For train_ds_type=qnaanscite: number of Cite batches emitted per cycle.',
-        cli=('--qnaanscite-cite-batches-per-cycle',),
-    )
-    qnaanscite_qna_batches_per_cycle: int = Field(
-        1,
-        description='For train_ds_type=qnaanscite: number of QnA batches emitted per cycle.',
-        cli=('--qnaanscite-qna-batches-per-cycle',),
-    )
-    qnaanscite_cite_loss_weight: float = Field(
-        1.0,
-        description='For train_ds_type=qnaanscite: weight multiplier for Cite batch loss.',
-        cli=('--qnaanscite-cite-loss-weight',),
-    )
-    qnaanscite_qna_loss_weight: float = Field(
-        1.0,
-        description='For train_ds_type=qnaanscite: weight multiplier for QnA batch loss.',
-        cli=('--qnaanscite-qna-loss-weight',),
+    train_ds_loss_weights: list[float] = Field(
+        [1.0],
+        description='Loss weight multiplier for each entry in --train-ds-types. '
+            'Length must be 1 (broadcast to all types) or exactly len(train_ds_types). '
+            'Normalized to sum to 1 when --normalize-train-ds-loss-weights is true.',
+        cli=('--train-ds-loss-weights',),
     )
 
     freeze_encoder_STR: str = create_bool_str_field(*freeze_encoder_ARG)
@@ -372,6 +229,11 @@ class ArgsMixedDecoderTrain(BaseModel):
     def use_interactive_extractor(self) -> bool:
         return is_arg_true(use_interactive_extractor_ARG[0], self.use_interactive_extractor_STR)
 
+    ie_slot_pos_emb_STR: str = create_bool_str_field(*ie_slot_pos_emb_ARG)
+    @property
+    def ie_slot_pos_emb(self) -> bool:
+        return is_arg_true(ie_slot_pos_emb_ARG[0], self.ie_slot_pos_emb_STR)
+
     ie_prompt_in_stream_STR: str = create_bool_str_field(*ie_prompt_in_stream_ARG)
     @property
     def ie_prompt_in_stream(self) -> bool:
@@ -381,6 +243,11 @@ class ArgsMixedDecoderTrain(BaseModel):
     @property
     def ie_norm_first(self) -> bool:
         return is_arg_true(ie_norm_first_ARG[0], self.ie_norm_first_STR)
+
+    normalize_train_ds_loss_weights_STR: str = create_bool_str_field(*normalize_train_ds_loss_weights_ARG)
+    @property
+    def normalize_train_ds_loss_weights(self) -> bool:
+        return is_arg_true(normalize_train_ds_loss_weights_ARG[0], self.normalize_train_ds_loss_weights_STR)
 
     mask_tokens_STR: str = create_bool_str_field(*mask_tokens_ARG)
     @property
@@ -432,14 +299,6 @@ class ArgsMixedDecoderTrain(BaseModel):
         None,
         description='Number of training epochs.',
         cli=('--epochs',),
-    )
-    freeze_decoder_epochs: int = Field(
-        0,
-        description='Number of initial epochs during which the decoder weights are frozen '
-            '(not updated). Gradients still flow THROUGH the decoder so the encoder / '
-            'InteractiveExtractor bridge keep training; only the decoder parameter grads are '
-            'dropped before the optimizer step. 0 disables freezing.',
-        cli=('--freeze-decoder-epochs',),
     )
     learning_rate: float = Field(
         0.001,
@@ -568,23 +427,46 @@ _PARALLEL_DDP = 'ddp'
 _PARALLEL_FSDP = 'fsdp'
 
 
-def _is_qna_batch(batch: Any) -> bool:
-    return hasattr(batch, 'ans_toks')
+def resolve_compound_spec(
+        train_ds_types: list, batches_per_cycle: list, loss_weights: list, normalize_loss_weights: bool,
+) -> Tuple[list, list]:
+    """Validate and broadcast per-type batches-per-cycle and loss weights to the
+    length of train_ds_types. Each input list must have length 1 (broadcast) or
+    exactly len(train_ds_types). When normalize_loss_weights is True the returned
+    weights are scaled to sum to 1.
+    """
+    n = len(train_ds_types)
+    assert n > 0, 'train_ds_types must contain at least one dataset type'
+    bpc = list(batches_per_cycle) if batches_per_cycle else [1]
+    lw = list(loss_weights) if loss_weights else [1.0]
+    if len(bpc) == 1:
+        bpc = bpc * n
+    if len(lw) == 1:
+        lw = lw * n
+    assert len(bpc) == n, \
+        f'train_ds_batches_per_cycle must have length 1 or {n} (len(train_ds_types)), got {len(bpc)}'
+    assert len(lw) == n, \
+        f'train_ds_loss_weights must have length 1 or {n} (len(train_ds_types)), got {len(lw)}'
+    assert all(b > 0 for b in bpc), f'train_ds_batches_per_cycle values must be > 0, got {bpc}'
+    if normalize_loss_weights:
+        s = float(sum(lw))
+        assert s > 0, f'train_ds_loss_weights must sum to > 0 to normalize, got {lw}'
+        lw = [w / s for w in lw]
+    return bpc, [float(w) for w in lw]
 
 
-def create_qnaanscite_dataloader(
-        cite_batch_it: Generator,
-        qna_batch_it: Generator,
-        cite_batches_per_cycle: int,
-        qna_batches_per_cycle: int,
-) -> Generator:
-    assert cite_batches_per_cycle > 0, 'qnaanscite_cite_batches_per_cycle must be > 0'
-    assert qna_batches_per_cycle > 0, 'qnaanscite_qna_batches_per_cycle must be > 0'
+def create_compound_dataloader(batch_its: list, batches_per_cycle: list) -> Generator:
+    """Round-robin over per-type batch iterators, emitting ``batches_per_cycle[i]``
+    batches from stream ``i`` each cycle. Yields ``(type_index, batch)`` so the
+    training loop can apply the matching per-type loss weight; the model dispatches
+    the correct run_* by batch class.
+    """
+    assert len(batch_its) == len(batches_per_cycle)
+    assert all(n > 0 for n in batches_per_cycle)
     while True:
-        for _ in range(cite_batches_per_cycle):
-            yield next(cite_batch_it)
-        for _ in range(qna_batches_per_cycle):
-            yield next(qna_batch_it)
+        for idx, (it, n) in enumerate(zip(batch_its, batches_per_cycle)):
+            for _ in range(n):
+                yield idx, next(it)
 
 
 def _resolve_transformer_layer_classes(module: nn.Module) -> set:
@@ -822,13 +704,12 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         decoder_dtype=decoder_dtype,
         max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, emb_exp_rate=args.emb_exp_rate,
         emb_win_min_size=args.emb_win_min_size, emb_win_max_size=args.emb_win_max_size,
-        min_next_toks=args.min_next_toks, train_ds_type=args.train_ds_type,
+        min_next_toks=args.min_next_toks, train_ds_types=args.train_ds_types,
         decoder_only=args.decoder_only,
         use_interactive_extractor=args.use_interactive_extractor,
         ie_exp_rate=args.ie_exp_rate, ie_num_layers=args.ie_num_layers, ie_attn_type=args.ie_attn_type,
         ie_n_heads=args.ie_n_heads, ie_mlp_ratio=args.ie_mlp_ratio, ie_dropout=args.ie_dropout,
-        ie_norm_first=args.ie_norm_first, ie_max_ctx=args.ie_max_ctx,
-        ie_max_prompt_len=args.ie_max_prompt_len,
+        ie_norm_first=args.ie_norm_first, ie_slot_pos_emb=args.ie_slot_pos_emb,
         ie_prompt_in_stream=args.ie_prompt_in_stream,
         freeze_encoder=args.freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
@@ -1208,188 +1089,80 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         )
 
     n_special_toks = 1000
-    if args.train_ds_type == MixedDecoderDsType.Cite:
-        ds_train = MaskedCiteDataset(ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device, tkz_dec=tkz_dec)
-        ds_val = MaskedCiteDataset(ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device, tkz_dec=tkz_dec)
-        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
-        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
-        train_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
-        val_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
-    elif args.train_ds_type == MixedDecoderDsType.KeyVal:
-        assert not args.prompt_all, 'KeyVal requires --prompt-all false: the target is the queried value, not the whole record.'
-        keyval_cfg = KeyValRecallCfg(
-            min_pairs=args.keyval_min_pairs, max_pairs=args.keyval_max_pairs,
-            value_max_words=args.keyval_value_max_words,
-        )
-        ds_train = KeyValRecallDataset(
-            ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
-            cfg=keyval_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
-        )
-        ds_val = KeyValRecallDataset(
-            ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
-            cfg=keyval_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
-        )
-        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
-        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
-        train_batch_it = create_key_val_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
-        val_batch_it = create_key_val_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
-    elif args.train_ds_type == MixedDecoderDsType.JsonField:
-        assert not args.prompt_all, 'JsonField requires --prompt-all false: the target is the queried JSON field value.'
-        jsonfield_cfg = JsonFieldRecallCfg(
-            min_fields=args.jsonfield_min_fields,
-            max_fields=args.jsonfield_max_fields,
-            max_depth=args.jsonfield_max_depth,
-            max_array_len=args.jsonfield_max_array_len,
-            value_max_words=args.jsonfield_value_max_words,
-        )
-        ds_train = JsonFieldRecallDataset(
-            ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
-            cfg=jsonfield_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
-        )
-        ds_val = JsonFieldRecallDataset(
-            ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
-            cfg=jsonfield_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
-        )
-        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
-        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
-        train_batch_it = create_json_field_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
-        val_batch_it = create_json_field_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
-    elif args.train_ds_type == MixedDecoderDsType.Jsonata:
-        assert not args.prompt_all, 'Jsonata requires --prompt-all false: the target is the query result value.'
-        jsonata_cfg = JsonataRecallCfg(
-            min_fields=args.jsonata_min_fields,
-            max_fields=args.jsonata_max_fields,
-            max_depth=args.jsonata_max_depth,
-            max_array_len=args.jsonata_max_array_len,
-            value_max_words=args.jsonata_value_max_words,
-            transform_prob=args.jsonata_transform_prob,
-        )
-        ds_train = JsonataRecallDataset(
-            ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
-            cfg=jsonata_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
-        )
-        ds_val = JsonataRecallDataset(
-            ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
-            cfg=jsonata_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
-        )
-        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
-        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
-        train_batch_it = create_jsonata_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
-        val_batch_it = create_jsonata_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
-    elif args.train_ds_type == MixedDecoderDsType.XmlXpath:
-        assert not args.prompt_all, 'XmlXpath requires --prompt-all false: the target is the XPath-selected value.'
-        xml_cfg = XmlXpathRecallCfg(
-            min_nodes=args.xmlxpath_min_nodes,
-            max_nodes=args.xmlxpath_max_nodes,
-            max_depth=args.xmlxpath_max_depth,
-            max_children=args.xmlxpath_max_children,
-            value_max_words=args.xmlxpath_value_max_words,
-        )
-        ds_train = XmlXpathRecallDataset(
-            ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
-            cfg=xml_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
-        )
-        ds_val = XmlXpathRecallDataset(
-            ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
-            cfg=xml_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
-        )
-        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
-        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
-        train_batch_it = create_xml_xpath_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
-        val_batch_it = create_xml_xpath_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
-    elif args.train_ds_type == MixedDecoderDsType.Sql:
-        assert not args.prompt_all, 'Sql requires --prompt-all false: the target is the SQL query answer.'
-        sql_cfg = SqlSelectRecallCfg(
-            min_rows=args.sql_min_rows,
-            max_rows=args.sql_max_rows,
-            min_cols=args.sql_min_cols,
-            max_cols=args.sql_max_cols,
-            value_max_words=args.sql_value_max_words,
-            transform_prob=args.sql_transform_prob,
-        )
-        ds_train = SqlSelectRecallDataset(
-            ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
-            cfg=sql_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
-        )
-        ds_val = SqlSelectRecallDataset(
-            ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
-            cfg=sql_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
-        )
-        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
-        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
-        train_batch_it = create_sql_select_recall_dataloader(ds_train, batch_size=args.docs_batch_size)
-        val_batch_it = create_sql_select_recall_dataloader(ds_val, batch_size=args.docs_batch_size)
-    elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:
-        max_chunks = max(args.emb_win_max_size, 1)
-        ds_train = QnaCiteDataset(
-            df_sq, sq_inds_train, tkz_enc, inp_len=args.inp_len, max_chunks=max_chunks, device=device, tkz_dec=tkz_dec,
-        )
-        ds_val = QnaCiteDataset(
-            df_sq, sq_inds_val, tkz_enc, inp_len=args.inp_len, max_chunks=max_chunks, device=device, tkz_dec=tkz_dec,
-        )
-        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
-        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
-        train_batch_it = create_qna_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
-        val_batch_it = create_qna_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
-    elif args.train_ds_type == MixedDecoderDsType.QnaAll:
-        qna_agg_train.device = device
-        qna_agg_val.device = device
-        max_chunks = max(args.emb_win_max_size, 1)
-        qna_agg_train.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
-        qna_agg_val.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
-        print(f'qna_agg_train size: {len(qna_agg_train)}. qna_agg_val size: {len(qna_agg_val)}.')
-        train_batch_it = create_qna_dataloader(qna_agg_train, batch_size=args.docs_batch_size)
-        val_batch_it = create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size)
-    elif args.train_ds_type == MixedDecoderDsType.QnaAns:
-        qna_agg_train.device = device
-        qna_agg_val.device = device
-        max_chunks = max(args.emb_win_max_size, 1)
-        qna_agg_train.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
-        qna_agg_val.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
-        print(f'qna_agg_train size: {len(qna_agg_train)}. qna_agg_val size: {len(qna_agg_val)}.')
-        train_batch_it = create_qna_dataloader(qna_agg_train, batch_size=args.docs_batch_size)
-        val_batch_it = create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size)
-    elif args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
-        assert ds_train is not None and ds_val is not None, 'QnaAnsCite requires cite train/val datasets'
-        assert qna_agg_train is not None and qna_agg_val is not None, 'QnaAnsCite requires qna train/val datasets'
-        ds_train = MaskedCiteDataset(ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device, tkz_dec=tkz_dec)
-        ds_val = MaskedCiteDataset(ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device, tkz_dec=tkz_dec)
-        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
-        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
-        qna_agg_train.device = device
-        qna_agg_val.device = device
-        qna_agg_train.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
-        qna_agg_val.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
-        print(f'qna_agg_train size: {len(qna_agg_train)}. qna_agg_val size: {len(qna_agg_val)}.')
-        train_cite_batch_it = create_masked_cite_dataloader(ds_train, batch_size=args.docs_batch_size)
-        train_qna_batch_it = create_qna_dataloader(qna_agg_train, batch_size=args.docs_batch_size)
-        val_cite_batch_it = create_masked_cite_dataloader(ds_val, batch_size=args.docs_batch_size)
-        val_qna_batch_it = create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size)
-        train_batch_it = create_qnaanscite_dataloader(
-            train_cite_batch_it, train_qna_batch_it,
-            args.qnaanscite_cite_batches_per_cycle, args.qnaanscite_qna_batches_per_cycle,
-        )
-        val_batch_it = create_qnaanscite_dataloader(
-            val_cite_batch_it, val_qna_batch_it,
-            args.qnaanscite_cite_batches_per_cycle, args.qnaanscite_qna_batches_per_cycle,
-        )
-    elif args.train_ds_type == MixedDecoderDsType.Next:
-        ds_train = NextTokWikiDataset(
-            wiki_ds, wiki_inds_train, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
-            emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
-            device=device, tkz_dec=tkz_dec,
-        )
-        ds_val = NextTokWikiDataset(
-            wiki_ds, wiki_inds_val, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
-            emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
-            device=device, tkz_dec=tkz_dec,
-        )
-        ds_train.shuffle(seed=(args.random_seed or 0) + rank)
-        ds_val.shuffle(seed=(args.random_seed or 0) + rank)
-        train_batch_it = create_next_tok_dataloader(ds_train, batch_size=args.docs_batch_size)
-        val_batch_it = create_next_tok_dataloader(ds_val, batch_size=args.docs_batch_size)
-    else:
-        raise ValueError(f'Unsupported train_ds_type: {args.train_ds_type}')
+
+    def make_batch_iters(ds_type: MixedDecoderDsType) -> Tuple[Generator, Generator]:
+        """Build (train, val) batch iterators for a single dataset type, drawing on
+        whichever source(s) main() loaded for this type."""
+        if ds_type == MixedDecoderDsType.Cite:
+            assert ds_train is not None and ds_val is not None, 'Cite requires wiki cite train/val datasets'
+            cite_train = MaskedCiteDataset(ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device, tkz_dec=tkz_dec)
+            cite_val = MaskedCiteDataset(ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks, mask_cfg=mask_cfg, prompt_all=args.prompt_all, device=device, tkz_dec=tkz_dec)
+            cite_train.shuffle(seed=(args.random_seed or 0) + rank)
+            cite_val.shuffle(seed=(args.random_seed or 0) + rank)
+            return (
+                create_masked_cite_dataloader(cite_train, batch_size=args.docs_batch_size),
+                create_masked_cite_dataloader(cite_val, batch_size=args.docs_batch_size),
+            )
+        if ds_type == MixedDecoderDsType.QnaSquadV2:
+            assert df_sq is not None, 'QnaSquadV2 requires squadv2 dataframe'
+            max_chunks = max(args.emb_win_max_size, 1)
+            sq_train = QnaCiteDataset(
+                df_sq, sq_inds_train, tkz_enc, inp_len=args.inp_len, max_chunks=max_chunks, device=device, tkz_dec=tkz_dec,
+            )
+            sq_val = QnaCiteDataset(
+                df_sq, sq_inds_val, tkz_enc, inp_len=args.inp_len, max_chunks=max_chunks, device=device, tkz_dec=tkz_dec,
+            )
+            sq_train.shuffle(seed=(args.random_seed or 0) + rank)
+            sq_val.shuffle(seed=(args.random_seed or 0) + rank)
+            return (
+                create_qna_cite_dataloader(sq_train, batch_size=args.docs_batch_size),
+                create_qna_cite_dataloader(sq_val, batch_size=args.docs_batch_size),
+            )
+        if ds_type in (MixedDecoderDsType.QnaAll, MixedDecoderDsType.QnaAns):
+            assert qna_agg_train is not None and qna_agg_val is not None, f'{ds_type.value} requires qna train/val datasets'
+            qna_agg_train.device = device
+            qna_agg_val.device = device
+            qna_agg_train.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
+            qna_agg_val.shuffle(seed=(args.random_seed or 0) + (rank + 10)**2)
+            log(f'qna_agg_train size: {len(qna_agg_train)}. qna_agg_val size: {len(qna_agg_val)}.')
+            return (
+                create_qna_dataloader(qna_agg_train, batch_size=args.docs_batch_size),
+                create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size),
+            )
+        if ds_type == MixedDecoderDsType.Next:
+            assert wiki_ds is not None, 'Next requires wiki dataset'
+            next_train = NextTokWikiDataset(
+                wiki_ds, wiki_inds_train, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
+                emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
+                device=device, tkz_dec=tkz_dec,
+            )
+            next_val = NextTokWikiDataset(
+                wiki_ds, wiki_inds_val, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
+                emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
+                device=device, tkz_dec=tkz_dec,
+            )
+            next_train.shuffle(seed=(args.random_seed or 0) + rank)
+            next_val.shuffle(seed=(args.random_seed or 0) + rank)
+            return (
+                create_next_tok_dataloader(next_train, batch_size=args.docs_batch_size),
+                create_next_tok_dataloader(next_val, batch_size=args.docs_batch_size),
+            )
+        raise ValueError(f'Unsupported train_ds_type: {ds_type}')
+
+    ds_batches_per_cycle, ds_loss_weights = resolve_compound_spec(
+        args.train_ds_types, args.train_ds_batches_per_cycle, args.train_ds_loss_weights,
+        args.normalize_train_ds_loss_weights,
+    )
+    log(f'train_ds_types={[t.value for t in args.train_ds_types]} '
+        f'batches_per_cycle={ds_batches_per_cycle} loss_weights={ds_loss_weights}')
+
+    train_iters, val_iters = [], []
+    for ds_type in args.train_ds_types:
+        tr_it, vl_it = make_batch_iters(ds_type)
+        train_iters.append(tr_it)
+        val_iters.append(vl_it)
+    train_batch_it = create_compound_dataloader(train_iters, ds_batches_per_cycle)
+    val_batch_it = create_compound_dataloader(val_iters, ds_batches_per_cycle)
 
     lr = optimizer.param_groups[0]['lr']
     log(f'Scheduler {scheduler.__class__.__name__} lr: {lr:0.10f}.')
@@ -1409,70 +1182,36 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
     if prev_train_steps > 0:
         grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
 
-    # Decoder-freeze support. Collect the live decoder parameters once (these are
-    # the same objects whose `.grad` is populated by backward under DDP and FSDP
-    # use_orig_params=True). During the first `freeze_decoder_epochs` epochs we drop
-    # their grads before each optimizer step, keeping the decoder weights fixed while
-    # gradients still propagate through it to the encoder / InteractiveExtractor.
-    _freeze_base = ddp_model.module if hasattr(ddp_model, 'module') else ddp_model
-    _freeze_decoder = getattr(_freeze_base, 'decoder', None)
-    decoder_params = list(_freeze_decoder.parameters()) if _freeze_decoder is not None else []
-    if args.freeze_decoder_epochs > 0:
-        log(f'Decoder freeze enabled: decoder weights fixed for the first '
-            f'{args.freeze_decoder_epochs} epoch(s) ({len(decoder_params)} param tensors).')
-
     if args.world_size > 1:
         dist.barrier()
+    n_ds_types = len(args.train_ds_types)
+    multi_ds = n_ds_types > 1
     for epoch in range(last_epoch + 1, args.epochs):
         ddp_model.train()
-        decoder_frozen = epoch < args.freeze_decoder_epochs and len(decoder_params) > 0
-        if args.freeze_decoder_epochs > 0 and rank == 0:
-            if decoder_frozen:
-                log(f'Epoch {epoch}: decoder FROZEN ({epoch + 1}/{args.freeze_decoder_epochs}).')
-            elif epoch == args.freeze_decoder_epochs:
-                log(f'Epoch {epoch}: decoder UNFROZEN; now training all weights.')
         train_losses = LossesStats()
         train_loss = 0.0
-        train_cite_loss = 0.0
-        train_qna_loss = 0.0
-        train_cite_batches = 0
-        train_qna_batches = 0
+        train_ds_losses = [0.0] * n_ds_types
+        train_ds_batches = [0] * n_ds_types
         clip_events = 0
         if rank == 0:
             pbar = trange(args.train_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         else:
             pbar = range(args.train_epoch_steps)
         for i in pbar:
-            batch = next(train_batch_it)
-            is_qna_batch = _is_qna_batch(batch)
+            ds_idx, batch = next(train_batch_it)
 
             optimizer.zero_grad()
             if amp_enabled:
                 with torch.cuda.amp.autocast(dtype=amp_dtype):
                     loss_dict, _ = ddp_model(batch)
                 batch_loss = loss_dict['loss']
-                loss = batch_loss
-                if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
-                    loss_weight = args.qnaanscite_qna_loss_weight if is_qna_batch else args.qnaanscite_cite_loss_weight
-                    loss = loss * loss_weight
+                loss = batch_loss * ds_loss_weights[ds_idx]
                 scaler.scale(loss).backward()
             else:
                 loss_dict, _ = ddp_model(batch)
                 batch_loss = loss_dict['loss']
-                loss = batch_loss
-                if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
-                    loss_weight = args.qnaanscite_qna_loss_weight if is_qna_batch else args.qnaanscite_cite_loss_weight
-                    loss = loss * loss_weight
+                loss = batch_loss * ds_loss_weights[ds_idx]
                 loss.backward()
-
-            # Decoder freeze: drop decoder parameter grads so the optimizer leaves
-            # the decoder weights unchanged this epoch. Gradients already flowed
-            # through the decoder during backward (to the bridge/encoder); we only
-            # discard the decoder's own grads. AdamW skips params whose grad is None,
-            # and grad clipping / unscaling naturally ignore them too.
-            if decoder_frozen:
-                for p in decoder_params:
-                    p.grad = None
 
             # Run on ALL ranks: under FSDP this performs an all_reduce collective
             # that every rank must enter (only rank 0 writes metrics).
@@ -1511,12 +1250,8 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             else:
                 optimizer.step()
             train_loss += loss.item()
-            if is_qna_batch:
-                train_qna_loss += batch_loss.item()
-                train_qna_batches += 1
-            else:
-                train_cite_loss += batch_loss.item()
-                train_cite_batches += 1
+            train_ds_losses[ds_idx] += batch_loss.item()
+            train_ds_batches[ds_idx] += 1
             train_losses.update_dict(loss_dict)
 
             if rank == 0:
@@ -1529,11 +1264,10 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             train_losses.log_to_tb('Train', epoch, tbsw)
             if model_cfg.train_cfg.max_grad_norm > 0:
                 tbsw.add_scalar('Train/clip_fraction', clip_events / args.train_epoch_steps, epoch)
-            if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
-                train_cite_mean = train_cite_loss / train_cite_batches if train_cite_batches else 0.0
-                train_qna_mean = train_qna_loss / train_qna_batches if train_qna_batches else 0.0
-                tbsw.add_scalar('Train/cite_loss', train_cite_mean, epoch)
-                tbsw.add_scalar('Train/qna_loss', train_qna_mean, epoch)
+            if multi_ds:
+                for k, ds_type in enumerate(args.train_ds_types):
+                    ds_mean = train_ds_losses[k] / train_ds_batches[k] if train_ds_batches[k] else 0.0
+                    tbsw.add_scalar(f'Train/ds{ds_type.value.capitalize()}_loss', ds_mean, epoch)
                 tbsw.add_scalar('Train/overall_loss', train_loss, epoch)
 
         ddp_model.eval()
@@ -1542,17 +1276,14 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
 
         val_losses = LossesStats()
         val_loss = 0.0
-        val_cite_loss = 0.0
-        val_qna_loss = 0.0
-        val_cite_batches = 0
-        val_qna_batches = 0
+        val_ds_losses = [0.0] * n_ds_types
+        val_ds_batches = [0] * n_ds_types
         if rank == 0:
             pbar = trange(args.val_epoch_steps, desc=f'Epoch {epoch}', unit='batch')
         else:
             pbar = range(args.val_epoch_steps)
         for i in pbar:
-            batch = next(val_batch_it)
-            is_qna_batch = _is_qna_batch(batch)
+            ds_idx, batch = next(val_batch_it)
 
             with torch.no_grad():
                 if amp_enabled:
@@ -1561,18 +1292,11 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 else:
                     loss_dict, _ = ddp_model(batch)
             batch_loss = loss_dict['loss']
-            loss = batch_loss
-            if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
-                loss_weight = args.qnaanscite_qna_loss_weight if is_qna_batch else args.qnaanscite_cite_loss_weight
-                loss = loss * loss_weight
+            loss = batch_loss * ds_loss_weights[ds_idx]
 
             val_loss += loss.item()
-            if is_qna_batch:
-                val_qna_loss += batch_loss.item()
-                val_qna_batches += 1
-            else:
-                val_cite_loss += batch_loss.item()
-                val_cite_batches += 1
+            val_ds_losses[ds_idx] += batch_loss.item()
+            val_ds_batches[ds_idx] += 1
             val_losses.update_dict(loss_dict)
 
             if rank == 0:
@@ -1583,11 +1307,10 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         if rank == 0:
             pbar.close()
             val_losses.log_to_tb('Val', epoch, tbsw)
-            if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
-                val_cite_mean = val_cite_loss / val_cite_batches if val_cite_batches else 0.0
-                val_qna_mean = val_qna_loss / val_qna_batches if val_qna_batches else 0.0
-                tbsw.add_scalar('Val/cite_loss', val_cite_mean, epoch)
-                tbsw.add_scalar('Val/qna_loss', val_qna_mean, epoch)
+            if multi_ds:
+                for k, ds_type in enumerate(args.train_ds_types):
+                    ds_mean = val_ds_losses[k] / val_ds_batches[k] if val_ds_batches[k] else 0.0
+                    tbsw.add_scalar(f'Val/ds{ds_type.value.capitalize()}_loss', ds_mean, epoch)
                 tbsw.add_scalar('Val/overall_loss', val_loss, epoch)
 
         if isinstance(scheduler, ReduceLROnPlateau):
@@ -1600,17 +1323,14 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             tbsw.add_scalar(f'{scheduler.__class__.__name__} lr', last_lr, epoch)
 
             print(f'Train mean loss: {train_loss:.6f}. Val mean loss: {val_loss:.6f}')
-            if args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
-                train_cite_mean = train_cite_loss / train_cite_batches if train_cite_batches else 0.0
-                train_qna_mean = train_qna_loss / train_qna_batches if train_qna_batches else 0.0
-                val_cite_mean = val_cite_loss / val_cite_batches if val_cite_batches else 0.0
-                val_qna_mean = val_qna_loss / val_qna_batches if val_qna_batches else 0.0
-                print(
-                    f'Mixed losses. Train cite: {train_cite_mean:.6f} ({train_cite_batches} batches). '
-                    f'Train qna: {train_qna_mean:.6f} ({train_qna_batches} batches). '
-                    f'Val cite: {val_cite_mean:.6f} ({val_cite_batches} batches). '
-                    f'Val qna: {val_qna_mean:.6f} ({val_qna_batches} batches).'
-                )
+            if multi_ds:
+                for k, ds_type in enumerate(args.train_ds_types):
+                    tr_mean = train_ds_losses[k] / train_ds_batches[k] if train_ds_batches[k] else 0.0
+                    vl_mean = val_ds_losses[k] / val_ds_batches[k] if val_ds_batches[k] else 0.0
+                    print(
+                        f'  {ds_type.value}: train {tr_mean:.6f} ({train_ds_batches[k]} batches), '
+                        f'val {vl_mean:.6f} ({val_ds_batches[k]} batches).'
+                    )
             train_losses_str = train_losses.to_cli_str(aggregate=True)
             val_losses_str = val_losses.to_cli_str(aggregate=True)
             print(f'Train mean losses: {train_losses_str}')
@@ -1814,82 +1534,46 @@ def main(args: ArgsMixedDecoderTrain) -> int:
     if tkz_dec.pad_token is None:
         tkz_dec.pad_token = tkz_dec.eos_token
 
+    ds_types = args.train_ds_types
+    assert len(ds_types) > 0, 'train_ds_types must contain at least one dataset type'
+    # QnaAll and QnaAns both feed the single shared qna_agg slot but load with
+    # different filtering, so at most one of them may appear in a compound.
+    assert not (MixedDecoderDsType.QnaAll in ds_types and MixedDecoderDsType.QnaAns in ds_types), \
+        'train_ds_types may contain at most one of {qnaall, qnaans} (they share the qna source slot).'
+
     wiki_ds, wiki_inds_train, wiki_inds_val = None, None, None
     qna_agg_train, qna_agg_val = None, None
-    if args.train_ds_type == MixedDecoderDsType.Cite:
+    ds_train, ds_val = None, None
+    df_sq, sq_inds_train, sq_inds_val = None, None, None
+    max_chunks = max(args.emb_win_max_size, 1)
+
+    if MixedDecoderDsType.Cite in ds_types:
         ds_train, ds_val = load_split_wiki_dataset(
             data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
             mask_cfg=mask_cfg, random_seed=args.random_seed,
         )
-        df_sq, sq_inds_train, sq_inds_val = None, None, None
-    elif args.train_ds_type == MixedDecoderDsType.KeyVal:
-        ds_train, ds_val = load_split_wiki_dataset(
-            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
-            mask_cfg=None, random_seed=args.random_seed,
-        )
-        df_sq, sq_inds_train, sq_inds_val = None, None, None
-    elif args.train_ds_type == MixedDecoderDsType.JsonField:
-        ds_train, ds_val = load_split_wiki_dataset(
-            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
-            mask_cfg=None, random_seed=args.random_seed,
-        )
-        df_sq, sq_inds_train, sq_inds_val = None, None, None
-    elif args.train_ds_type == MixedDecoderDsType.Jsonata:
-        ds_train, ds_val = load_split_wiki_dataset(
-            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
-            mask_cfg=None, random_seed=args.random_seed,
-        )
-        df_sq, sq_inds_train, sq_inds_val = None, None, None
-    elif args.train_ds_type == MixedDecoderDsType.XmlXpath:
-        ds_train, ds_val = load_split_wiki_dataset(
-            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
-            mask_cfg=None, random_seed=args.random_seed,
-        )
-        df_sq, sq_inds_train, sq_inds_val = None, None, None
-    elif args.train_ds_type == MixedDecoderDsType.Sql:
-        ds_train, ds_val = load_split_wiki_dataset(
-            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
-            mask_cfg=None, random_seed=args.random_seed,
-        )
-        df_sq, sq_inds_train, sq_inds_val = None, None, None
-    elif args.train_ds_type == MixedDecoderDsType.QnaSquadV2:
+    if MixedDecoderDsType.QnaSquadV2 in ds_types:
         df_sq, sq_inds_train, sq_inds_val = load_split_squadv2(exclude_empty_answers=True)
-        ds_train, ds_val = None, None
-    elif args.train_ds_type == MixedDecoderDsType.QnaAll:
-        ds_train, ds_val = None, None
-        df_sq, sq_inds_train, sq_inds_val = None, None, None
-        max_chunks = max(args.emb_win_max_size, 1)
+    if MixedDecoderDsType.QnaAll in ds_types:
         qna_agg_train, qna_agg_val = load_qna_datasets(
             tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=args.inp_len, max_chunks=max_chunks,
             cache_dir=str(args.data_path),
         )
-    elif args.train_ds_type == MixedDecoderDsType.QnaAns:
-        ds_train, ds_val = None, None
-        df_sq, sq_inds_train, sq_inds_val = None, None, None
-        max_chunks = max(args.emb_win_max_size, 1)
+    if MixedDecoderDsType.QnaAns in ds_types:
         qna_agg_train, qna_agg_val = load_qna_datasets(
             tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=args.inp_len, max_chunks=max_chunks,
             cache_dir=str(args.data_path), exclude_noanswer=True,
         )
-    elif args.train_ds_type == MixedDecoderDsType.QnaAnsCite:
-        ds_train, ds_val = load_split_wiki_dataset(
-            data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
-            mask_cfg=mask_cfg, random_seed=args.random_seed,
-        )
-        df_sq, sq_inds_train, sq_inds_val = None, None, None
-        max_chunks = max(args.emb_win_max_size, 1)
-        qna_agg_train, qna_agg_val = load_qna_datasets(
-            tkz_enc=tkz_enc, tkz_dec=tkz_dec, inp_len=args.inp_len, max_chunks=max_chunks,
-            cache_dir=str(args.data_path), exclude_noanswer=True,
-        )
-    elif args.train_ds_type == MixedDecoderDsType.Next:
+    if MixedDecoderDsType.Next in ds_types:
         wiki_ds, wiki_inds_train, wiki_inds_val = load_split_wiki_for_next(
             data_path=args.data_path, random_seed=args.random_seed,
         )
-        ds_train, ds_val = None, None
-        df_sq, sq_inds_train, sq_inds_val = None, None, None
-    else:
-        raise ValueError(f'Unsupported train_ds_type: {args.train_ds_type}')
+
+    unsupported = [t for t in ds_types if t not in (
+        MixedDecoderDsType.Cite, MixedDecoderDsType.QnaSquadV2, MixedDecoderDsType.QnaAll,
+        MixedDecoderDsType.QnaAns, MixedDecoderDsType.Next,
+    )]
+    assert not unsupported, f'Unsupported train_ds_types: {[t.value for t in unsupported]}'
 
     mp.spawn(train, args=(
         ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_ds, wiki_inds_train, wiki_inds_val, qna_agg_train, qna_agg_val, args,

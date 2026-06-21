@@ -46,23 +46,29 @@ parallel=fsdp
 fsdp_shard=full
 
 # pip install datasets==3.6.0
-train_ds_type=cite
+# train_ds_types is a space-separated list. A single type trains on that dataset;
+# multiple types are mixed in a round-robin cycle (see train_ds_batches_per_cycle)
+# with per-type loss scaling (see train_ds_loss_weights).
+train_ds_types="cite"
 
-# train_ds_type=qnasqv2
-# train_ds_type=qnaall
-# train_ds_type=qnaans
-# train_ds_type=qnaanscite
-# train_ds_type=next
-# train_ds_type=keyval   # key-value recall (requires prompt_all=false)
-# train_ds_type=jsonfield   # JSON field extraction (requires prompt_all=false)
-# train_ds_type=jsonata   # JSONata/jq-like selection+transform (requires prompt_all=false)
-# train_ds_type=xmlxpath   # XML/XPath extraction (requires prompt_all=false)
-# train_ds_type=sql   # SQL selection/aggregate extraction (requires prompt_all=false)
+# train_ds_types="qnasqv2"
+# train_ds_types="qnaall"
+# train_ds_types="qnaans"
+# train_ds_types="cite qnaans"   # compound: mix wiki citation + qna-with-answers
+# train_ds_types="next"
+# train_ds_types="keyval"   # key-value recall (requires prompt_all=false)
+# train_ds_types="jsonfield"   # JSON field extraction (requires prompt_all=false)
+# train_ds_types="jsonata"   # JSONata/jq-like selection+transform (requires prompt_all=false)
+# train_ds_types="xmlxpath"   # XML/XPath extraction (requires prompt_all=false)
+# train_ds_types="sql"   # SQL selection/aggregate extraction (requires prompt_all=false)
 
-qnaanscite_cite_batches_per_cycle=1
-qnaanscite_qna_batches_per_cycle=1
-qnaanscite_cite_loss_weight=2.0
-qnaanscite_qna_loss_weight=1.0
+# Per-type batches emitted per round-robin cycle and per-type loss weights.
+# Each is a space-separated list of length 1 (broadcast to all types) or
+# exactly len(train_ds_types). When normalize_train_ds_loss_weights=true the
+# weights are rescaled to sum to 1.
+train_ds_batches_per_cycle="1"
+train_ds_loss_weights="1"
+normalize_train_ds_loss_weights=true
 
 min_next_toks=64
 
@@ -260,7 +266,10 @@ python s_03_11_train_mixed_decoder.py \
   --ie-max-ctx $ie_max_ctx \
   --ie-max-prompt-len $ie_max_prompt_len \
   --ie-prompt-in-stream $ie_prompt_in_stream \
-  --train-ds-type $train_ds_type \
+  --train-ds-types $train_ds_types \
+  --train-ds-batches-per-cycle $train_ds_batches_per_cycle \
+  --train-ds-loss-weights $train_ds_loss_weights \
+  --normalize-train-ds-loss-weights $normalize_train_ds_loss_weights \
   --min-next-toks $min_next_toks \
   --keyval-min-pairs $keyval_min_pairs \
   --keyval-max-pairs $keyval_max_pairs \
@@ -287,10 +296,6 @@ python s_03_11_train_mixed_decoder.py \
   --sql-max-cols $sql_max_cols \
   --sql-value-max-words $sql_value_max_words \
   --sql-transform-prob $sql_transform_prob \
-  --qnaanscite-cite-batches-per-cycle $qnaanscite_cite_batches_per_cycle \
-  --qnaanscite-qna-batches-per-cycle $qnaanscite_qna_batches_per_cycle \
-  --qnaanscite-cite-loss-weight $qnaanscite_cite_loss_weight \
-  --qnaanscite-qna-loss-weight $qnaanscite_qna_loss_weight \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \
