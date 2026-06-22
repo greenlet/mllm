@@ -42,6 +42,11 @@ from mllm.exp.args import MIXED_DECODER_MODEL_CFG_FNAME, create_bool_str_field, 
 from mllm.model.mixed_decoder import MixedDecoder
 from mllm.model.losses import LossesStats
 from mllm.train.encdec_graph_bert import MaskedCiteDataset, create_masked_cite_dataloader, load_split_wiki_dataset
+from mllm.train.key_val_recall import KeyValRecallCfg, KeyValRecallDataset, create_key_val_recall_dataloader
+from mllm.train.json_field_recall import JsonFieldRecallCfg, JsonFieldRecallDataset, create_json_field_recall_dataloader
+from mllm.train.jsonata_recall import JsonataRecallCfg, JsonataRecallDataset, create_jsonata_recall_dataloader
+from mllm.train.xml_xpath_recall import XmlXpathRecallCfg, XmlXpathRecallDataset, create_xml_xpath_recall_dataloader
+from mllm.train.sql_select_recall import SqlSelectRecallCfg, SqlSelectRecallDataset, create_sql_select_recall_dataloader
 from mllm.train.mask_utils import MaskCfg
 from mllm.train.next_tok_wiki import NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next
 from mllm.data.qna.dataset import QnaDatasetAgg, load_qna_datasets, create_qna_dataloader
@@ -56,14 +61,33 @@ prompt_all_ARG = '--prompt-all', 'Target is whole input chunk (true) or citation
 decoder_only_ARG = '--decoder-only', 'Train decoder without encoder (raw context tokens fed directly to decoder, encoder is not instantiated).'
 use_interactive_extractor_ARG = '--use-interactive-extractor', \
     'Enable the InteractiveExtractor query-conditioned soft-token bridge (replaces emb_exp).'
-ie_slot_pos_emb_ARG = '--ie-slot-pos-emb', \
-    'InteractiveExtractor: add a learned per-slot positional embedding over the ie_exp_rate slots.'
 ie_prompt_in_stream_ARG = '--ie-prompt-in-stream', \
     'InteractiveExtractor: keep the prompt in the causal stream after the soft tokens (false = VISIT only).'
 ie_norm_first_ARG = '--ie-norm-first', \
     'InteractiveExtractor: use pre-LayerNorm residual blocks (false = post-LayerNorm).'
 normalize_train_ds_loss_weights_ARG = '--normalize-train-ds-loss-weights', \
     'Normalize train_ds_loss_weights so that they sum to 1.'
+
+
+def _split_ws_list(v):
+    """Normalize a whitespace-separated CLI list argument into a list of tokens.
+
+    The shell passes list arguments as a single quoted string (e.g.
+    "cite keyval jsonfield"). Argparse/pydantic-cli then hand it over either as a
+    bare string or as a single-element list. Split any string element on
+    whitespace so pydantic can coerce each token into the field's item type.
+    """
+    if isinstance(v, str):
+        return v.split()
+    if isinstance(v, (list, tuple)):
+        out = []
+        for item in v:
+            if isinstance(item, str):
+                out.extend(item.split())
+            else:
+                out.append(item)
+        return out
+    return v
 
 
 class ArgsMixedDecoderTrain(BaseModel):
@@ -178,6 +202,19 @@ class ArgsMixedDecoderTrain(BaseModel):
         description='InteractiveExtractor: dropout probability for attention and FFN.',
         cli=('--ie-dropout',),
     )
+    ie_max_ctx: int = Field(
+        64,
+        description='InteractiveExtractor: maximum number of context embeddings (window size) the shared '
+            'positional table is sized for. Must be >= the largest context-window size seen at train time '
+            '(emb_win_max_size, or max chunk count when windowing is off).',
+        cli=('--ie-max-ctx',),
+    )
+    ie_max_prompt_len: int = Field(
+        128,
+        description='InteractiveExtractor: maximum (padded) prompt length the shared positional table is '
+            'sized for. Must be >= the longest padded prompt.',
+        cli=('--ie-max-prompt-len',),
+    )
     train_ds_types: list[MixedDecoderDsType] = Field(
         [MixedDecoderDsType.Cite],
         description=f'Training dataset type(s). One or more of: {list(x.value for x in MixedDecoderDsType)}. '
@@ -204,6 +241,136 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--train-ds-loss-weights',),
     )
 
+    @validator('train_ds_types', 'train_ds_batches_per_cycle', 'train_ds_loss_weights', pre=True)
+    def _split_list_args(cls, v):
+        return _split_ws_list(v)
+
+    keyval_min_pairs: int = Field(
+        4,
+        description='For train_ds_types=keyval: minimum number of key:value pairs per record (difficulty knob lower bound).',
+        cli=('--keyval-min-pairs',),
+    )
+    keyval_max_pairs: int = Field(
+        12,
+        description='For train_ds_types=keyval: maximum number of key:value pairs per record (difficulty knob upper bound).',
+        cli=('--keyval-max-pairs',),
+    )
+    keyval_value_max_words: int = Field(
+        3,
+        description='For train_ds_types=keyval: maximum number of consecutive real words forming a value span.',
+        cli=('--keyval-value-max-words',),
+    )
+    jsonfield_min_fields: int = Field(
+        4,
+        description='For train_ds_types=jsonfield: minimum number of top-level fields in a generated JSON record.',
+        cli=('--jsonfield-min-fields',),
+    )
+    jsonfield_max_fields: int = Field(
+        10,
+        description='For train_ds_types=jsonfield: maximum number of top-level fields in a generated JSON record.',
+        cli=('--jsonfield-max-fields',),
+    )
+    jsonfield_max_depth: int = Field(
+        3,
+        description='For train_ds_types=jsonfield: maximum JSON nesting depth.',
+        cli=('--jsonfield-max-depth',),
+    )
+    jsonfield_max_array_len: int = Field(
+        4,
+        description='For train_ds_types=jsonfield: maximum array length for generated JSON arrays.',
+        cli=('--jsonfield-max-array-len',),
+    )
+    jsonfield_value_max_words: int = Field(
+        3,
+        description='For train_ds_types=jsonfield: maximum number of consecutive words in string scalar values.',
+        cli=('--jsonfield-value-max-words',),
+    )
+    jsonata_min_fields: int = Field(
+        4,
+        description='For train_ds_types=jsonata: minimum number of top-level fields in generated JSON records.',
+        cli=('--jsonata-min-fields',),
+    )
+    jsonata_max_fields: int = Field(
+        10,
+        description='For train_ds_types=jsonata: maximum number of top-level fields in generated JSON records.',
+        cli=('--jsonata-max-fields',),
+    )
+    jsonata_max_depth: int = Field(
+        3,
+        description='For train_ds_types=jsonata: maximum JSON nesting depth.',
+        cli=('--jsonata-max-depth',),
+    )
+    jsonata_max_array_len: int = Field(
+        5,
+        description='For train_ds_types=jsonata: maximum array length in generated JSON arrays.',
+        cli=('--jsonata-max-array-len',),
+    )
+    jsonata_value_max_words: int = Field(
+        3,
+        description='For train_ds_types=jsonata: maximum number of consecutive words in string values.',
+        cli=('--jsonata-value-max-words',),
+    )
+    jsonata_transform_prob: float = Field(
+        0.35,
+        description='For train_ds_types=jsonata: probability of Tier-C transform queries (count/sum/max) vs Tier-E selection.',
+        cli=('--jsonata-transform-prob',),
+    )
+    xmlxpath_min_nodes: int = Field(
+        4,
+        description='For train_ds_types=xmlxpath: minimum number of XML nodes per generated record.',
+        cli=('--xmlxpath-min-nodes',),
+    )
+    xmlxpath_max_nodes: int = Field(
+        12,
+        description='For train_ds_types=xmlxpath: maximum number of XML nodes per generated record.',
+        cli=('--xmlxpath-max-nodes',),
+    )
+    xmlxpath_max_depth: int = Field(
+        4,
+        description='For train_ds_types=xmlxpath: maximum XML nesting depth.',
+        cli=('--xmlxpath-max-depth',),
+    )
+    xmlxpath_max_children: int = Field(
+        4,
+        description='For train_ds_types=xmlxpath: maximum number of children per XML node.',
+        cli=('--xmlxpath-max-children',),
+    )
+    xmlxpath_value_max_words: int = Field(
+        3,
+        description='For train_ds_types=xmlxpath: maximum number of consecutive words in text/attribute values.',
+        cli=('--xmlxpath-value-max-words',),
+    )
+    sql_min_rows: int = Field(
+        4,
+        description='For train_ds_types=sql: minimum table row count.',
+        cli=('--sql-min-rows',),
+    )
+    sql_max_rows: int = Field(
+        8,
+        description='For train_ds_types=sql: maximum table row count.',
+        cli=('--sql-max-rows',),
+    )
+    sql_min_cols: int = Field(
+        3,
+        description='For train_ds_types=sql: minimum table column count (including id).',
+        cli=('--sql-min-cols',),
+    )
+    sql_max_cols: int = Field(
+        5,
+        description='For train_ds_types=sql: maximum table column count (including id).',
+        cli=('--sql-max-cols',),
+    )
+    sql_value_max_words: int = Field(
+        3,
+        description='For train_ds_types=sql: maximum number of consecutive words in text-cell values.',
+        cli=('--sql-value-max-words',),
+    )
+    sql_transform_prob: float = Field(
+        0.30,
+        description='For train_ds_types=sql: probability of Tier-C aggregate queries (COUNT/SUM/MAX) vs Tier-E cell selection.',
+        cli=('--sql-transform-prob',),
+    )
+
     freeze_encoder_STR: str = create_bool_str_field(*freeze_encoder_ARG)
     @property
     def freeze_encoder(self) -> bool:
@@ -228,11 +395,6 @@ class ArgsMixedDecoderTrain(BaseModel):
     @property
     def use_interactive_extractor(self) -> bool:
         return is_arg_true(use_interactive_extractor_ARG[0], self.use_interactive_extractor_STR)
-
-    ie_slot_pos_emb_STR: str = create_bool_str_field(*ie_slot_pos_emb_ARG)
-    @property
-    def ie_slot_pos_emb(self) -> bool:
-        return is_arg_true(ie_slot_pos_emb_ARG[0], self.ie_slot_pos_emb_STR)
 
     ie_prompt_in_stream_STR: str = create_bool_str_field(*ie_prompt_in_stream_ARG)
     @property
@@ -299,6 +461,14 @@ class ArgsMixedDecoderTrain(BaseModel):
         None,
         description='Number of training epochs.',
         cli=('--epochs',),
+    )
+    freeze_decoder_epochs: int = Field(
+        0,
+        description='Number of initial epochs during which the decoder weights are frozen '
+            '(not updated). Gradients still flow THROUGH the decoder so the encoder / '
+            'InteractiveExtractor bridge keep training; only the decoder parameter grads are '
+            'dropped before the optimizer step. 0 disables freezing.',
+        cli=('--freeze-decoder-epochs',),
     )
     learning_rate: float = Field(
         0.001,
@@ -709,7 +879,8 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         use_interactive_extractor=args.use_interactive_extractor,
         ie_exp_rate=args.ie_exp_rate, ie_num_layers=args.ie_num_layers, ie_attn_type=args.ie_attn_type,
         ie_n_heads=args.ie_n_heads, ie_mlp_ratio=args.ie_mlp_ratio, ie_dropout=args.ie_dropout,
-        ie_norm_first=args.ie_norm_first, ie_slot_pos_emb=args.ie_slot_pos_emb,
+        ie_norm_first=args.ie_norm_first,
+        ie_max_ctx=args.ie_max_ctx, ie_max_prompt_len=args.ie_max_prompt_len,
         ie_prompt_in_stream=args.ie_prompt_in_stream,
         freeze_encoder=args.freeze_encoder,
         pretrained_encdec_model_path=pretrained_encdec_model_path,
@@ -1147,6 +1318,125 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 create_next_tok_dataloader(next_train, batch_size=args.docs_batch_size),
                 create_next_tok_dataloader(next_val, batch_size=args.docs_batch_size),
             )
+        if ds_type == MixedDecoderDsType.KeyVal:
+            assert ds_train is not None and ds_val is not None, 'KeyVal requires wiki cite train/val datasets'
+            assert not args.prompt_all, 'KeyVal requires --prompt-all false: the target is the queried value, not the whole record.'
+            keyval_cfg = KeyValRecallCfg(
+                min_pairs=args.keyval_min_pairs, max_pairs=args.keyval_max_pairs,
+                value_max_words=args.keyval_value_max_words,
+            )
+            kv_train = KeyValRecallDataset(
+                ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+                cfg=keyval_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
+            )
+            kv_val = KeyValRecallDataset(
+                ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+                cfg=keyval_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
+            )
+            kv_train.shuffle(seed=(args.random_seed or 0) + rank)
+            kv_val.shuffle(seed=(args.random_seed or 0) + rank)
+            return (
+                create_key_val_recall_dataloader(kv_train, batch_size=args.docs_batch_size),
+                create_key_val_recall_dataloader(kv_val, batch_size=args.docs_batch_size),
+            )
+        if ds_type == MixedDecoderDsType.JsonField:
+            assert ds_train is not None and ds_val is not None, 'JsonField requires wiki cite train/val datasets'
+            assert not args.prompt_all, 'JsonField requires --prompt-all false: the target is the queried JSON field value.'
+            jsonfield_cfg = JsonFieldRecallCfg(
+                min_fields=args.jsonfield_min_fields,
+                max_fields=args.jsonfield_max_fields,
+                max_depth=args.jsonfield_max_depth,
+                max_array_len=args.jsonfield_max_array_len,
+                value_max_words=args.jsonfield_value_max_words,
+            )
+            jf_train = JsonFieldRecallDataset(
+                ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+                cfg=jsonfield_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
+            )
+            jf_val = JsonFieldRecallDataset(
+                ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+                cfg=jsonfield_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
+            )
+            jf_train.shuffle(seed=(args.random_seed or 0) + rank)
+            jf_val.shuffle(seed=(args.random_seed or 0) + rank)
+            return (
+                create_json_field_recall_dataloader(jf_train, batch_size=args.docs_batch_size),
+                create_json_field_recall_dataloader(jf_val, batch_size=args.docs_batch_size),
+            )
+        if ds_type == MixedDecoderDsType.Jsonata:
+            assert ds_train is not None and ds_val is not None, 'Jsonata requires wiki cite train/val datasets'
+            assert not args.prompt_all, 'Jsonata requires --prompt-all false: the target is the query result value.'
+            jsonata_cfg = JsonataRecallCfg(
+                min_fields=args.jsonata_min_fields,
+                max_fields=args.jsonata_max_fields,
+                max_depth=args.jsonata_max_depth,
+                max_array_len=args.jsonata_max_array_len,
+                value_max_words=args.jsonata_value_max_words,
+                transform_prob=args.jsonata_transform_prob,
+            )
+            ja_train = JsonataRecallDataset(
+                ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+                cfg=jsonata_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
+            )
+            ja_val = JsonataRecallDataset(
+                ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+                cfg=jsonata_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
+            )
+            ja_train.shuffle(seed=(args.random_seed or 0) + rank)
+            ja_val.shuffle(seed=(args.random_seed or 0) + rank)
+            return (
+                create_jsonata_recall_dataloader(ja_train, batch_size=args.docs_batch_size),
+                create_jsonata_recall_dataloader(ja_val, batch_size=args.docs_batch_size),
+            )
+        if ds_type == MixedDecoderDsType.XmlXpath:
+            assert ds_train is not None and ds_val is not None, 'XmlXpath requires wiki cite train/val datasets'
+            assert not args.prompt_all, 'XmlXpath requires --prompt-all false: the target is the XPath-selected value.'
+            xml_cfg = XmlXpathRecallCfg(
+                min_nodes=args.xmlxpath_min_nodes,
+                max_nodes=args.xmlxpath_max_nodes,
+                max_depth=args.xmlxpath_max_depth,
+                max_children=args.xmlxpath_max_children,
+                value_max_words=args.xmlxpath_value_max_words,
+            )
+            xml_train = XmlXpathRecallDataset(
+                ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+                cfg=xml_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
+            )
+            xml_val = XmlXpathRecallDataset(
+                ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+                cfg=xml_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
+            )
+            xml_train.shuffle(seed=(args.random_seed or 0) + rank)
+            xml_val.shuffle(seed=(args.random_seed or 0) + rank)
+            return (
+                create_xml_xpath_recall_dataloader(xml_train, batch_size=args.docs_batch_size),
+                create_xml_xpath_recall_dataloader(xml_val, batch_size=args.docs_batch_size),
+            )
+        if ds_type == MixedDecoderDsType.Sql:
+            assert ds_train is not None and ds_val is not None, 'Sql requires wiki cite train/val datasets'
+            assert not args.prompt_all, 'Sql requires --prompt-all false: the target is the SQL query answer.'
+            sql_cfg = SqlSelectRecallCfg(
+                min_rows=args.sql_min_rows,
+                max_rows=args.sql_max_rows,
+                min_cols=args.sql_min_cols,
+                max_cols=args.sql_max_cols,
+                value_max_words=args.sql_value_max_words,
+                transform_prob=args.sql_transform_prob,
+            )
+            sql_train = SqlSelectRecallDataset(
+                ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+                cfg=sql_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank,
+            )
+            sql_val = SqlSelectRecallDataset(
+                ds_val, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
+                cfg=sql_cfg, device=device, tkz_dec=tkz_dec, seed=(args.random_seed or 0) + rank + 1000,
+            )
+            sql_train.shuffle(seed=(args.random_seed or 0) + rank)
+            sql_val.shuffle(seed=(args.random_seed or 0) + rank)
+            return (
+                create_sql_select_recall_dataloader(sql_train, batch_size=args.docs_batch_size),
+                create_sql_select_recall_dataloader(sql_val, batch_size=args.docs_batch_size),
+            )
         raise ValueError(f'Unsupported train_ds_type: {ds_type}')
 
     ds_batches_per_cycle, ds_loss_weights = resolve_compound_spec(
@@ -1182,12 +1472,30 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
     if prev_train_steps > 0:
         grad_log_ind = (prev_train_steps - 1) // grad_log_interval + 1
 
+    # Decoder-freeze support. Collect the live decoder parameters once (these are
+    # the same objects whose `.grad` is populated by backward under DDP and FSDP
+    # use_orig_params=True). During the first `freeze_decoder_epochs` epochs we drop
+    # their grads before each optimizer step, keeping the decoder weights fixed while
+    # gradients still propagate through it to the encoder / InteractiveExtractor.
+    _freeze_base = ddp_model.module if hasattr(ddp_model, 'module') else ddp_model
+    _freeze_decoder = getattr(_freeze_base, 'decoder', None)
+    decoder_params = list(_freeze_decoder.parameters()) if _freeze_decoder is not None else []
+    if args.freeze_decoder_epochs > 0:
+        log(f'Decoder freeze enabled: decoder weights fixed for the first '
+            f'{args.freeze_decoder_epochs} epoch(s) ({len(decoder_params)} param tensors).')
+
     if args.world_size > 1:
         dist.barrier()
     n_ds_types = len(args.train_ds_types)
     multi_ds = n_ds_types > 1
     for epoch in range(last_epoch + 1, args.epochs):
         ddp_model.train()
+        decoder_frozen = epoch < args.freeze_decoder_epochs and len(decoder_params) > 0
+        if args.freeze_decoder_epochs > 0 and rank == 0:
+            if decoder_frozen:
+                log(f'Epoch {epoch}: decoder FROZEN ({epoch + 1}/{args.freeze_decoder_epochs}).')
+            elif epoch == args.freeze_decoder_epochs:
+                log(f'Epoch {epoch}: decoder UNFROZEN; now training all weights.')
         train_losses = LossesStats()
         train_loss = 0.0
         train_ds_losses = [0.0] * n_ds_types
@@ -1212,6 +1520,15 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 batch_loss = loss_dict['loss']
                 loss = batch_loss * ds_loss_weights[ds_idx]
                 loss.backward()
+
+            # Decoder freeze: drop decoder parameter grads so the optimizer leaves
+            # the decoder weights unchanged this epoch. Gradients already flowed
+            # through the decoder during backward (to the bridge/encoder); we only
+            # discard the decoder's own grads. AdamW skips params whose grad is None,
+            # and grad clipping / unscaling naturally ignore them too.
+            if decoder_frozen:
+                for p in decoder_params:
+                    p.grad = None
 
             # Run on ALL ranks: under FSDP this performs an all_reduce collective
             # that every rank must enter (only rank 0 writes metrics).
@@ -1547,7 +1864,10 @@ def main(args: ArgsMixedDecoderTrain) -> int:
     df_sq, sq_inds_train, sq_inds_val = None, None, None
     max_chunks = max(args.emb_win_max_size, 1)
 
-    if MixedDecoderDsType.Cite in ds_types:
+    if any(t in ds_types for t in (
+        MixedDecoderDsType.Cite, MixedDecoderDsType.KeyVal, MixedDecoderDsType.JsonField,
+        MixedDecoderDsType.Jsonata, MixedDecoderDsType.XmlXpath, MixedDecoderDsType.Sql,
+    )):
         ds_train, ds_val = load_split_wiki_dataset(
             data_path=args.data_path, tkz=tkz_enc, max_seq_len=args.inp_len, val_split_ratio=0.05,
             mask_cfg=mask_cfg, random_seed=args.random_seed,
@@ -1572,6 +1892,8 @@ def main(args: ArgsMixedDecoderTrain) -> int:
     unsupported = [t for t in ds_types if t not in (
         MixedDecoderDsType.Cite, MixedDecoderDsType.QnaSquadV2, MixedDecoderDsType.QnaAll,
         MixedDecoderDsType.QnaAns, MixedDecoderDsType.Next,
+        MixedDecoderDsType.KeyVal, MixedDecoderDsType.JsonField, MixedDecoderDsType.Jsonata,
+        MixedDecoderDsType.XmlXpath, MixedDecoderDsType.Sql,
     )]
     assert not unsupported, f'Unsupported train_ds_types: {[t.value for t in unsupported]}'
 
