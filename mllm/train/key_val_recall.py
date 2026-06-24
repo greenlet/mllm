@@ -155,7 +155,7 @@ class KeyValRecallTokenizer:
             # Value: 1..value_max_words consecutive real words; pool fallback.
             if words:
                 c = int(self.rng.integers(cfg.value_min_words, cfg.value_max_words + 1))
-                w0 = int(self.rng.integers(len(words)))
+                w0 = max(0, int(self.rng.integers(len(words) - c + 1)))
                 value_ids: List[int] = []
                 for w in words[w0:w0 + c]:
                     value_ids.extend(w)
