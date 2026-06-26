@@ -75,19 +75,19 @@ min_next_toks=64
 
 # --- key-value recall (train_ds_type=keyval) difficulty knobs ---
 keyval_min_pairs=4
-keyval_max_pairs=12
+keyval_max_pairs=32
 keyval_value_max_words=3
 
 # --- JSON field recall (train_ds_type=jsonfield) difficulty knobs ---
 jsonfield_min_fields=4
-jsonfield_max_fields=10
+jsonfield_max_fields=26
 jsonfield_max_depth=3
 jsonfield_max_array_len=4
 jsonfield_value_max_words=3
 
 # --- JSONata/jq selection+transform (train_ds_type=jsonata) knobs ---
 jsonata_min_fields=4
-jsonata_max_fields=10
+jsonata_max_fields=24
 jsonata_max_depth=3
 jsonata_max_array_len=5
 jsonata_value_max_words=3
@@ -95,18 +95,23 @@ jsonata_transform_prob=0.35
 
 # --- XML/XPath extraction (train_ds_type=xmlxpath) knobs ---
 xmlxpath_min_nodes=4
-xmlxpath_max_nodes=12
+xmlxpath_max_nodes=44
 xmlxpath_max_depth=4
 xmlxpath_max_children=4
 xmlxpath_value_max_words=3
 
 # --- SQL selection/aggregate (train_ds_type=sql) knobs ---
 sql_min_rows=4
-sql_max_rows=8
+sql_max_rows=16
 sql_min_cols=3
 sql_max_cols=5
 sql_value_max_words=3
 sql_transform_prob=0.30
+
+# Structured datasets: pack each record to ~fill the inp_len token budget
+# (cite-style dense chunks). fill_frac is the early-accept fraction of the budget.
+structured_fill_to_budget=true
+structured_fill_frac=0.85
 
 max_seq_len=400
 freeze_encoder=false
@@ -299,6 +304,8 @@ python s_03_11_train_mixed_decoder.py \
   --sql-max-cols $sql_max_cols \
   --sql-value-max-words $sql_value_max_words \
   --sql-transform-prob $sql_transform_prob \
+  --structured-fill-to-budget $structured_fill_to_budget \
+  --structured-fill-frac $structured_fill_frac \
   --mask-tokens $mask_tokens \
   --mask-sep-freq $mask_sep_freq \
   --mask-sep-frac $mask_sep_frac \

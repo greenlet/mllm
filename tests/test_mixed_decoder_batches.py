@@ -66,7 +66,7 @@ def _make_cfg(ds_type: MixedDecoderDsType, emb_exp_rate: int = 4) -> MixedDecode
 
 def _make_model(cfg: MixedDecoderCfg) -> MixedDecoder:
     tkz = AutoTokenizer.from_pretrained(BERT_NAME)
-    model = MixedDecoder(cfg, tkz)
+    model = MixedDecoder(cfg, tkz, tkz)
     model.to(DEVICE)
     model.train()
     return model
@@ -108,6 +108,9 @@ def _make_cite_batch(tkz, device=DEVICE) -> MaskedCiteBatch:
         prompts_att_mask=torch.ones(BATCH_SIZE, prompt_len, dtype=torch.long, device=device),
         cites_att_mask=torch.ones(BATCH_SIZE, cite_len, dtype=torch.long, device=device),
         edge_inds=torch.zeros(2, BATCH_SIZE + 1, dtype=torch.long, device=device),
+        inp_toks_dec=inp_toks.clone(),
+        inp_masked_toks_dec=inp_toks.clone(),
+        inp_dec_att_mask=torch.ones(BATCH_SIZE, INP_LEN, dtype=torch.long, device=device),
     )
 
 
@@ -356,7 +359,7 @@ def _ddp_worker(rank, world_size, tmpdir, port, ds_type_value):
         tkz = AutoTokenizer.from_pretrained(BERT_NAME)
         ds_type = MixedDecoderDsType(ds_type_value)
         cfg = _make_cfg(ds_type)
-        model = MixedDecoder(cfg, tkz)
+        model = MixedDecoder(cfg, tkz, tkz)
 
         state_dict = torch.load(os.path.join(tmpdir, 'model_state.pt'), map_location='cpu')
         model.load_state_dict(state_dict)
@@ -410,7 +413,7 @@ class TestDDPAllRanksContribute:
         cpu = torch.device('cpu')
 
         cfg = _make_cfg(ds_type)
-        model = MixedDecoder(cfg, tkz)
+        model = MixedDecoder(cfg, tkz, tkz)
         model.eval()
         initial_state = copy.deepcopy(model.state_dict())
 

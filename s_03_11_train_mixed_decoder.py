@@ -67,6 +67,8 @@ ie_norm_first_ARG = '--ie-norm-first', \
     'InteractiveExtractor: use pre-LayerNorm residual blocks (false = post-LayerNorm).'
 normalize_train_ds_loss_weights_ARG = '--normalize-train-ds-loss-weights', \
     'Normalize train_ds_loss_weights so that they sum to 1.'
+structured_fill_to_budget_ARG = '--structured-fill-to-budget', \
+    'For structured datasets (keyval/jsonfield/jsonata/xmlxpath/sql): grow each record to ~fill the inp_len token budget (cite-style dense chunks).'
 
 
 def _split_ws_list(v):
@@ -251,7 +253,7 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--keyval-min-pairs',),
     )
     keyval_max_pairs: int = Field(
-        12,
+        32,
         description='For train_ds_types=keyval: maximum number of key:value pairs per record (difficulty knob upper bound).',
         cli=('--keyval-max-pairs',),
     )
@@ -266,7 +268,7 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--jsonfield-min-fields',),
     )
     jsonfield_max_fields: int = Field(
-        10,
+        26,
         description='For train_ds_types=jsonfield: maximum number of top-level fields in a generated JSON record.',
         cli=('--jsonfield-max-fields',),
     )
@@ -291,7 +293,7 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--jsonata-min-fields',),
     )
     jsonata_max_fields: int = Field(
-        10,
+        24,
         description='For train_ds_types=jsonata: maximum number of top-level fields in generated JSON records.',
         cli=('--jsonata-max-fields',),
     )
@@ -321,7 +323,7 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--xmlxpath-min-nodes',),
     )
     xmlxpath_max_nodes: int = Field(
-        12,
+        44,
         description='For train_ds_types=xmlxpath: maximum number of XML nodes per generated record.',
         cli=('--xmlxpath-max-nodes',),
     )
@@ -346,7 +348,7 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--sql-min-rows',),
     )
     sql_max_rows: int = Field(
-        8,
+        16,
         description='For train_ds_types=sql: maximum table row count.',
         cli=('--sql-max-rows',),
     )
@@ -369,6 +371,11 @@ class ArgsMixedDecoderTrain(BaseModel):
         0.30,
         description='For train_ds_types=sql: probability of Tier-C aggregate queries (COUNT/SUM/MAX) vs Tier-E cell selection.',
         cli=('--sql-transform-prob',),
+    )
+    structured_fill_frac: float = Field(
+        0.85,
+        description='For structured datasets when --structured-fill-to-budget true: accept a sampled record once it reaches this fraction of the token budget (0..1).',
+        cli=('--structured-fill-frac',),
     )
 
     freeze_encoder_STR: str = create_bool_str_field(*freeze_encoder_ARG)
@@ -415,6 +422,11 @@ class ArgsMixedDecoderTrain(BaseModel):
     @property
     def mask_tokens(self) -> bool:
         return is_arg_true(mask_tokens_ARG[0], self.mask_tokens_STR)
+
+    structured_fill_to_budget_STR: str = create_bool_str_field(*structured_fill_to_budget_ARG)
+    @property
+    def structured_fill_to_budget(self) -> bool:
+        return is_arg_true(structured_fill_to_budget_ARG[0], self.structured_fill_to_budget_STR)
 
     mask_sep_freq: float = Field(
         0.0,
@@ -1324,6 +1336,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             keyval_cfg = KeyValRecallCfg(
                 min_pairs=args.keyval_min_pairs, max_pairs=args.keyval_max_pairs,
                 value_max_words=args.keyval_value_max_words,
+                fill_to_budget=args.structured_fill_to_budget, fill_frac=args.structured_fill_frac,
             )
             kv_train = KeyValRecallDataset(
                 ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
@@ -1348,6 +1361,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 max_depth=args.jsonfield_max_depth,
                 max_array_len=args.jsonfield_max_array_len,
                 value_max_words=args.jsonfield_value_max_words,
+                fill_to_budget=args.structured_fill_to_budget, fill_frac=args.structured_fill_frac,
             )
             jf_train = JsonFieldRecallDataset(
                 ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
@@ -1373,6 +1387,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 max_array_len=args.jsonata_max_array_len,
                 value_max_words=args.jsonata_value_max_words,
                 transform_prob=args.jsonata_transform_prob,
+                fill_to_budget=args.structured_fill_to_budget, fill_frac=args.structured_fill_frac,
             )
             ja_train = JsonataRecallDataset(
                 ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
@@ -1397,6 +1412,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 max_depth=args.xmlxpath_max_depth,
                 max_children=args.xmlxpath_max_children,
                 value_max_words=args.xmlxpath_value_max_words,
+                fill_to_budget=args.structured_fill_to_budget, fill_frac=args.structured_fill_frac,
             )
             xml_train = XmlXpathRecallDataset(
                 ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,
@@ -1422,6 +1438,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 max_cols=args.sql_max_cols,
                 value_max_words=args.sql_value_max_words,
                 transform_prob=args.sql_transform_prob,
+                fill_to_budget=args.structured_fill_to_budget, fill_frac=args.structured_fill_frac,
             )
             sql_train = SqlSelectRecallDataset(
                 ds_train, tkz_enc, max_seq_len=args.inp_len, n_special_toks=n_special_toks,

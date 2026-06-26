@@ -12,7 +12,9 @@ from mllm.data.dsqrels import DsQrels
 from mllm.data.fever.dsfever import load_dsqrels_fever
 from mllm.data.msmarco.dsmsmarco import load_dsqrels_msmarco
 from mllm.tokenization.chunk_tokenizer import ChunkTokenizer
-from mllm.train.mask_utils import MaskCfg, mask_random_tokens, mask_random_words, mask_random_words_v2
+from mllm.train.mask_utils import (
+    MaskCfg, extend_mask_to_words, mask_random_tokens, mask_random_words, mask_random_words_v2,
+)
 
 
 def load_qrels_datasets(
@@ -248,6 +250,26 @@ class TokensSubsetV2:
     toks_cite_masked_dec: list[int]
 
 
+@dataclass(kw_only=True)
+class CiteSpecV2:
+    """Fully describes one cite-citation sample; consumed deterministically by
+    :meth:`RandomInputTokenizerV2.realize`.
+
+    All randomness for a sample is captured here (the input window, the cited
+    span position/length, the random anchor token groups, and the raw word-mask)
+    so that ``realize`` is a pure function of ``(spec, source token ids)``.
+    """
+    inp_beg_ind: int
+    inp_end_ind: int
+    sub_off: int
+    n_cite_toks: int
+    toks_cite_beg: list[int]
+    toks_cite_end: list[int]
+    # Raw token-level mask (gen_mask output, length == n_cite_toks) or None.
+    raw_mask: Optional[np.ndarray] = None
+    prompt_all: bool = True
+
+
 class RandomInputTokenizerV2:
     def __init__(
             self, tkz_enc: PreTrainedTokenizer, max_len: int, n_random_toks: int,
@@ -322,89 +344,120 @@ class RandomInputTokenizerV2:
         return self.tkz_dec(text, add_special_tokens=False).input_ids
 
     def __call__(self, texts: list[str], prompt_all: bool = True) -> List[TokensSubsetV2]:
-        batch_size = len(texts)
         input_ids = self.tkz_enc(texts, add_special_tokens=False).input_ids
         batch: list[TokensSubsetV2] = []
-
-        for i in range(batch_size):
-            cur_len = len(input_ids[i])
-            n_inp_toks = self.n_cite_toks
-            if cur_len <= n_inp_toks:
-                inp_beg_ind = 0
-                inp_end_ind = cur_len
-            else:
-                max_beg_ind = cur_len - n_inp_toks
-                inp_beg_ind = np.random.randint(0, max_beg_ind + 1)
-                inp_end_ind = inp_beg_ind + n_inp_toks
-            toks_inp = input_ids[i][inp_beg_ind:inp_end_ind]
-
-            n_cite_toks = np.random.randint(1, len(toks_inp) + 1)
-            sub_off = np.random.randint(0, len(toks_inp) - n_cite_toks + 1)
-            toks_cite_beg = self._next_random_tokens()
-            toks_cite_end = self._next_random_tokens()
-            cite_beg_ind = inp_beg_ind + sub_off
-            cite_end_ind = cite_beg_ind + n_cite_toks
-            toks_cite = input_ids[i][cite_beg_ind:cite_end_ind]
-
-            toks_cite_masked, _ = mask_random_words_v2(np.array(toks_cite), self.tkz_enc, self.mask_cfg)
-            toks_cite_masked = toks_cite_masked.tolist()
-
-            toks_inp_nonmasked = [self.tkz_enc.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
-                toks_cite + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz_enc.sep_token_id]
-            toks_inp_masked = [self.tkz_enc.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
-                toks_cite_masked + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz_enc.sep_token_id]
-
-            # Decoder-vocab anchors: decode random IDs to text via tkz_enc, then tokenize with tkz_dec.
-            toks_cite_beg_dec = self._enc_to_dec(toks_cite_beg)
-            toks_cite_end_dec = self._enc_to_dec(toks_cite_end)
-
-            # Decoder-vocab cite content (re-tokenized).
-            toks_cite_dec = self._enc_to_dec(toks_cite)
-            toks_cite_masked_dec = self._enc_to_dec(toks_cite_masked) if self.same_vocab else list(toks_cite_dec)
-
-            # Decoder-vocab full input content (no encoder CLS/SEP; ends with decoder end token).
-            inp_prefix_dec = self._enc_to_dec(toks_inp[:sub_off])
-            inp_suffix_dec = self._enc_to_dec(toks_inp[sub_off + n_cite_toks:])
-            end_suffix = [self.dec_end_token_id] if self.dec_end_token_id is not None else []
-            toks_inp_dec = (
-                inp_prefix_dec + toks_cite_beg_dec + toks_cite_dec + toks_cite_end_dec + inp_suffix_dec + end_suffix
-            )
-            if self.same_vocab:
-                toks_inp_masked_dec = (
-                    inp_prefix_dec + toks_cite_beg_dec + toks_cite_masked_dec + toks_cite_end_dec + inp_suffix_dec + end_suffix
-                )
-            else:
-                toks_inp_masked_dec = list(toks_inp_dec)
-
-            prompt_template_toks = self.prompt_all_template_toks if prompt_all else self.prompt_cite_template_toks
-            prompt_toks = (
-                prompt_template_toks['tag_begin'] + toks_cite_beg_dec
-                + prompt_template_toks['tag_end'] + toks_cite_end_dec
-                + prompt_template_toks['rest']
-            )
-            prompt = self.tkz_dec.decode(prompt_toks, skip_special_tokens=False)
-
-            toks_sub = TokensSubsetV2(
-                toks_src=input_ids[i],
-                inp_beg_ind=inp_beg_ind,
-                inp_end_ind=inp_end_ind,
-                toks_inp=toks_inp_nonmasked,
-                toks_inp_masked=toks_inp_masked,
-                cite_beg_ind=cite_beg_ind,
-                cite_end_ind=cite_end_ind,
-                toks_cite=toks_cite,
-                toks_cite_masked=toks_cite_masked,
-                toks_cite_beg=toks_cite_beg,
-                toks_cite_end=toks_cite_end,
-                prompt=prompt,
-                toks_prompt=prompt_toks,
-                toks_inp_dec=toks_inp_dec,
-                toks_inp_masked_dec=toks_inp_masked_dec,
-                toks_cite_dec=toks_cite_dec,
-                toks_cite_masked_dec=toks_cite_masked_dec,
-            )
-            batch.append(toks_sub)
+        for ids in input_ids:
+            spec = self.sample_spec(len(ids), prompt_all=prompt_all)
+            batch.append(self.realize(ids, spec))
         return batch
+
+    def sample_spec(self, cur_len: int, prompt_all: bool = True) -> CiteSpecV2:
+        """Draw every random decision for one cite sample (all RNG lives here)."""
+        n_inp_toks = self.n_cite_toks
+        if cur_len <= n_inp_toks:
+            inp_beg_ind = 0
+            inp_end_ind = cur_len
+        else:
+            max_beg_ind = cur_len - n_inp_toks
+            inp_beg_ind = int(np.random.randint(0, max_beg_ind + 1))
+            inp_end_ind = inp_beg_ind + n_inp_toks
+        len_inp = inp_end_ind - inp_beg_ind
+        len_inp = max(len_inp, 1)
+
+        n_cite_toks = int(np.random.randint(1, len_inp + 1))
+        sub_off = int(np.random.randint(0, len_inp - n_cite_toks + 1))
+        toks_cite_beg = self._next_random_tokens()
+        toks_cite_end = self._next_random_tokens()
+        raw_mask = self.mask_cfg.gen_mask(n_cite_toks) if self.mask_cfg is not None else None
+
+        return CiteSpecV2(
+            inp_beg_ind=inp_beg_ind,
+            inp_end_ind=inp_end_ind,
+            sub_off=sub_off,
+            n_cite_toks=n_cite_toks,
+            toks_cite_beg=toks_cite_beg,
+            toks_cite_end=toks_cite_end,
+            raw_mask=raw_mask,
+            prompt_all=prompt_all,
+        )
+
+    def realize(self, toks_src: list[int], spec: CiteSpecV2) -> TokensSubsetV2:
+        """Deterministically build a cite sample from a source id sequence + spec."""
+        toks_inp = list(toks_src[spec.inp_beg_ind:spec.inp_end_ind])
+        sub_off = spec.sub_off
+        n_cite_toks = spec.n_cite_toks
+        toks_cite_beg = spec.toks_cite_beg
+        toks_cite_end = spec.toks_cite_end
+
+        cite_beg_ind = spec.inp_beg_ind + sub_off
+        cite_end_ind = cite_beg_ind + n_cite_toks
+        toks_cite = list(toks_src[cite_beg_ind:cite_end_ind])
+
+        # Apply the (content-aware) word mask deterministically from the raw mask.
+        if spec.raw_mask is not None and len(toks_cite) > 0:
+            toks_cite_arr = np.array(toks_cite)
+            toks_str = self.tkz_enc.convert_ids_to_tokens(toks_cite)
+            mask = extend_mask_to_words(spec.raw_mask, toks_str)
+            masked_arr = toks_cite_arr.copy()
+            masked_arr[mask] = self.tkz_enc.mask_token_id
+            toks_cite_masked = masked_arr.tolist()
+        else:
+            toks_cite_masked = list(toks_cite)
+
+        toks_inp_nonmasked = [self.tkz_enc.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
+            toks_cite + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz_enc.sep_token_id]
+        toks_inp_masked = [self.tkz_enc.cls_token_id] + toks_inp[:sub_off] + toks_cite_beg + \
+            toks_cite_masked + toks_cite_end + toks_inp[sub_off + n_cite_toks:] + [self.tkz_enc.sep_token_id]
+
+        # Decoder-vocab anchors: decode random IDs to text via tkz_enc, then tokenize with tkz_dec.
+        toks_cite_beg_dec = self._enc_to_dec(toks_cite_beg)
+        toks_cite_end_dec = self._enc_to_dec(toks_cite_end)
+
+        # Decoder-vocab cite content (re-tokenized).
+        toks_cite_dec = self._enc_to_dec(toks_cite)
+        toks_cite_masked_dec = self._enc_to_dec(toks_cite_masked) if self.same_vocab else list(toks_cite_dec)
+
+        # Decoder-vocab full input content (no encoder CLS/SEP; ends with decoder end token).
+        inp_prefix_dec = self._enc_to_dec(toks_inp[:sub_off])
+        inp_suffix_dec = self._enc_to_dec(toks_inp[sub_off + n_cite_toks:])
+        end_suffix = [self.dec_end_token_id] if self.dec_end_token_id is not None else []
+        toks_inp_dec = (
+            inp_prefix_dec + toks_cite_beg_dec + toks_cite_dec + toks_cite_end_dec + inp_suffix_dec + end_suffix
+        )
+        if self.same_vocab:
+            toks_inp_masked_dec = (
+                inp_prefix_dec + toks_cite_beg_dec + toks_cite_masked_dec + toks_cite_end_dec + inp_suffix_dec + end_suffix
+            )
+        else:
+            toks_inp_masked_dec = list(toks_inp_dec)
+
+        prompt_template_toks = self.prompt_all_template_toks if spec.prompt_all else self.prompt_cite_template_toks
+        prompt_toks = (
+            prompt_template_toks['tag_begin'] + toks_cite_beg_dec
+            + prompt_template_toks['tag_end'] + toks_cite_end_dec
+            + prompt_template_toks['rest']
+        )
+        prompt = self.tkz_dec.decode(prompt_toks, skip_special_tokens=False)
+
+        return TokensSubsetV2(
+            toks_src=list(toks_src),
+            inp_beg_ind=spec.inp_beg_ind,
+            inp_end_ind=spec.inp_end_ind,
+            toks_inp=toks_inp_nonmasked,
+            toks_inp_masked=toks_inp_masked,
+            cite_beg_ind=cite_beg_ind,
+            cite_end_ind=cite_end_ind,
+            toks_cite=toks_cite,
+            toks_cite_masked=toks_cite_masked,
+            toks_cite_beg=toks_cite_beg,
+            toks_cite_end=toks_cite_end,
+            prompt=prompt,
+            toks_prompt=prompt_toks,
+            toks_inp_dec=toks_inp_dec,
+            toks_inp_masked_dec=toks_inp_masked_dec,
+            toks_cite_dec=toks_cite_dec,
+            toks_cite_masked_dec=toks_cite_masked_dec,
+        )
 
 
 def tokens_subsets_to_tensors(batch: List[TokensSubset], pad_token_id: int, device: Optional[torch.device] = None) -> Tuple[torch.Tensor, torch.Tensor]:
