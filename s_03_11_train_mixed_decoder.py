@@ -268,7 +268,7 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--jsonfield-min-fields',),
     )
     jsonfield_max_fields: int = Field(
-        26,
+        30,
         description='For train_ds_types=jsonfield: maximum number of top-level fields in a generated JSON record.',
         cli=('--jsonfield-max-fields',),
     )
@@ -293,7 +293,7 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--jsonata-min-fields',),
     )
     jsonata_max_fields: int = Field(
-        24,
+        28,
         description='For train_ds_types=jsonata: maximum number of top-level fields in generated JSON records.',
         cli=('--jsonata-max-fields',),
     )
@@ -323,7 +323,7 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--xmlxpath-min-nodes',),
     )
     xmlxpath_max_nodes: int = Field(
-        44,
+        52,
         description='For train_ds_types=xmlxpath: maximum number of XML nodes per generated record.',
         cli=('--xmlxpath-max-nodes',),
     )
@@ -373,7 +373,7 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--sql-transform-prob',),
     )
     structured_fill_frac: float = Field(
-        0.85,
+        0.90,
         description='For structured datasets when --structured-fill-to-budget true: accept a sampled record once it reaches this fraction of the token budget (0..1).',
         cli=('--structured-fill-frac',),
     )

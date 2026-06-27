@@ -80,14 +80,14 @@ keyval_value_max_words=3
 
 # --- JSON field recall (train_ds_type=jsonfield) difficulty knobs ---
 jsonfield_min_fields=4
-jsonfield_max_fields=26
+jsonfield_max_fields=30
 jsonfield_max_depth=3
 jsonfield_max_array_len=4
 jsonfield_value_max_words=3
 
 # --- JSONata/jq selection+transform (train_ds_type=jsonata) knobs ---
 jsonata_min_fields=4
-jsonata_max_fields=24
+jsonata_max_fields=28
 jsonata_max_depth=3
 jsonata_max_array_len=5
 jsonata_value_max_words=3
@@ -95,7 +95,7 @@ jsonata_transform_prob=0.35
 
 # --- XML/XPath extraction (train_ds_type=xmlxpath) knobs ---
 xmlxpath_min_nodes=4
-xmlxpath_max_nodes=44
+xmlxpath_max_nodes=52
 xmlxpath_max_depth=4
 xmlxpath_max_children=4
 xmlxpath_value_max_words=3
@@ -111,7 +111,7 @@ sql_transform_prob=0.30
 # Structured datasets: pack each record to ~fill the inp_len token budget
 # (cite-style dense chunks). fill_frac is the early-accept fraction of the budget.
 structured_fill_to_budget=true
-structured_fill_frac=0.85
+structured_fill_frac=0.90
 
 max_seq_len=400
 freeze_encoder=false
