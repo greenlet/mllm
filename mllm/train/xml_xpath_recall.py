@@ -39,6 +39,10 @@ class XmlXpathRecallCfg:
     attr_prob: float = 0.35
     nested_prob: float = 0.45
     min_tag_chars: int = 2
+    # Tag/attribute-name length in *words*. Multi-word names stay distinctive so
+    # a frequent stopword cannot collide across elements / XPaths.
+    name_min_words: int = 3
+    name_max_words: int = 4
     # Probability of a composite (element subtree) target.
     composite_prob: float = 0.0
     # When True, grow records to ~fill the chunk (largest sampled record that
@@ -59,6 +63,7 @@ class XmlNodeSpec:
 @dataclass(kw_only=True)
 class XmlSpec:
     root: XmlNodeSpec
+    name_words: int  # words per tag / attribute name
     query_idx: int  # modular index into selected (or composite) targets
     q_kind: int     # prompt phrasing: 0 / 1 / 2
     composite: bool = False
@@ -97,24 +102,34 @@ class XmlXpathRecallTokenizer:
     def _is_name(self, name: str) -> bool:
         return len(name) >= self.cfg.min_tag_chars and any(c.isalpha() for c in name)
 
-    def _next_name(self, feed: WordFeed, used: set, prefix: str = 'n') -> str:
-        for _ in range(64):
-            _, txt = feed.next_word()
-            n = self._normalize_name(txt)
-            if self._is_name(n) and n not in used:
-                used.add(n)
-                return n
-        for _ in range(256):
-            tid = feed.next_pool_token()
-            n = self._normalize_name(self.tkz_enc.decode([tid], skip_special_tokens=True))
-            if not self._is_name(n):
-                n = f'{prefix}_{tid}'
-            if n not in used:
-                used.add(n)
-                return n
-        n = f'{prefix}_{len(used)}'
-        used.add(n)
-        return n
+    def _next_name(self, feed: WordFeed, used: set, prefix: str = 'n', n_words: int = 1) -> str:
+        parts: List[str] = []
+        for _ in range(max(1, n_words)):
+            part = None
+            for _ in range(64):
+                _, txt = feed.next_word()
+                n = self._normalize_name(txt)
+                if self._is_name(n):
+                    part = n
+                    break
+            if part is None:
+                for _ in range(256):
+                    tid = feed.next_pool_token()
+                    n = self._normalize_name(self.tkz_enc.decode([tid], skip_special_tokens=True))
+                    if self._is_name(n):
+                        part = n
+                        break
+                if part is None:
+                    part = f'{prefix}_{len(used)}'
+            parts.append(part)
+        name = '_'.join(parts)
+        if name in used:
+            suffix = 1
+            while f'{name}_{suffix}' in used:
+                suffix += 1
+            name = f'{name}_{suffix}'
+        used.add(name)
+        return name
 
     # --- random: spec sampling ----------------------------------------------
     def sample_spec(self) -> XmlSpec:
@@ -124,6 +139,7 @@ class XmlXpathRecallTokenizer:
         root = self._sample_node(depth=1)
         return XmlSpec(
             root=root,
+            name_words=int(rng.integers(cfg.name_min_words, cfg.name_max_words + 1)),
             query_idx=int(rng.integers(1 << 30)),
             q_kind=int(rng.integers(3)),
             composite=float(rng.random()) < cfg.composite_prob,
@@ -158,21 +174,21 @@ class XmlXpathRecallTokenizer:
     # --- deterministic: realization -----------------------------------------
     def _emit(
             self, node: XmlNodeSpec, feed: WordFeed, path_parts: List[str], used_tags: set,
-            selected: List[Tuple[str, str]], composites: List[Tuple[str, str]],
+            selected: List[Tuple[str, str]], composites: List[Tuple[str, str]], name_words: int = 1,
     ) -> str:
         tag = path_parts[-1]
         attrs: List[Tuple[str, str]] = []
         used_attrs: set = set()
         for c in node.attr_word_counts:
-            a = self._next_name(feed, used_attrs, prefix='a')
+            a = self._next_name(feed, used_attrs, prefix='a', n_words=name_words)
             _, v = feed.next_span(c)
             attrs.append((a, v))
             selected.append((f"/{'/'.join(path_parts)}/@{a}", v))
 
         children_xml: List[str] = []
         for child in node.children:
-            child_tag = self._next_name(feed, used_tags, prefix='t')
-            children_xml.append(self._emit(child, feed, path_parts + [child_tag], used_tags, selected, composites))
+            child_tag = self._next_name(feed, used_tags, prefix='t', n_words=name_words)
+            children_xml.append(self._emit(child, feed, path_parts + [child_tag], used_tags, selected, composites, name_words))
 
         _, text_value = feed.next_span(node.text_word_count)
         selected.append((f"/{'/'.join(path_parts)}/text()", text_value))
@@ -192,8 +208,8 @@ class XmlXpathRecallTokenizer:
         used_tags: set = set()
         selected: List[Tuple[str, str]] = []
         composites: List[Tuple[str, str]] = []
-        root_tag = self._next_name(feed, used_tags, prefix='root')
-        xml_text = self._emit(spec.root, feed, [root_tag], used_tags, selected, composites)
+        root_tag = self._next_name(feed, used_tags, prefix='root', n_words=spec.name_words)
+        xml_text = self._emit(spec.root, feed, [root_tag], used_tags, selected, composites, spec.name_words)
 
         rec_ids = self.tkz_enc(xml_text, add_special_tokens=False).input_ids
         rec_len = len(rec_ids)
@@ -234,7 +250,7 @@ class XmlXpathRecallTokenizer:
 
     # --- wrapper -------------------------------------------------------------
     def build(self, text: str) -> TokensSubsetV2:
-        feed, ids_src = word_feed_from_text(text, self.tkz_enc, self.pool)
+        feed, ids_src = word_feed_from_text(text, self.tkz_enc, self.pool, rng=self.rng)
         return build_to_budget(
             sample_spec=self.sample_spec,
             realize=self.realize,

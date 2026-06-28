@@ -44,6 +44,10 @@ class JsonataRecallCfg:
     number_prob: float = 0.30
     bool_null_prob: float = 0.10
     min_key_chars: int = 2
+    # Key length in *words*. Multi-word keys stay distinctive so a frequent
+    # stopword cannot collide across fields / paths.
+    key_min_words: int = 3
+    key_max_words: int = 4
     # Probability of Tier-C transform samples (count/sum/max).
     transform_prob: float = 0.35
     # Probability of a composite (subtree) Tier-E target.
@@ -59,6 +63,7 @@ class JsonataSpec:
     root: JsonNodeSpec
     compact: bool
     transform: bool       # Tier-C transform vs Tier-E selection
+    key_words: int        # words per object key
     query_idx: int        # modular index into leaves (Tier-E) or arrays (Tier-C)
     op_idx: int           # modular index into available transform ops
     dialect: int          # transform dialect: 0 jsonata / 1 jq
@@ -89,6 +94,7 @@ class JsonataRecallTokenizer:
             root=sample_json_shape(rng, cfg),
             compact=bool(rng.integers(2)),
             transform=float(rng.random()) < cfg.transform_prob,
+            key_words=int(rng.integers(cfg.key_min_words, cfg.key_max_words + 1)),
             query_idx=int(rng.integers(1 << 30)),
             op_idx=int(rng.integers(1 << 30)),
             dialect=int(rng.integers(2)),
@@ -124,7 +130,7 @@ class JsonataRecallTokenizer:
     # --- deterministic: realization -----------------------------------------
     def realize(self, spec: JsonataSpec, feed: WordFeed, ids_src: Optional[List[int]] = None) -> Tuple[TokensSubsetV2, int]:
         budget = self.max_len - 2
-        obj, leaves, arrays, composites = build_json_value(spec.root, feed, self.cfg.min_key_chars)
+        obj, leaves, arrays, composites = build_json_value(spec.root, feed, self.cfg.min_key_chars, spec.key_words)
 
         seps = json_seps(spec.compact)
         rec_text = json.dumps(obj, ensure_ascii=True, separators=seps)
@@ -177,7 +183,7 @@ class JsonataRecallTokenizer:
 
     # --- wrapper -------------------------------------------------------------
     def build(self, text: str) -> TokensSubsetV2:
-        feed, ids_src = word_feed_from_text(text, self.tkz_enc, self.pool)
+        feed, ids_src = word_feed_from_text(text, self.tkz_enc, self.pool, rng=self.rng)
         return build_to_budget(
             sample_spec=self.sample_spec,
             realize=self.realize,

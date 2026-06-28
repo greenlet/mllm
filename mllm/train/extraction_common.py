@@ -140,6 +140,29 @@ class WordFeed:
         used.add(txt.lower())
         return ids, txt
 
+    def next_distinct_phrase(
+            self, n_words: int, used: set, is_valid=None, max_scan: int = 64,
+    ) -> Tuple[List[int], str]:
+        """A multi-word key phrase: ``n_words`` distinct valid words concatenated.
+
+        Each constituent word is consumed via :meth:`next_distinct_word` (so the
+        individual words are unique), then the *whole phrase* (lowercased) is
+        registered in ``used`` so the phrase itself is not reused. Returns the
+        concatenated encoder ids and the space-joined decoded text.
+        """
+        n_words = max(1, n_words)
+        ids: List[int] = []
+        texts: List[str] = []
+        for _ in range(n_words):
+            wids, wtxt = self.next_distinct_word(used, is_valid=is_valid, max_scan=max_scan)
+            ids.extend(wids)
+            texts.append(wtxt.strip())
+        phrase = ' '.join(t for t in texts if t)
+        if not phrase:
+            phrase = f'k{ids[0] if ids else 0}'
+        used.add(phrase.lower())
+        return ids, phrase
+
     def next_span(self, n_words: int) -> Tuple[List[int], str]:
         """Concatenated ids of the next ``n_words`` words, plus the decoded text
         of that concatenation (so it matches what the encoder will see)."""
@@ -156,13 +179,46 @@ class WordFeed:
 
 def word_feed_from_text(
         text: str, tkz_enc: PreTrainedTokenizer, pool: Sequence[int],
+        rng: Optional[np.random.Generator] = None,
 ) -> Tuple[WordFeed, List[int]]:
-    """Build a :class:`WordFeed` from raw text. Returns (feed, src_ids)."""
+    """Build a :class:`WordFeed` from raw text. Returns (feed, src_ids).
+
+    When ``rng`` is provided, the article's words are *shuffled* (as whole words)
+    before the feed is constructed. This breaks the natural left-to-right
+    adjacency of the source text so that a sampled ``key`` and the span that
+    follows it are no longer a language-model continuation of each other -- the
+    answer can then only be recovered from the encoded record, not from the
+    decoder's prior. The shuffle happens once, here at feed construction (outside
+    item ``realize``), so each builder attempt remains deterministic.
+    """
     ids_src = tkz_enc(text, add_special_tokens=False).input_ids
     words = split_words(ids_src, tkz_enc)
     texts = [tkz_enc.decode(w, skip_special_tokens=True).strip() for w in words]
+    if rng is not None and len(words) > 1:
+        perm = rng.permutation(len(words))
+        words = [words[i] for i in perm]
+        texts = [texts[i] for i in perm]
     feed = WordFeed(words, texts, pool, tkz_enc)
     return feed, ids_src
+
+
+# Characters used as structural delimiters / quotes by the structured builders.
+# When they leak *inside* a key or value span they blur the record's boundaries
+# and make the extraction target ambiguous, so they are stripped from free text.
+SANITIZE_DROP_CHARS = ':;=|"\'`<>{}[]'
+
+
+def sanitize_text(text: str, drop_chars: str = SANITIZE_DROP_CHARS) -> str:
+    """Remove structural delimiter / quote chars from a free-text span.
+
+    Drops every char in ``drop_chars`` and collapses the resulting whitespace so
+    the span stays a clean, single-spaced run of words.
+    """
+    if not text:
+        return text
+    table = {ord(c): ' ' for c in drop_chars}
+    cleaned = text.translate(table)
+    return ' '.join(cleaned.split())
 
 
 # ---------------------------------------------------------------------------
@@ -285,42 +341,58 @@ def is_json_key(key: str, min_chars: int) -> bool:
     return len(key) >= min_chars and any(c.isalpha() for c in key)
 
 
-def next_json_key(feed: WordFeed, used_norm: set, min_key_chars: int) -> str:
-    """Next normalized, unused JSON key drawn sequentially from the feed."""
-    for _ in range(64):
-        _, txt = feed.next_word()
-        k = normalize_key(txt)
-        if is_json_key(k, min_key_chars) and k not in used_norm:
-            used_norm.add(k)
-            return k
-    for _ in range(256):
-        tid = feed.next_pool_token()
-        k = normalize_key(feed.tkz_enc.decode([tid], skip_special_tokens=True))
-        if not is_json_key(k, min_key_chars):
-            k = f'k_{tid}'
-        if k not in used_norm:
-            used_norm.add(k)
-            return k
-    k = f'k_{len(used_norm)}'
-    used_norm.add(k)
-    return k
+def next_json_key(feed: WordFeed, used_norm: set, min_key_chars: int, n_words: int = 1) -> str:
+    """Next normalized, unused JSON key drawn sequentially from the feed.
+
+    With ``n_words > 1`` the key is a multi-word identifier (``word1_word2_...``)
+    so it stays distinctive and a frequent stopword cannot collide across many
+    fields / paths.
+    """
+    parts: List[str] = []
+    for _ in range(max(1, n_words)):
+        part = None
+        for _ in range(64):
+            _, txt = feed.next_word()
+            k = normalize_key(txt)
+            if is_json_key(k, min_key_chars):
+                part = k
+                break
+        if part is None:
+            for _ in range(256):
+                tid = feed.next_pool_token()
+                k = normalize_key(feed.tkz_enc.decode([tid], skip_special_tokens=True))
+                if is_json_key(k, min_key_chars):
+                    part = k
+                    break
+            if part is None:
+                part = f'k_{len(used_norm)}'
+        parts.append(part)
+    key = '_'.join(parts)
+    if key in used_norm:
+        suffix = 1
+        while f'{key}_{suffix}' in used_norm:
+            suffix += 1
+        key = f'{key}_{suffix}'
+    used_norm.add(key)
+    return key
 
 
 def materialize_json(
         node: JsonNodeSpec, feed: WordFeed, min_key_chars: int, path: List,
         leaves: List[Tuple[List, object]], arrays: List[Tuple[List, list]],
-        composites: List[Tuple[List, object]],
+        composites: List[Tuple[List, object]], key_words: int = 1,
 ):
     """Deterministically build a JSON value from a shape spec + word feed.
 
     Records, in-place: ``leaves`` (scalar/array-element targets), ``arrays``
     (array path/value pairs for transforms), ``composites`` (non-root object /
-    array subtrees for composite targets).
+    array subtrees for composite targets). ``key_words`` controls how many words
+    each object key is built from (multi-word keys stay distinctive).
     """
     k = node.kind
     if k == 'text':
         _, txt = feed.next_span(node.word_count)
-        return txt
+        return sanitize_text(txt)
     if k == 'int':
         return node.int_lit
     if k == 'bool':
@@ -329,7 +401,7 @@ def materialize_json(
         return None
     if k == 'array':
         arr = [
-            materialize_json(en, feed, min_key_chars, path + [i], leaves, arrays, composites)
+            materialize_json(en, feed, min_key_chars, path + [i], leaves, arrays, composites, key_words)
             for i, en in enumerate(node.elems or [])
         ]
         if arr:
@@ -342,8 +414,8 @@ def materialize_json(
     d: dict = {}
     used: set = set()
     for child in (node.fields or []):
-        key = next_json_key(feed, used, min_key_chars)
-        v = materialize_json(child, feed, min_key_chars, path + [key], leaves, arrays, composites)
+        key = next_json_key(feed, used, min_key_chars, key_words)
+        v = materialize_json(child, feed, min_key_chars, path + [key], leaves, arrays, composites, key_words)
         d[key] = v
         if child.kind in ('text', 'int', 'bool', 'null'):
             leaves.append((path + [key], v))
@@ -352,12 +424,12 @@ def materialize_json(
     return d
 
 
-def build_json_value(node: JsonNodeSpec, feed: WordFeed, min_key_chars: int):
+def build_json_value(node: JsonNodeSpec, feed: WordFeed, min_key_chars: int, key_words: int = 1):
     """Convenience wrapper returning ``(value, leaves, arrays, composites)``."""
     leaves: List[Tuple[List, object]] = []
     arrays: List[Tuple[List, list]] = []
     composites: List[Tuple[List, object]] = []
-    value = materialize_json(node, feed, min_key_chars, [], leaves, arrays, composites)
+    value = materialize_json(node, feed, min_key_chars, [], leaves, arrays, composites, key_words)
     return value, leaves, arrays, composites
 
 

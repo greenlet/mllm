@@ -25,7 +25,7 @@ from transformers import PreTrainedTokenizer
 from mllm.data.utils import TokensSubsetV2
 from mllm.train.extraction_common import (
     BaseRecallDataset, WordFeed, assemble_subset, create_recall_dataloader,
-    dec_end_token_id, enc_to_dec, make_pool, word_feed_from_text,
+    dec_end_token_id, enc_to_dec, make_pool, sanitize_text, word_feed_from_text,
 )
 
 
@@ -37,6 +37,10 @@ class KeyValRecallCfg:
     # Value length in *words* (a value is 1..value_max_words consecutive real words).
     value_min_words: int = 1
     value_max_words: int = 3
+    # Key length in *words*. Multi-word keys stay distinctive so a frequent
+    # stopword (``is`` / ``in`` / ``the``) cannot collide across many pairs.
+    key_min_words: int = 3
+    key_max_words: int = 4
     # Minimum decoded length (chars) for a token-run to qualify as a key word.
     min_key_chars: int = 2
     # Probability of emitting a composite (whole-record dump) target.
@@ -55,6 +59,7 @@ class KeyValSpec:
     kv_sep_idx: int
     pair_sep_idx: int
     value_word_counts: List[int]
+    key_word_counts: List[int]
     query_pair_idx: int
     # None -> single-value target; 'record' -> whole-record composite target.
     composite: Optional[str] = None
@@ -84,6 +89,9 @@ class KeyValRecallTokenizer:
         self.pair_sep_choices = [
             self.tkz_enc(s, add_special_tokens=False).input_ids for s in (';', ' ;', ' .', ' |')
         ]
+        # Quote token(s) (encoder vocab) wrapping every key and value so their
+        # boundaries are unambiguous: ``"key" : "value"``.
+        self.quote = self.tkz_enc('"', add_special_tokens=False).input_ids
 
         # Decoder-vocab prompt template: 'Key: "<key>". Retrieve its value.'
         td = self.tkz_dec
@@ -112,6 +120,10 @@ class KeyValRecallTokenizer:
                 int(rng.integers(cfg.value_min_words, cfg.value_max_words + 1))
                 for _ in range(n_pairs)
             ],
+            key_word_counts=[
+                int(rng.integers(cfg.key_min_words, cfg.key_max_words + 1))
+                for _ in range(n_pairs)
+            ],
             query_pair_idx=int(rng.integers(n_pairs)),
             composite=composite,
         )
@@ -122,40 +134,53 @@ class KeyValRecallTokenizer:
         budget = self.max_len - 2  # reserve CLS + SEP
         kv_sep = self.kv_sep_choices[spec.kv_sep_idx]
         pair_sep = self.pair_sep_choices[spec.pair_sep_idx]
+        q = self.quote
+        quote_len = 4 * len(q)  # two quotes around the key + two around the value
 
-        pairs: List[tuple] = []  # (key_ids, value_ids)
+        pairs: List[tuple] = []  # (key_ids, key_text, value_ids)
         used_len = 0
         used_keys: set = set()
         for p in range(spec.n_pairs):
-            key_ids, _ = feed.next_distinct_word(used_keys, is_valid=self._is_key_word)
-            c = spec.value_word_counts[p] if p < len(spec.value_word_counts) else cfg.value_min_words
-            value_ids, _ = feed.next_span(c)
+            kc = spec.key_word_counts[p] if p < len(spec.key_word_counts) else cfg.key_min_words
+            _, key_text = feed.next_distinct_phrase(kc, used_keys, is_valid=self._is_key_word)
+            key_text = sanitize_text(key_text)
+            key_ids = self.tkz_enc(key_text, add_special_tokens=False).input_ids
 
-            add_len = len(key_ids) + len(kv_sep) + len(value_ids) + (len(pair_sep) if pairs else 0)
+            c = spec.value_word_counts[p] if p < len(spec.value_word_counts) else cfg.value_min_words
+            _, value_text = feed.next_span(c)
+            value_text = sanitize_text(value_text)
+            value_ids = self.tkz_enc(value_text, add_special_tokens=False).input_ids
+            if not key_ids or not value_ids:
+                continue
+
+            add_len = quote_len + len(key_ids) + len(kv_sep) + len(value_ids) + (len(pair_sep) if pairs else 0)
             if pairs and used_len + add_len > budget:
                 break
-            if not pairs and len(key_ids) + len(kv_sep) + len(value_ids) > budget:
-                keep = max(1, budget - len(key_ids) - len(kv_sep))
+            if not pairs and quote_len + len(key_ids) + len(kv_sep) + len(value_ids) > budget:
+                keep = max(1, budget - quote_len - len(key_ids) - len(kv_sep))
                 value_ids = value_ids[:keep]
-                add_len = len(key_ids) + len(kv_sep) + len(value_ids)
-            pairs.append((key_ids, value_ids))
+                add_len = quote_len + len(key_ids) + len(kv_sep) + len(value_ids)
+            pairs.append((key_ids, key_text, value_ids))
             used_len += add_len
 
-        # Serialize record (encoder vocab): k1 sep v1 PAIRSEP k2 sep v2 ...
+        # Serialize record (encoder vocab): "k1" sep "v1" PAIRSEP "k2" sep "v2" ...
         record: List[int] = []
-        for i, (k, v) in enumerate(pairs):
+        for i, (k, _kt, v) in enumerate(pairs):
             if i > 0:
                 record.extend(pair_sep)
+            record.extend(q)
             record.extend(k)
+            record.extend(q)
             record.extend(kv_sep)
+            record.extend(q)
             record.extend(v)
+            record.extend(q)
         record = record[:budget]
 
         # Queried pair (clamped: budget may have dropped trailing pairs).
         qi = spec.query_pair_idx % len(pairs)
-        key_ids_q, value_ids_q = pairs[qi]
-        key_text = self.tkz_enc.decode(key_ids_q, skip_special_tokens=True)
-        key_dec = self.tkz_dec(key_text, add_special_tokens=False).input_ids
+        _key_ids_q, key_text_q, value_ids_q = pairs[qi]
+        key_dec = self.tkz_dec(key_text_q, add_special_tokens=False).input_ids
 
         if spec.composite == 'record':
             prompt_toks = list(self.prompt_record)
@@ -183,7 +208,7 @@ class KeyValRecallTokenizer:
 
     # --- wrapper -------------------------------------------------------------
     def build(self, text: str) -> TokensSubsetV2:
-        feed, ids_src = word_feed_from_text(text, self.tkz_enc, self.pool)
+        feed, ids_src = word_feed_from_text(text, self.tkz_enc, self.pool, rng=self.rng)
         spec = self.sample_spec()
         return self.realize(spec, feed, ids_src=ids_src)
 

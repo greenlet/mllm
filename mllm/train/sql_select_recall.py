@@ -38,6 +38,10 @@ class SqlSelectRecallCfg:
     max_cols: int = 5
     value_min_words: int = 1
     value_max_words: int = 3
+    # Column-name length in *words*. Multi-word names stay distinctive so a
+    # frequent stopword cannot collide across columns / queries.
+    name_min_words: int = 3
+    name_max_words: int = 4
     numeric_col_prob: float = 0.45
     # Probability of Tier-C aggregate queries.
     transform_prob: float = 0.30
@@ -62,6 +66,7 @@ class SqlSpec:
     col_types: List[str]              # col_types[0] == 'num' (the id column)
     rows: List[List[SqlCellSpec]]     # per row: cells for cols[1:]
     transform: bool
+    name_words: int                   # words per (non-id) column name
     query_row_idx: int
     query_col_idx: int                # modular into cols[1:]
     e_phrasing: int                   # Tier-E phrasing: 0 SQL / 1 NL
@@ -102,24 +107,34 @@ class SqlSelectRecallTokenizer:
     def _is_col_name(self, name: str) -> bool:
         return len(name) >= self.cfg.min_col_chars and any(c.isalpha() for c in name)
 
-    def _next_col_name(self, feed: WordFeed, used: set) -> str:
-        for _ in range(64):
-            _, txt = feed.next_word()
-            c = self._normalize_name(txt)
-            if self._is_col_name(c) and c not in used:
-                used.add(c)
-                return c
-        for _ in range(256):
-            tid = feed.next_pool_token()
-            c = self._normalize_name(self.tkz_enc.decode([tid], skip_special_tokens=True))
-            if not self._is_col_name(c):
-                c = f'c_{tid}'
-            if c not in used:
-                used.add(c)
-                return c
-        c = f'c_{len(used)}'
-        used.add(c)
-        return c
+    def _next_col_name(self, feed: WordFeed, used: set, n_words: int = 1) -> str:
+        parts: List[str] = []
+        for _ in range(max(1, n_words)):
+            part = None
+            for _ in range(64):
+                _, txt = feed.next_word()
+                c = self._normalize_name(txt)
+                if self._is_col_name(c):
+                    part = c
+                    break
+            if part is None:
+                for _ in range(256):
+                    tid = feed.next_pool_token()
+                    c = self._normalize_name(self.tkz_enc.decode([tid], skip_special_tokens=True))
+                    if self._is_col_name(c):
+                        part = c
+                        break
+                if part is None:
+                    part = f'c_{len(used)}'
+            parts.append(part)
+        name = '_'.join(parts)
+        if name in used:
+            suffix = 1
+            while f'{name}_{suffix}' in used:
+                suffix += 1
+            name = f'{name}_{suffix}'
+        used.add(name)
+        return name
 
     # --- random: spec sampling ----------------------------------------------
     def sample_spec(self) -> SqlSpec:
@@ -145,6 +160,7 @@ class SqlSelectRecallTokenizer:
             col_types=col_types,
             rows=rows,
             transform=float(rng.random()) < cfg.transform_prob,
+            name_words=int(rng.integers(cfg.name_min_words, cfg.name_max_words + 1)),
             query_row_idx=int(rng.integers(1 << 30)),
             query_col_idx=int(rng.integers(1 << 30)),
             e_phrasing=int(rng.integers(2)),
@@ -195,7 +211,7 @@ class SqlSelectRecallTokenizer:
         used = {'id'}
         cols = ['id']
         for _ in range(len(spec.col_types) - 1):
-            cols.append(self._next_col_name(feed, used))
+            cols.append(self._next_col_name(feed, used, spec.name_words))
 
         rows: List[dict] = []
         for i, rowspec in enumerate(spec.rows):
@@ -237,7 +253,7 @@ class SqlSelectRecallTokenizer:
 
     # --- wrapper -------------------------------------------------------------
     def build(self, text: str) -> TokensSubsetV2:
-        feed, ids_src = word_feed_from_text(text, self.tkz_enc, self.pool)
+        feed, ids_src = word_feed_from_text(text, self.tkz_enc, self.pool, rng=self.rng)
         return build_to_budget(
             sample_spec=self.sample_spec,
             realize=self.realize,

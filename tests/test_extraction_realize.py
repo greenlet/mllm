@@ -24,7 +24,9 @@ import pytest
 from transformers import AutoTokenizer
 
 from mllm.data.utils import RandomInputTokenizerV2, CiteSpecV2
-from mllm.train.extraction_common import WordFeed, word_feed_from_text, make_pool
+from mllm.train.extraction_common import (
+    WordFeed, word_feed_from_text, make_pool, sanitize_text, SANITIZE_DROP_CHARS,
+)
 from mllm.train.mask_utils import MaskCfg
 
 from mllm.train.key_val_recall import KeyValRecallTokenizer, KeyValRecallCfg, KeyValSpec
@@ -136,7 +138,7 @@ def test_keyval_realize_exact_value(tkz):
     feed = _make_feed(tkz, ['capital', 'paris', 'river', 'amazon'])
     spec = KeyValSpec(
         n_pairs=2, kv_sep_idx=0, pair_sep_idx=0,
-        value_word_counts=[1, 1], query_pair_idx=0, composite=None,
+        value_word_counts=[1, 1], key_word_counts=[1, 1], query_pair_idx=0, composite=None,
     )
     sub = tk.realize(spec, feed, ids_src=None)
     # Query pair 0 -> value 'paris'.
@@ -145,6 +147,8 @@ def test_keyval_realize_exact_value(tkz):
     rec_txt = _dec(tkz, sub.toks_src)
     for w in ('capital', 'paris', 'river', 'amazon'):
         assert w in rec_txt
+    # Keys and values are wrapped in quotes in the record.
+    assert '"' in rec_txt
 
 
 def test_keyval_realize_second_pair(tkz):
@@ -152,10 +156,25 @@ def test_keyval_realize_second_pair(tkz):
     feed = _make_feed(tkz, ['capital', 'paris', 'river', 'amazon'])
     spec = KeyValSpec(
         n_pairs=2, kv_sep_idx=0, pair_sep_idx=0,
-        value_word_counts=[1, 1], query_pair_idx=1, composite=None,
+        value_word_counts=[1, 1], key_word_counts=[1, 1], query_pair_idx=1, composite=None,
     )
     sub = tk.realize(spec, feed, ids_src=None)
     assert _dec(tkz, sub.toks_cite) == 'amazon'
+
+
+def test_keyval_realize_multiword_key(tkz):
+    """A multi-word key is queried verbatim and resolves to its paired value."""
+    tk = _keyval_builder(tkz)
+    feed = _make_feed(tkz, ['river', 'severn', 'longest', 'britain', 'capital', 'paris'])
+    spec = KeyValSpec(
+        n_pairs=2, kv_sep_idx=0, pair_sep_idx=0,
+        value_word_counts=[1, 1], key_word_counts=[3, 1], query_pair_idx=0, composite=None,
+    )
+    sub = tk.realize(spec, feed, ids_src=None)
+    # Pair 0: key 'river severn longest' -> value 'britain'.
+    assert _dec(tkz, sub.toks_cite) == 'britain'
+    # The 3-word key phrase appears verbatim in the prompt.
+    assert 'river severn longest' in sub.prompt
 
 
 def test_keyval_composite_record_is_grounded(tkz):
@@ -163,7 +182,7 @@ def test_keyval_composite_record_is_grounded(tkz):
     feed = _make_feed(tkz, ['capital', 'paris', 'river', 'amazon'])
     spec = KeyValSpec(
         n_pairs=2, kv_sep_idx=0, pair_sep_idx=0,
-        value_word_counts=[1, 1], query_pair_idx=0, composite='record',
+        value_word_counts=[1, 1], key_word_counts=[1, 1], query_pair_idx=0, composite='record',
     )
     sub = tk.realize(spec, feed, ids_src=None)
     # Composite target == the whole record (verbatim, grounded).
@@ -174,7 +193,7 @@ def test_keyval_realize_is_pure(tkz):
     tk = _keyval_builder(tkz)
     spec = KeyValSpec(
         n_pairs=3, kv_sep_idx=1, pair_sep_idx=2,
-        value_word_counts=[2, 1, 3], query_pair_idx=2, composite=None,
+        value_word_counts=[2, 1, 3], key_word_counts=[2, 1, 2], query_pair_idx=2, composite=None,
     )
     words = ['capital', 'paris', 'france', 'river', 'amazon', 'mountain', 'andes', 'tall', 'peak']
     s1 = tk.realize(spec, _make_feed(tkz, words), ids_src=None)
@@ -182,6 +201,36 @@ def test_keyval_realize_is_pure(tkz):
     assert s1.toks_src == s2.toks_src
     assert s1.toks_cite == s2.toks_cite
     assert s1.toks_prompt == s2.toks_prompt
+
+
+def _is_contiguous_sublist(needle, haystack) -> bool:
+    n = len(needle)
+    if n == 0:
+        return False
+    return any(haystack[i:i + n] == needle for i in range(len(haystack) - n + 1))
+
+
+def test_keyval_target_is_grounded_and_clean(tkz):
+    """End-to-end build: the (quoted) value target is a verbatim token sub-run of
+    the record, and the decoded value carries no structural delimiter chars."""
+    tk = KeyValRecallTokenizer(
+        tkz, max_len=128, cfg=KeyValRecallCfg(min_pairs=4, max_pairs=6), tkz_dec=tkz, seed=0)
+    sub = tk.build(RICH_TEXT)
+    # Needle-in-context: the target value ids appear contiguously in the record.
+    assert _is_contiguous_sublist(sub.toks_cite, sub.toks_inp)
+    # The decoded value contains none of the stripped delimiter / quote chars.
+    val_txt = tkz.decode(sub.toks_cite, skip_special_tokens=True)
+    assert not any(ch in val_txt for ch in SANITIZE_DROP_CHARS)
+
+
+def test_keyval_build_is_seed_reproducible(tkz):
+    """The global word shuffle is driven by the builder seed, so two builders with
+    the same seed produce byte-identical records for the same text."""
+    a = KeyValRecallTokenizer(tkz, max_len=128, cfg=KeyValRecallCfg(), tkz_dec=tkz, seed=42).build(RICH_TEXT)
+    b = KeyValRecallTokenizer(tkz, max_len=128, cfg=KeyValRecallCfg(), tkz_dec=tkz, seed=42).build(RICH_TEXT)
+    assert a.toks_inp == b.toks_inp
+    assert a.toks_cite == b.toks_cite
+    assert a.toks_prompt == b.toks_prompt
 
 
 # ===========================================================================
