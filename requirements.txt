@@ -25,8 +25,8 @@ scipy
 tensorboard
 # torch==2.2.2
 # torchtext==0.17.2
-torch==2.3.0
-torchtext==0.18.0
+#torch==2.3.0
+#torchtext==0.18.0
 torchvision
 transformers<5.0.0
 tqdm
