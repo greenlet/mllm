@@ -118,6 +118,8 @@ freeze_encoder=false
 # use_sep=true
 use_sep=false
 prompt_all=false
+# prompt_first: when true, prompt goes BEFORE context embeddings: [prompt, (SEP), ctx_embs, target]
+prompt_first=false
 emb_exp_rate=4
 emb_win_min_size=10
 emb_win_max_size=10
@@ -259,6 +261,7 @@ python s_03_11_train_mixed_decoder.py \
   --freeze-encoder $freeze_encoder \
   --use-sep $use_sep \
   --prompt-all $prompt_all \
+  --prompt-first $prompt_first \
   --decoder-only $decoder_only \
   --emb-exp-rate $emb_exp_rate \
   --emb-win-min-size $emb_win_min_size \

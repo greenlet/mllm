@@ -422,11 +422,17 @@ class MixedDecoder(nn.Module):
     ) -> Tuple[Tensor, Tensor, Tensor, int]:
         """Build the concatenated decoder input sequence.
 
-        Layout (use_sep=True):
+        Layout (prompt_first=False, use_sep=True):
             [CtxEmb_1, ..., CtxEmb_N, SEP_emb, PromptTokEmb_1, ..., PromptTokEmb_P, TargetTokEmb_1, ..., TargetTokEmb_{T-1}]
 
-        Layout (use_sep=False):
+        Layout (prompt_first=False, use_sep=False):
             [CtxEmb_1, ..., CtxEmb_N, PromptTokEmb_1, ..., PromptTokEmb_P, TargetTokEmb_1, ..., TargetTokEmb_{T-1}]
+
+        Layout (prompt_first=True, use_sep=True):
+            [PromptTokEmb_1, ..., PromptTokEmb_P, SEP_emb, CtxEmb_1, ..., CtxEmb_N, TargetTokEmb_1, ..., TargetTokEmb_{T-1}]
+
+        Layout (prompt_first=True, use_sep=False):
+            [PromptTokEmb_1, ..., PromptTokEmb_P, CtxEmb_1, ..., CtxEmb_N, TargetTokEmb_1, ..., TargetTokEmb_{T-1}]
 
         Args:
             ctx_embs: (batch_size, n_ctx, d_model) - CLS embeddings from encoder
@@ -449,25 +455,41 @@ class MixedDecoder(nn.Module):
         if self.enc_proj is not None:
             ctx_embs = self.enc_proj(ctx_embs)
 
-        parts_embs = [ctx_embs]
-        parts_mask = [torch.ones((batch_size, n_ctx), dtype=torch.long, device=device)]
-        prefix_len = n_ctx
+        # Context-embedding block.
+        ctx_embs_part = [ctx_embs]
+        ctx_mask_part = [torch.ones((batch_size, n_ctx), dtype=torch.long, device=device)]
+        ctx_prefix_len = n_ctx
 
-        # Optional SEP between context and prompt
+        # Optional SEP delimiter; always sits between the context and prompt blocks.
+        sep_embs_part: list = []
+        sep_mask_part: list = []
+        sep_prefix_len = 0
         if self.cfg.use_sep:
             sep_tok = torch.full((batch_size, 1), self.sep_token_id, dtype=torch.long, device=device)
             sep_emb = self.word_embeddings(sep_tok)  # (batch_size, 1, d_dec)
-            parts_embs.append(sep_emb)
-            parts_mask.append(torch.ones((batch_size, 1), dtype=torch.long, device=device))
-            prefix_len += 1
+            sep_embs_part.append(sep_emb)
+            sep_mask_part.append(torch.ones((batch_size, 1), dtype=torch.long, device=device))
+            sep_prefix_len = 1
 
-        # Prompt token embeddings
+        # Prompt token embeddings.
         prompt_embs = self.word_embeddings(prompt_toks)  # (batch_size, prompt_len, d_dec)
         prompt_len = prompt_toks.shape[1]
+        prompt_embs_part: list = []
+        prompt_mask_part: list = []
+        prompt_prefix_len = 0
         if include_prompt:
-            parts_embs.append(prompt_embs)
-            parts_mask.append(prompt_att_mask)
-            prefix_len += prompt_len
+            prompt_embs_part.append(prompt_embs)
+            prompt_mask_part.append(prompt_att_mask)
+            prompt_prefix_len = prompt_len
+
+        # Order the prompt and context blocks (SEP stays between them); target is appended last.
+        if self.cfg.prompt_first:
+            parts_embs = prompt_embs_part + sep_embs_part + ctx_embs_part
+            parts_mask = prompt_mask_part + sep_mask_part + ctx_mask_part
+        else:
+            parts_embs = ctx_embs_part + sep_embs_part + prompt_embs_part
+            parts_mask = ctx_mask_part + sep_mask_part + prompt_mask_part
+        prefix_len = ctx_prefix_len + sep_prefix_len + prompt_prefix_len
 
         # Target token embeddings (shifted: input is target[:-1], labels are target)
         target_inp_toks = target_toks[:, :-1]  # (batch_size, target_len - 1)
@@ -476,7 +498,8 @@ class MixedDecoder(nn.Module):
         parts_embs.append(target_inp_embs)
         parts_mask.append(target_inp_mask)
 
-        target_start_idx = prefix_len - 1  # Target starts right after the prompt (or SEP if used). The first target token corresponds to the prediction at this position.
+        target_start_idx = prefix_len - 1  # Target starts right after the prefix (ctx + sep + prompt, in either order). The first target token corresponds to the prediction at this position.
+
 
         # Deterministically truncate the target if the combined sequence would
         # exceed max_seq_len. We truncate the *target* (not the context/prompt)
@@ -698,25 +721,39 @@ class MixedDecoder(nn.Module):
         labels = torch.full((batch_size, max_total_len), -100, dtype=torch.long, device=device)
 
         for i in range(batch_size):
-            pos = 0
             cl = ctx_lens[i]
-            if cl > 0:
-                ctx_embs_i = self.word_embeddings(ctx_tok_ids_list[i].unsqueeze(0))[0]
-                input_embs[i, :cl] = ctx_embs_i
-                attention_mask[i, :cl] = 1
-            pos = cl
-
-            if self.cfg.use_sep:
-                input_embs[i, pos:pos + 1] = sep_emb[0]
-                attention_mask[i, pos:pos + 1] = 1
-                pos += 1
-
             pl = prompt_lengths[i]
-            input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
-            attention_mask[i, pos:pos + pl] = 1
+            ctx_embs_i = self.word_embeddings(ctx_tok_ids_list[i].unsqueeze(0))[0] if cl > 0 else None
 
-            target_start_i = pos + pl - 1  # last prompt pos predicts first target token
-            pos += pl
+            pos = 0
+            if self.cfg.prompt_first:
+                if pl > 0:
+                    input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
+                    attention_mask[i, pos:pos + pl] = 1
+                    pos += pl
+                if self.cfg.use_sep:
+                    input_embs[i, pos:pos + 1] = sep_emb[0]
+                    attention_mask[i, pos:pos + 1] = 1
+                    pos += 1
+                if cl > 0:
+                    input_embs[i, pos:pos + cl] = ctx_embs_i
+                    attention_mask[i, pos:pos + cl] = 1
+                    pos += cl
+            else:
+                if cl > 0:
+                    input_embs[i, pos:pos + cl] = ctx_embs_i
+                    attention_mask[i, pos:pos + cl] = 1
+                    pos += cl
+                if self.cfg.use_sep:
+                    input_embs[i, pos:pos + 1] = sep_emb[0]
+                    attention_mask[i, pos:pos + 1] = 1
+                    pos += 1
+                if pl > 0:
+                    input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
+                    attention_mask[i, pos:pos + pl] = 1
+                    pos += pl
+
+            target_start_i = pos - 1  # last prefix pos predicts first target token
 
             til = max(target_lengths[i] - 1, 0)
             if til > 0:
@@ -1028,27 +1065,41 @@ class MixedDecoder(nn.Module):
         labels = torch.full((batch_size, max_total_len), -100, dtype=torch.long, device=device)
 
         for i in range(batch_size):
+            pl = stream_prompt_lens[i]  # prompt length in stream (0 when IE omits the prompt)
             pos = 0
-            # Context embeddings
-            input_embs[i, :n_ctx] = ctx_embs[i]
-            attention_mask[i, :n_ctx] = 1
-            pos = n_ctx
-
-            # Optional SEP
-            if self.cfg.use_sep:
-                input_embs[i, pos:pos + 1] = sep_emb[0]
-                attention_mask[i, pos:pos + 1] = 1
-                pos += 1
-
-            # Prompt tokens (actual length, no padding); optionally omitted from the stream
-            pl = stream_prompt_lens[i]
-            if pl > 0:
-                input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
-                attention_mask[i, pos:pos + pl] = 1
+            if self.cfg.prompt_first:
+                # Prompt tokens (actual length, no padding); optionally omitted from the stream
+                if pl > 0:
+                    input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
+                    attention_mask[i, pos:pos + pl] = 1
+                    pos += pl
+                # Optional SEP
+                if self.cfg.use_sep:
+                    input_embs[i, pos:pos + 1] = sep_emb[0]
+                    attention_mask[i, pos:pos + 1] = 1
+                    pos += 1
+                # Context embeddings
+                input_embs[i, pos:pos + n_ctx] = ctx_embs[i]
+                attention_mask[i, pos:pos + n_ctx] = 1
+                pos += n_ctx
+            else:
+                # Context embeddings
+                input_embs[i, pos:pos + n_ctx] = ctx_embs[i]
+                attention_mask[i, pos:pos + n_ctx] = 1
+                pos += n_ctx
+                # Optional SEP
+                if self.cfg.use_sep:
+                    input_embs[i, pos:pos + 1] = sep_emb[0]
+                    attention_mask[i, pos:pos + 1] = 1
+                    pos += 1
+                # Prompt tokens (actual length, no padding); optionally omitted from the stream
+                if pl > 0:
+                    input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
+                    attention_mask[i, pos:pos + pl] = 1
+                    pos += pl
 
             # The last prefix position predicts the first answer token.
-            target_start_i = pos + pl - 1
-            pos += pl
+            target_start_i = pos - 1
 
             # Target input tokens (shifted: first ans_len-1 tokens)
             til = max(ans_lens[i] - 1, 0)
@@ -1160,25 +1211,38 @@ class MixedDecoder(nn.Module):
         labels = torch.full((batch_size, max_total_len), -100, dtype=torch.long, device=device)
 
         for i in range(batch_size):
-            pos = 0
-            # Context embeddings
-            input_embs[i, :n_ctx] = ctx_embs[i]
-            attention_mask[i, :n_ctx] = 1
-            pos = n_ctx
-
-            # Optional SEP
-            if self.cfg.use_sep:
-                input_embs[i, pos:pos + 1] = sep_emb[0]
-                attention_mask[i, pos:pos + 1] = 1
-                pos += 1
-
-            # Prompt tokens
             pl = prompt_lens[i]
-            input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
-            attention_mask[i, pos:pos + pl] = 1
+            pos = 0
+            if self.cfg.prompt_first:
+                # Prompt tokens
+                input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
+                attention_mask[i, pos:pos + pl] = 1
+                pos += pl
+                # Optional SEP
+                if self.cfg.use_sep:
+                    input_embs[i, pos:pos + 1] = sep_emb[0]
+                    attention_mask[i, pos:pos + 1] = 1
+                    pos += 1
+                # Context embeddings
+                input_embs[i, pos:pos + n_ctx] = ctx_embs[i]
+                attention_mask[i, pos:pos + n_ctx] = 1
+                pos += n_ctx
+            else:
+                # Context embeddings
+                input_embs[i, pos:pos + n_ctx] = ctx_embs[i]
+                attention_mask[i, pos:pos + n_ctx] = 1
+                pos += n_ctx
+                # Optional SEP
+                if self.cfg.use_sep:
+                    input_embs[i, pos:pos + 1] = sep_emb[0]
+                    attention_mask[i, pos:pos + 1] = 1
+                    pos += 1
+                # Prompt tokens
+                input_embs[i, pos:pos + pl] = prompt_embs_all[i, :pl]
+                attention_mask[i, pos:pos + pl] = 1
+                pos += pl
 
-            target_start_i = pos + pl - 1  # last prompt pos predicts first target token
-            pos += pl
+            target_start_i = pos - 1  # last prefix pos predicts first target token
 
             # Target input tokens (shifted: first target_len-1 tokens)
             til = max(target_lens[i] - 1, 0)

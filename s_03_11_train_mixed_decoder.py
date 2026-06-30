@@ -58,6 +58,8 @@ from mllm.utils.utils import instantiate_torch_lr_scheduler, instantiate_torch_o
 freeze_encoder_ARG = '--freeze-encoder', 'Freeze encoder weights during training'
 use_sep_ARG = '--use-sep', 'Insert SEP/EOS embedding between context embeddings and prompt tokens'
 prompt_all_ARG = '--prompt-all', 'Target is whole input chunk (true) or citation only (false)'
+prompt_first_ARG = '--prompt-first', \
+    'Place prompt tokens BEFORE context embeddings in the decoder stream: [prompt, (SEP), ctx_embs, target] (false = legacy [ctx_embs, (SEP), prompt, target]).'
 decoder_only_ARG = '--decoder-only', 'Train decoder without encoder (raw context tokens fed directly to decoder, encoder is not instantiated).'
 use_interactive_extractor_ARG = '--use-interactive-extractor', \
     'Enable the InteractiveExtractor query-conditioned soft-token bridge (replaces emb_exp).'
@@ -392,6 +394,11 @@ class ArgsMixedDecoderTrain(BaseModel):
     @property
     def prompt_all(self) -> bool:
         return is_arg_true(prompt_all_ARG[0], self.prompt_all_STR)
+
+    prompt_first_STR: str = create_bool_str_field(*prompt_first_ARG)
+    @property
+    def prompt_first(self) -> bool:
+        return is_arg_true(prompt_first_ARG[0], self.prompt_first_STR)
 
     decoder_only_STR: str = create_bool_str_field(*decoder_only_ARG)
     @property
@@ -884,7 +891,8 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         model_cfg, pretrained_model_name=args.bert_model_name, emb_type=args.bert_emb_type,
         inp_len=args.inp_len, decoder_type=decoder_type, decoder_model_name=decoder_model_name,
         decoder_dtype=decoder_dtype,
-        max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, emb_exp_rate=args.emb_exp_rate,
+        max_seq_len=args.max_seq_len, use_sep=args.use_sep, prompt_all=args.prompt_all, prompt_first=args.prompt_first,
+        emb_exp_rate=args.emb_exp_rate,
         emb_win_min_size=args.emb_win_min_size, emb_win_max_size=args.emb_win_max_size,
         min_next_toks=args.min_next_toks, train_ds_types=args.train_ds_types,
         decoder_only=args.decoder_only,

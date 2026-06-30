@@ -2111,6 +2111,10 @@ class MixedDecoderCfg(BaseModel):
     max_seq_len: int = 384
     use_sep: bool = True
     prompt_all: bool = True
+    # When True the prompt tokens are placed BEFORE the context embeddings in the
+    # decoder causal stream: [prompt, (SEP), ctx_embs, target]. When False (default)
+    # the legacy layout [ctx_embs, (SEP), prompt, target] is used.
+    prompt_first: bool = False
     emb_exp_rate: int = 0
     emb_win_min_size: int = 0
     emb_win_max_size: int = 0
@@ -2283,7 +2287,7 @@ def create_mixed_decoder_cfg(
         pretrained_model_name: str = 'bert-base-uncased', tokenizer_name: str = '', emb_type: BertEmbType = BertEmbType.Cls,
         inp_len: int = 128, decoder_type: MixedDecoderType = MixedDecoderType.Gpt2, decoder_model_name: str = 'gpt2',
         decoder_dtype: DecoderDtype = DecoderDtype.Fp32,
-        max_seq_len: int = 384, use_sep: bool = True, prompt_all: bool = True, emb_exp_rate: int = 0,
+        max_seq_len: int = 384, use_sep: bool = True, prompt_all: bool = True, prompt_first: bool = False, emb_exp_rate: int = 0,
         emb_win_min_size: int = 0, emb_win_max_size: int = 0, min_next_toks: int = 64,
         train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite,
         train_ds_types: Optional[list[MixedDecoderDsType]] = None,
@@ -2352,6 +2356,7 @@ def create_mixed_decoder_cfg(
         max_seq_len=max_seq_len,
         use_sep=use_sep,
         prompt_all=prompt_all,
+        prompt_first=prompt_first,
         emb_exp_rate=emb_exp_rate,
         emb_win_min_size=emb_win_min_size,
         emb_win_max_size=emb_win_max_size,
@@ -2380,7 +2385,7 @@ def copy_override_mixed_decoder_cfg(
         cfg: MixedDecoderCfg, pretrained_model_name: Optional[str] = None, emb_type: Optional[BertEmbType] = None,
         inp_len: Optional[int] = None, decoder_type: Optional[MixedDecoderType] = None, decoder_model_name: Optional[str] = None,
         decoder_dtype: Optional[DecoderDtype] = None,
-        max_seq_len: Optional[int] = None, use_sep: Optional[bool] = None, prompt_all: Optional[bool] = None, emb_exp_rate: Optional[int] = None,
+        max_seq_len: Optional[int] = None, use_sep: Optional[bool] = None, prompt_all: Optional[bool] = None, prompt_first: Optional[bool] = None, emb_exp_rate: Optional[int] = None,
         emb_win_min_size: Optional[int] = None, emb_win_max_size: Optional[int] = None, min_next_toks: Optional[int] = None,
         train_ds_type: Optional[MixedDecoderDsType] = None,
         train_ds_types: Optional[list[MixedDecoderDsType]] = None,
@@ -2410,6 +2415,7 @@ def copy_override_mixed_decoder_cfg(
     max_seq_len = coalesce(max_seq_len, cfg.max_seq_len)
     use_sep = coalesce(use_sep, cfg.use_sep)
     prompt_all = coalesce(prompt_all, cfg.prompt_all)
+    prompt_first = coalesce(prompt_first, cfg.prompt_first)
     emb_exp_rate = coalesce(emb_exp_rate, cfg.emb_exp_rate)
     emb_win_min_size = coalesce(emb_win_min_size, cfg.emb_win_min_size)
     emb_win_max_size = coalesce(emb_win_max_size, cfg.emb_win_max_size)
@@ -2450,7 +2456,7 @@ def copy_override_mixed_decoder_cfg(
         pretrained_model_name=pretrained_model_name, emb_type=emb_type, inp_len=inp_len,
         decoder_type=decoder_type, decoder_model_name=decoder_model_name,
         decoder_dtype=decoder_dtype,
-        max_seq_len=max_seq_len, use_sep=use_sep, prompt_all=prompt_all, emb_exp_rate=emb_exp_rate,
+        max_seq_len=max_seq_len, use_sep=use_sep, prompt_all=prompt_all, prompt_first=prompt_first, emb_exp_rate=emb_exp_rate,
         emb_win_min_size=emb_win_min_size, emb_win_max_size=emb_win_max_size, min_next_toks=min_next_toks,
         train_ds_type=train_ds_type,
         train_ds_types=train_ds_types,
@@ -2501,6 +2507,8 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
         postfix_parts.append(f'dtype{model_cfg.decoder_dtype.value.capitalize()}')
     postfix_parts.append(bool_param_to_str('sep', model_cfg.use_sep))
     postfix_parts.append(bool_param_to_str('pall', model_cfg.prompt_all))
+    if model_cfg.prompt_first:
+        postfix_parts.append(bool_param_to_str('pfirst', model_cfg.prompt_first))
     if not model_cfg.decoder_only:
         if not model_cfg.use_interactive_extractor and model_cfg.emb_exp_rate > 0:
             postfix_parts.append(f'eer{model_cfg.emb_exp_rate}')
