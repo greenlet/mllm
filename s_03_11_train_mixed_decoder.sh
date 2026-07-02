@@ -119,7 +119,7 @@ freeze_encoder=false
 use_sep=false
 prompt_all=false
 # prompt_first: when true, prompt goes BEFORE context embeddings: [prompt, (SEP), ctx_embs, target]
-prompt_first=false
+prompt_first=true
 emb_exp_rate=4
 emb_win_min_size=10
 emb_win_max_size=10
@@ -128,7 +128,7 @@ emb_win_max_size=10
 # When use_interactive_extractor=true it replaces the plain emb_exp expansion:
 # each context embedding -> ie_exp_rate decoder-space slots that VISIT the prompt
 # through ie_num_layers attention blocks (ie_attn_type: cross|self).
-use_interactive_extractor=true
+use_interactive_extractor=false
 ie_exp_rate=4
 ie_num_layers=6
 ie_attn_type=self
@@ -162,7 +162,7 @@ pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbas
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260319_130017-pre_mixeddecoder20260316221645-bertbaseuncased-d768-embEncCls-inp128-decBertbaseuncased-msl384-sepT-pallF-eer4-ewn10x10-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs40
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260429_091845-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-msl384-sepF-pallF-eer4-ewn2x4-frzencF-dsCite-trn_lr5e-05_bs30
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260523_180218-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400-dtypeBf16-sepF-pallF-eer4-ewn2x6-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs20_attdp0.1
-pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260615_083942-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400-dtypeBf16-sepF-pallF-ewn10x10-ieSelf_eer4_nl6_nh8_mlp4.0-ieStrmF-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs20_attdp0.1/
+# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260615_083942-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400-dtypeBf16-sepF-pallF-ewn10x10-ieSelf_eer4_nl6_nh8_mlp4.0-ieStrmF-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs20_attdp0.1/
 # train_subdir=last
 
 # device=cpu
@@ -189,7 +189,7 @@ world_size=4
 
 
 learning_rate=0.00005
-# learning_rate=0.00001
+learning_rate=0.00001
 # If > 0, overrides the current learning rate by rebuilding optimizer and scheduler
 # from scratch (any restored optimizer/scheduler state from checkpoint is discarded).
 learning_rate_override=0

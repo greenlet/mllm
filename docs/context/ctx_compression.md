@@ -220,127 +220,178 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 **In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md)
 
 ### 7.1 This paper — LCLM
-- Li, McLeish, Chen, Kalra, Chen, Gazizov, Morisetty, Kailkhura, Menon, Liu, Bartoldson, Goldstein, Lotfi, Goldblum, Izmailov. *End-to-End Context Compression at Scale.* arXiv:2606.09659, 2026. ([paper][paper] · [code][code] · [models][hf])
+- [Li et al., *End-to-End Context Compression at Scale (LCLM)* (2026)][paper] — [code][code] · [models][hf]
 
 ### 7.2 KV-cache compression (baselines)
-- Li et al. *SnapKV: LLM Knows What You Are Looking For Before Generation.* NeurIPS 2024. arXiv:2404.14469. ([SnapKV][SnapKV])
-- Kim et al. *KVzip: Query-Agnostic KV Cache Compression with Context Reconstruction.* arXiv:2505.23416, 2025. ([KVzip][KVzip])
-- Kim et al. *Fast KVzip: Efficient and Accurate LLM Inference with Gated KV Eviction.* arXiv:2601.17668, 2026.
-- Devoto et al. *Expected Attention: KV Cache Compression by Estimating Attention from Future Queries.* arXiv:2510.00636, 2025. ([Expected Attention][ExpAttn])
-- Zweiger et al. *Fast KV Compaction via Attention Matching.* arXiv:2602.16284, 2026. ([Attention Matching][AM])
-- Hooper et al. *KVQuant: Towards 10 Million Context Length LLM Inference with KV Cache Quantization.* NeurIPS 2024. arXiv:2401.18079. ([KV cache][KVCache])
-- Eyuboglu et al. *Cartridges: Lightweight and General-Purpose Long Context Representations via Self-Study.* arXiv:2506.06266, 2025.
-- Synk et al. *Exploiting Sparsity for Long Context Inference: Million Token Contexts on Commodity GPUs.* arXiv:2502.06766, 2025.
+- [Li et al., *SnapKV: LLM Knows What You Are Looking For Before Generation* (2024)][SnapKV]
+- [Kim et al., *KVzip: Query-Agnostic KV Cache Compression with Context Reconstruction* (2025)][KVzip]
+- [Kim et al., *Fast KVzip: Efficient LLM Inference with Gated KV Eviction* (2026)][FastKVzip]
+- [Devoto et al., *Expected Attention: KV Cache Compression from Future Queries* (2025)][ExpAttn]
+- [Zweiger et al., *Fast KV Compaction via Attention Matching* (2026)][AM]
+- [Hooper et al., *KVQuant: 10M-Context Inference via KV Cache Quantization* (2024)][KVCache]
+- [Eyuboglu et al., *Cartridges: Long-Context Representations via Self-Study* (2025)][Cartridges]
+- [Synk et al., *Exploiting Sparsity for Long-Context Inference* (2025)][SparseLC]
 
 ### 7.3 Soft-token / encoder–decoder context compression
-- Ge et al. *In-context Autoencoder for Context Compression in a Large Language Model (ICAE).* arXiv:2307.06945, 2023. ([ICAE][ICAE])
-- Chevalier et al. *Adapting Language Models to Compress Contexts (AutoCompressor).* arXiv:2305.14788, 2023. ([AutoCompressor][AutoComp])
-- Mu, Li, Goodman. *Learning to Compress Prompts with Gist Tokens.* NeurIPS 2023. arXiv:2304.08467. ([Gisting][Gist])
-- Cheng et al. *xRAG: Extreme Context Compression for RAG with One Token.* NeurIPS 2024.
-- Yen et al. *Long-Context Language Modeling with Parallel Context Encoding (CEPE).* ACL 2024. ([CEPE][CEPE])
-- Lin et al. *REFRAG: Rethinking RAG-based Decoding.* arXiv:2509.01092, 2025. ([REFRAG][REFRAG])
-- Liao et al. *E2LLM: Encoder Elongated Large Language Models for Long-Context Understanding and Reasoning.* EMNLP 2025. ([E2LLM][E2LLM])
-- Dai et al. *Pretraining Context Compressor for LLMs with Embedding-Based Memory.* ACL 2025.
-- Li et al. *500xCompressor: Generalized Prompt Compression for LLMs.* ACL 2025.
-- Tang et al. *GMSA: Enhancing Context Compression via Group Merging and Layer Semantic Alignment.* arXiv:2505.12215, 2025.
-- Feldman & Artzi. *Simple Context Compression: Mean-Pooling and Multi-Ratio Training.* arXiv:2510.20797, 2025.
-- Pilchen et al. *ARC-Encoder: Learning Compressed Text Representations for Large Language Models.* arXiv:2510.20535, 2025.
-- Tan et al. *LLoCO: Learning Long Contexts Offline.* EMNLP 2024.
-- Li & Liang. *Prefix-Tuning: Optimizing Continuous Prompts for Generation.* arXiv:2101.00190, 2021. ([prefix-LM][PrefixLM])
+
+**Thread:** [Soft-token / encoder–decoder context compression](soft_token/soft_token.md) (Gist · ICAE · AutoCompressor · CEPE · xRAG · REFRAG · E2LLM · LCLM)
+
+- [Mu et al., *Learning to Compress Prompts with Gist Tokens* (2023)][Gist]
+- [Ge et al., *In-context Autoencoder for Context Compression (ICAE)* (2023)][ICAE]
+- [Chevalier et al., *Adapting LMs to Compress Contexts (AutoCompressor)* (2023)][AutoComp]
+- [Cheng et al., *xRAG: Extreme Context Compression for RAG with One Token* (2024)][xRAG]
+- [Yen et al., *Long-Context LM with Parallel Context Encoding (CEPE)* (2024)][CEPE]
+- [Lin et al., *REFRAG: Rethinking RAG-based Decoding* (2025)][REFRAG]
+- [Liao et al., *E2LLM: Encoder Elongated Large Language Models* (2025)][E2LLM]
+- [Dai et al., *Pretraining Context Compressor with Embedding-Based Memory* (2025)][PCC]
+- [Li et al., *500xCompressor: Generalized Prompt Compression* (2025)][C500x]
+- [Tang et al., *GMSA: Group Merging & Layer Semantic Alignment* (2025)][GMSA]
+- [Feldman & Artzi, *Simple Context Compression: Mean-Pooling & Multi-Ratio Training* (2025)][SimpleCC]
+- [Pilchen et al., *ARC-Encoder: Compressed Text Representations for LLMs* (2025)][ARCEnc]
+- [Tan et al., *LLoCO: Learning Long Contexts Offline* (2024)][LLoCO]
+- [Li & Liang, *Prefix-Tuning: Optimizing Continuous Prompts* (2021)][PrefixTuning]
 
 ### 7.4 Hard-token / prompt compression
-- Jiang et al. *LLMLingua: Compressing Prompts for Accelerated Inference of LLMs.* arXiv:2310.05736, 2023. ([LLMLingua][LLMLingua])
-- Jiang et al. *LongLLMLingua: Accelerating and Enhancing LLMs in Long Context Scenarios via Prompt Compression.* ACL 2024.
-- Li et al. *Compressing Context to Enhance Inference Efficiency of LLMs (Selective Context).* EMNLP 2023.
-- Chuang et al. *Learning to Compress Prompt in Natural Language Formats.* arXiv:2402.18700, 2024.
-- Yoon et al. *CompAct: Compressing Retrieved Documents Actively for Question Answering.* arXiv:2407.09014, 2024.
+- [Jiang et al., *LLMLingua: Compressing Prompts for Accelerated Inference* (2023)][LLMLingua]
+- [Jiang et al., *LongLLMLingua: Prompt Compression for Long-Context Scenarios* (2024)][LongLLMLingua]
+- [Li et al., *Compressing Context to Enhance Inference Efficiency (Selective Context)* (2023)][SelectiveCtx]
+- [Chuang et al., *Learning to Compress Prompt in Natural Language Formats* (2024)][NLPrompt]
+- [Yoon et al., *CompAct: Compressing Retrieved Documents Actively* (2024)][CompAct]
 
 ### 7.5 Backbone models & components
-- Yang et al. *Qwen3 Technical Report.* arXiv:2505.09388, 2025. ([Qwen3][Qwen3])
-- Zhang et al. *Qwen3 Embedding: Advancing Text Embedding and Reranking through Foundation Models.* arXiv:2506.05176, 2025. ([Qwen3-Embedding][Qwen3Emb])
-- Raffel et al. *Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer (T5 / prefix-LM).* JMLR 2020. arXiv:1910.10683.
-- Peng et al. *YaRN: Efficient Context Window Extension of Large Language Models.* arXiv:2309.00071, 2023.
-- Su et al. *RoFormer: Enhanced Transformer with Rotary Position Embedding.* Neurocomputing 2024. arXiv:2104.09864.
-- Zhang & Sennrich. *Root Mean Square Layer Normalization (RMSNorm).* NeurIPS 2019. ([RMSNorm][RMSNorm])
-- Hendrycks & Gimpel. *Gaussian Error Linear Units (GELU).* arXiv:1606.08415, 2016. ([GELU][GELU])
-- Dao. *FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning.* arXiv:2307.08691, 2023. ([varlen kernels][FlashAttn])
-- Dong et al. *FlexAttention: A Programming Model for Generating Optimized Attention Kernels.* arXiv:2412.05496, 2024.
+- [Yang et al., *Qwen3 Technical Report* (2025)][Qwen3]
+- [Zhang et al., *Qwen3 Embedding* (2025)][Qwen3Emb]
+- [Raffel et al., *T5 — Unified Text-to-Text Transformer (prefix-LM)* (2020)][PrefixLM]
+- [Peng et al., *YaRN: Efficient Context Window Extension* (2023)][YaRN]
+- [Su et al., *RoFormer: Rotary Position Embedding (RoPE)* (2021)][RoPE]
+- [Zhang & Sennrich, *Root Mean Square Layer Normalization (RMSNorm)* (2019)][RMSNorm]
+- [Hendrycks & Gimpel, *Gaussian Error Linear Units (GELU)* (2016)][GELU]
+- [Dao, *FlashAttention-2* (2023)][FlashAttn]
+- [Dong et al., *FlexAttention* (2024)][FlexAttn]
 
 ### 7.6 Multimodal / VLM alignment (analogy for the staged recipe)
-- Liu et al. *Visual Instruction Tuning (LLaVA).* NeurIPS 2023. arXiv:2304.08485. ([LLaVA][LLaVA])
-- Tong et al. *Cambrian-1: A Fully Open, Vision-Centric Exploration of Multimodal LLMs.* NeurIPS 2024. ([Cambrian][Cambrian])
-- Dosovitskiy et al. *An Image Is Worth 16×16 Words: Transformers for Image Recognition at Scale (ViT).* arXiv:2010.11929, 2020.
-- Chu et al. *Conditional Positional Encodings for Vision Transformers.* arXiv:2102.10882, 2021.
-- Qwen Team. *Qwen3-VL.* Technical report, 2025.
+- [Liu et al., *Visual Instruction Tuning (LLaVA)* (2023)][LLaVA]
+- [Tong et al., *Cambrian-1: Vision-Centric Multimodal LLMs* (2024)][Cambrian]
+- [Dosovitskiy et al., *An Image Is Worth 16×16 Words (ViT)* (2020)][ViT]
+- [Chu et al., *Conditional Positional Encodings for Vision Transformers* (2021)][CPVT]
+- [Qwen Team, *Qwen3-VL* (2025)][Qwen3VL]
 
 ### 7.7 Long-context benchmarks & datasets
-- Hsieh et al. *RULER: What's the Real Context Size of Your Long-Context Language Models?* arXiv:2404.06654, 2024. ([RULER][RULER])
-- Bai et al. *LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding.* ACL 2024. ([LongBench][LongBench])
-- Adams et al. *LongHealth: A Question Answering Benchmark with Long Clinical Documents.* J. Healthcare Informatics Research 2025. ([LongHealth][LongHealth])
-- Cobbe et al. *Training Verifiers to Solve Math Word Problems (GSM8K).* arXiv:2110.14168, 2021. ([GSM8K][GSM8K])
-- Liu et al. *Lost in the Middle: How Language Models Use Long Contexts.* TACL 2024. ([Lost in the Middle][LostMiddle])
-- An et al. *Why Does the Effective Context Length of LLMs Fall Short?* ICLR 2025.
-- Gao et al. *How to Train Long-Context Language Models (Effectively).* ACL 2025.
+- [Hsieh et al., *RULER: Real Context Size of Long-Context LMs* (2024)][RULER]
+- [Bai et al., *LongBench: Bilingual Multitask Long-Context Benchmark* (2024)][LongBench]
+- [Adams et al., *LongHealth: QA over Long Clinical Documents* (2025)][LongHealth]
+- [Cobbe et al., *Training Verifiers to Solve Math Word Problems (GSM8K)* (2021)][GSM8K]
+- [Liu et al., *Lost in the Middle: How LMs Use Long Contexts* (2024)][LostMiddle]
+- [An et al., *Why Does the Effective Context Length of LLMs Fall Short?* (2025)][EffCtx]
+- [Gao et al., *How to Train Long-Context Language Models (Effectively)* (2025)][TrainLC]
 
 ### 7.8 Inference engines & systems
-- Kwon et al. *Efficient Memory Management for Large Language Model Serving with PagedAttention (vLLM).* SOSP 2023. arXiv:2309.06180. ([PagedAttention][PagedAttn] · [vLLM][vLLM])
-- Zheng et al. *SGLang: Efficient Execution of Structured Language Model Programs.* NeurIPS 2024. ([SGLang][SGLang])
-- Wolf et al. *Transformers: State-of-the-Art Natural Language Processing.* EMNLP 2020 (demos).
+- [Kwon et al., *PagedAttention / vLLM* (2023)][PagedAttn]
+- [Zheng et al., *SGLang: Structured LM Program Execution* (2024)][SGLang]
+- [Wolf et al., *HuggingFace Transformers* (2020)][HFTransformers]
 
 ### 7.9 Efficient long-sequence modeling
-- Dai et al. *Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context.* ACL 2019.
-- Rae et al. *Compressive Transformers for Long-Range Sequence Modelling.* arXiv:1911.05507, 2019.
-- Katharopoulos et al. *Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention.* ICML 2020.
-- Gu et al. *Efficiently Modeling Long Sequences with Structured State Spaces (S4).* arXiv:2111.00396, 2021.
-- Gu & Dao. *Mamba: Linear-Time Sequence Modeling with Selective State Spaces.* COLM 2024.
-- Team et al. *Kimi Linear: An Expressive, Efficient Attention Architecture.* arXiv:2510.26692, 2025.
-- Liu et al. *DeepSeek-V2: A Strong, Economical, and Efficient MoE Language Model (Multi-head Latent Attention).* arXiv:2405.04434, 2024.
-- DeepSeek-AI. *DeepSeek-V4: Towards Highly Efficient Million-Token Context Intelligence.* 2026.
+- [Dai et al., *Transformer-XL* (2019)][TransfoXL]
+- [Rae et al., *Compressive Transformers* (2019)][CompTransf]
+- [Katharopoulos et al., *Transformers are RNNs (Linear Attention)* (2020)][LinAttn]
+- [Gu et al., *Structured State Spaces (S4)* (2021)][S4]
+- [Gu & Dao, *Mamba: Selective State Spaces* (2024)][Mamba]
+- [Kimi Team, *Kimi Linear: Efficient Attention Architecture* (2025)][KimiLinear]
+- [Liu et al., *DeepSeek-V2 / Multi-head Latent Attention (MLA)* (2024)][MLA]
+- [DeepSeek-AI, *DeepSeek-V4: Million-Token Context* (2026)][DSV4]
 
 ### 7.10 Agentic memory & frameworks
-- Zhang, Kraska, Khattab. *Recursive Language Models.* arXiv:2512.24601, 2025. ([RLM][RLM])
-- Packer et al. *MemGPT: Towards LLMs as Operating Systems.* arXiv:2310.08560, 2023.
-- Xu et al. *A-Mem: Agentic Memory for LLM Agents.* arXiv:2502.12110, 2025.
-- Zhong et al. *MemoryBank: Enhancing Large Language Models with Long-Term Memory.* arXiv:2305.10250, 2023.
+- [Zhang et al., *Recursive Language Models* (2025)][RLM]
+- [Packer et al., *MemGPT: LLMs as Operating Systems* (2023)][MemGPT]
+- [Xu et al., *A-Mem: Agentic Memory for LLM Agents* (2025)][AMem]
+- [Zhong et al., *MemoryBank: Long-Term Memory for LLMs* (2023)][MemoryBank]
 
 ### 7.11 Continual training / catastrophic forgetting
-- Luo et al. *An Empirical Study of Catastrophic Forgetting in LLMs during Continual Fine-tuning.* IEEE TASLP 2025.
-- Li et al. *Revisiting Catastrophic Forgetting in Large Language Model Tuning.* EMNLP Findings 2024.
+- [Luo et al., *Catastrophic Forgetting during Continual Fine-tuning* (2025)][CatForgetLLM]
+- [Li et al., *Revisiting Catastrophic Forgetting in LLM Tuning* (2024)][RevisitCF]
 
 ---
 
-<!-- Reference links -->
-[paper]: https://arxiv.org/abs/2606.09659 "End-to-End Context Compression at Scale (arXiv:2606.09659)"
+<!-- Link reference definitions (invisible in rendered output) -->
+
+[paper]: https://arxiv.org/abs/2606.09659 "End-to-End Context Compression at Scale (2026)"
 [code]: https://github.com/LeonLixyz/LCLM "LCLM code"
 [hf]: https://huggingface.co/latent-context "LCLM models on Hugging Face"
-[Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report"
-[Qwen3Emb]: https://arxiv.org/abs/2506.05176 "Qwen3 Embedding"
-[KVCache]: https://arxiv.org/abs/2401.18079 "KVQuant — KV cache scaling / memory bottleneck"
-[LostMiddle]: https://arxiv.org/abs/2307.03172 "Lost in the Middle (Liu et al. 2024)"
+
 [SnapKV]: https://arxiv.org/abs/2404.14469 "SnapKV (Li et al. 2024)"
 [KVzip]: https://arxiv.org/abs/2505.23416 "KVzip (Kim et al. 2025)"
+[FastKVzip]: https://arxiv.org/abs/2601.17668 "Fast KVzip (Kim et al. 2026)"
 [ExpAttn]: https://arxiv.org/abs/2510.00636 "Expected Attention (Devoto et al. 2025)"
 [AM]: https://arxiv.org/abs/2602.16284 "Fast KV Compaction via Attention Matching (Zweiger et al. 2026)"
-[PagedAttn]: https://arxiv.org/abs/2309.06180 "PagedAttention / vLLM (Kwon et al. 2023)"
-[vLLM]: https://arxiv.org/abs/2309.06180 "vLLM"
-[SGLang]: https://arxiv.org/abs/2312.07104 "SGLang"
-[LLMLingua]: https://arxiv.org/abs/2310.05736 "LLMLingua (Jiang et al. 2023)"
+[KVCache]: https://arxiv.org/abs/2401.18079 "KVQuant (Hooper et al. 2024)"
+[Cartridges]: https://arxiv.org/abs/2506.06266 "Cartridges (Eyuboglu et al. 2025)"
+[SparseLC]: https://arxiv.org/abs/2502.06766 "Exploiting Sparsity for Long-Context Inference (Synk et al. 2025)"
+
+[Gist]: https://arxiv.org/abs/2304.08467 "Gist Tokens (Mu et al. 2023)"
 [ICAE]: https://arxiv.org/abs/2307.06945 "In-Context Autoencoder (Ge et al. 2023)"
-[Gist]: https://arxiv.org/abs/2304.08467 "Learning to Compress Prompts with Gist Tokens (Mu et al. 2023)"
-[AutoComp]: https://arxiv.org/abs/2305.14788 "Adapting LMs to Compress Contexts / AutoCompressor (Chevalier et al. 2023)"
-[CEPE]: https://aclanthology.org/2024.acl-long.142 "CEPE — Parallel Context Encoding (Yen et al. 2024)"
+[AutoComp]: https://arxiv.org/abs/2305.14788 "AutoCompressor (Chevalier et al. 2023)"
+[xRAG]: https://arxiv.org/abs/2405.13792 "xRAG (Cheng et al. 2024)"
+[CEPE]: https://arxiv.org/abs/2402.16617 "CEPE — Parallel Context Encoding (Yen et al. 2024)"
 [REFRAG]: https://arxiv.org/abs/2509.01092 "REFRAG (Lin et al. 2025)"
-[E2LLM]: https://aclanthology.org/2025.emnlp-main "E2LLM (Liao et al. 2025)"
+[E2LLM]: https://arxiv.org/abs/2409.06679 "E2LLM (Liao et al. 2025)"
+[PCC]: https://aclanthology.org/events/acl-2025/ "Pretraining Context Compressor with Embedding-Based Memory (Dai et al., ACL 2025)"
+[C500x]: https://arxiv.org/abs/2408.03094 "500xCompressor (Li et al. 2025)"
+[GMSA]: https://arxiv.org/abs/2505.12215 "GMSA (Tang et al. 2025)"
+[SimpleCC]: https://arxiv.org/abs/2510.20797 "Simple Context Compression (Feldman & Artzi 2025)"
+[ARCEnc]: https://arxiv.org/abs/2510.20535 "ARC-Encoder (Pilchen et al. 2025)"
+[LLoCO]: https://arxiv.org/abs/2404.07979 "LLoCO (Tan et al. 2024)"
+[PrefixTuning]: https://arxiv.org/abs/2101.00190 "Prefix-Tuning (Li & Liang 2021)"
+
+[LLMLingua]: https://arxiv.org/abs/2310.05736 "LLMLingua (Jiang et al. 2023)"
+[LongLLMLingua]: https://arxiv.org/abs/2310.06839 "LongLLMLingua (Jiang et al. 2024)"
+[SelectiveCtx]: https://arxiv.org/abs/2310.06201 "Selective Context (Li et al. 2023)"
+[NLPrompt]: https://arxiv.org/abs/2402.18700 "Learning to Compress Prompt in Natural Language (Chuang et al. 2024)"
+[CompAct]: https://arxiv.org/abs/2407.09014 "CompAct (Yoon et al. 2024)"
+
+[Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
+[Qwen3Emb]: https://arxiv.org/abs/2506.05176 "Qwen3 Embedding (2025)"
+[PrefixLM]: https://arxiv.org/abs/1910.10683 "T5 / prefix-LM (Raffel et al. 2020)"
+[YaRN]: https://arxiv.org/abs/2309.00071 "YaRN (Peng et al. 2023)"
+[RoPE]: https://arxiv.org/abs/2104.09864 "RoFormer / RoPE (Su et al. 2021)"
+[RMSNorm]: https://arxiv.org/abs/1910.07467 "RMSNorm (Zhang & Sennrich 2019)"
+[GELU]: https://arxiv.org/abs/1606.08415 "GELU (Hendrycks & Gimpel 2016)"
+[FlashAttn]: https://arxiv.org/abs/2307.08691 "FlashAttention-2 (Dao 2023)"
+[FlexAttn]: https://arxiv.org/abs/2412.05496 "FlexAttention (Dong et al. 2024)"
+
+[LLaVA]: https://arxiv.org/abs/2304.08485 "LLaVA (Liu et al. 2023)"
+[Cambrian]: https://arxiv.org/abs/2406.16860 "Cambrian-1 (Tong et al. 2024)"
+[ViT]: https://arxiv.org/abs/2010.11929 "ViT (Dosovitskiy et al. 2020)"
+[CPVT]: https://arxiv.org/abs/2102.10882 "Conditional Positional Encodings for ViT (Chu et al. 2021)"
+[Qwen3VL]: https://github.com/QwenLM/Qwen3-VL "Qwen3-VL (2025)"
+
 [RULER]: https://arxiv.org/abs/2404.06654 "RULER (Hsieh et al. 2024)"
-[LongBench]: https://aclanthology.org/2024.acl-long.172 "LongBench (Bai et al. 2024)"
+[LongBench]: https://arxiv.org/abs/2308.14508 "LongBench (Bai et al. 2024)"
 [LongHealth]: https://arxiv.org/abs/2401.14490 "LongHealth (Adams et al. 2025)"
 [GSM8K]: https://arxiv.org/abs/2110.14168 "GSM8K (Cobbe et al. 2021)"
-[GELU]: https://arxiv.org/abs/1606.08415 "GELU (Hendrycks & Gimpel 2016)"
-[RMSNorm]: https://arxiv.org/abs/1910.07467 "RMSNorm (Zhang & Sennrich 2019)"
-[LLaVA]: https://arxiv.org/abs/2304.08485 "LLaVA — Visual Instruction Tuning (Liu et al. 2023)"
-[Cambrian]: https://arxiv.org/abs/2406.16860 "Cambrian-1 (Tong et al. 2024)"
-[LoRA]: https://arxiv.org/abs/2106.09685 "LoRA (Hu et al. 2021)"
-[FlashAttn]: https://arxiv.org/abs/2307.08691 "FlashAttention-2 / varlen kernels (Dao 2023)"
-[PrefixLM]: https://arxiv.org/abs/1910.10683 "T5 / prefix-LM (Raffel et al. 2020)"
-[CLSpool]: https://arxiv.org/abs/2305.14788 "EOS/CLS token pooling"
+[LostMiddle]: https://arxiv.org/abs/2307.03172 "Lost in the Middle (Liu et al. 2024)"
+[EffCtx]: https://arxiv.org/abs/2410.18745 "Why Does the Effective Context Length Fall Short? (An et al. 2025)"
+[TrainLC]: https://arxiv.org/abs/2410.02660 "How to Train Long-Context LMs Effectively (Gao et al. 2025)"
+
+[PagedAttn]: https://arxiv.org/abs/2309.06180 "PagedAttention / vLLM (Kwon et al. 2023)"
+[vLLM]: https://arxiv.org/abs/2309.06180 "vLLM (Kwon et al. 2023)"
+[SGLang]: https://arxiv.org/abs/2312.07104 "SGLang (Zheng et al. 2024)"
+[HFTransformers]: https://aclanthology.org/2020.emnlp-demos.6 "HuggingFace Transformers (Wolf et al. 2020)"
+
+[TransfoXL]: https://arxiv.org/abs/1901.02860 "Transformer-XL (Dai et al. 2019)"
+[CompTransf]: https://arxiv.org/abs/1911.05507 "Compressive Transformers (Rae et al. 2019)"
+[LinAttn]: https://arxiv.org/abs/2006.16236 "Linear Transformers (Katharopoulos et al. 2020)"
+[S4]: https://arxiv.org/abs/2111.00396 "S4 (Gu et al. 2021)"
+[Mamba]: https://arxiv.org/abs/2312.00752 "Mamba (Gu & Dao 2024)"
+[KimiLinear]: https://arxiv.org/abs/2510.26692 "Kimi Linear (2025)"
+[MLA]: https://arxiv.org/abs/2405.04434 "DeepSeek-V2 / MLA (Liu et al. 2024)"
+[DSV4]: https://github.com/deepseek-ai "DeepSeek-V4 (2026)"
+
 [RLM]: https://arxiv.org/abs/2512.24601 "Recursive Language Models (Zhang et al. 2025)"
+[MemGPT]: https://arxiv.org/abs/2310.08560 "MemGPT (Packer et al. 2023)"
+[AMem]: https://arxiv.org/abs/2502.12110 "A-Mem (Xu et al. 2025)"
+[MemoryBank]: https://arxiv.org/abs/2305.10250 "MemoryBank (Zhong et al. 2023)"
+
+[CatForgetLLM]: https://arxiv.org/abs/2308.08747 "Catastrophic Forgetting during Continual Fine-tuning (Luo et al. 2025)"
+[RevisitCF]: https://arxiv.org/abs/2406.04836 "Revisiting Catastrophic Forgetting in LLM Tuning (Li et al. 2024)"
+[LoRA]: https://arxiv.org/abs/2106.09685 "LoRA (Hu et al. 2021)"
+[CLSpool]: https://arxiv.org/abs/2305.14788 "EOS/CLS token pooling"
