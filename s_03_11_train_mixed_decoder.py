@@ -231,6 +231,19 @@ class ArgsMixedDecoderTrain(BaseModel):
         description='Minimum number of tokens reserved for next-token prediction target (used when train_ds_types contains "next").',
         cli=('--min-next-toks',),
     )
+    next_fixed_win_size: int = Field(
+        0,
+        description='For train_ds_types=next: when > 0, every item uses EXACTLY this many context chunks '
+            '(fixed context-token count N = next_fixed_win_size * (inp_len - 2)). Overrides emb_win_min/max '
+            'randomization for the Next dataset. Used for controlled soft-context vs raw-context comparisons.',
+        cli=('--next-fixed-win-size',),
+    )
+    next_fixed_target_toks: int = Field(
+        0,
+        description='For train_ds_types=next: when > 0, every item emits EXACTLY this many decoder target tokens K. '
+            'Documents that cannot supply K continuation tokens are skipped. Used for controlled comparisons.',
+        cli=('--next-fixed-target-toks',),
+    )
     train_ds_batches_per_cycle: list[int] = Field(
         [1],
         description='Number of batches emitted per cycle for each entry in --train-ds-types. '
@@ -1322,15 +1335,19 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
             )
         if ds_type == MixedDecoderDsType.Next:
             assert wiki_ds is not None, 'Next requires wiki dataset'
+            next_fixed_win = args.next_fixed_win_size or None
+            next_fixed_tgt = args.next_fixed_target_toks or None
             next_train = NextTokWikiDataset(
                 wiki_ds, wiki_inds_train, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
                 emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
                 device=device, tkz_dec=tkz_dec,
+                fixed_win_size=next_fixed_win, fixed_target_toks=next_fixed_tgt,
             )
             next_val = NextTokWikiDataset(
                 wiki_ds, wiki_inds_val, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
                 emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
                 device=device, tkz_dec=tkz_dec,
+                fixed_win_size=next_fixed_win, fixed_target_toks=next_fixed_tgt,
             )
             next_train.shuffle(seed=(args.random_seed or 0) + rank)
             next_val.shuffle(seed=(args.random_seed or 0) + rank)

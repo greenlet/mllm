@@ -62,6 +62,9 @@ class NextTokWikiDataset:
             emb_win_min_size: int, emb_win_max_size: int,
             max_target_toks: int = 128, device: Optional[torch.device] = None,
             tkz_dec: Optional[PreTrainedTokenizer] = None,
+            fixed_win_size: Optional[int] = None,
+            fixed_target_toks: Optional[int] = None,
+            deterministic: bool = False,
     ):
         self.ds = ds
         self.inds = inds.copy()
@@ -73,6 +76,16 @@ class NextTokWikiDataset:
         self.emb_win_min_size = max(emb_win_min_size, 1)
         self.emb_win_max_size = max(emb_win_max_size, 1)
         self.max_target_toks = max_target_toks
+        # --- Controlled-comparison mode (soft-context vs raw-context perplexity) ---
+        # When fixed_win_size / fixed_target_toks are set, every emitted item has an
+        # identical number of context chunks (=> identical context-token count N) and
+        # an identical number of decoder target tokens K. Combined with
+        # deterministic=True (in-order document iteration, start=0, no reshuffle),
+        # this yields a reproducible sample stream so a soft-context model and a
+        # raw-context model can be scored on exactly the same (N, K) inputs.
+        self.fixed_win_size = fixed_win_size if (fixed_win_size is None or fixed_win_size > 0) else None
+        self.fixed_target_toks = fixed_target_toks if (fixed_target_toks is None or fixed_target_toks > 0) else None
+        self.deterministic = deterministic
         self.device = device if device is not None else torch.device('cpu')
         self.enc_pad_token_id = tkz_enc.pad_token_id
         self.dec_pad_token_id = self.tkz_dec.pad_token_id
@@ -133,25 +146,47 @@ class NextTokWikiDataset:
         doc_toks_num = len(doc_toks)
 
         doc_chunks_num = max(floor((doc_toks_num - self.min_next_toks) / self.chunk_content_len), 0)
-        if doc_chunks_num < self.emb_win_min_size:
-            return None
 
-        win_max_size_new = min(doc_chunks_num, self.emb_win_max_size)
-        win_size = np.random.randint(self.emb_win_min_size, win_max_size_new + 1)
+        # Window size: fixed (controlled mode) or randomized within [min, max].
+        if self.fixed_win_size is not None:
+            if doc_chunks_num < self.fixed_win_size:
+                return None
+            win_size = self.fixed_win_size
+        else:
+            if doc_chunks_num < self.emb_win_min_size:
+                return None
+            win_max_size_new = min(doc_chunks_num, self.emb_win_max_size)
+            win_size = np.random.randint(self.emb_win_min_size, win_max_size_new + 1)
 
         ctx_tok_count = win_size * self.chunk_content_len
         max_start = doc_toks_num - ctx_tok_count - self.min_next_toks
-        start = np.random.randint(0, max_start + 1)
+        if max_start < 0:
+            return None
+        # Deterministic mode pins the context to the document start so the sample
+        # stream is reproducible across models; otherwise pick a random window.
+        start = 0 if self.deterministic else np.random.randint(0, max_start + 1)
 
         chunks = self._make_chunks(doc_toks, start, win_size)
 
         # Target: tokens right after the context window. We slice the encoder
         # tokenization, decode to text, and re-tokenize with the decoder vocab.
         tgt_start = start + ctx_tok_count
-        tgt_end = min(tgt_start + self.max_target_toks * 4, doc_toks_num)
-        tgt_text = self.tkz_enc.decode(doc_toks[tgt_start:tgt_end], skip_special_tokens=True)
-        tgt_content = self.tkz_dec(tgt_text, add_special_tokens=False).input_ids
-        tgt_content = tgt_content[:self.dec_target_content_budget]
+        if self.fixed_target_toks is not None:
+            # Controlled mode: emit EXACTLY fixed_target_toks decoder content tokens.
+            # Over-slice on the encoder side (decoder tokens are usually coarser),
+            # then require enough continuation to fill K; otherwise skip the doc.
+            k = self.fixed_target_toks
+            tgt_end = min(tgt_start + k * 8, doc_toks_num)
+            tgt_text = self.tkz_enc.decode(doc_toks[tgt_start:tgt_end], skip_special_tokens=True)
+            tgt_content = self.tkz_dec(tgt_text, add_special_tokens=False).input_ids
+            if len(tgt_content) < k:
+                return None
+            tgt_content = tgt_content[:k]
+        else:
+            tgt_end = min(tgt_start + self.max_target_toks * 4, doc_toks_num)
+            tgt_text = self.tkz_enc.decode(doc_toks[tgt_start:tgt_end], skip_special_tokens=True)
+            tgt_content = self.tkz_dec(tgt_text, add_special_tokens=False).input_ids
+            tgt_content = tgt_content[:self.dec_target_content_budget]
         target = self.dec_target_prefix + tgt_content + self.dec_target_suffix
 
         return chunks, target
@@ -159,7 +194,10 @@ class NextTokWikiDataset:
     def _advance_ptr(self) -> None:
         self._ptr += 1
         if self._ptr >= self.size:
-            np.random.shuffle(self.inds)
+            # Deterministic mode keeps a stable document order so the emitted
+            # sample stream is identical across evaluation runs / models.
+            if not self.deterministic:
+                np.random.shuffle(self.inds)
             self._ptr = 0
 
     def _sample_valid_item(self) -> Tuple[List[List[int]], List[int]]:

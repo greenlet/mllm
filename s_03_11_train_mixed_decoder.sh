@@ -32,6 +32,7 @@ decoder_model_name=gpt2
 #   decoder_spec=qwen2.5-1.5B-bf16          # bf16 (preferred with FSDP)
 #   decoder_spec=qwen2.5-1.5B-instruct-fp16 # instruct variant, AMP fp16
 #   decoder_spec=qwen2.5-0.5B-fp32          # smoke-test size
+#   decoder_spec=qwen3-0.6B-fp16
 #   decoder_spec=qwen3-0.6B-fp32
 #   decoder_spec=gpt2-fp32                  # equivalent to the legacy gpt2 path
 # When decoder_spec is non-empty it overrides decoder_type / decoder_model_name above.
@@ -72,6 +73,15 @@ train_ds_loss_weights="1"
 normalize_train_ds_loss_weights=false
 
 min_next_toks=64
+
+# --- Controlled next-token comparison (soft-context vs raw-context perplexity) ---
+# When training with train_ds_types="next", set these > 0 to pin a fixed context
+# window (N = next_fixed_win_size * (inp_len - 2) tokens) and a fixed target length
+# K = next_fixed_target_toks. Train one run with decoder_only=false (soft context)
+# and one with decoder_only=true (raw context) using the SAME values, then compare
+# perplexity with s_03_13_eval_next_tok_ppl.py. 0 = off (legacy random windowing).
+next_fixed_win_size=0
+next_fixed_target_toks=0
 
 # --- key-value recall (train_ds_type=keyval) difficulty knobs ---
 keyval_min_pairs=4
@@ -282,6 +292,8 @@ python s_03_11_train_mixed_decoder.py \
   --train-ds-loss-weights "$train_ds_loss_weights" \
   --normalize-train-ds-loss-weights $normalize_train_ds_loss_weights \
   --min-next-toks $min_next_toks \
+  --next-fixed-win-size $next_fixed_win_size \
+  --next-fixed-target-toks $next_fixed_target_toks \
   --keyval-min-pairs $keyval_min_pairs \
   --keyval-max-pairs $keyval_max_pairs \
   --keyval-value-max-words $keyval_value_max_words \
