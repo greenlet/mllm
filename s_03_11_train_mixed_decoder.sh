@@ -83,6 +83,17 @@ min_next_toks=64
 next_fixed_win_size=0
 next_fixed_target_toks=0
 
+# --- Multi-source next-token corpora (train_ds_types="next") ---
+# Space-separated list of long-document corpora the next-token loader draws from.
+# Known: wiki pg19 bookcorpusopen arxiv govreport gutenberg. Batches are drawn one
+# source at a time with frequency proportional to each source's split size.
+next_sources="wiki"
+# next_sources="wiki pg19 arxiv govreport gutenberg"
+# Bridge prompt inserted between context and target. Set to "" to drop the prompt
+# entirely (pure context+target).
+next_prompt="Continue:"
+# next_prompt=""
+
 # --- key-value recall (train_ds_type=keyval) difficulty knobs ---
 keyval_min_pairs=4
 keyval_max_pairs=32
@@ -294,6 +305,8 @@ python s_03_11_train_mixed_decoder.py \
   --min-next-toks $min_next_toks \
   --next-fixed-win-size $next_fixed_win_size \
   --next-fixed-target-toks $next_fixed_target_toks \
+  --next-sources "$next_sources" \
+  --next-prompt "$next_prompt" \
   --keyval-min-pairs $keyval_min_pairs \
   --keyval-max-pairs $keyval_max_pairs \
   --keyval-value-max-words $keyval_value_max_words \

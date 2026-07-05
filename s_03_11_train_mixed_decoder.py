@@ -48,7 +48,10 @@ from mllm.train.jsonata_recall import JsonataRecallCfg, JsonataRecallDataset, cr
 from mllm.train.xml_xpath_recall import XmlXpathRecallCfg, XmlXpathRecallDataset, create_xml_xpath_recall_dataloader
 from mllm.train.sql_select_recall import SqlSelectRecallCfg, SqlSelectRecallDataset, create_sql_select_recall_dataloader
 from mllm.train.mask_utils import MaskCfg
-from mllm.train.next_tok_wiki import NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next
+from mllm.train.next_tok_wiki import (
+    NextTokWikiDataset, create_next_tok_dataloader, load_split_wiki_for_next,
+    load_split_source_for_next, build_stacked_next_tok_datasets,
+)
 from mllm.data.qna.dataset import QnaDatasetAgg, load_qna_datasets, create_qna_dataloader
 from mllm.train.qna_cite import QnaCiteDataset, create_qna_cite_dataloader, load_split_squadv2
 from mllm.train.utils import find_create_train_path, log_weights_grads_stats
@@ -244,6 +247,19 @@ class ArgsMixedDecoderTrain(BaseModel):
             'Documents that cannot supply K continuation tokens are skipped. Used for controlled comparisons.',
         cli=('--next-fixed-target-toks',),
     )
+    next_sources: list[str] = Field(
+        ['wiki'],
+        description='For train_ds_types=next: list of long-document corpora to draw context/target from. '
+            'Known sources: wiki, pg19, bookcorpusopen, arxiv, govreport, gutenberg. Batches are drawn from one '
+            'source at a time with frequency proportional to each source split size.',
+        cli=('--next-sources',),
+    )
+    next_prompt: str = Field(
+        'Continue:',
+        description='For train_ds_types=next: bridge prompt inserted between context and target. '
+            'Pass an empty string to drop the prompt entirely (pure context+target).',
+        cli=('--next-prompt',),
+    )
     train_ds_batches_per_cycle: list[int] = Field(
         [1],
         description='Number of batches emitted per cycle for each entry in --train-ds-types. '
@@ -258,7 +274,7 @@ class ArgsMixedDecoderTrain(BaseModel):
         cli=('--train-ds-loss-weights',),
     )
 
-    @validator('train_ds_types', 'train_ds_batches_per_cycle', 'train_ds_loss_weights', pre=True)
+    @validator('train_ds_types', 'train_ds_batches_per_cycle', 'train_ds_loss_weights', 'next_sources', pre=True)
     def _split_list_args(cls, v):
         return _split_ws_list(v)
 
@@ -868,7 +884,7 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_ds, wiki_inds_train, wiki_inds_val, qna_agg_train, qna_agg_val, args: ArgsMixedDecoderTrain):
+def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, next_sources_data, qna_agg_train, qna_agg_val, args: ArgsMixedDecoderTrain):
     print(f'Running DDP training on rank {rank}.')
     def log(*msgs: Any, forall: bool = False):
         if rank == 0 or forall:
@@ -908,6 +924,7 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
         emb_exp_rate=args.emb_exp_rate,
         emb_win_min_size=args.emb_win_min_size, emb_win_max_size=args.emb_win_max_size,
         min_next_toks=args.min_next_toks, train_ds_types=args.train_ds_types,
+        next_sources=(args.next_sources if MixedDecoderDsType.Next in args.train_ds_types else None),
         decoder_only=args.decoder_only,
         use_interactive_extractor=args.use_interactive_extractor,
         ie_exp_rate=args.ie_exp_rate, ie_num_layers=args.ie_num_layers, ie_attn_type=args.ie_attn_type,
@@ -1334,20 +1351,24 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_d
                 create_qna_dataloader(qna_agg_val, batch_size=args.docs_batch_size),
             )
         if ds_type == MixedDecoderDsType.Next:
-            assert wiki_ds is not None, 'Next requires wiki dataset'
+            assert next_sources_data, 'Next requires at least one loaded source'
             next_fixed_win = args.next_fixed_win_size or None
             next_fixed_tgt = args.next_fixed_target_toks or None
-            next_train = NextTokWikiDataset(
-                wiki_ds, wiki_inds_train, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
-                emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
+            next_sources = args.next_sources or ['wiki']
+            common_kwargs = dict(
+                sources=next_sources, sources_data=next_sources_data,
+                tkz_enc=tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
+                emb_win_min_size=max(args.emb_win_min_size, 1),
+                emb_win_max_size=max(args.emb_win_max_size, 1),
                 device=device, tkz_dec=tkz_dec,
                 fixed_win_size=next_fixed_win, fixed_target_toks=next_fixed_tgt,
+                prompt=args.next_prompt,
             )
-            next_val = NextTokWikiDataset(
-                wiki_ds, wiki_inds_val, tkz_enc, inp_len=args.inp_len, min_next_toks=args.min_next_toks,
-                emb_win_min_size=max(args.emb_win_min_size, 1), emb_win_max_size=max(args.emb_win_max_size, 1),
-                device=device, tkz_dec=tkz_dec,
-                fixed_win_size=next_fixed_win, fixed_target_toks=next_fixed_tgt,
+            next_train = build_stacked_next_tok_datasets(
+                split='train', seed=(args.random_seed or 0) + rank, **common_kwargs,
+            )
+            next_val = build_stacked_next_tok_datasets(
+                split='val', seed=(args.random_seed or 0) + rank + 1000, **common_kwargs,
             )
             next_train.shuffle(seed=(args.random_seed or 0) + rank)
             next_val.shuffle(seed=(args.random_seed or 0) + rank)
@@ -1901,6 +1922,7 @@ def main(args: ArgsMixedDecoderTrain) -> int:
         'train_ds_types may contain at most one of {qnaall, qnaans} (they share the qna source slot).'
 
     wiki_ds, wiki_inds_train, wiki_inds_val = None, None, None
+    next_sources_data = None
     qna_agg_train, qna_agg_val = None, None
     ds_train, ds_val = None, None
     df_sq, sq_inds_train, sq_inds_val = None, None, None
@@ -1927,9 +1949,17 @@ def main(args: ArgsMixedDecoderTrain) -> int:
             cache_dir=str(args.data_path), exclude_noanswer=True,
         )
     if MixedDecoderDsType.Next in ds_types:
-        wiki_ds, wiki_inds_train, wiki_inds_val = load_split_wiki_for_next(
-            data_path=args.data_path, random_seed=args.random_seed,
-        )
+        next_sources = args.next_sources or ['wiki']
+        next_sources_data = {}
+        for src in next_sources:
+            ds_src, inds_tr, inds_vl, text_field = load_split_source_for_next(
+                source=src, data_path=args.data_path, random_seed=args.random_seed,
+            )
+            next_sources_data[src] = (ds_src, inds_tr, inds_vl, text_field)
+        # Keep the legacy wiki_* slots populated when wiki is among the sources so
+        # any wiki-specific downstream code still works.
+        if 'wiki' in next_sources_data:
+            wiki_ds, wiki_inds_train, wiki_inds_val, _ = next_sources_data['wiki']
 
     unsupported = [t for t in ds_types if t not in (
         MixedDecoderDsType.Cite, MixedDecoderDsType.QnaSquadV2, MixedDecoderDsType.QnaAll,
@@ -1940,7 +1970,7 @@ def main(args: ArgsMixedDecoderTrain) -> int:
     assert not unsupported, f'Unsupported train_ds_types: {[t.value for t in unsupported]}'
 
     mp.spawn(train, args=(
-        ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, wiki_ds, wiki_inds_train, wiki_inds_val, qna_agg_train, qna_agg_val, args,
+        ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, next_sources_data, qna_agg_train, qna_agg_val, args,
     ), nprocs=args.world_size, join=True)
 
     return 0

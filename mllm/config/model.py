@@ -2119,6 +2119,10 @@ class MixedDecoderCfg(BaseModel):
     emb_win_min_size: int = 0
     emb_win_max_size: int = 0
     min_next_toks: int = 64
+    # For train_ds_types containing `next`: names of the long-document corpora the
+    # next-token loader draws from (e.g. ['wiki', 'pg19', 'arxiv']). Empty means the
+    # legacy wiki-only default. Recorded here so multi-source runs get distinct dirs.
+    next_sources: list[str] = []
     d_model: int = 768
     train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite
     # Compound training: list of dataset types mixed during a single run. Kept
@@ -2289,6 +2293,7 @@ def create_mixed_decoder_cfg(
         decoder_dtype: DecoderDtype = DecoderDtype.Fp32,
         max_seq_len: int = 384, use_sep: bool = True, prompt_all: bool = True, prompt_first: bool = False, emb_exp_rate: int = 0,
         emb_win_min_size: int = 0, emb_win_max_size: int = 0, min_next_toks: int = 64,
+        next_sources: Optional[list[str]] = None,
         train_ds_type: MixedDecoderDsType = MixedDecoderDsType.Cite,
         train_ds_types: Optional[list[MixedDecoderDsType]] = None,
         decoder_only: bool = False,
@@ -2361,6 +2366,7 @@ def create_mixed_decoder_cfg(
         emb_win_min_size=emb_win_min_size,
         emb_win_max_size=emb_win_max_size,
         min_next_toks=min_next_toks,
+        next_sources=next_sources or [],
         d_model=d_model,
         train_ds_type=train_ds_type,
         train_ds_types=train_ds_types,
@@ -2387,6 +2393,7 @@ def copy_override_mixed_decoder_cfg(
         decoder_dtype: Optional[DecoderDtype] = None,
         max_seq_len: Optional[int] = None, use_sep: Optional[bool] = None, prompt_all: Optional[bool] = None, prompt_first: Optional[bool] = None, emb_exp_rate: Optional[int] = None,
         emb_win_min_size: Optional[int] = None, emb_win_max_size: Optional[int] = None, min_next_toks: Optional[int] = None,
+        next_sources: Optional[list[str]] = None,
         train_ds_type: Optional[MixedDecoderDsType] = None,
         train_ds_types: Optional[list[MixedDecoderDsType]] = None,
         decoder_only: Optional[bool] = None,
@@ -2420,6 +2427,7 @@ def copy_override_mixed_decoder_cfg(
     emb_win_min_size = coalesce(emb_win_min_size, cfg.emb_win_min_size)
     emb_win_max_size = coalesce(emb_win_max_size, cfg.emb_win_max_size)
     min_next_toks = coalesce(min_next_toks, cfg.min_next_toks)
+    next_sources = coalesce(next_sources, cfg.next_sources)
     train_ds_type = coalesce(train_ds_type, cfg.train_ds_type)
     train_ds_types = coalesce(train_ds_types, cfg.train_ds_types)
     decoder_only = coalesce(decoder_only, cfg.decoder_only)
@@ -2458,6 +2466,7 @@ def copy_override_mixed_decoder_cfg(
         decoder_dtype=decoder_dtype,
         max_seq_len=max_seq_len, use_sep=use_sep, prompt_all=prompt_all, prompt_first=prompt_first, emb_exp_rate=emb_exp_rate,
         emb_win_min_size=emb_win_min_size, emb_win_max_size=emb_win_max_size, min_next_toks=min_next_toks,
+        next_sources=next_sources,
         train_ds_type=train_ds_type,
         train_ds_types=train_ds_types,
         decoder_only=decoder_only,
@@ -2526,6 +2535,8 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
     postfix_parts.append('ds' + '_'.join(t.value.capitalize() for t in ds_types))
     if any(t == MixedDecoderDsType.Next for t in ds_types):
         postfix_parts.append(f'mnt{model_cfg.min_next_toks}')
+        if model_cfg.next_sources:
+            postfix_parts.append('src' + '_'.join(model_cfg.next_sources))
 
     if train.mask_cfg is not None:
         mask_cfg = train.mask_cfg

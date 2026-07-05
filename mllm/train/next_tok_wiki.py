@@ -10,14 +10,15 @@ A fixed "Continue:" prompt bridges context embeddings and target tokens in the d
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from math import floor
 from pathlib import Path
-from typing import Generator, List, Optional, Tuple
+from typing import Dict, Generator, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
 import torch.distributed as dist
-from datasets import Dataset
+from datasets import Dataset, load_dataset
 from transformers import PreTrainedTokenizer
 
 from mllm.data.wiki.itwiki import get_split_wiki_ds
@@ -65,12 +66,17 @@ class NextTokWikiDataset:
             fixed_win_size: Optional[int] = None,
             fixed_target_toks: Optional[int] = None,
             deterministic: bool = False,
+            text_field: str = 'text',
+            prompt: str = 'Continue:',
     ):
         self.ds = ds
         self.inds = inds.copy()
         self.tkz_enc = tkz_enc
         self.tkz_dec = tkz_dec if tkz_dec is not None else tkz_enc
         self.tkz = tkz_enc  # backward-compat alias
+        # Name of the document text column in ``ds`` (varies per corpus, e.g.
+        # 'text' for wiki/pg19/gutenberg, 'article' for arXiv, 'report' for GovReport).
+        self.text_field = text_field
         self.inp_len = inp_len
         self.min_next_toks = min_next_toks
         self.emb_win_min_size = max(emb_win_min_size, 1)
@@ -111,8 +117,13 @@ class NextTokWikiDataset:
         self.dec_target_content_budget = max(
             self.max_target_toks - len(self.dec_target_prefix) - len(self.dec_target_suffix), 1,
         )
-        # Fixed prompt tokenized once with the decoder tokenizer.
-        self.prompt_toks_fixed: List[int] = self.tkz_dec('Continue:', add_special_tokens=False).input_ids
+        # Fixed prompt tokenized once with the decoder tokenizer. An empty prompt
+        # string yields no prompt tokens => pure [context | target] layout (both the
+        # soft and decoder-only model paths already handle prompt_len == 0).
+        self.prompt = prompt
+        self.prompt_toks_fixed: List[int] = (
+            self.tkz_dec(prompt, add_special_tokens=False).input_ids if prompt else []
+        )
         # Internal pointer for skipping short docs
         self._ptr = 0
 
@@ -141,7 +152,7 @@ class NextTokWikiDataset:
         """
         idx = self.inds[self._ptr].item()
         row = self.ds[idx]
-        text: str = row['text']
+        text: str = row[self.text_field]
         doc_toks = self._tokenize_doc(text)
         doc_toks_num = len(doc_toks)
 
@@ -286,7 +297,7 @@ def load_split_wiki_for_next(
 
 
 def create_next_tok_dataloader(
-        dataset: NextTokWikiDataset, batch_size: int,
+        dataset: 'NextTokWikiDataset | StackedNextTokDataset', batch_size: int,
 ) -> Generator[NextTokBatch, None, None]:
     """Create infinite-loop generator yielding :class:`NextTokBatch` instances."""
     rank = dist.get_rank() if dist.is_initialized() else 0
@@ -294,3 +305,155 @@ def create_next_tok_dataloader(
     while True:
         batch = dataset.get_batch(batch_size)
         yield batch
+
+
+# Backward-compatible corpus-agnostic alias.
+NextTokDataset = NextTokWikiDataset
+
+
+@dataclass(frozen=True)
+class NextTokSourceSpec:
+    """Static description of a long-document corpus usable for next-token training."""
+    hf_id: str                       # HuggingFace dataset id
+    hf_config: Optional[str]         # dataset config / subset name (None if not needed)
+    split: str                       # split holding the documents (usually 'train')
+    text_field: str                  # column name holding the document text
+
+
+# Registry of supported next-token corpora. Verify exact ids/fields against the
+# HuggingFace Hub before large downloads; centralised here so additions are one line.
+SOURCE_REGISTRY: Dict[str, NextTokSourceSpec] = {
+    'wiki': NextTokSourceSpec('wikimedia/wikipedia', '20231101.en', 'train', 'text'),
+    'pg19': NextTokSourceSpec('deepmind/pg19', None, 'train', 'text'),
+    'bookcorpusopen': NextTokSourceSpec('lucadiliello/bookcorpusopen', None, 'train', 'text'),
+    'arxiv': NextTokSourceSpec('ccdv/arxiv-summarization', None, 'train', 'article'),
+    'govreport': NextTokSourceSpec('ccdv/govreport-summarization', None, 'train', 'report'),
+    'gutenberg': NextTokSourceSpec('manu/project_gutenberg', 'en', 'train', 'text'),
+}
+
+
+def load_split_source_for_next(
+        source: str, data_path: Path, val_ratio: float = 0.05, random_seed: int = 100,
+) -> Tuple[Dataset, np.ndarray, np.ndarray, str]:
+    """Load a registered corpus and split it into train/val document indices.
+
+    Wikipedia reuses the existing dedicated loader; every other source is loaded
+    generically from the HuggingFace Hub via :data:`SOURCE_REGISTRY`.
+
+    Returns:
+        Tuple of (ds, inds_train, inds_val, text_field).
+    """
+    if source not in SOURCE_REGISTRY:
+        raise ValueError(
+            f'Unknown next-token source {source!r}. Known: {sorted(SOURCE_REGISTRY)}'
+        )
+    spec = SOURCE_REGISTRY[source]
+    rank = dist.get_rank() if dist.is_initialized() else 0
+    if source == 'wiki':
+        ds, inds_train, inds_val = load_split_wiki_for_next(
+            data_path, val_ratio=val_ratio, random_seed=random_seed,
+        )
+        return ds, inds_train, inds_val, spec.text_field
+
+    dss = load_dataset(spec.hf_id, spec.hf_config, cache_dir=str(data_path))
+    ds = dss[spec.split]
+    n_docs = len(ds)
+    doc_inds = np.arange(n_docs)
+    rng = np.random.default_rng(random_seed)
+    rng.shuffle(doc_inds)
+    n_docs_val = int(n_docs * val_ratio)
+    n_docs_train = n_docs - n_docs_val
+    inds_train = doc_inds[:n_docs_train].copy()
+    inds_val = doc_inds[n_docs_train:].copy()
+    print(
+        f'R{rank}. Source {source!r} ({spec.hf_id}) for NextTok: '
+        f'n_total={n_docs}. n_train={len(inds_train)}. n_val={len(inds_val)}.'
+    )
+    return ds, inds_train, inds_val, spec.text_field
+
+
+class StackedNextTokDataset:
+    """Stack several :class:`NextTokDataset` sub-datasets behind one interface.
+
+    Each :meth:`get_batch` picks exactly one sub-dataset (so a batch is drawn from a
+    single homogeneous corpus) with probability proportional to that source's split
+    size, then delegates to it. This keeps every emitted object a plain
+    :class:`NextTokBatch`, so the model and dataloader are unchanged.
+    """
+
+    def __init__(
+            self, datasets: Sequence[NextTokDataset], names: Optional[Sequence[str]] = None,
+            weights: Optional[Sequence[float]] = None, seed: Optional[int] = None,
+    ):
+        if not datasets:
+            raise ValueError('StackedNextTokDataset requires at least one sub-dataset.')
+        self.datasets: List[NextTokDataset] = list(datasets)
+        self.names: List[str] = (
+            list(names) if names is not None else [f'src{i}' for i in range(len(self.datasets))]
+        )
+        if weights is None:
+            weights_arr = np.array([float(len(d)) for d in self.datasets], dtype=np.float64)
+        else:
+            weights_arr = np.array([float(w) for w in weights], dtype=np.float64)
+        total = weights_arr.sum()
+        if total <= 0:
+            weights_arr = np.ones(len(self.datasets), dtype=np.float64)
+            total = weights_arr.sum()
+        self.weights = weights_arr / total
+        self._rng = np.random.default_rng(seed)
+        self.device = self.datasets[0].device
+
+    def __len__(self) -> int:
+        return sum(len(d) for d in self.datasets)
+
+    def get_batch(self, batch_size: int) -> NextTokBatch:
+        idx = int(self._rng.choice(len(self.datasets), p=self.weights))
+        return self.datasets[idx].get_batch(batch_size)
+
+    def shuffle(self, seed: Optional[int] = None) -> 'StackedNextTokDataset':
+        for i, d in enumerate(self.datasets):
+            d.shuffle(None if seed is None else seed + i)
+        return self
+
+
+def build_stacked_next_tok_datasets(
+        sources: Sequence[str],
+        sources_data: Dict[str, Tuple[Dataset, np.ndarray, np.ndarray, str]],
+        split: str,
+        tkz_enc: PreTrainedTokenizer, inp_len: int, min_next_toks: int,
+        emb_win_min_size: int, emb_win_max_size: int,
+        max_target_toks: int = 128, device: Optional[torch.device] = None,
+        tkz_dec: Optional[PreTrainedTokenizer] = None,
+        fixed_win_size: Optional[int] = None,
+        fixed_target_toks: Optional[int] = None,
+        deterministic: bool = False, prompt: str = 'Continue:',
+        seed: Optional[int] = None,
+) -> StackedNextTokDataset:
+    """Build a :class:`StackedNextTokDataset` for the requested *sources*.
+
+    *sources_data* maps each source name to the tuple returned by
+    :func:`load_split_source_for_next` (ds, inds_train, inds_val, text_field).
+    *split* selects which index array to use: ``'train'`` or ``'val'``.
+    """
+    if split not in ('train', 'val'):
+        raise ValueError(f"split must be 'train' or 'val', got {split!r}")
+    sub_datasets: List[NextTokDataset] = []
+    names: List[str] = []
+    weights: List[float] = []
+    for src in sources:
+        if src not in sources_data:
+            raise ValueError(f'Source {src!r} requested but not present in sources_data.')
+        ds, inds_train, inds_val, text_field = sources_data[src]
+        inds = inds_train if split == 'train' else inds_val
+        sub = NextTokDataset(
+            ds=ds, inds=inds, tkz_enc=tkz_enc, inp_len=inp_len,
+            min_next_toks=min_next_toks, emb_win_min_size=emb_win_min_size,
+            emb_win_max_size=emb_win_max_size, max_target_toks=max_target_toks,
+            device=device, tkz_dec=tkz_dec, fixed_win_size=fixed_win_size,
+            fixed_target_toks=fixed_target_toks, deterministic=deterministic,
+            text_field=text_field, prompt=prompt,
+        )
+        sub_datasets.append(sub)
+        names.append(src)
+        weights.append(float(len(inds)))
+    return StackedNextTokDataset(sub_datasets, names=names, weights=weights, seed=seed)
