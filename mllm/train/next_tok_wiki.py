@@ -328,7 +328,7 @@ SOURCE_REGISTRY: Dict[str, NextTokSourceSpec] = {
     'bookcorpusopen': NextTokSourceSpec('lucadiliello/bookcorpusopen', None, 'train', 'text'),
     'arxiv': NextTokSourceSpec('ccdv/arxiv-summarization', None, 'train', 'article'),
     'govreport': NextTokSourceSpec('ccdv/govreport-summarization', None, 'train', 'report'),
-    'gutenberg': NextTokSourceSpec('manu/project_gutenberg', 'en', 'train', 'text'),
+    'gutenberg': NextTokSourceSpec('manu/project_gutenberg', None, 'en', 'text'),
 }
 
 
@@ -355,7 +355,9 @@ def load_split_source_for_next(
         )
         return ds, inds_train, inds_val, spec.text_field
 
-    dss = load_dataset(spec.hf_id, spec.hf_config, cache_dir=str(data_path))
+    dss = load_dataset(
+        spec.hf_id, spec.hf_config, cache_dir=str(data_path), trust_remote_code=True,
+    )
     ds = dss[spec.split]
     n_docs = len(ds)
     doc_inds = np.arange(n_docs)

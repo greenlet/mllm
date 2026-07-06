@@ -63,6 +63,7 @@ train_ds_types="cite"
 # train_ds_types="xmlxpath"   # XML/XPath extraction (requires prompt_all=false)
 # train_ds_types="sql"   # SQL selection/aggregate extraction (requires prompt_all=false)
 train_ds_types="cite keyval jsonfield jsonata xmlxpath sql"
+train_ds_types="next"
 
 # Per-type batches emitted per round-robin cycle and per-type loss weights.
 # Each is a space-separated list of length 1 (broadcast to all types) or
@@ -80,19 +81,20 @@ min_next_toks=64
 # K = next_fixed_target_toks. Train one run with decoder_only=false (soft context)
 # and one with decoder_only=true (raw context) using the SAME values, then compare
 # perplexity with s_03_13_eval_next_tok_ppl.py. 0 = off (legacy random windowing).
-next_fixed_win_size=0
-next_fixed_target_toks=0
+next_fixed_win_size=16
+next_fixed_target_toks=512
 
 # --- Multi-source next-token corpora (train_ds_types="next") ---
 # Space-separated list of long-document corpora the next-token loader draws from.
 # Known: wiki pg19 bookcorpusopen arxiv govreport gutenberg. Batches are drawn one
 # source at a time with frequency proportional to each source's split size.
 next_sources="wiki"
+next_sources="pg19 bookcorpusopen arxiv govreport gutenberg"
 # next_sources="wiki pg19 arxiv govreport gutenberg"
 # Bridge prompt inserted between context and target. Set to "" to drop the prompt
 # entirely (pure context+target).
 next_prompt="Continue:"
-# next_prompt=""
+next_prompt=""
 
 # --- key-value recall (train_ds_type=keyval) difficulty knobs ---
 keyval_min_pairs=4
@@ -135,6 +137,10 @@ structured_fill_to_budget=true
 structured_fill_frac=0.90
 
 max_seq_len=400
+# For train_ds_types="next" the decoder sequence is
+#   n_ctx + prompt + target = (next_fixed_win_size * emb_exp_rate) + prompt_len + next_fixed_target_toks
+# e.g. 16*4 + 0 + 512 = 576, so max_seq_len must exceed that. 640 leaves headroom.
+max_seq_len=640
 freeze_encoder=false
 # use_sep=true
 use_sep=false
@@ -205,12 +211,15 @@ val_epoch_steps=50
 # docs_batch_size=30
 docs_batch_size=20
 # docs_batch_size=15
-# docs_batch_size=5
+# docs_batch_size=10
+# docs_batch_size is PER-GPU. Qwen2.5-1.5B + seq~576 + 152k-vocab cross-entropy
+# OOMs on a 32GB V100 at 10; 4 leaves headroom while training still runs.
+docs_batch_size=4
 world_size=4
 
 
 learning_rate=0.00005
-learning_rate=0.00001
+# learning_rate=0.00001
 # If > 0, overrides the current learning rate by rebuilding optimizer and scheduler
 # from scratch (any restored optimizer/scheduler state from checkpoint is discarded).
 learning_rate_override=0
@@ -246,7 +255,54 @@ max_grad_norm=0.0
 # max_grad_norm=1.0
 
 
+# =============================================================================
+# STAGED NEXT-TOKEN CURRICULUM (soft-token context)
+# -----------------------------------------------------------------------------
+# The blocks below OVERRIDE the scattered defaults above (bash: last assignment
+# wins). Train Stage 1, then comment it out and uncomment Stage 2, train again,
+# then Stage 3. Each stage keeps the soft-token count = win_size * emb_exp_rate
+# roughly constant so max_seq_len stays valid, while progressively raising the
+# compression ratio (N_ctx / N_soft) and the target length K.
+#
+# Common to all stages (task = next-token, soft context ON):
+train_ds_types="next"
+decoder_only=false
+min_next_toks=64
+# Regularization preset (Qwen2.5-1.5B; label_smoothing intentionally left at 0):
+weight_decay_decoder=0.1
+weight_decay_other=0.01
+llrd_decay=0.9
+attention_dropout=0.1
+max_grad_norm=1.0
+
+# ---- Stage 1: warm-up (low compression ~15.75x, short target) ---------------
+next_fixed_win_size=8          # N = 8 * 126 = 1008 ctx tokens
+next_fixed_target_toks=256     # K
+emb_exp_rate=8                 # 8 * 8 = 64 soft tokens
+max_seq_len=384                # 64 + 0 + 256 = 320, headroom to 384
+freeze_decoder_epochs=8        # let the soft-token bridge warm up first
+
+# ---- Stage 2: medium compression (~31.5x, longer target) --------------------
+# next_fixed_win_size=16         # N = 16 * 126 = 2016 ctx tokens
+# next_fixed_target_toks=384     # K
+# emb_exp_rate=4                 # 16 * 4 = 64 soft tokens
+# max_seq_len=512                # 64 + 0 + 384 = 448, headroom to 512
+# freeze_decoder_epochs=4
+
+# ---- Stage 3: high compression (~63x, full target) --------------------------
+# next_fixed_win_size=32         # N = 32 * 126 = 4032 ctx tokens
+# next_fixed_target_toks=512     # K
+# emb_exp_rate=2                 # 32 * 2 = 64 soft tokens
+# max_seq_len=640                # 64 + 0 + 512 = 576, headroom to 640
+# freeze_decoder_epochs=0
+# =============================================================================
+
+
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
+
+# Reduce allocator fragmentation so large transient buffers (e.g. the
+# cross-entropy logits over the ~152k Qwen vocab) can reuse freed blocks.
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 export NCCL_DEBUG=WARN          # downgrade INFO noise but keep warnings/errors
 # DETAIL wraps every collective with ProcessGroupWrapper (gloo monitoredBarrier +
