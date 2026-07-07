@@ -2536,7 +2536,9 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
     if any(t == MixedDecoderDsType.Next for t in ds_types):
         postfix_parts.append(f'mnt{model_cfg.min_next_toks}')
         if model_cfg.next_sources:
-            postfix_parts.append('src' + '_'.join(model_cfg.next_sources))
+            # Abbreviate each source to its first 2 letters to keep the run-dir name
+            # short (full names overflow the OS 255-char filename limit).
+            postfix_parts.append('src' + '_'.join(s[:2] for s in model_cfg.next_sources))
 
     if train.mask_cfg is not None:
         mask_cfg = train.mask_cfg

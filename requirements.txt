@@ -8,7 +8,8 @@ alembic
 #apache_beam
 #datasets==1.18.4
 # datasets==2.21.0
-datasets>=3.0.0
+# datasets>=4 no longer supports dataset loading scripts; use parquet-based sources
+datasets>=4.0.0
 jupyter
 matplotlib
 #mteb
@@ -27,7 +28,13 @@ tensorboard
 # torchtext==0.17.2
 #torch==2.3.0
 #torchtext==0.18.0
-torchvision
+# NOTE: install torch/torchvision from the cu126 wheels so Volta (V100, sm_70) is
+# supported. The default cu128/cu130 wheels drop sm_70 and raise
+# "CUDA error: no kernel image is available for execution on the device".
+#   pip install --index-url https://download.pytorch.org/whl/cu126 \
+#       torch==2.7.1 torchvision==0.22.1
+torch==2.7.1
+torchvision==0.22.1
 transformers<5.0.0
 tqdm
 # windows-curses

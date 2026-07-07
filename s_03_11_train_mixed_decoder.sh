@@ -211,10 +211,10 @@ val_epoch_steps=50
 # docs_batch_size=30
 docs_batch_size=20
 # docs_batch_size=15
-# docs_batch_size=10
+docs_batch_size=8
 # docs_batch_size is PER-GPU. Qwen2.5-1.5B + seq~576 + 152k-vocab cross-entropy
 # OOMs on a 32GB V100 at 10; 4 leaves headroom while training still runs.
-docs_batch_size=4
+# docs_batch_size=4
 world_size=4
 
 
@@ -274,6 +274,17 @@ weight_decay_other=0.01
 llrd_decay=0.9
 attention_dropout=0.1
 max_grad_norm=1.0
+# Optimizer + scheduler family shared by every stage. Each stage sets its own peak
+# learning_rate, cosine restart period (T_0) and learning_rate_override below.
+# CosineAnnealingWarmRestarts steps per epoch: with T_mult=2 the restart lengths
+# are T_0, 2*T_0, 4*T_0, ... epochs (epochs=700). eta_min is the LR floor.
+# learning_rate_override>0 rebuilds the optimizer+scheduler from scratch on resume
+# (discards restored state) so a stage that continues from the previous stage's
+# checkpoint starts a FRESH cosine cycle at its own peak LR. Stage 1 trains from a
+# fresh mixed-decoder init, so it uses override=0 (no state to discard).
+optimizer_name='AdamW'
+optimizer_params='{"weight_decay": 0.01, "betas": [0.9, 0.98], "eps": 1e-8}'
+learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
 
 # ---- Stage 1: warm-up (low compression ~15.75x, short target) ---------------
 next_fixed_win_size=8          # N = 8 * 126 = 1008 ctx tokens
@@ -281,6 +292,10 @@ next_fixed_target_toks=256     # K
 emb_exp_rate=8                 # 8 * 8 = 64 soft tokens
 max_seq_len=384                # 64 + 0 + 256 = 320, headroom to 384
 freeze_decoder_epochs=8        # let the soft-token bridge warm up first
+learning_rate=5e-5             # highest peak: cold bridge, easiest task
+learning_rate_override=0       # fresh init -> nothing to discard
+learning_rate_scheduler_params='{"T_0": 30, "T_mult": 2, "eta_min": 1e-7}'
+
 
 # ---- Stage 2: medium compression (~31.5x, longer target) --------------------
 # next_fixed_win_size=16         # N = 16 * 126 = 2016 ctx tokens
@@ -288,6 +303,9 @@ freeze_decoder_epochs=8        # let the soft-token bridge warm up first
 # emb_exp_rate=4                 # 16 * 4 = 64 soft tokens
 # max_seq_len=512                # 64 + 0 + 384 = 448, headroom to 512
 # freeze_decoder_epochs=4
+# learning_rate=3e-5             # lower peak: harder task, resuming warm weights
+# learning_rate_override=3e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
+# learning_rate_scheduler_params='{"T_0": 40, "T_mult": 2, "eta_min": 1e-7}'
 
 # ---- Stage 3: high compression (~63x, full target) --------------------------
 # next_fixed_win_size=32         # N = 32 * 126 = 4032 ctx tokens
@@ -295,6 +313,9 @@ freeze_decoder_epochs=8        # let the soft-token bridge warm up first
 # emb_exp_rate=2                 # 32 * 2 = 64 soft tokens
 # max_seq_len=640                # 64 + 0 + 512 = 576, headroom to 640
 # freeze_decoder_epochs=0
+# learning_rate=2e-5             # lowest peak: hardest task, refine only
+# learning_rate_override=2e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
+# learning_rate_scheduler_params='{"T_0": 50, "T_mult": 2, "eta_min": 1e-7}'
 # =============================================================================
 
 

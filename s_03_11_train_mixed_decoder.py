@@ -872,10 +872,16 @@ def setup(rank, world_size):
     # store times out we get the observed
     #   "store->get('...') got error: Socket Timeout"
     # crash. Bump to 2h to be safely above the slowest checkpoint we have seen.
-    dist.init_process_group(
+    # Pass device_id so NCCL knows this rank's device up front; without it
+    # newer PyTorch warns "device used by this process is currently unknown"
+    # and may mis-map ranks to GPUs (potential hang).
+    init_kwargs = dict(
         backend=backend, rank=rank, world_size=world_size,
         timeout=timedelta(hours=2),
     )
+    if torch.cuda.is_available():
+        init_kwargs['device_id'] = torch.device(f'cuda:{rank}')
+    dist.init_process_group(**init_kwargs)
 
 
 def cleanup():

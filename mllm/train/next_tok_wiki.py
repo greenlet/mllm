@@ -24,6 +24,14 @@ from transformers import PreTrainedTokenizer
 from mllm.data.wiki.itwiki import get_split_wiki_ds
 
 
+# In fixed-target mode the prediction target must yield EXACTLY ``fixed_target_toks``
+# decoder tokens. Decoder (BPE) tokens can be coarser than encoder (WordPiece) tokens,
+# so we reserve a document tail of ``NEXT_TARGET_TAIL_FACTOR * fixed_target_toks``
+# encoder tokens to make the uniform random offset draw valid across the whole document
+# (otherwise near-end offsets are rejected, biasing the context toward the doc start).
+NEXT_TARGET_TAIL_FACTOR = 2
+
+
 @dataclass(kw_only=True)
 class NextTokBatch:
     """Batch of next-token prediction items prepared for MixedDecoder training.
@@ -68,6 +76,7 @@ class NextTokWikiDataset:
             deterministic: bool = False,
             text_field: str = 'text',
             prompt: str = 'Continue:',
+            seed: Optional[int] = None,
     ):
         self.ds = ds
         self.inds = inds.copy()
@@ -126,6 +135,10 @@ class NextTokWikiDataset:
         )
         # Internal pointer for skipping short docs
         self._ptr = 0
+        # Per-dataset RNG so context-offset, window-size and shuffle draws are
+        # reproducible and independent of the global numpy RNG (seeded per source
+        # via shuffle(seed) / build_stacked_next_tok_datasets).
+        self._rng = np.random.default_rng(seed)
 
     def __len__(self) -> int:
         return self.size
@@ -156,7 +169,17 @@ class NextTokWikiDataset:
         doc_toks = self._tokenize_doc(text)
         doc_toks_num = len(doc_toks)
 
-        doc_chunks_num = max(floor((doc_toks_num - self.min_next_toks) / self.chunk_content_len), 0)
+        # Tail budget reserved for the prediction target after the context window.
+        # Reserving only min_next_toks biased the random offset toward the document
+        # start in fixed-target mode (near-end offsets couldn't fill K decoder tokens
+        # and were rejected). Reserve a K-proportional encoder-token tail so the
+        # uniform offset draw is valid across the whole document.
+        if self.fixed_target_toks is not None:
+            required_tail = max(self.min_next_toks, NEXT_TARGET_TAIL_FACTOR * self.fixed_target_toks)
+        else:
+            required_tail = self.min_next_toks
+
+        doc_chunks_num = max(floor((doc_toks_num - required_tail) / self.chunk_content_len), 0)
 
         # Window size: fixed (controlled mode) or randomized within [min, max].
         if self.fixed_win_size is not None:
@@ -167,15 +190,15 @@ class NextTokWikiDataset:
             if doc_chunks_num < self.emb_win_min_size:
                 return None
             win_max_size_new = min(doc_chunks_num, self.emb_win_max_size)
-            win_size = np.random.randint(self.emb_win_min_size, win_max_size_new + 1)
+            win_size = int(self._rng.integers(self.emb_win_min_size, win_max_size_new + 1))
 
         ctx_tok_count = win_size * self.chunk_content_len
-        max_start = doc_toks_num - ctx_tok_count - self.min_next_toks
+        max_start = doc_toks_num - ctx_tok_count - required_tail
         if max_start < 0:
             return None
         # Deterministic mode pins the context to the document start so the sample
         # stream is reproducible across models; otherwise pick a random window.
-        start = 0 if self.deterministic else np.random.randint(0, max_start + 1)
+        start = 0 if self.deterministic else int(self._rng.integers(0, max_start + 1))
 
         chunks = self._make_chunks(doc_toks, start, win_size)
 
@@ -208,7 +231,7 @@ class NextTokWikiDataset:
             # Deterministic mode keeps a stable document order so the emitted
             # sample stream is identical across evaluation runs / models.
             if not self.deterministic:
-                np.random.shuffle(self.inds)
+                self._rng.shuffle(self.inds)
             self._ptr = 0
 
     def _sample_valid_item(self) -> Tuple[List[List[int]], List[int]]:
@@ -273,10 +296,10 @@ class NextTokWikiDataset:
 
     def shuffle(self, seed: Optional[int] = None) -> 'NextTokWikiDataset':
         if seed is not None:
-            rng = np.random.default_rng(seed)
-            rng.shuffle(self.inds)
-        else:
-            np.random.shuffle(self.inds)
+            # Reseed the per-dataset RNG so subsequent offset/window/shuffle draws
+            # are reproducible from this seed.
+            self._rng = np.random.default_rng(seed)
+        self._rng.shuffle(self.inds)
         self._ptr = 0
         return self
 
@@ -454,6 +477,7 @@ def build_stacked_next_tok_datasets(
             device=device, tkz_dec=tkz_dec, fixed_win_size=fixed_win_size,
             fixed_target_toks=fixed_target_toks, deterministic=deterministic,
             text_field=text_field, prompt=prompt,
+            seed=(None if seed is None else seed + len(sub_datasets)),
         )
         sub_datasets.append(sub)
         names.append(src)
