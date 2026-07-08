@@ -9,6 +9,7 @@ For each Wikipedia article:
 A fixed "Continue:" prompt bridges context embeddings and target tokens in the decoder input.
 """
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from math import floor
@@ -347,12 +348,55 @@ class NextTokSourceSpec:
 # HuggingFace Hub before large downloads; centralised here so additions are one line.
 SOURCE_REGISTRY: Dict[str, NextTokSourceSpec] = {
     'wiki': NextTokSourceSpec('wikimedia/wikipedia', '20231101.en', 'train', 'text'),
-    'pg19': NextTokSourceSpec('deepmind/pg19', None, 'train', 'text'),
+    # Parquet mirror of deepmind/pg19. The original is a loading *script* that fetches
+    # ~28k tiny per-book files one-by-one (very slow); this mirror stores the whole
+    # corpus as ~23 large parquet shards downloaded in parallel (see _download_num_proc).
+    'pg19': NextTokSourceSpec('emozilla/pg19', None, 'train', 'text'),
     'bookcorpusopen': NextTokSourceSpec('lucadiliello/bookcorpusopen', None, 'train', 'text'),
     'arxiv': NextTokSourceSpec('ccdv/arxiv-summarization', None, 'train', 'article'),
     'govreport': NextTokSourceSpec('ccdv/govreport-summarization', None, 'train', 'report'),
     'gutenberg': NextTokSourceSpec('manu/project_gutenberg', None, 'en', 'text'),
 }
+
+
+def _download_num_proc() -> int:
+    """Worker count for parallel dataset download/prepare.
+
+    Script-based sources (e.g. pg19) are made of many tiny per-document files that
+    ``datasets`` otherwise fetches one-by-one on a single thread. Overridable via the
+    ``NEXT_TOK_DL_PROC`` env var; defaults to a capped share of the CPUs.
+    """
+    override = os.environ.get('NEXT_TOK_DL_PROC')
+    if override:
+        try:
+            return max(1, int(override))
+        except ValueError:
+            pass
+    return max(1, min(16, (os.cpu_count() or 8)))
+
+
+def _load_dataset_rank0_first(spec: 'NextTokSourceSpec', data_path: Path):
+    """Load a HF dataset, ensuring only one process performs the download/prepare.
+
+    In distributed runs every rank would otherwise call :func:`load_dataset`
+    concurrently and download the same corpus N times. We serialise so that rank 0
+    downloads/prepares into the shared ``cache_dir`` first while the other ranks wait
+    on a barrier, then all ranks read from the now-populated cache.
+    """
+    load_kwargs = dict(
+        path=spec.hf_id, name=spec.hf_config, cache_dir=str(data_path),
+        trust_remote_code=True, num_proc=_download_num_proc(),
+    )
+    if not (dist.is_available() and dist.is_initialized()) or dist.get_world_size() <= 1:
+        return load_dataset(**load_kwargs)
+
+    rank = dist.get_rank()
+    if rank != 0:
+        dist.barrier()          # wait for rank 0 to finish downloading/preparing
+    dss = load_dataset(**load_kwargs)
+    if rank == 0:
+        dist.barrier()          # release the other ranks now that the cache exists
+    return dss
 
 
 def load_split_source_for_next(
@@ -378,9 +422,7 @@ def load_split_source_for_next(
         )
         return ds, inds_train, inds_val, spec.text_field
 
-    dss = load_dataset(
-        spec.hf_id, spec.hf_config, cache_dir=str(data_path), trust_remote_code=True,
-    )
+    dss = _load_dataset_rank0_first(spec, data_path)
     ds = dss[spec.split]
     n_docs = len(ds)
     doc_inds = np.arange(n_docs)

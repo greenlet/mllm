@@ -8,8 +8,14 @@ alembic
 #apache_beam
 #datasets==1.18.4
 # datasets==2.21.0
-# datasets>=4 no longer supports dataset loading scripts; use parquet-based sources
-datasets>=4.0.0
+# IMPORTANT: keep datasets < 4.0. Version 4.0 removed support for dataset loading
+# scripts, which breaks script-based sources used here (deepmind/pg19,
+# ccdv/arxiv-summarization, ccdv/govreport-summarization) with:
+#   "RuntimeError: Dataset scripts are no longer supported, but found pg19.py"
+# 3.6.0 still supports scripts via trust_remote_code=True (already set in code).
+# If you must move to datasets>=4, replace every script-based source in
+# mllm/train/next_tok_wiki.py:SOURCE_REGISTRY with a parquet-based mirror.
+datasets==3.6.0
 jupyter
 matplotlib
 #mteb
@@ -31,8 +37,7 @@ tensorboard
 # NOTE: install torch/torchvision from the cu126 wheels so Volta (V100, sm_70) is
 # supported. The default cu128/cu130 wheels drop sm_70 and raise
 # "CUDA error: no kernel image is available for execution on the device".
-#   pip install --index-url https://download.pytorch.org/whl/cu126 \
-#       torch==2.7.1 torchvision==0.22.1
+#   pip install --index-url https://download.pytorch.org/whl/cu126 torch==2.7.1 torchvision==0.22.1
 torch==2.7.1
 torchvision==0.22.1
 transformers<5.0.0
