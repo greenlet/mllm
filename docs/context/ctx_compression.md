@@ -217,12 +217,15 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 
 ## 7. References
 
-**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md)
+**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md)
 
 ### 7.1 This paper — LCLM
 - [Li et al., *End-to-End Context Compression at Scale (LCLM)* (2026)][paper] — [code][code] · [models][hf]
 
 ### 7.2 KV-cache compression (baselines)
+
+**Thread:** [KV-cache compression](kv_cache/kv_cache.md) (KVQuant · SnapKV · Cartridges · Expected Attention · KVzip · Fast KVzip · Attention Matching)
+
 - [Li et al., *SnapKV: LLM Knows What You Are Looking For Before Generation* (2024)][SnapKV]
 - [Kim et al., *KVzip: Query-Agnostic KV Cache Compression with Context Reconstruction* (2025)][KVzip]
 - [Kim et al., *Fast KVzip: Efficient LLM Inference with Gated KV Eviction* (2026)][FastKVzip]

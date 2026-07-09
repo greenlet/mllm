@@ -66,7 +66,7 @@ long context ──► [Encoder] ──► [Pool] ──► [Adapter] ──► 
 - **Hard-token compression** ([LLMLingua][LLMLingua], [Selective Context][SelectiveCtx],
   [CompAct][CompAct]) — deletes/paraphrases *real* tokens; complementary but intrinsically
   lossy on exact detail.
-- **KV-cache compression** ([SnapKV][SnapKV], [KVzip][KVzip], [Expected Attention][ExpAttn]) —
+- **KV-cache compression** ([thread](../kv_cache/kv_cache.md): [SnapKV][SnapKV], [KVzip][KVzip], [Expected Attention][ExpAttn]) —
   compresses *after* a full prefill; soft tokens compress *before* it and reuse across turns.
 - **Multimodal soft-token bridges** ([multimodal thread](../../mixed_decoder/multimodal/multimodal.md)) — Q-Former / Perceiver /
   [LLaVA][LLaVA] project *image* patches into decoder soft tokens; text context compression

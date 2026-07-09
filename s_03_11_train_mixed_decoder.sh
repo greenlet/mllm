@@ -298,6 +298,7 @@ learning_rate_scheduler_params='{"T_0": 30, "T_mult": 2, "eta_min": 1e-7}'
 
 
 # ---- Stage 2: medium compression (~31.5x, longer target) --------------------
+# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260706_213340-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl384-dtypeBf16-sepF-pallF-pfirstT-eer8-ewn10x10-frzencF-dsNext-mnt64-srcpg_bo_ar_go_gu-trn_lr5e-05_bs8_wdD0.1_wdO0.01_llrd0.9_attdp0.1_gc1.0
 # next_fixed_win_size=16         # N = 16 * 126 = 2016 ctx tokens
 # next_fixed_target_toks=384     # K
 # emb_exp_rate=4                 # 16 * 4 = 64 soft tokens
