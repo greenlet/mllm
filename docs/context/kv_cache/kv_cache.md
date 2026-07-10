@@ -81,7 +81,7 @@ full context ──► [Prefill] ──► KV cache  K,V ∈ ℝ^{L×H×d}
   *before* decoding into continuous embeddings; **parallelizable** and **engine-native**, where
   KV methods compress *after* a full prefill. The two are the central contrast in
   [LCLM](../ctx_compression.md).
-- **Hard-token compression** ([LLMLingua][LLMLingua]) — deletes/paraphrases the *input* text;
+- **Hard-token compression** ([thread](../hard_token/hard_token.md): [LLMLingua][LLMLingua]) — deletes/paraphrases the *input* text;
   KV methods keep text verbatim and act on the cache instead. Complementary and stackable.
 - **Architectural KV reduction** ([MLA][MLA] / DeepSeek, [GQA-style] grouping) — reduces the
   KV footprint *by design* at pretraining time; KV-cache **compression** is a *post-hoc* layer

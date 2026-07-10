@@ -63,7 +63,7 @@ long context ──► [Encoder] ──► [Pool] ──► [Adapter] ──► 
 
 ## Relation to the neighboring threads
 
-- **Hard-token compression** ([LLMLingua][LLMLingua], [Selective Context][SelectiveCtx],
+- **Hard-token compression** ([thread](../hard_token/hard_token.md): [LLMLingua][LLMLingua], [Selective Context][SelectiveCtx],
   [CompAct][CompAct]) — deletes/paraphrases *real* tokens; complementary but intrinsically
   lossy on exact detail.
 - **KV-cache compression** ([thread](../kv_cache/kv_cache.md): [SnapKV][SnapKV], [KVzip][KVzip], [Expected Attention][ExpAttn]) —

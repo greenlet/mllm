@@ -217,7 +217,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 
 ## 7. References
 
-**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md)
+**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md)
 
 ### 7.1 This paper — LCLM
 - [Li et al., *End-to-End Context Compression at Scale (LCLM)* (2026)][paper] — [code][code] · [models][hf]
@@ -255,6 +255,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 - [Li & Liang, *Prefix-Tuning: Optimizing Continuous Prompts* (2021)][PrefixTuning]
 
 ### 7.4 Hard-token / prompt compression
+
+**Thread:** [Hard-token / prompt compression](hard_token/hard_token.md) (Selective Context · LLMLingua · LongLLMLingua · NL-Prompt · CompAct)
+
 - [Jiang et al., *LLMLingua: Compressing Prompts for Accelerated Inference* (2023)][LLMLingua]
 - [Jiang et al., *LongLLMLingua: Prompt Compression for Long-Context Scenarios* (2024)][LongLLMLingua]
 - [Li et al., *Compressing Context to Enhance Inference Efficiency (Selective Context)* (2023)][SelectiveCtx]
