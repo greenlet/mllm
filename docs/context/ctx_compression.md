@@ -217,7 +217,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 
 ## 7. References
 
-**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md)
+**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md)
 
 ### 7.1 This paper — LCLM
 - [Li et al., *End-to-End Context Compression at Scale (LCLM)* (2026)][paper] — [code][code] · [models][hf]
@@ -265,6 +265,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 - [Yoon et al., *CompAct: Compressing Retrieved Documents Actively* (2024)][CompAct]
 
 ### 7.5 Backbone models & components
+
+**Thread:** [Backbone models & components](backbone/backbone.md) (Qwen3 · Qwen3-Embedding · prefix-LM · RoPE · YaRN · RMSNorm · GELU · FlashAttention-2 · FlexAttention)
+
 - [Yang et al., *Qwen3 Technical Report* (2025)][Qwen3]
 - [Zhang et al., *Qwen3 Embedding* (2025)][Qwen3Emb]
 - [Raffel et al., *T5 — Unified Text-to-Text Transformer (prefix-LM)* (2020)][PrefixLM]
