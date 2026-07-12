@@ -229,6 +229,36 @@ class MixedDecoder(nn.Module):
                 self.decoder.config.attention_dropout = attn_dp
                 for layer in self.decoder.model.layers:
                     layer.self_attn.attention_dropout = attn_dp
+            # LoRA (parameter-efficient fine-tuning). Wrap AFTER the attention-dropout
+            # loop above, which relies on the un-wrapped `self.decoder.model.layers`
+            # path (peft nests the base model under `base_model.model`). When enabled,
+            # the decoder base weights are frozen and only the low-rank adapters train;
+            # the encoder / emb_exp / InteractiveExtractor bridges keep training.
+            if self.cfg.train_cfg.use_lora:
+                from peft import LoraConfig, get_peft_model
+                target_modules = list(self.cfg.train_cfg.lora_target_modules) or [
+                    'q_proj', 'k_proj', 'v_proj', 'o_proj',
+                    'gate_proj', 'up_proj', 'down_proj',
+                ]
+                lora_cfg = LoraConfig(
+                    task_type='CAUSAL_LM',
+                    r=self.cfg.train_cfg.lora_rank,
+                    lora_alpha=self.cfg.train_cfg.lora_alpha,
+                    lora_dropout=self.cfg.train_cfg.lora_dropout,
+                    target_modules=target_modules,
+                    bias='none',
+                )
+                self.decoder = get_peft_model(self.decoder, lora_cfg)
+                # With gradient checkpointing + a frozen base, ensure gradients can
+                # still reach the LoRA adapters (standard peft recipe; a no-op on the
+                # inputs_embeds path but harmless).
+                self.decoder.enable_input_require_grads()
+                rank = dist.get_rank() if dist.is_initialized() else 0
+                if rank == 0:
+                    self.decoder.print_trainable_parameters()
+                # Re-fetch the input embedding module through the peft wrapper so the
+                # sanity check / token embedding lookups below use the live object.
+                self.word_embeddings = self.decoder.get_input_embeddings()
             # Qwen vocab differs from BERT, so the mask-aware decoder loss cannot be
             # used (mask positions / vocab IDs do not transfer). mask_cfg is still
             # honored on the encoder side (encoder receives inp_masked_toks); the

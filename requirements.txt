@@ -41,6 +41,9 @@ tensorboard
 torch==2.7.1
 torchvision==0.22.1
 transformers<5.0.0
+# Parameter-efficient fine-tuning (LoRA) for the mixed-decoder Qwen path
+# (s_03_11_train_mixed_decoder.py --use-lora). Compatible with transformers<5.
+peft
 tqdm
 # windows-curses
 

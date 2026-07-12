@@ -2101,6 +2101,18 @@ class MixedDecoderTrainCfg(BaseModel):
     label_smoothing: float = 0.0
     # Max gradient norm. 0 disables clipping.
     max_grad_norm: float = 0.0
+    # --- LoRA (parameter-efficient fine-tuning of the decoder) ---
+    # When True the decoder base weights are frozen and low-rank LoRA adapters are
+    # injected into the decoder (Qwen only for now). Encoder / emb_exp / extractor
+    # bridges keep training normally. All defaults are no-ops so legacy YAMLs load
+    # unchanged.
+    use_lora: bool = False
+    lora_rank: int = 16
+    lora_alpha: int = 32
+    lora_dropout: float = 0.05
+    # Target module names to adapt. Empty -> default Qwen attention+MLP projections
+    # (q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj).
+    lora_target_modules: list[str] = []
 
 
 class MixedDecoderCfg(BaseModel):
@@ -2309,6 +2321,8 @@ def create_mixed_decoder_cfg(
         lrs_name: str = 'ReduceLROnPlateau', lrs_params: Optional[Dict[str, Any]] = None, batch_size: int = 10,
         weight_decay_decoder: float = 0.0, weight_decay_other: float = 0.0, llrd_decay: float = 1.0,
         attention_dropout: float = 0.0, label_smoothing: float = 0.0, max_grad_norm: float = 0.0,
+        use_lora: bool = False, lora_rank: int = 16, lora_alpha: int = 32, lora_dropout: float = 0.05,
+        lora_target_modules: Optional[list[str]] = None,
 ) -> MixedDecoderCfg:
     # Compound training: keep the scalar `train_ds_type` (primary type) consistent
     # with `train_ds_types` so legacy consumers and folder naming stay correct.
@@ -2351,6 +2365,11 @@ def create_mixed_decoder_cfg(
         attention_dropout=attention_dropout,
         label_smoothing=label_smoothing,
         max_grad_norm=max_grad_norm,
+        use_lora=use_lora,
+        lora_rank=lora_rank,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        lora_target_modules=lora_target_modules or [],
     )
 
     cfg = MixedDecoderCfg(
@@ -2411,6 +2430,8 @@ def copy_override_mixed_decoder_cfg(
         weight_decay_decoder: Optional[float] = None, weight_decay_other: Optional[float] = None,
         llrd_decay: Optional[float] = None, attention_dropout: Optional[float] = None,
         label_smoothing: Optional[float] = None, max_grad_norm: Optional[float] = None,
+        use_lora: Optional[bool] = None, lora_rank: Optional[int] = None, lora_alpha: Optional[int] = None,
+        lora_dropout: Optional[float] = None, lora_target_modules: Optional[list[str]] = None,
 ) -> MixedDecoderCfg:
     enc = cfg.enc_bert
     pretrained_model_name = coalesce(pretrained_model_name, enc.pretrained_model_name)
@@ -2459,6 +2480,11 @@ def copy_override_mixed_decoder_cfg(
     attention_dropout = coalesce(attention_dropout, cfg.train_cfg.attention_dropout)
     label_smoothing = coalesce(label_smoothing, cfg.train_cfg.label_smoothing)
     max_grad_norm = coalesce(max_grad_norm, cfg.train_cfg.max_grad_norm)
+    use_lora = coalesce(use_lora, cfg.train_cfg.use_lora)
+    lora_rank = coalesce(lora_rank, cfg.train_cfg.lora_rank)
+    lora_alpha = coalesce(lora_alpha, cfg.train_cfg.lora_alpha)
+    lora_dropout = coalesce(lora_dropout, cfg.train_cfg.lora_dropout)
+    lora_target_modules = coalesce(lora_target_modules, cfg.train_cfg.lora_target_modules)
 
     return create_mixed_decoder_cfg(
         pretrained_model_name=pretrained_model_name, emb_type=emb_type, inp_len=inp_len,
@@ -2482,6 +2508,8 @@ def copy_override_mixed_decoder_cfg(
         weight_decay_decoder=weight_decay_decoder, weight_decay_other=weight_decay_other,
         llrd_decay=llrd_decay, attention_dropout=attention_dropout,
         label_smoothing=label_smoothing, max_grad_norm=max_grad_norm,
+        use_lora=use_lora, lora_rank=lora_rank, lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout, lora_target_modules=lora_target_modules,
     )
 
 
@@ -2562,6 +2590,8 @@ def gen_prefpostfix_mixed_decoder(model_cfg: MixedDecoderCfg) -> tuple[str, str]
         train_parts.append(f'ls{np.round(train.label_smoothing, 4)}')
     if train.max_grad_norm > 0:
         train_parts.append(f'gc{np.round(train.max_grad_norm, 4)}')
+    if train.use_lora:
+        train_parts.append(f'lora_r{train.lora_rank}a{train.lora_alpha}dp{np.round(train.lora_dropout, 4)}')
     postfix_parts.append('_'.join(train_parts))
 
     postfix = '-'.join(postfix_parts)

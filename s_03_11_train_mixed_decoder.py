@@ -74,6 +74,10 @@ normalize_train_ds_loss_weights_ARG = '--normalize-train-ds-loss-weights', \
     'Normalize train_ds_loss_weights so that they sum to 1.'
 structured_fill_to_budget_ARG = '--structured-fill-to-budget', \
     'For structured datasets (keyval/jsonfield/jsonata/xmlxpath/sql): grow each record to ~fill the inp_len token budget (cite-style dense chunks).'
+use_lora_ARG = '--use-lora', \
+    'Enable LoRA (parameter-efficient) fine-tuning of the decoder: freeze the decoder base ' \
+    'weights and train low-rank adapters instead (Qwen only). Encoder / emb_exp / extractor ' \
+    'bridges keep training. DDP only for now.'
 
 
 def _split_ws_list(v):
@@ -464,6 +468,11 @@ class ArgsMixedDecoderTrain(BaseModel):
     def structured_fill_to_budget(self) -> bool:
         return is_arg_true(structured_fill_to_budget_ARG[0], self.structured_fill_to_budget_STR)
 
+    use_lora_STR: str = create_bool_str_field(*use_lora_ARG)
+    @property
+    def use_lora(self) -> bool:
+        return is_arg_true(use_lora_ARG[0], self.use_lora_STR)
+
     mask_sep_freq: float = Field(
         0.0,
         description='Sparse mask frequency from 0 to 1.',
@@ -580,6 +589,33 @@ class ArgsMixedDecoderTrain(BaseModel):
             'AMP- and FSDP-aware.',
         cli=('--max-grad-norm',),
     )
+
+    lora_rank: int = Field(
+        16,
+        description='LoRA adapter rank (r). Only used when --use-lora is set.',
+        cli=('--lora-rank',),
+    )
+    lora_alpha: int = Field(
+        32,
+        description='LoRA scaling alpha. Effective scale is lora_alpha / lora_rank. '
+            'Only used when --use-lora is set.',
+        cli=('--lora-alpha',),
+    )
+    lora_dropout: float = Field(
+        0.05,
+        description='Dropout applied inside the LoRA adapters. Only used when --use-lora is set.',
+        cli=('--lora-dropout',),
+    )
+    lora_target_modules: list[str] = Field(
+        [],
+        description='Whitespace-separated list of decoder module names to adapt with LoRA. '
+            'Empty -> default Qwen attention+MLP projections '
+            '(q_proj k_proj v_proj o_proj gate_proj up_proj down_proj). Only used when --use-lora is set.',
+        cli=('--lora-target-modules',),
+    )
+    @validator('lora_target_modules', pre=True)
+    def _split_lora_target_modules(cls, v):
+        return _split_ws_list(v)
 
     learning_rate_scheduler_name: str = Field(
         'ReduceLROnPlateau',
@@ -736,6 +772,11 @@ def _get_decoder_layers(decoder: nn.Module, decoder_type: 'MixedDecoderType') ->
     """
     if decoder is None:
         return None
+    # When LoRA is enabled the decoder is a peft `PeftModel` that nests the real
+    # HF model under `.base_model.model`. Unwrap so the layer paths below resolve.
+    base = getattr(decoder, 'base_model', None)
+    if base is not None and hasattr(base, 'model'):
+        decoder = base.model
     if decoder_type == MixedDecoderType.Qwen:
         return list(decoder.model.layers)
     if decoder_type == MixedDecoderType.Gpt2:
@@ -951,6 +992,11 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, next_s
         attention_dropout=args.attention_dropout,
         label_smoothing=args.label_smoothing,
         max_grad_norm=args.max_grad_norm,
+        use_lora=args.use_lora,
+        lora_rank=args.lora_rank,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        lora_target_modules=args.lora_target_modules,
     )
     if rank == 0:
         pprint(model_cfg.dict())
@@ -1037,6 +1083,12 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, next_s
             raise ValueError(
                 'FSDP path does not support fp16 (would need ShardedGradScaler). '
                 'Use a bf16 or fp32 decoder_spec, e.g. qwen2.5-1.5B-bf16.'
+            )
+        if args.use_lora:
+            raise NotImplementedError(
+                '--use-lora is currently supported with --parallel ddp only. '
+                'The peft wrapper changes the module tree and needs a dedicated '
+                'FSDP auto-wrap policy; run LoRA with --parallel ddp for now.'
             )
 
     if checkpoint is not None and use_fsdp:
@@ -1550,6 +1602,11 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, next_s
     _freeze_decoder = getattr(_freeze_base, 'decoder', None)
     decoder_params = list(_freeze_decoder.parameters()) if _freeze_decoder is not None else []
     if args.freeze_decoder_epochs > 0:
+        if args.use_lora:
+            log(f'NOTE: --use-lora is set, so the decoder base weights are already '
+                f'frozen; --freeze-decoder-epochs={args.freeze_decoder_epochs} will '
+                f'additionally freeze the LoRA adapters for the first '
+                f'{args.freeze_decoder_epochs} epoch(s) (only the bridges/encoder train then).')
         log(f'Decoder freeze enabled: decoder weights fixed for the first '
             f'{args.freeze_decoder_epochs} epoch(s) ({len(decoder_params)} param tensors).')
 
