@@ -46,6 +46,18 @@ decoder_spec=qwen2.5-1.5B-bf16
 parallel=fsdp
 fsdp_shard=full
 
+# --- LoRA (parameter-efficient fine-tuning of the decoder) ---
+# When use_lora=true the decoder base weights are frozen and low-rank adapters are
+# injected into the Qwen decoder (encoder / emb_exp / extractor bridges still train
+# fully). Requires --parallel ddp for now (the peft wrapper is not yet FSDP-wrapped).
+# lora_target_modules: empty -> default Qwen attention+MLP projections
+#   (q_proj k_proj v_proj o_proj gate_proj up_proj down_proj).
+use_lora=false
+lora_rank=16
+lora_alpha=32
+lora_dropout=0.05
+lora_target_modules=""
+
 # pip install datasets==3.6.0
 # train_ds_types is a space-separated list. A single type trains on that dataset;
 # multiple types are mixed in a round-robin cycle (see train_ds_batches_per_cycle)
@@ -435,6 +447,11 @@ python s_03_11_train_mixed_decoder.py \
   --attention-dropout $attention_dropout \
   --label-smoothing $label_smoothing \
   --max-grad-norm $max_grad_norm \
+  --use-lora $use_lora \
+  --lora-rank $lora_rank \
+  --lora-alpha $lora_alpha \
+  --lora-dropout $lora_dropout \
+  --lora-target-modules "$lora_target_modules" \
   --train-epoch-steps $train_epoch_steps \
   --val-epoch-steps $val_epoch_steps \
   --random-seed $random_seed \
