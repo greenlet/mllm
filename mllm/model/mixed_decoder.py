@@ -355,6 +355,40 @@ class MixedDecoder(nn.Module):
         )
         self.decoder.config.max_position_embeddings = new_max_len
 
+    def _adapt_emb_exp_weight(self, state_dict: Dict[str, Any]) -> None:
+        """Reconcile a checkpoint's `emb_exp.weight` with the current emb_exp_rate.
+
+        `emb_exp` is Linear(d_model, emb_exp_rate * d_dec, bias=False), so its weight
+        has shape (emb_exp_rate * d_dec, d_model) laid out as `emb_exp_rate` blocks of
+        `d_dec` rows (one block per expansion copy, matching the later
+        view(batch, emb_exp_rate, d_dec)). When a checkpoint was trained with a
+        different rate we keep the shared d_dec block size and:
+          - truncate the extra blocks when the new rate is smaller, or
+          - repeat the existing blocks cyclically when the new rate is larger.
+        Edits `state_dict` in place; no-op if emb_exp is absent or already matches.
+        """
+        key = 'emb_exp.weight'
+        if self.emb_exp is None or key not in state_dict:
+            return
+        src = state_dict[key]
+        tgt = self.emb_exp.weight
+        if src.shape == tgt.shape:
+            return
+        d_dec = self.d_dec
+        # Only the expansion-rate (row) dimension may differ; d_model and d_dec are fixed.
+        if src.shape[1] != tgt.shape[1] or src.shape[0] % d_dec != 0 or tgt.shape[0] % d_dec != 0:
+            return
+        src_rate = src.shape[0] // d_dec
+        tgt_rate = tgt.shape[0] // d_dec
+        src_blocks = src.reshape(src_rate, d_dec, src.shape[1])
+        block_idx = [i % src_rate for i in range(tgt_rate)]
+        new_blocks = src_blocks[block_idx]  # truncates (tgt<src) or repeats cyclically (tgt>src)
+        adapted = new_blocks.reshape(tgt_rate * d_dec, src.shape[1]).to(dtype=src.dtype)
+        rank = dist.get_rank() if dist.is_initialized() else 0
+        print(f'R{rank}. Adapted emb_exp.weight from rate {src_rate} to {tgt_rate} '
+              f'({"truncated" if tgt_rate <= src_rate else "repeated"}).')
+        state_dict[key] = adapted
+
     def load_pretrained(self, checkpoint: Optional[Dict[str, Any]] = None):
         # Older checkpoints were saved with the BertModel pooler enabled
         # (enc.bert_model.pooler.dense.{weight,bias}). EncoderBert now constructs
@@ -375,6 +409,7 @@ class MixedDecoder(nn.Module):
                     continue
                 cleaned_dict[key] = val
             print(f'Load {len(cleaned_dict)}')
+            self._adapt_emb_exp_weight(cleaned_dict)
             # self.load_state_dict(cleaned_dict, strict=not self.decoder_only)
             self.load_state_dict(cleaned_dict, strict=False)
         else:
@@ -400,6 +435,7 @@ class MixedDecoder(nn.Module):
                         continue
                     cleaned_dict[key] = val
 
+                self._adapt_emb_exp_weight(cleaned_dict)
                 # self.load_state_dict(cleaned_dict, strict=not self.decoder_only)
                 self.load_state_dict(cleaned_dict, strict=False)
             elif pretrained_encdec_model_path and pretrained_encdec_model_path.exists():
