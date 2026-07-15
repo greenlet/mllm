@@ -217,7 +217,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 
 ## 7. References
 
-**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md)
+**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md)
 
 ### 7.1 This paper — LCLM
 - [Li et al., *End-to-End Context Compression at Scale (LCLM)* (2026)][paper] — [code][code] · [models][hf]
@@ -279,6 +279,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 - [Dong et al., *FlexAttention* (2024)][FlexAttn]
 
 ### 7.6 Multimodal / VLM alignment (analogy for the staged recipe)
+
+**Thread:** [Multimodal / VLM alignment](multimodal/multimodal.md) (ViT · CPVT · LLaVA · LLaVA-1.5 · Cambrian-1 · Qwen3-VL) — the staged-recipe analogy behind §3.2's progressive unfreeze.
+
 - [Liu et al., *Visual Instruction Tuning (LLaVA)* (2023)][LLaVA]
 - [Tong et al., *Cambrian-1: Vision-Centric Multimodal LLMs* (2024)][Cambrian]
 - [Dosovitskiy et al., *An Image Is Worth 16×16 Words (ViT)* (2020)][ViT]
