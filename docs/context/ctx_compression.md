@@ -217,7 +217,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 
 ## 7. References
 
-**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md)
+**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md) · [Long-context benchmarks](benchmarks/benchmarks.md)
 
 ### 7.1 This paper — LCLM
 - [Li et al., *End-to-End Context Compression at Scale (LCLM)* (2026)][paper] — [code][code] · [models][hf]
@@ -289,6 +289,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 - [Qwen Team, *Qwen3-VL* (2025)][Qwen3VL]
 
 ### 7.7 Long-context benchmarks & datasets
+
+**Thread:** [Long-context benchmarks & datasets](benchmarks/benchmarks.md) (RULER · LongBench · LongHealth · GSM8K · Lost-in-the-Middle · Effective-Context · Train-LC) — the evaluation bar behind §4's results.
+
 - [Hsieh et al., *RULER: Real Context Size of Long-Context LMs* (2024)][RULER]
 - [Bai et al., *LongBench: Bilingual Multitask Long-Context Benchmark* (2024)][LongBench]
 - [Adams et al., *LongHealth: QA over Long Clinical Documents* (2025)][LongHealth]
