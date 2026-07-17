@@ -217,7 +217,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 
 ## 7. References
 
-**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md) · [Long-context benchmarks](benchmarks/benchmarks.md)
+**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md) · [Long-context benchmarks](benchmarks/benchmarks.md) · [Inference engines & systems](systems/systems.md)
 
 ### 7.1 This paper — LCLM
 - [Li et al., *End-to-End Context Compression at Scale (LCLM)* (2026)][paper] — [code][code] · [models][hf]
@@ -301,6 +301,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 - [Gao et al., *How to Train Long-Context Language Models (Effectively)* (2025)][TrainLC]
 
 ### 7.8 Inference engines & systems
+
+**Thread:** [Inference engines & systems](systems/systems.md) (vLLM / PagedAttention · SGLang · HF Transformers) — why soft tokens deploy on today's serving stacks unchanged.
+
 - [Kwon et al., *PagedAttention / vLLM* (2023)][PagedAttn]
 - [Zheng et al., *SGLang: Structured LM Program Execution* (2024)][SGLang]
 - [Wolf et al., *HuggingFace Transformers* (2020)][HFTransformers]
