@@ -217,7 +217,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 
 ## 7. References
 
-**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md) · [Long-context benchmarks](benchmarks/benchmarks.md) · [Inference engines & systems](systems/systems.md)
+**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md) · [Long-context benchmarks](benchmarks/benchmarks.md) · [Inference engines & systems](systems/systems.md) · [Efficient long-sequence modeling](long_seq/long_seq.md)
 
 ### 7.1 This paper — LCLM
 - [Li et al., *End-to-End Context Compression at Scale (LCLM)* (2026)][paper] — [code][code] · [models][hf]
@@ -309,6 +309,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 - [Wolf et al., *HuggingFace Transformers* (2020)][HFTransformers]
 
 ### 7.9 Efficient long-sequence modeling
+
+**Thread:** [Efficient long-sequence modeling](long_seq/long_seq.md) (Transformer-XL · Compressive-T · Linear Attention · S4 · Mamba · Kimi Linear · MLA · DeepSeek-V4) — the orthogonal, composable axis to input compression.
+
 - [Dai et al., *Transformer-XL* (2019)][TransfoXL]
 - [Rae et al., *Compressive Transformers* (2019)][CompTransf]
 - [Katharopoulos et al., *Transformers are RNNs (Linear Attention)* (2020)][LinAttn]

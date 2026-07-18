@@ -202,7 +202,7 @@ pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbas
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260429_091845-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-msl384-sepF-pallF-eer4-ewn2x4-frzencF-dsCite-trn_lr5e-05_bs30
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260523_180218-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400-dtypeBf16-sepF-pallF-eer4-ewn2x6-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs20_attdp0.1
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260615_083942-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400-dtypeBf16-sepF-pallF-ewn10x10-ieSelf_eer4_nl6_nh8_mlp4.0-ieStrmF-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs20_attdp0.1/
-# train_subdir=last
+train_subdir=last
 
 # device=cpu
 # epochs=5
@@ -299,26 +299,26 @@ optimizer_params='{"weight_decay": 0.01, "betas": [0.9, 0.98], "eps": 1e-8}'
 learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
 
 # ---- Stage 1: warm-up (low compression ~15.75x, short target) ---------------
-next_fixed_win_size=8          # N = 8 * 126 = 1008 ctx tokens
-next_fixed_target_toks=256     # K
-emb_exp_rate=8                 # 8 * 8 = 64 soft tokens
-max_seq_len=384                # 64 + 0 + 256 = 320, headroom to 384
-freeze_decoder_epochs=8        # let the soft-token bridge warm up first
-learning_rate=5e-5             # highest peak: cold bridge, easiest task
-learning_rate_override=0       # fresh init -> nothing to discard
-learning_rate_scheduler_params='{"T_0": 30, "T_mult": 2, "eta_min": 1e-7}'
+# next_fixed_win_size=8          # N = 8 * 126 = 1008 ctx tokens
+# next_fixed_target_toks=256     # K
+# emb_exp_rate=8                 # 8 * 8 = 64 soft tokens
+# max_seq_len=384                # 64 + 0 + 256 = 320, headroom to 384
+# freeze_decoder_epochs=8        # let the soft-token bridge warm up first
+# learning_rate=5e-5             # highest peak: cold bridge, easiest task
+# learning_rate_override=0       # fresh init -> nothing to discard
+# learning_rate_scheduler_params='{"T_0": 30, "T_mult": 2, "eta_min": 1e-7}'
 
 
 # ---- Stage 2: medium compression (~31.5x, longer target) --------------------
-# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260706_213340-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl384-dtypeBf16-sepF-pallF-pfirstT-eer8-ewn10x10-frzencF-dsNext-mnt64-srcpg_bo_ar_go_gu-trn_lr5e-05_bs8_wdD0.1_wdO0.01_llrd0.9_attdp0.1_gc1.0
-# next_fixed_win_size=16         # N = 16 * 126 = 2016 ctx tokens
-# next_fixed_target_toks=384     # K
-# emb_exp_rate=4                 # 16 * 4 = 64 soft tokens
-# max_seq_len=512                # 64 + 0 + 384 = 448, headroom to 512
-# freeze_decoder_epochs=4
-# learning_rate=3e-5             # lower peak: harder task, resuming warm weights
-# learning_rate_override=3e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
-# learning_rate_scheduler_params='{"T_0": 40, "T_mult": 2, "eta_min": 1e-7}'
+# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260714_100713-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl384-dtypeBf16-sepF-pallF-pfirstT-eer8-ewn10x10-frzencF-dsNext-mnt64-srcpg_bo_ar_go_gu-trn_lr5e-05_bs8_wdD0.1_wdO0.01_llrd0.9_attdp0.1_gc1.0_lora_r16a32dp0.05
+next_fixed_win_size=16         # N = 16 * 126 = 2016 ctx tokens
+next_fixed_target_toks=384     # K
+emb_exp_rate=4                 # 16 * 4 = 64 soft tokens
+max_seq_len=512                # 64 + 0 + 384 = 448, headroom to 512
+freeze_decoder_epochs=4
+learning_rate=3e-5             # lower peak: harder task, resuming warm weights
+learning_rate_override=3e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
+learning_rate_scheduler_params='{"T_0": 40, "T_mult": 2, "eta_min": 1e-7}'
 
 # ---- Stage 3: high compression (~63x, full target) --------------------------
 # next_fixed_win_size=32         # N = 32 * 126 = 4032 ctx tokens
