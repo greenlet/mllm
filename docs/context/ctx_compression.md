@@ -217,7 +217,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 
 ## 7. References
 
-**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md) · [Long-context benchmarks](benchmarks/benchmarks.md) · [Inference engines & systems](systems/systems.md) · [Efficient long-sequence modeling](long_seq/long_seq.md)
+**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md) · [Long-context benchmarks](benchmarks/benchmarks.md) · [Inference engines & systems](systems/systems.md) · [Efficient long-sequence modeling](long_seq/long_seq.md) · [Agentic memory & frameworks](agentic_memory/agentic_memory.md)
 
 ### 7.1 This paper — LCLM
 - [Li et al., *End-to-End Context Compression at Scale (LCLM)* (2026)][paper] — [code][code] · [models][hf]
@@ -322,6 +322,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 - [DeepSeek-AI, *DeepSeek-V4: Million-Token Context* (2026)][DSV4]
 
 ### 7.10 Agentic memory & frameworks
+
+**Thread:** [Agentic memory & frameworks](agentic_memory/agentic_memory.md) (Recursive Language Models · MemGPT · A-Mem · MemoryBank) — the outer loop LCLM's `EXPAND(i)` plugs into.
+
 - [Zhang et al., *Recursive Language Models* (2025)][RLM]
 - [Packer et al., *MemGPT: LLMs as Operating Systems* (2023)][MemGPT]
 - [Xu et al., *A-Mem: Agentic Memory for LLM Agents* (2025)][AMem]
