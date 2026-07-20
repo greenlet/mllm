@@ -321,6 +321,7 @@ learning_rate_override=3e-5    # rebuild optimizer+scheduler -> fresh cosine cyc
 learning_rate_scheduler_params='{"T_0": 40, "T_mult": 2, "eta_min": 1e-7}'
 
 # ---- Stage 3: high compression (~63x, full target) --------------------------
+# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260718_083349-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl512-dtypeBf16-sepF-pallF-pfirstT-eer4-ewn10x10-frzencF-dsNext-mnt64-srcpg_bo_ar_go_gu-trn_lr3e-05_bs8_wdD0.1_wdO0.01_llrd0.9_attdp0.1_gc1.0
 # next_fixed_win_size=32         # N = 32 * 126 = 4032 ctx tokens
 # next_fixed_target_toks=512     # K
 # emb_exp_rate=2                 # 32 * 2 = 64 soft tokens

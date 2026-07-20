@@ -217,7 +217,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 
 ## 7. References
 
-**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md) · [Long-context benchmarks](benchmarks/benchmarks.md) · [Inference engines & systems](systems/systems.md) · [Efficient long-sequence modeling](long_seq/long_seq.md) · [Agentic memory & frameworks](agentic_memory/agentic_memory.md)
+**In-repo threads:** [MixedDecoder](../mixed_decoder/mixed_decoder.md) · [Qwen overview](../qwen/overview.md) · [Multimodal / VLM alignment](multimodal/multimodal.md) · [Multimodal soft-token bridges](../mixed_decoder/multimodal/multimodal.md) · [Soft-token compression](soft_token/soft_token.md) · [KV-cache compression](kv_cache/kv_cache.md) · [Hard-token compression](hard_token/hard_token.md) · [Backbone components](backbone/backbone.md) · [Long-context benchmarks](benchmarks/benchmarks.md) · [Inference engines & systems](systems/systems.md) · [Efficient long-sequence modeling](long_seq/long_seq.md) · [Agentic memory & frameworks](agentic_memory/agentic_memory.md) · [Continual training & forgetting](forgetting/forgetting.md)
 
 ### 7.1 This paper — LCLM
 - [Li et al., *End-to-End Context Compression at Scale (LCLM)* (2026)][paper] — [code][code] · [models][hf]
@@ -331,6 +331,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 - [Zhong et al., *MemoryBank: Long-Term Memory for LLMs* (2023)][MemoryBank]
 
 ### 7.11 Continual training / catastrophic forgetting
+
+**Thread:** [Continual training & catastrophic forgetting](forgetting/forgetting.md) (Continual-FT Forgetting · Revisiting-CF · LoRA) — why §3.2's staged, small-LR unfreeze is a forgetting mitigation.
+
 - [Luo et al., *Catastrophic Forgetting during Continual Fine-tuning* (2025)][CatForgetLLM]
 - [Li et al., *Revisiting Catastrophic Forgetting in LLM Tuning* (2024)][RevisitCF]
 
