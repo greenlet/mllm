@@ -1,12 +1,16 @@
 ---
 name: paper-recap
 description: |
-  Generate a structured, single-page (or longer when needed for implementability) recap
-  of a research paper or technical report and save it to `docs/papers/`. Generic and
+  Generate a **comprehensive**, self-contained recap of a research paper or technical
+  report and save it to `docs/papers/`. The recap must convey the *full meaning* of the
+  paper: complete method description detailed enough to reimplement, all key equations
+  (in KaTeX), architecture/flow diagrams (Mermaid or ASCII), and the paper's essential
+  figures downloaded locally. Prefer thoroughness over brevity — length is dictated by
+  what it takes to fully reveal the idea, not by a page limit. Generic and
   project-agnostic. Triggers on phrases like "recap paper", "summarize paper",
   "add paper recap", "build recap thread", "generate paper review", "review this arXiv".
   Inputs: an arXiv ID, a paper title, or a URL. Output: a new file at
-  `docs/papers/<category>_<YYYY>_<keywords>.md` plus optional figure assets.
+  `docs/papers/<category>_<YYYY>_<keywords>.md` plus its figure assets.
 tools:
   - fetch_webpage
   - read_file
@@ -68,8 +72,10 @@ When recapping a whole thread, dispatch one `Explore` subagent per paper in para
 
 ## Image policy
 
-- Download **at most 1–3 essential figures** per paper (architecture diagram, key
-  result plot). Skip decorative figures, tables, and non-essential plots.
+- **Always include the paper's essential figures.** Download **2–4** figures per paper
+  that are load-bearing for understanding: the architecture/method diagram (mandatory when
+  one exists), the key results plot, and any figure that illustrates the core mechanism.
+  Skip only purely decorative or redundant figures.
 - Find figure URLs from arXiv HTML — typically
   `https://arxiv.org/html/<id>v<n>/x1.png`, `x2.png`, ...
   or `https://arxiv.org/html/<id>v<n>/extracted/<hash>/figureN.png`.
@@ -79,14 +85,22 @@ When recapping a whole thread, dispatch one `Explore` subagent per paper in para
   Invoke-WebRequest -Uri "<url>" -OutFile "docs/papers/_assets/<full-stem>/<name>.png"
   ```
   (use `curl.exe` on non-Windows). Verify each download succeeded before embedding.
-- Reference in markdown as `![caption](_assets/<full-stem>/<name>.png)`.
-- If no good figure exists or download fails, omit the image — never embed a remote
-  URL as a substitute for a local asset.
+- Reference in markdown as `![caption](_assets/<full-stem>/<name>.png)` with a caption that
+  explains what the figure shows and why it matters.
+- If a figure download fails, **also** provide a Mermaid/ASCII diagram reproducing its
+  content — never embed a remote URL as a substitute for a local asset.
+- **In addition to downloaded figures, author your own diagram** (Mermaid ` ```mermaid ` or
+  an ASCII block) that reconstructs the architecture / data flow in your own terms. Every
+  recap should contain at least one such diagram even when figures download successfully.
 
 ## Per-paper recap template
 
-Use this exact section structure. Keep it ~1 page; expand only when needed for
-implementability of the core idea.
+Use this exact section structure. **Be comprehensive:** the recap must stand on its own
+as a full explanation of the paper — a reader should understand the problem, the exact
+mechanism, every key equation, the architecture (with a diagram), the training recipe,
+and the headline results **without opening the original paper**. Do not compress to fit a
+page; expand every section as far as the paper's content requires. Prefer more detail,
+more equations, and an explanatory diagram over terse bullet points.
 
 ```markdown
 # <Short title> — <First author> et al., <Year>
@@ -94,35 +108,47 @@ implementability of the core idea.
 > **arXiv:** <id>v<n> · **Venue:** <conf/journal or "preprint"> · **Affiliation:** <lab>
 
 ## TL;DR
-2–3 sentences capturing the contribution.
+2–4 sentences capturing the contribution and why it matters.
 
 ## Problem & motivation
-What was broken before. What prior art assumed. Why it matters.
+What was broken before, what prior art assumed, and why it matters. Explain the
+quantitative or structural pain point the paper attacks (with numbers where the paper
+gives them).
 
 ## Key idea
-The core mechanism in plain language. Include the central equation in KaTeX
-when applicable:
+The core mechanism in plain language, then made precise. State the central equation(s)
+in KaTeX and **define every symbol**:
 
 $$
 \text{equation here}
 $$
 
 ## How it works
-- Step-by-step algorithm or architecture description, detailed enough to reimplement.
-- Inputs / outputs / shapes.
-- Critical hyperparameters and their typical values.
-- Embed 1–3 essential figures here:
-  ![Figure 1: architecture](_assets/<full-stem>/x1.png)
+Comprehensive, reimplementation-grade walkthrough. Include, as needed:
+- Step-by-step algorithm (numbered) or architecture description, component by component.
+- Inputs / outputs / tensor shapes at each stage.
+- All key equations with symbols defined.
+- Critical hyperparameters and their typical/default values.
+- A **self-authored diagram** of the architecture or data flow:
+  ```mermaid
+  flowchart LR
+    A[input] --> B[...] --> C[output]
+  ```
+- The paper's essential **figures**, embedded with explanatory captions:
+  ![Figure 1: architecture — what it shows and why](_assets/<full-stem>/x1.png)
 
 ## Training / data
-Datasets, objective(s), compute budget, optimizer / schedule, recipe specifics.
+Datasets, objective(s) (with loss equations), compute budget, optimizer / schedule,
+calibration, and any recipe specifics needed to reproduce.
 
 ## Results
 | Benchmark | This paper | Baseline | Notes |
 |---|---|---|---|
 | ...       | ...        | ...      | source: §X |
 
-Headline numbers only, sourced. Mark uncertainty with "(per abstract)" or "(per §X)".
+Report the headline numbers **and** enough secondary numbers to convey the picture, each
+sourced. Mark uncertainty with "(per abstract)" or "(per §X)". Embed a results figure when
+it reveals the trend better than a table.
 
 ## Limitations & follow-ups
 Known issues acknowledged in the paper plus successor work
@@ -204,9 +230,12 @@ recaps are feasible — the thread doc should be a hub of local recaps.
 
 1. Resolve input → arXiv ID + canonical URL.
 2. Choose `<category>_<keywords>` per the naming convention above.
-3. Fetch sources (arXiv HTML preferred; split by section if long).
-4. Identify 1–3 essential figures, download to `_assets/<full-stem>/`.
-5. Write recap file per template; KaTeX for equations; cite all numbers.
+3. Fetch sources (arXiv HTML preferred; **split-fetch method + experiments sections**, not
+   just the abstract, so the recap can be comprehensive).
+4. Identify 2–4 essential figures, download to `_assets/<full-stem>/`; verify each download.
+5. Write a **comprehensive** recap per template: full method walkthrough, all key equations
+   in KaTeX (symbols defined), at least one self-authored Mermaid/ASCII diagram, embedded
+   figures with explanatory captions, and sourced result numbers.
 6. Repoint any `[Tag]` in `docs/` that previously pointed to this paper's arXiv URL.
 7. If part of a thread, update the thread doc's evolution table.
 8. Report file path(s) and any tags repointed.

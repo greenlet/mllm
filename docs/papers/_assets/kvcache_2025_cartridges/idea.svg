@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="360" viewBox="0 0 760 360" font-family="Segoe UI, Arial, sans-serif">
+  <rect width="760" height="360" fill="#ffffff"/>
+  <text x="380" y="28" text-anchor="middle" font-size="18" font-weight="700" fill="#1a1a1a">ICL vs. Cartridge: paying for context once</text>
+
+  <!-- Top: ICL / full context -->
+  <text x="20" y="70" font-size="14" font-weight="700" fill="#b23">Standard ICL — re-encode the whole corpus every query</text>
+  <g>
+    <!-- big KV cache -->
+    <rect x="20" y="85" width="470" height="46" rx="6" fill="#dfe9ff" stroke="#5b7fd6"/>
+    <text x="255" y="113" text-anchor="middle" font-size="14" fill="#2a3a6a">Full corpus in context  →  LARGE KV cache (scales with length)</text>
+    <!-- queries -->
+    <rect x="510" y="80" width="230" height="56" rx="6" fill="#fff" stroke="#999"/>
+    <text x="625" y="103" text-anchor="middle" font-size="12" fill="#333">query 1, query 2, … query N</text>
+    <text x="625" y="122" text-anchor="middle" font-size="11" fill="#b23">cost re-paid every query</text>
+    <path d="M490 108 L508 108" stroke="#b23" stroke-width="2" marker-end="url(#a)"/>
+  </g>
+
+  <!-- Bottom: Cartridge -->
+  <text x="20" y="200" font-size="14" font-weight="700" fill="#1a7a3a">Cartridge — train a small KV cache once, reuse it</text>
+  <g>
+    <rect x="20" y="215" width="140" height="46" rx="6" fill="#e7f6ea" stroke="#3aa15a"/>
+    <text x="90" y="243" text-anchor="middle" font-size="13" fill="#1a5a2f">Corpus (offline)</text>
+
+    <path d="M160 238 L205 238" stroke="#3aa15a" stroke-width="2" marker-end="url(#b)"/>
+    <text x="245" y="225" text-anchor="middle" font-size="11" fill="#1a5a2f">self-study +</text>
+    <text x="245" y="238" text-anchor="middle" font-size="11" fill="#1a5a2f">context</text>
+    <text x="245" y="251" text-anchor="middle" font-size="11" fill="#1a5a2f">distillation</text>
+
+    <rect x="290" y="215" width="120" height="46" rx="6" fill="#fde9d9" stroke="#e08a3a"/>
+    <text x="350" y="237" text-anchor="middle" font-size="13" fill="#8a4a10">Cartridge</text>
+    <text x="350" y="252" text-anchor="middle" font-size="11" fill="#8a4a10">small KV cache</text>
+
+    <path d="M410 238 L455 238" stroke="#e08a3a" stroke-width="2" marker-end="url(#c)"/>
+
+    <rect x="460" y="215" width="280" height="56" rx="6" fill="#fff" stroke="#999"/>
+    <text x="600" y="238" text-anchor="middle" font-size="12" fill="#333">load once → answer query 1..N</text>
+    <text x="600" y="256" text-anchor="middle" font-size="11" fill="#1a7a3a">38.6× less memory · 26.4× throughput</text>
+  </g>
+
+  <text x="380" y="320" text-anchor="middle" font-size="12" fill="#555">Cartridges are composable at inference without retraining.</text>
+
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 z" fill="#b23"/></marker>
+    <marker id="b" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 z" fill="#3aa15a"/></marker>
+    <marker id="c" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 z" fill="#e08a3a"/></marker>
+  </defs>
+</svg>
