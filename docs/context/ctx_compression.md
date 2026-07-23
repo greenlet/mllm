@@ -354,9 +354,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [Cartridges]: ../papers/kvcache_2025_cartridges.md "Cartridges (Eyuboglu et al. 2025)"
 [SparseLC]: ../papers/kvcache_2025_exploiting-sparsity.md "Exploiting Sparsity for Long-Context Inference (Synk et al. 2025)"
 
-[Gist]: https://arxiv.org/abs/2304.08467 "Gist Tokens (Mu et al. 2023)"
-[ICAE]: https://arxiv.org/abs/2307.06945 "In-Context Autoencoder (Ge et al. 2023)"
-[AutoComp]: https://arxiv.org/abs/2305.14788 "AutoCompressor (Chevalier et al. 2023)"
+[Gist]: ../papers/softtoken_2023_gisting.md "Gist Tokens (Mu et al. 2023)"
+[ICAE]: ../papers/softtoken_2023_icae.md "In-Context Autoencoder (Ge et al. 2023)"
+[AutoComp]: ../papers/softtoken_2023_autocompressor.md "AutoCompressor (Chevalier et al. 2023)"
 [xRAG]: https://arxiv.org/abs/2405.13792 "xRAG (Cheng et al. 2024)"
 [CEPE]: https://arxiv.org/abs/2402.16617 "CEPE — Parallel Context Encoding (Yen et al. 2024)"
 [REFRAG]: https://arxiv.org/abs/2509.01092 "REFRAG (Lin et al. 2025)"
@@ -367,7 +367,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [SimpleCC]: https://arxiv.org/abs/2510.20797 "Simple Context Compression (Feldman & Artzi 2025)"
 [ARCEnc]: https://arxiv.org/abs/2510.20535 "ARC-Encoder (Pilchen et al. 2025)"
 [LLoCO]: https://arxiv.org/abs/2404.07979 "LLoCO (Tan et al. 2024)"
-[PrefixTuning]: https://arxiv.org/abs/2101.00190 "Prefix-Tuning (Li & Liang 2021)"
+[PrefixTuning]: ../papers/softtoken_2021_prefix-tuning.md "Prefix-Tuning (Li & Liang 2021)"
 
 [LLMLingua]: https://arxiv.org/abs/2310.05736 "LLMLingua (Jiang et al. 2023)"
 [LongLLMLingua]: https://arxiv.org/abs/2310.06839 "LongLLMLingua (Jiang et al. 2024)"

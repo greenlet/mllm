@@ -178,13 +178,18 @@ Known issues acknowledged in the paper plus successor work
   paper. The single exception is when the paper IS the project's tech report
   (e.g. recapping a Qwen tech report itself).
 
-## Cross-link rule (overview update)
+## Cross-link rule (bidirectional, mandatory)
 
-After creating the recap file, search `docs/` for any `[Tag]: <url>` link-table
+Recaps and the thread/context docs that cite them must form a **two-way** link:
+thread refs point *into* the local recap, and the recap points *back out* to the
+source article. Do **both** directions for every paper you recap.
+
+**(a) Thread/context doc → local recap.** After creating the recap file, search
+**all of `docs/`** (not just `docs/qwen/`) for any `[Tag]: <url>` link-table
 entry that points to this paper's arXiv URL and **repoint it to the local recap**:
 
 ```
-grep_search for: arxiv.org/(abs|html)/<id>
+grep_search for: arxiv.org/(abs|html|pdf)/<id>
 ```
 
 Replace e.g.
@@ -196,11 +201,25 @@ with
 [RoPE]: ../papers/positional_2021_rope-roformer.md "Su et al., RoFormer (2021)"
 ```
 
-(Path is computed relative to the file containing the link table — typically
-`docs/qwen/overview.md` → `../papers/...`.)
+**Compute the relative path from the file that contains the link table**, which
+may live at different depths — the prefix is not always `../papers/`:
 
-This makes the link table double as a TODO tracker: tags still pointing at arXiv
-are papers that haven't been recapped yet.
+| Link table lives in… | Prefix to `docs/papers/` |
+|---|---|
+| `docs/qwen/overview.md` | `../papers/...` |
+| `docs/context/<thread>.md` | `../papers/...` |
+| `docs/context/<thread>/<thread>.md` (nested) | `../../papers/...` |
+
+The same paper is often referenced from several docs — repoint **every**
+occurrence. Keep the `"title"` text unchanged. This makes each link table double
+as a TODO tracker: tags still pointing at arXiv are papers not yet recapped, so
+only repoint the papers you actually created recaps for this round.
+
+**(b) Local recap → source article.** Every recap's **Links** section must lead
+back to the paper: include arXiv `abs` / `html` / `pdf` URLs (and code/venue when
+available). A recap that cannot be traced back to its article is incomplete.
+Also cross-link sibling recaps in the same thread by relative path (e.g. a
+predecessor/successor "Related papers" line) so the local corpus is navigable.
 
 ## Subagent rule
 
