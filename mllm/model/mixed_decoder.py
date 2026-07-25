@@ -763,6 +763,27 @@ class MixedDecoder(nn.Module):
         device = prompt_toks.device
         sep_len = 1 if self.cfg.use_sep else 0
 
+        # The raw context is re-tokenized with the DECODER vocab (see
+        # _build_ctx_tokens_decoder_only), so its length is variable per sample and
+        # can exceed max_seq_len even when the encoder-side window is fixed (e.g.
+        # fixed_win_size). Deterministically left-truncate an over-long context
+        # (drop the OLDEST tokens, keep the ones nearest the target) so the prompt
+        # and the full target survive intact. This mirrors the target-truncation
+        # guard in build_decoder_input: it is a pure function of tensor shapes, so
+        # it is identical on every rank and does not break DDP/FSDP gradient sync.
+        for i in range(batch_size):
+            fixed_i = sep_len + prompt_lengths[i] + max(target_lengths[i] - 1, 0)
+            ctx_budget = self.cfg.max_seq_len - fixed_i
+            if ctx_budget < 0:
+                raise RuntimeError(
+                    f'Decoder-only prefix (sep={sep_len}, prompt={prompt_lengths[i]}, '
+                    f'target_inp={max(target_lengths[i] - 1, 0)}) exceeds '
+                    f'max_seq_len={self.cfg.max_seq_len}; no room for any context.'
+                )
+            if ctx_lens[i] > ctx_budget:
+                ctx_tok_ids_list[i] = ctx_tok_ids_list[i][ctx_lens[i] - ctx_budget:]
+                ctx_lens[i] = int(ctx_tok_ids_list[i].numel())
+
         # Per-sample lengths
         total_lens = [
             ctx_lens[i] + sep_len + prompt_lengths[i] + max(target_lengths[i] - 1, 0)

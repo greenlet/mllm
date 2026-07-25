@@ -182,8 +182,8 @@ ie_max_prompt_len=128
 # soft tokens, which keeps encoder/extractor gradients alive (anti vanishing).
 ie_prompt_in_stream=false
 
-decoder_only=false
-# decoder_only=true
+# decoder_only=false
+decoder_only=true
 # inp_len * emb_win_max_size * emb_exp_rate
 # max_seq_len=$((max_seq_len + inp_len * emb_win_max_size * emb_exp_rate))
 
@@ -202,7 +202,7 @@ pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbas
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260429_091845-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-msl384-sepF-pallF-eer4-ewn2x4-frzencF-dsCite-trn_lr5e-05_bs30
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260523_180218-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400-dtypeBf16-sepF-pallF-eer4-ewn2x6-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs20_attdp0.1
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260615_083942-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400-dtypeBf16-sepF-pallF-ewn10x10-ieSelf_eer4_nl6_nh8_mlp4.0-ieStrmF-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs20_attdp0.1/
-train_subdir=last
+# train_subdir=last
 
 # device=cpu
 # epochs=5
@@ -311,14 +311,14 @@ learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
 
 # ---- Stage 2: medium compression (~31.5x, longer target) --------------------
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260714_100713-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl384-dtypeBf16-sepF-pallF-pfirstT-eer8-ewn10x10-frzencF-dsNext-mnt64-srcpg_bo_ar_go_gu-trn_lr5e-05_bs8_wdD0.1_wdO0.01_llrd0.9_attdp0.1_gc1.0_lora_r16a32dp0.05
-next_fixed_win_size=16         # N = 16 * 126 = 2016 ctx tokens
-next_fixed_target_toks=384     # K
-emb_exp_rate=4                 # 16 * 4 = 64 soft tokens
-max_seq_len=512                # 64 + 0 + 384 = 448, headroom to 512
-freeze_decoder_epochs=4
-learning_rate=3e-5             # lower peak: harder task, resuming warm weights
-learning_rate_override=3e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
-learning_rate_scheduler_params='{"T_0": 40, "T_mult": 2, "eta_min": 1e-7}'
+# next_fixed_win_size=16         # N = 16 * 126 = 2016 ctx tokens
+# next_fixed_target_toks=384     # K
+# emb_exp_rate=4                 # 16 * 4 = 64 soft tokens
+# max_seq_len=512                # 64 + 0 + 384 = 448, headroom to 512
+# freeze_decoder_epochs=4
+# learning_rate=3e-5             # lower peak: harder task, resuming warm weights
+# learning_rate_override=3e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
+# learning_rate_scheduler_params='{"T_0": 40, "T_mult": 2, "eta_min": 1e-7}'
 
 # ---- Stage 3: high compression (~63x, full target) --------------------------
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260718_083349-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl512-dtypeBf16-sepF-pallF-pfirstT-eer4-ewn10x10-frzencF-dsNext-mnt64-srcpg_bo_ar_go_gu-trn_lr3e-05_bs8_wdD0.1_wdO0.01_llrd0.9_attdp0.1_gc1.0
@@ -331,6 +331,43 @@ learning_rate_scheduler_params='{"T_0": 40, "T_mult": 2, "eta_min": 1e-7}'
 # learning_rate_override=2e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
 # learning_rate_scheduler_params='{"T_0": 50, "T_mult": 2, "eta_min": 1e-7}'
 # =============================================================================
+
+
+train_ds_types="next"
+decoder_only=true
+
+# --- SAME as Stage 3 (defines context size N and target length K) ---
+next_fixed_win_size=32          # N = 32 * 126 = 4032 raw context tokens (unchanged)
+next_fixed_target_toks=512      # K = 512 (unchanged)
+min_next_toks=64                # unchanged
+next_sources="pg19 bookcorpusopen arxiv govreport gutenberg"   # unchanged
+next_prompt=""                  # unchanged
+use_sep=false                   # unchanged
+prompt_first=true               # unchanged
+
+# --- MUST change for the raw-context path ---
+# The 32*126=4032 context BUDGET is in BERT tokens; decoder_only re-tokenizes that
+# text into Qwen BPE, whose count varies per batch and can exceed the BERT bound
+# (observed ctx ~4228 + target 511 = 4739). In the decoder_only path max_seq_len is
+# ONLY an assertion ceiling (buffers are sized to the real per-batch max_total_len,
+# and Qwen uses RoPE with no learned position table), so raising it is free unless a
+# batch is actually longer. Give generous headroom for tokenization variance.
+max_seq_len=5632
+# emb_exp_rate / emb_win_* / interactive-extractor are IGNORED in decoder_only
+# # (no soft tokens are built); leave them but they have no effect.
+# emb_exp_rate=2
+# No soft-token bridge to warm up -> nothing to freeze the decoder for.
+freeze_decoder_epochs=0
+# Sequence is ~8x longer than Stage 3 (576 -> ~4544). The full-vocab (~152k)
+# cross-entropy over ~4544 positions is the memory driver -> drop batch size hard.
+docs_batch_size=1
+
+optimizer_name='AdamW'
+optimizer_params='{"weight_decay": 0.01, "betas": [0.9, 0.98], "eps": 1e-8}'
+learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
+learning_rate_scheduler_params='{"T_0": 50, "T_mult": 2, "eta_min": 1e-7}'
+learning_rate=2e-5
+learning_rate_override=0     # fresh run, nothing to discard
 
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
