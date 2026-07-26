@@ -80,7 +80,7 @@ long context ──► [Encoder] ──► [Pool] ──► [Adapter] ──► 
 
 - **Adaptive / multi-granularity ratios** — choose the ratio per span by information density
   or perplexity rather than a fixed 4×/8×/16× ([Simple Context Compression][SimpleCC] is a
-  first step). TODO recap.
+  first step).
 - **Compressing the *generated* state** — long CoT, tool observations, agent working history —
   not just static input context.
 - **Expand-on-demand as a first-class op** — [REFRAG][REFRAG]'s RL expansion vs LCLM's
@@ -109,7 +109,7 @@ long context ──► [Encoder] ──► [Pool] ──► [Adapter] ──► 
 [xRAG]: ../../papers/softtoken_2024_xrag.md "xRAG (Cheng et al. 2024)"
 [E2LLM]: ../../papers/softtoken_2025_e2llm.md "E2LLM (Liao et al. 2025)"
 [REFRAG]: ../../papers/softtoken_2025_refrag.md "REFRAG (Lin et al. 2025)"
-[SimpleCC]: https://arxiv.org/abs/2510.20797 "Simple Context Compression (Feldman & Artzi 2025)"
+[SimpleCC]: ../../papers/softtoken_2025_simplecc.md "Simple Context Compression (Feldman & Artzi 2025)"
 [LLMLingua]: https://arxiv.org/abs/2310.05736 "LLMLingua (Jiang et al. 2023)"
 [SelectiveCtx]: https://arxiv.org/abs/2310.06201 "Selective Context (Li et al. 2023)"
 [CompAct]: https://arxiv.org/abs/2407.09014 "CompAct (Yoon et al. 2024)"

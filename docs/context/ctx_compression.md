@@ -364,7 +364,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [PCC]: https://aclanthology.org/events/acl-2025/ "Pretraining Context Compressor with Embedding-Based Memory (Dai et al., ACL 2025)"
 [C500x]: https://arxiv.org/abs/2408.03094 "500xCompressor (Li et al. 2025)"
 [GMSA]: https://arxiv.org/abs/2505.12215 "GMSA (Tang et al. 2025)"
-[SimpleCC]: https://arxiv.org/abs/2510.20797 "Simple Context Compression (Feldman & Artzi 2025)"
+[SimpleCC]: ../papers/softtoken_2025_simplecc.md "Simple Context Compression (Feldman & Artzi 2025)"
 [ARCEnc]: https://arxiv.org/abs/2510.20535 "ARC-Encoder (Pilchen et al. 2025)"
 [LLoCO]: https://arxiv.org/abs/2404.07979 "LLoCO (Tan et al. 2024)"
 [PrefixTuning]: ../papers/softtoken_2021_prefix-tuning.md "Prefix-Tuning (Li & Liang 2021)"
