@@ -56,6 +56,12 @@ class NextTokBatch:
     target_toks: torch.Tensor
     # (batch_size, max_target_len) – attention mask for target tokens
     target_att_mask: torch.Tensor
+    # (batch_size, max_dec_ctx_len) – decoder-native context tokens for the
+    # decoder-only path, tokenized directly from the ORIGINAL document text with
+    # the decoder vocab (no BERT round-trip), right-padded.
+    dec_ctx_toks: torch.Tensor
+    # (batch_size, max_dec_ctx_len) – attention mask for the decoder-native context
+    dec_ctx_att_mask: torch.Tensor
 
 
 class NextTokWikiDataset:
@@ -84,6 +90,15 @@ class NextTokWikiDataset:
         self.tkz_enc = tkz_enc
         self.tkz_dec = tkz_dec if tkz_dec is not None else tkz_enc
         self.tkz = tkz_enc  # backward-compat alias
+        # The target and decoder-only context are sliced from the ORIGINAL document
+        # text using encoder-token char offsets, so the encoder tokenizer must be a
+        # fast tokenizer (offset mapping is unavailable on slow/Python tokenizers).
+        if not getattr(tkz_enc, 'is_fast', False):
+            raise ValueError(
+                'NextTokWikiDataset requires a fast encoder tokenizer (is_fast=True) so '
+                'that return_offsets_mapping is available; got a slow tokenizer for '
+                f'{getattr(tkz_enc, "name_or_path", tkz_enc)!r}.'
+            )
         # Name of the document text column in ``ds`` (varies per corpus, e.g.
         # 'text' for wiki/pg19/gutenberg, 'article' for arXiv, 'report' for GovReport).
         self.text_field = text_field
@@ -144,8 +159,16 @@ class NextTokWikiDataset:
     def __len__(self) -> int:
         return self.size
 
-    def _tokenize_doc(self, text: str) -> List[int]:
-        return self.tkz_enc(text, add_special_tokens=False).input_ids
+    def _tokenize_doc(self, text: str) -> Tuple[List[int], List[Tuple[int, int]]]:
+        """Tokenize a document with the encoder vocab, returning ids and char offsets.
+
+        The offset mapping (available only on fast tokenizers) maps each encoder
+        token back to its character span in the ORIGINAL text, which lets us slice
+        the raw document for the decoder-native context/target instead of decoding
+        WordPiece ids back to a mangled (lowercased, punctuation-spaced) string.
+        """
+        enc = self.tkz_enc(text, add_special_tokens=False, return_offsets_mapping=True)
+        return enc.input_ids, enc['offset_mapping']
 
     def _make_chunks(self, doc_toks: List[int], start: int, win_size: int) -> List[List[int]]:
         """Split ``win_size`` consecutive content-length segments into CLS+content+SEP chunks."""
@@ -158,16 +181,19 @@ class NextTokWikiDataset:
             chunks.append(chunk)
         return chunks
 
-    def _sample_item(self) -> Optional[Tuple[List[List[int]], List[int]]]:
+    def _sample_item(self) -> Optional[Tuple[List[List[int]], List[int], List[int]]]:
         """Try to sample one valid item from the current pointer position.
 
-        Returns ``None`` if the current document is too short (caller should
-        advance the pointer and retry).
+        Returns ``(chunks, target, dec_ctx_ids)`` or ``None`` if the current
+        document is too short (caller should advance the pointer and retry).
+        ``chunks`` are encoder-vocab context chunks (for the BERT encoder);
+        ``target`` and ``dec_ctx_ids`` are decoder-vocab ids sliced directly from
+        the ORIGINAL document text (no BERT round-trip).
         """
         idx = self.inds[self._ptr].item()
         row = self.ds[idx]
         text: str = row[self.text_field]
-        doc_toks = self._tokenize_doc(text)
+        doc_toks, doc_offsets = self._tokenize_doc(text)
         doc_toks_num = len(doc_toks)
 
         # Tail budget reserved for the prediction target after the context window.
@@ -203,28 +229,40 @@ class NextTokWikiDataset:
 
         chunks = self._make_chunks(doc_toks, start, win_size)
 
-        # Target: tokens right after the context window. We slice the encoder
-        # tokenization, decode to text, and re-tokenize with the decoder vocab.
+        # Decoder-native context: slice the ORIGINAL text spanned by the context
+        # window (via encoder-token char offsets) and tokenize it directly with the
+        # decoder vocab. This is used by the decoder-only path and avoids the
+        # WordPiece round-trip that lowercases text and space-pads punctuation.
         tgt_start = start + ctx_tok_count
+        ctx_char_start = doc_offsets[start][0]
+        ctx_char_end = doc_offsets[tgt_start - 1][1]
+        dec_ctx_ids = self.tkz_dec(text[ctx_char_start:ctx_char_end], add_special_tokens=False).input_ids
+
+        # Target: the raw continuation immediately after the context window. We map
+        # the encoder-token boundary to a character offset and re-tokenize the
+        # ORIGINAL text (preserving casing/punctuation) with the decoder vocab. The
+        # end is bounded in encoder-token space (decoder tokens are usually coarser)
+        # and mapped back to characters through the offset table.
+        tgt_char_start = doc_offsets[tgt_start][0]
         if self.fixed_target_toks is not None:
             # Controlled mode: emit EXACTLY fixed_target_toks decoder content tokens.
-            # Over-slice on the encoder side (decoder tokens are usually coarser),
-            # then require enough continuation to fill K; otherwise skip the doc.
+            # Over-slice on the encoder side, then require enough continuation to
+            # fill K; otherwise skip the doc.
             k = self.fixed_target_toks
             tgt_end = min(tgt_start + k * 8, doc_toks_num)
-            tgt_text = self.tkz_enc.decode(doc_toks[tgt_start:tgt_end], skip_special_tokens=True)
+            tgt_text = text[tgt_char_start:doc_offsets[tgt_end - 1][1]]
             tgt_content = self.tkz_dec(tgt_text, add_special_tokens=False).input_ids
             if len(tgt_content) < k:
                 return None
             tgt_content = tgt_content[:k]
         else:
             tgt_end = min(tgt_start + self.max_target_toks * 4, doc_toks_num)
-            tgt_text = self.tkz_enc.decode(doc_toks[tgt_start:tgt_end], skip_special_tokens=True)
+            tgt_text = text[tgt_char_start:doc_offsets[tgt_end - 1][1]]
             tgt_content = self.tkz_dec(tgt_text, add_special_tokens=False).input_ids
             tgt_content = tgt_content[:self.dec_target_content_budget]
         target = self.dec_target_prefix + tgt_content + self.dec_target_suffix
 
-        return chunks, target
+        return chunks, target, dec_ctx_ids
 
     def _advance_ptr(self) -> None:
         self._ptr += 1
@@ -235,7 +273,7 @@ class NextTokWikiDataset:
                 self._rng.shuffle(self.inds)
             self._ptr = 0
 
-    def _sample_valid_item(self) -> Tuple[List[List[int]], List[int]]:
+    def _sample_valid_item(self) -> Tuple[List[List[int]], List[int], List[int]]:
         """Keep sampling until a document long enough is found."""
         while True:
             result = self._sample_item()
@@ -248,13 +286,15 @@ class NextTokWikiDataset:
         chunk_counts: List[int] = []
         prompt_toks_list: List[List[int]] = []
         target_toks_list: List[List[int]] = []
+        dec_ctx_toks_list: List[List[int]] = []
 
         for _ in range(batch_size):
-            chunks, target = self._sample_valid_item()
+            chunks, target, dec_ctx_ids = self._sample_valid_item()
             all_chunks.extend(chunks)
             chunk_counts.append(len(chunks))
             prompt_toks_list.append(list(self.prompt_toks_fixed))
             target_toks_list.append(target)
+            dec_ctx_toks_list.append(dec_ctx_ids)
 
         # Pad context chunks to inp_len (encoder vocab)
         total_chunks = len(all_chunks)
@@ -284,6 +324,18 @@ class NextTokWikiDataset:
             target_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=self.device)
             target_att[i, :n] = 1
 
+        # Pad decoder-native context tokens (decoder vocab). An empty context is
+        # possible in principle; guard the max() so the tensor still has width >= 1.
+        max_dec_ctx_len = max((len(c) for c in dec_ctx_toks_list), default=0)
+        max_dec_ctx_len = max(max_dec_ctx_len, 1)
+        dec_ctx_t = torch.full((batch_size, max_dec_ctx_len), self.dec_pad_token_id, dtype=torch.long, device=self.device)
+        dec_ctx_att = torch.zeros((batch_size, max_dec_ctx_len), dtype=torch.long, device=self.device)
+        for i, toks in enumerate(dec_ctx_toks_list):
+            n = len(toks)
+            if n > 0:
+                dec_ctx_t[i, :n] = torch.tensor(toks, dtype=torch.long, device=self.device)
+                dec_ctx_att[i, :n] = 1
+
         return NextTokBatch(
             ctx_chunks_toks=ctx_chunks_t,
             ctx_chunks_att_mask=ctx_chunks_att,
@@ -293,6 +345,8 @@ class NextTokWikiDataset:
             prompt_lengths=prompt_lengths,
             target_toks=target_t,
             target_att_mask=target_att,
+            dec_ctx_toks=dec_ctx_t,
+            dec_ctx_att_mask=dec_ctx_att,
         )
 
     def shuffle(self, seed: Optional[int] = None) -> 'NextTokWikiDataset':
