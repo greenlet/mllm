@@ -98,11 +98,11 @@ long prompt ──► [Scorer] ──► [Select / Rewrite] ──► shorter TE
 <!-- Link reference definitions (invisible in rendered output) -->
 
 [paper]: https://arxiv.org/abs/2606.09659 "End-to-End Context Compression at Scale (2026)"
-[LLMLingua]: https://arxiv.org/abs/2310.05736 "LLMLingua (Jiang et al. 2023)"
-[LongLLMLingua]: https://arxiv.org/abs/2310.06839 "LongLLMLingua (Jiang et al. 2024)"
-[SelectiveCtx]: https://arxiv.org/abs/2310.06201 "Selective Context (Li et al. 2023)"
-[NLPrompt]: https://arxiv.org/abs/2402.18700 "Learning to Compress Prompt in Natural Language (Chuang et al. 2024)"
-[CompAct]: https://arxiv.org/abs/2407.09014 "CompAct (Yoon et al. 2024)"
+[LLMLingua]: ../../papers/hardtoken_2023_llmlingua.md "LLMLingua (Jiang et al. 2023)"
+[LongLLMLingua]: ../../papers/hardtoken_2024_longllmlingua.md "LongLLMLingua (Jiang et al. 2024)"
+[SelectiveCtx]: ../../papers/hardtoken_2023_selective-context.md "Selective Context (Li et al. 2023)"
+[NLPrompt]: ../../papers/hardtoken_2024_nlprompt.md "Learning to Compress Prompt in Natural Language (Chuang et al. 2024)"
+[CompAct]: ../../papers/hardtoken_2024_compact.md "CompAct (Yoon et al. 2024)"
 [SnapKV]: ../../papers/kvcache_2024_snapkv.md "SnapKV (Li et al. 2024)"
 [KVzip]: ../../papers/kvcache_2025_kvzip.md "KVzip (Kim et al. 2025)"
 [LostMiddle]: https://arxiv.org/abs/2307.03172 "Lost in the Middle (Liu et al. 2024)"

@@ -369,11 +369,11 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [LLoCO]: https://arxiv.org/abs/2404.07979 "LLoCO (Tan et al. 2024)"
 [PrefixTuning]: ../papers/softtoken_2021_prefix-tuning.md "Prefix-Tuning (Li & Liang 2021)"
 
-[LLMLingua]: https://arxiv.org/abs/2310.05736 "LLMLingua (Jiang et al. 2023)"
-[LongLLMLingua]: https://arxiv.org/abs/2310.06839 "LongLLMLingua (Jiang et al. 2024)"
-[SelectiveCtx]: https://arxiv.org/abs/2310.06201 "Selective Context (Li et al. 2023)"
-[NLPrompt]: https://arxiv.org/abs/2402.18700 "Learning to Compress Prompt in Natural Language (Chuang et al. 2024)"
-[CompAct]: https://arxiv.org/abs/2407.09014 "CompAct (Yoon et al. 2024)"
+[LLMLingua]: ../papers/hardtoken_2023_llmlingua.md "LLMLingua (Jiang et al. 2023)"
+[LongLLMLingua]: ../papers/hardtoken_2024_longllmlingua.md "LongLLMLingua (Jiang et al. 2024)"
+[SelectiveCtx]: ../papers/hardtoken_2023_selective-context.md "Selective Context (Li et al. 2023)"
+[NLPrompt]: ../papers/hardtoken_2024_nlprompt.md "Learning to Compress Prompt in Natural Language (Chuang et al. 2024)"
+[CompAct]: ../papers/hardtoken_2024_compact.md "CompAct (Yoon et al. 2024)"
 
 [Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
 [Qwen3Emb]: https://arxiv.org/abs/2506.05176 "Qwen3 Embedding (2025)"
