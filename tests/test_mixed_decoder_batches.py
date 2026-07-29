@@ -156,6 +156,9 @@ def _make_next_batch(tkz, device=DEVICE) -> NextTokBatch:
     target_toks = _rand_toks((BATCH_SIZE, target_len), tkz, device=device)
     target_toks[:, 0] = cls_id
 
+    dec_ctx_len = chunks_per_sample * (INP_LEN - 2)
+    dec_ctx_toks = _rand_toks((BATCH_SIZE, dec_ctx_len), tkz, device=device)
+
     return NextTokBatch(
         ctx_chunks_toks=ctx_toks,
         ctx_chunks_att_mask=torch.ones(total_chunks, INP_LEN, dtype=torch.long, device=device),
@@ -165,6 +168,8 @@ def _make_next_batch(tkz, device=DEVICE) -> NextTokBatch:
         prompt_lengths=[prompt_len] * BATCH_SIZE,
         target_toks=target_toks,
         target_att_mask=torch.ones(BATCH_SIZE, target_len, dtype=torch.long, device=device),
+        dec_ctx_toks=dec_ctx_toks,
+        dec_ctx_att_mask=torch.ones(BATCH_SIZE, dec_ctx_len, dtype=torch.long, device=device),
     )
 
 

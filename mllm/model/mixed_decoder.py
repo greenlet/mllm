@@ -743,6 +743,26 @@ class MixedDecoder(nn.Module):
             ctx_lens.append(int(ctx_ids.numel()))
         return ctx_tok_ids_list, ctx_lens
 
+    def _ctx_tokens_from_dec_batch(
+            self, dec_ctx_toks: Tensor, dec_ctx_att_mask: Tensor,
+    ) -> Tuple[list, list]:
+        """Unpack per-sample decoder-native context ids from a right-padded batch.
+
+        The context is already tokenized in the decoder vocab (built from the raw
+        document text in the data loader), so we only strip padding per sample.
+        Returns a list of 1-D id tensors and their lengths, matching the interface
+        of :meth:`_build_ctx_tokens_decoder_only`.
+        """
+        batch_size = dec_ctx_toks.shape[0]
+        ctx_tok_ids_list = []
+        ctx_lens = []
+        for i in range(batch_size):
+            n_valid = int(dec_ctx_att_mask[i].sum().item())
+            ctx_ids = dec_ctx_toks[i, :n_valid]
+            ctx_tok_ids_list.append(ctx_ids)
+            ctx_lens.append(n_valid)
+        return ctx_tok_ids_list, ctx_lens
+
     def _decoder_only_forward(
             self,
             ctx_tok_ids_list: list, ctx_lens: list,
@@ -1232,8 +1252,12 @@ class MixedDecoder(nn.Module):
         device = batch.ctx_chunks_toks.device
 
         if self.decoder_only:
-            ctx_tok_ids_list, ctx_lens = self._build_ctx_tokens_decoder_only(
-                batch.ctx_chunks_toks, batch.ctx_chunks_att_mask, batch.ctx_chunk_counts,
+            # Decoder-only context comes pre-tokenized in the decoder vocab directly
+            # from the ORIGINAL document text (NextTokWikiDataset builds it via char
+            # offsets), so we use it as-is instead of round-tripping the BERT chunk
+            # tokens through decode/re-encode (which lowercases and space-pads text).
+            ctx_tok_ids_list, ctx_lens = self._ctx_tokens_from_dec_batch(
+                batch.dec_ctx_toks, batch.dec_ctx_att_mask,
             )
             target_lens = [int(batch.target_att_mask[i].sum().item()) for i in range(batch_size)]
             return self._decoder_only_forward(
