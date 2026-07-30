@@ -25,6 +25,7 @@ from torch.distributed.fsdp import (
     BackwardPrefetch,
 )
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
+from torch.distributed.fsdp.sharded_grad_scaler import ShardedGradScaler
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.checkpoint.state_dict import (
     StateDictOptions,
@@ -1079,11 +1080,6 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, next_s
             raise ValueError('--parallel fsdp requires --world-size > 1.')
         if device.type != 'cuda':
             raise ValueError('--parallel fsdp requires CUDA devices.')
-        if decoder_dtype == DecoderDtype.Fp16:
-            raise ValueError(
-                'FSDP path does not support fp16 (would need ShardedGradScaler). '
-                'Use a bf16 or fp32 decoder_spec, e.g. qwen2.5-1.5B-bf16.'
-            )
         if args.use_lora:
             raise NotImplementedError(
                 '--use-lora is currently supported with --parallel ddp only. '
@@ -1122,6 +1118,11 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, next_s
             )
 
         # bf16 mixed precision when caller requested it; otherwise keep fp32 (no MP policy).
+        # fp16 intentionally does NOT use a MixedPrecision policy: FSDP params stay
+        # fp32 and the forward is wrapped in autocast(fp16) with a ShardedGradScaler
+        # handling loss scaling, mirroring the DDP fp16 recipe. Casting params to
+        # fp16 via the policy would break gradient scaling (fp16 master weights
+        # underflow) and is not what we want here.
         mp_policy = None
         if decoder_dtype == DecoderDtype.Bf16:
             mp_policy = MixedPrecision(
@@ -1203,19 +1204,29 @@ def train(rank: int, ds_train, ds_val, df_sq, sq_inds_train, sq_inds_val, next_s
         for g in optimizer.param_groups:
             log(f'  {g.get("name", "?")}: lr={g["lr"]:.3e}, wd={g.get("weight_decay", 0):.4g}, n_params={len(g["params"])}')
 
-    # Mixed-precision setup. For DDP: weights stay fp32, autocast wraps forward,
-    # GradScaler is used only with fp16. For FSDP: param/reduce/buffer dtypes are
-    # already governed by the FSDP MixedPrecision policy, so autocast and
-    # GradScaler are not needed (and disabled here).
-    amp_enabled = (
-        not use_fsdp
-        and decoder_dtype in (DecoderDtype.Fp16, DecoderDtype.Bf16)
-        and device.type == 'cuda'
-    )
+    # Mixed-precision setup.
+    #   DDP  : weights stay fp32; autocast wraps forward for fp16/bf16;
+    #          GradScaler is used only with fp16.
+    #   FSDP : bf16 is governed entirely by the FSDP MixedPrecision policy, so
+    #          neither autocast nor a scaler is needed (disabled here). fp16
+    #          keeps FSDP params in fp32 and uses autocast(fp16) + a
+    #          ShardedGradScaler (the FSDP-aware GradScaler that coordinates the
+    #          inf/nan checks across shards).
+    if use_fsdp:
+        amp_enabled = (decoder_dtype == DecoderDtype.Fp16 and device.type == 'cuda')
+    else:
+        amp_enabled = (
+            decoder_dtype in (DecoderDtype.Fp16, DecoderDtype.Bf16)
+            and device.type == 'cuda'
+        )
     amp_dtype = {DecoderDtype.Fp16: torch.float16, DecoderDtype.Bf16: torch.bfloat16}.get(decoder_dtype)
-    scaler = torch.cuda.amp.GradScaler(enabled=(amp_enabled and decoder_dtype == DecoderDtype.Fp16))
+    fp16_scaling = (decoder_dtype == DecoderDtype.Fp16 and device.type == 'cuda')
+    if use_fsdp:
+        scaler = ShardedGradScaler(enabled=fp16_scaling)
+    else:
+        scaler = torch.cuda.amp.GradScaler(enabled=fp16_scaling)
     log(f'AMP: enabled={amp_enabled}, dtype={amp_dtype}, scaler_enabled={scaler.is_enabled()}, '
-        f'parallel={parallel_mode}')
+        f'scaler={type(scaler).__name__}, parallel={parallel_mode}')
 
     last_epoch, val_loss_min, shuffle = -1, None, False
 

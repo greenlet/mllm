@@ -37,12 +37,13 @@ decoder_model_name=gpt2
 #   decoder_spec=gpt2-fp32                  # equivalent to the legacy gpt2 path
 # When decoder_spec is non-empty it overrides decoder_type / decoder_model_name above.
 decoder_spec=qwen2.5-1.5B-bf16
+decoder_spec=qwen2.5-1.5B-fp16
 
 # Parallelism: 'ddp' (default, full replica per rank) or 'fsdp' (shards params/grads/
 # optimizer state across ranks; required to fit Qwen2.5-1.5B+BERT on 32GB GPUs).
 # fsdp_shard: 'full' (FULL_SHARD across all ranks, min memory) or 'hybrid' (HYBRID_SHARD,
 # shard within node and replicate across; higher throughput, higher memory).
-# FSDP path requires bf16 or fp32 (fp16 is unsupported here).
+# FSDP supports fp16 (autocast + ShardedGradScaler), bf16 (MixedPrecision policy) or fp32.
 parallel=fsdp
 fsdp_shard=full
 
