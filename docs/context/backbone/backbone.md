@@ -93,11 +93,11 @@ is the **component inventory** — the pieces those methods plug together.
 <!-- Link reference definitions (invisible in rendered output) -->
 
 [paper]: https://arxiv.org/abs/2606.09659 "End-to-End Context Compression at Scale (2026)"
-[Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
-[Qwen3Emb]: https://arxiv.org/abs/2506.05176 "Qwen3 Embedding (2025)"
-[PrefixLM]: https://arxiv.org/abs/1910.10683 "T5 / prefix-LM (Raffel et al. 2020)"
+[Qwen3]: ../../papers/backbone_2025_qwen3.md "Qwen3 Technical Report (2025)"
+[Qwen3Emb]: ../../papers/backbone_2025_qwen3-embedding.md "Qwen3 Embedding (2025)"
+[PrefixLM]: ../../papers/backbone_2019_t5-prefix-lm.md "T5 / prefix-LM (Raffel et al. 2020)"
 [YaRN]: https://arxiv.org/abs/2309.00071 "YaRN (Peng et al. 2023)"
-[RoPE]: https://arxiv.org/abs/2104.09864 "RoFormer / RoPE (Su et al. 2021)"
+[RoPE]: ../../papers/positional_2021_rope-roformer.md "RoFormer / RoPE (Su et al. 2021)"
 [RMSNorm]: https://arxiv.org/abs/1910.07467 "RMSNorm (Zhang & Sennrich 2019)"
 [GELU]: https://arxiv.org/abs/1606.08415 "GELU (Hendrycks & Gimpel 2016)"
 [FlashAttn]: https://arxiv.org/abs/2307.08691 "FlashAttention-2 (Dao 2023)"

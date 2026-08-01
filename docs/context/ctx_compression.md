@@ -375,9 +375,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [NLPrompt]: ../papers/hardtoken_2024_nlprompt.md "Learning to Compress Prompt in Natural Language (Chuang et al. 2024)"
 [CompAct]: ../papers/hardtoken_2024_compact.md "CompAct (Yoon et al. 2024)"
 
-[Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
-[Qwen3Emb]: https://arxiv.org/abs/2506.05176 "Qwen3 Embedding (2025)"
-[PrefixLM]: https://arxiv.org/abs/1910.10683 "T5 / prefix-LM (Raffel et al. 2020)"
+[Qwen3]: ../papers/backbone_2025_qwen3.md "Qwen3 Technical Report (2025)"
+[Qwen3Emb]: ../papers/backbone_2025_qwen3-embedding.md "Qwen3 Embedding (2025)"
+[PrefixLM]: ../papers/backbone_2019_t5-prefix-lm.md "T5 / prefix-LM (Raffel et al. 2020)"
 [YaRN]: https://arxiv.org/abs/2309.00071 "YaRN (Peng et al. 2023)"
 [RoPE]: https://arxiv.org/abs/2104.09864 "RoFormer / RoPE (Su et al. 2021)"
 [RMSNorm]: https://arxiv.org/abs/1910.07467 "RMSNorm (Zhang & Sennrich 2019)"
