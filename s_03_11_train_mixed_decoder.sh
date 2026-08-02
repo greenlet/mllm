@@ -300,14 +300,14 @@ optimizer_params='{"weight_decay": 0.01, "betas": [0.9, 0.98], "eps": 1e-8}'
 learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
 
 # ---- Stage 1: warm-up (low compression ~15.75x, short target) ---------------
-# next_fixed_win_size=8          # N = 8 * 126 = 1008 ctx tokens
-# next_fixed_target_toks=256     # K
-# emb_exp_rate=8                 # 8 * 8 = 64 soft tokens
-# max_seq_len=384                # 64 + 0 + 256 = 320, headroom to 384
-# freeze_decoder_epochs=8        # let the soft-token bridge warm up first
-# learning_rate=5e-5             # highest peak: cold bridge, easiest task
-# learning_rate_override=0       # fresh init -> nothing to discard
-# learning_rate_scheduler_params='{"T_0": 30, "T_mult": 2, "eta_min": 1e-7}'
+next_fixed_win_size=8          # N = 8 * 126 = 1008 ctx tokens
+next_fixed_target_toks=256     # K
+emb_exp_rate=8                 # 8 * 8 = 64 soft tokens
+max_seq_len=384                # 64 + 0 + 256 = 320, headroom to 384
+freeze_decoder_epochs=8        # let the soft-token bridge warm up first
+learning_rate=5e-5             # highest peak: cold bridge, easiest task
+learning_rate_override=0       # fresh init -> nothing to discard
+learning_rate_scheduler_params='{"T_0": 30, "T_mult": 2, "eta_min": 1e-7}'
 
 
 # ---- Stage 2: medium compression (~31.5x, longer target) --------------------
@@ -334,41 +334,41 @@ learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
 # =============================================================================
 
 
-train_ds_types="next"
-decoder_only=true
+# train_ds_types="next"
+# decoder_only=true
 
-# --- SAME as Stage 3 (defines context size N and target length K) ---
-next_fixed_win_size=32          # N = 32 * 126 = 4032 raw context tokens (unchanged)
-next_fixed_target_toks=512      # K = 512 (unchanged)
-min_next_toks=64                # unchanged
-next_sources="pg19 bookcorpusopen arxiv govreport gutenberg"   # unchanged
-next_prompt=""                  # unchanged
-use_sep=false                   # unchanged
-prompt_first=true               # unchanged
+# # --- SAME as Stage 3 (defines context size N and target length K) ---
+# next_fixed_win_size=32          # N = 32 * 126 = 4032 raw context tokens (unchanged)
+# next_fixed_target_toks=512      # K = 512 (unchanged)
+# min_next_toks=64                # unchanged
+# next_sources="pg19 bookcorpusopen arxiv govreport gutenberg"   # unchanged
+# next_prompt=""                  # unchanged
+# use_sep=false                   # unchanged
+# prompt_first=true               # unchanged
 
-# --- MUST change for the raw-context path ---
-# The 32*126=4032 context BUDGET is in BERT tokens; decoder_only re-tokenizes that
-# text into Qwen BPE, whose count varies per batch and can exceed the BERT bound
-# (observed ctx ~4228 + target 511 = 4739). In the decoder_only path max_seq_len is
-# ONLY an assertion ceiling (buffers are sized to the real per-batch max_total_len,
-# and Qwen uses RoPE with no learned position table), so raising it is free unless a
-# batch is actually longer. Give generous headroom for tokenization variance.
-max_seq_len=5632
-# emb_exp_rate / emb_win_* / interactive-extractor are IGNORED in decoder_only
-# # (no soft tokens are built); leave them but they have no effect.
-# emb_exp_rate=2
-# No soft-token bridge to warm up -> nothing to freeze the decoder for.
-freeze_decoder_epochs=0
-# Sequence is ~8x longer than Stage 3 (576 -> ~4544). The full-vocab (~152k)
-# cross-entropy over ~4544 positions is the memory driver -> drop batch size hard.
-docs_batch_size=1
+# # --- MUST change for the raw-context path ---
+# # The 32*126=4032 context BUDGET is in BERT tokens; decoder_only re-tokenizes that
+# # text into Qwen BPE, whose count varies per batch and can exceed the BERT bound
+# # (observed ctx ~4228 + target 511 = 4739). In the decoder_only path max_seq_len is
+# # ONLY an assertion ceiling (buffers are sized to the real per-batch max_total_len,
+# # and Qwen uses RoPE with no learned position table), so raising it is free unless a
+# # batch is actually longer. Give generous headroom for tokenization variance.
+# max_seq_len=5632
+# # emb_exp_rate / emb_win_* / interactive-extractor are IGNORED in decoder_only
+# # # (no soft tokens are built); leave them but they have no effect.
+# # emb_exp_rate=2
+# # No soft-token bridge to warm up -> nothing to freeze the decoder for.
+# freeze_decoder_epochs=0
+# # Sequence is ~8x longer than Stage 3 (576 -> ~4544). The full-vocab (~152k)
+# # cross-entropy over ~4544 positions is the memory driver -> drop batch size hard.
+# docs_batch_size=1
 
-optimizer_name='AdamW'
-optimizer_params='{"weight_decay": 0.01, "betas": [0.9, 0.98], "eps": 1e-8}'
-learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
-learning_rate_scheduler_params='{"T_0": 50, "T_mult": 2, "eta_min": 1e-7}'
-learning_rate=2e-5
-learning_rate_override=0     # fresh run, nothing to discard
+# optimizer_name='AdamW'
+# optimizer_params='{"weight_decay": 0.01, "betas": [0.9, 0.98], "eps": 1e-8}'
+# learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
+# learning_rate_scheduler_params='{"T_0": 50, "T_mult": 2, "eta_min": 1e-7}'
+# learning_rate=2e-5
+# learning_rate_override=0     # fresh run, nothing to discard
 
 
 export PYTHONPATH=$PYTHONPATH:$mllm_src_path
