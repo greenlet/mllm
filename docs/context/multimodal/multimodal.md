@@ -20,12 +20,12 @@ the **bridge-capacity** half (Perceiver / Q-Former / resamplers) lives in the si
 
 | Paper | Year | Core contribution | Key lesson for the recipe | Relevance to LCLM |
 |---|---|---|---|---|
-| [ViT][ViT] | 2020 | An image is **16×16 patches** linearly embedded and fed to a plain Transformer — no convolutions. | *Chunk-then-embed a high-resolution input into a short token sequence.* | The direct analog of LCLM's "block of $N$ tokens → one latent": patch size ⇔ compression ratio $N$; fewer/larger patches trade fidelity for sequence length. |
-| [CPVT][CPVT] | 2021 | **Conditional positional encodings** generated from local neighborhoods, so a ViT generalizes across input resolutions without retraining position tables. | *Make positional information depend on content/locality, not a fixed grid.* | Justifies LCLM's per-window ($W=1024$) causal encoding + [RoPE][RoPE]/[YaRN][YaRN] on the decoder side: the compressor must stay resolution-agnostic as context length varies 4K→1M. |
+| [ViT][ViT] ([recap](../../papers/multimodal_2020_vit.md)) | 2020 | An image is **16×16 patches** linearly embedded and fed to a plain Transformer — no convolutions. | *Chunk-then-embed a high-resolution input into a short token sequence.* | The direct analog of LCLM's "block of $N$ tokens → one latent": patch size ⇔ compression ratio $N$; fewer/larger patches trade fidelity for sequence length. |
+| [CPVT][CPVT] ([recap](../../papers/multimodal_2021_cpvt.md)) | 2021 | **Conditional positional encodings** generated from local neighborhoods, so a ViT generalizes across input resolutions without retraining position tables. | *Make positional information depend on content/locality, not a fixed grid.* | Justifies LCLM's per-window ($W=1024$) causal encoding + [RoPE][RoPE]/[YaRN][YaRN] on the decoder side: the compressor must stay resolution-agnostic as context length varies 4K→1M. |
 | [LLaVA][LLaVA] ([recap](../../papers/multimodal_2023_llava.md)) | 2023 | Frozen ViT + **linear projector** + LLM, trained in **two stages**: (1) projector-only feature alignment on caption data, then (2) end-to-end visual-instruction tuning. | *Warm up the projector against a frozen backbone before unfreezing anything.* | This is **exactly LCLM Stage 0 → Stage 3**. LCLM cites LLaVA as the template for its progressive unfreeze; training the full model from step 0 degrades it (large early gradients). |
 | [LLaVA-1.5][LLaVA] ([recap](../../papers/multimodal_2023_llava-1.5.md)) | 2023 | Swap the linear projector for a **2-layer GELU MLP**, add better data; strong results with no resampler. | *A 2-layer GELU MLP projector is a sufficient bridge — projector quality > exotic connector at moderate compression.* | LCLM's adapter is precisely this: RMSNorm → Linear → GELU → Linear, per-latent and independent (no cross-token mixing). The VLM ablation is why the authors did **not** reach for an attention connector. |
-| [Cambrian-1][Cambrian] | 2024 | Vision-centric study of **connector design, data curricula, and unfreezing schedules** across many vision encoders; introduces the Spatial Vision Aggregator. | *The staged schedule and data mix — not just the connector — determine final quality; unfreeze in the right order with the right LR.* | Validates LCLM's stage boundaries and **small-LR decoder unfreeze** in Stage 2; its "which encoder init?" finding echoes LCLM's *embedding-init beats LM-init* result. |
-| [Qwen3-VL][Qwen3VL] | 2025 | Production VLM on the same [Qwen3][Qwen3] backbone: native dynamic resolution, MLP patch-merge into visual tokens, [M-RoPE][MRoPE] over the LLM. | *A modern, deployed instance of the whole recipe on the identical decoder family.* | The reference implementation LCLM can literally reuse — same decoder, same soft-token ingestion path, same inference engines ([vLLM][vLLM]/[SGLang][SGLang]). |
+| [Cambrian-1][Cambrian] ([recap](../../papers/multimodal_2024_cambrian-1.md)) | 2024 | Vision-centric study of **connector design, data curricula, and unfreezing schedules** across many vision encoders; introduces the Spatial Vision Aggregator. | *The staged schedule and data mix — not just the connector — determine final quality; unfreeze in the right order with the right LR.* | Validates LCLM's stage boundaries and **small-LR decoder unfreeze** in Stage 2; its "which encoder init?" finding echoes LCLM's *embedding-init beats LM-init* result. |
+| [Qwen3-VL][Qwen3VL] ([recap](../../papers/multimodal_2025_qwen3-vl.md)) | 2025 | Production VLM on the same [Qwen3][Qwen3] backbone: native dynamic resolution, MLP patch-merge into visual tokens, [M-RoPE][MRoPE] over the LLM. | *A modern, deployed instance of the whole recipe on the identical decoder family.* | The reference implementation LCLM can literally reuse — same decoder, same soft-token ingestion path, same inference engines ([vLLM][vLLM]/[SGLang][SGLang]). |
 
 ## How the VLM recipe maps onto LCLM's four stages
 
@@ -88,9 +88,13 @@ LCLM §3.2 is a text-encoder VLM alignment schedule; each stage has a vision pre
 - **Instruction-aware alignment.** InstructBLIP conditions the bridge on the question; the
   Stage-3 analog is query-conditioned compression of the long-context segment. Cross-links to
   the [bridges thread](../../mixed_decoder/multimodal/multimodal.md) open items.
-- **Paper recaps to add.** Local recaps exist for [LLaVA](../../papers/multimodal_2023_llava.md)
-  and [LLaVA-1.5](../../papers/multimodal_2023_llava-1.5.md); **ViT, CPVT, Cambrian-1, and
-  Qwen3-VL** are still arXiv/GitHub links only. TODO recaps.
+- **Paper recaps.** All §7.6 papers now have local recaps:
+  [LLaVA](../../papers/multimodal_2023_llava.md) ·
+  [LLaVA-1.5](../../papers/multimodal_2023_llava-1.5.md) ·
+  [ViT](../../papers/multimodal_2020_vit.md) ·
+  [CPVT](../../papers/multimodal_2021_cpvt.md) ·
+  [Cambrian-1](../../papers/multimodal_2024_cambrian-1.md) ·
+  [Qwen3-VL](../../papers/multimodal_2025_qwen3-vl.md).
 
 ## See also
 

@@ -385,11 +385,11 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [FlashAttn]: https://arxiv.org/abs/2307.08691 "FlashAttention-2 (Dao 2023)"
 [FlexAttn]: https://arxiv.org/abs/2412.05496 "FlexAttention (Dong et al. 2024)"
 
-[LLaVA]: https://arxiv.org/abs/2304.08485 "LLaVA (Liu et al. 2023)"
-[Cambrian]: https://arxiv.org/abs/2406.16860 "Cambrian-1 (Tong et al. 2024)"
-[ViT]: https://arxiv.org/abs/2010.11929 "ViT (Dosovitskiy et al. 2020)"
-[CPVT]: https://arxiv.org/abs/2102.10882 "Conditional Positional Encodings for ViT (Chu et al. 2021)"
-[Qwen3VL]: https://github.com/QwenLM/Qwen3-VL "Qwen3-VL (2025)"
+[LLaVA]: ../papers/multimodal_2023_llava.md "LLaVA (Liu et al. 2023)"
+[Cambrian]: ../papers/multimodal_2024_cambrian-1.md "Cambrian-1 (Tong et al. 2024)"
+[ViT]: ../papers/multimodal_2020_vit.md "ViT (Dosovitskiy et al. 2020)"
+[CPVT]: ../papers/multimodal_2021_cpvt.md "Conditional Positional Encodings for ViT (Chu et al. 2021)"
+[Qwen3VL]: ../papers/multimodal_2025_qwen3-vl.md "Qwen3-VL (2025)"
 
 [RULER]: https://arxiv.org/abs/2404.06654 "RULER (Hsieh et al. 2024)"
 [LongBench]: https://arxiv.org/abs/2308.14508 "LongBench (Bai et al. 2024)"
