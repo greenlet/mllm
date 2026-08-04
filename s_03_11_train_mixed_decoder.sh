@@ -203,7 +203,7 @@ pretrained_encdec_model_path=$train_root_path/encdecbert-20260110_193915-bertbas
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260429_091845-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decGpt2-msl384-sepF-pallF-eer4-ewn2x4-frzencF-dsCite-trn_lr5e-05_bs30
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260523_180218-pre_encdecbert20260110193915-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400-dtypeBf16-sepF-pallF-eer4-ewn2x6-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs20_attdp0.1
 # pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260615_083942-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl400-dtypeBf16-sepF-pallF-ewn10x10-ieSelf_eer4_nl6_nh8_mlp4.0-ieStrmF-frzencF-dsCite-msk_sep0.5x0.15_seq0.5x0.2x20_last0-trn_lr5e-05_bs20_attdp0.1/
-train_subdir=last
+# train_subdir=last
 
 # device=cpu
 # epochs=5
