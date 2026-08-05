@@ -77,8 +77,10 @@ soft-token compressor — including the repo's own
   to quantify the [EffCtx][EffCtx] multiplier compression buys. TODO experiment.
 - **Add a generation-side benchmark.** All of these score *reading* a long context; a companion
   measuring compression of the model's **generated** state (long CoT) is missing. TODO.
-- **Paper recaps to add.** None of the entries here has a local recap yet
-  (RULER, LongBench, LongHealth, GSM8K, Lost-in-the-Middle, Effective-Context, Train-LC). TODO recaps.
+- **Paper recaps.** Local recaps now exist for the first four entries —
+  [RULER](../../papers/benchmark_2024_ruler.md), [LongBench](../../papers/benchmark_2023_longbench.md),
+  [LongHealth](../../papers/benchmark_2024_longhealth.md), and [GSM8K](../../papers/benchmark_2021_gsm8k.md);
+  Lost-in-the-Middle, Effective-Context, and Train-LC are still arXiv links only. TODO recaps.
 
 ## See also
 
@@ -95,10 +97,10 @@ soft-token compressor — including the repo's own
 <!-- Link reference definitions (invisible in rendered output) -->
 
 [paper]: https://arxiv.org/abs/2606.09659 "End-to-End Context Compression at Scale (2026)"
-[RULER]: https://arxiv.org/abs/2404.06654 "RULER (Hsieh et al. 2024)"
-[LongBench]: https://arxiv.org/abs/2308.14508 "LongBench (Bai et al. 2024)"
-[LongHealth]: https://arxiv.org/abs/2401.14490 "LongHealth (Adams et al. 2025)"
-[GSM8K]: https://arxiv.org/abs/2110.14168 "GSM8K (Cobbe et al. 2021)"
+[RULER]: ../../papers/benchmark_2024_ruler.md "RULER (Hsieh et al. 2024)"
+[LongBench]: ../../papers/benchmark_2023_longbench.md "LongBench (Bai et al. 2024)"
+[LongHealth]: ../../papers/benchmark_2024_longhealth.md "LongHealth (Adams et al. 2025)"
+[GSM8K]: ../../papers/benchmark_2021_gsm8k.md "GSM8K (Cobbe et al. 2021)"
 [LostMiddle]: https://arxiv.org/abs/2307.03172 "Lost in the Middle (Liu et al. 2024)"
 [EffCtx]: https://arxiv.org/abs/2410.18745 "Why Does the Effective Context Length Fall Short? (An et al. 2025)"
 [TrainLC]: https://arxiv.org/abs/2410.02660 "How to Train Long-Context LMs Effectively (Gao et al. 2025)"
