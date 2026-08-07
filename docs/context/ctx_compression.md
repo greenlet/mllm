@@ -395,9 +395,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [LongBench]: ../papers/benchmark_2023_longbench.md "LongBench (Bai et al. 2024)"
 [LongHealth]: ../papers/benchmark_2024_longhealth.md "LongHealth (Adams et al. 2025)"
 [GSM8K]: ../papers/benchmark_2021_gsm8k.md "GSM8K (Cobbe et al. 2021)"
-[LostMiddle]: https://arxiv.org/abs/2307.03172 "Lost in the Middle (Liu et al. 2024)"
-[EffCtx]: https://arxiv.org/abs/2410.18745 "Why Does the Effective Context Length Fall Short? (An et al. 2025)"
-[TrainLC]: https://arxiv.org/abs/2410.02660 "How to Train Long-Context LMs Effectively (Gao et al. 2025)"
+[LostMiddle]: ../papers/benchmark_2023_lost-in-the-middle.md "Lost in the Middle (Liu et al. 2024)"
+[EffCtx]: ../papers/benchmark_2024_effective-context-length.md "Why Does the Effective Context Length Fall Short? (An et al. 2025)"
+[TrainLC]: ../papers/benchmark_2024_prolong.md "How to Train Long-Context LMs Effectively (Gao et al. 2025)"
 
 [PagedAttn]: https://arxiv.org/abs/2309.06180 "PagedAttention / vLLM (Kwon et al. 2023)"
 [vLLM]: https://arxiv.org/abs/2309.06180 "vLLM (Kwon et al. 2023)"

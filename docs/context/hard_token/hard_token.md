@@ -105,7 +105,7 @@ long prompt ──► [Scorer] ──► [Select / Rewrite] ──► shorter TE
 [CompAct]: ../../papers/hardtoken_2024_compact.md "CompAct (Yoon et al. 2024)"
 [SnapKV]: ../../papers/kvcache_2024_snapkv.md "SnapKV (Li et al. 2024)"
 [KVzip]: ../../papers/kvcache_2025_kvzip.md "KVzip (Kim et al. 2025)"
-[LostMiddle]: https://arxiv.org/abs/2307.03172 "Lost in the Middle (Liu et al. 2024)"
+[LostMiddle]: ../../papers/benchmark_2023_lost-in-the-middle.md "Lost in the Middle (Liu et al. 2024)"
 [RULER]: https://arxiv.org/abs/2404.06654 "RULER (Hsieh et al. 2024)"
 [GSM8K]: https://arxiv.org/abs/2110.14168 "GSM8K (Cobbe et al. 2021)"
 [RLM]: https://arxiv.org/abs/2512.24601 "Recursive Language Models (Zhang et al. 2025)"

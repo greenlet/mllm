@@ -77,10 +77,12 @@ soft-token compressor — including the repo's own
   to quantify the [EffCtx][EffCtx] multiplier compression buys. TODO experiment.
 - **Add a generation-side benchmark.** All of these score *reading* a long context; a companion
   measuring compression of the model's **generated** state (long CoT) is missing. TODO.
-- **Paper recaps.** Local recaps now exist for the first four entries —
+- **Paper recaps.** Local recaps now exist for **all seven** entries —
   [RULER](../../papers/benchmark_2024_ruler.md), [LongBench](../../papers/benchmark_2023_longbench.md),
-  [LongHealth](../../papers/benchmark_2024_longhealth.md), and [GSM8K](../../papers/benchmark_2021_gsm8k.md);
-  Lost-in-the-Middle, Effective-Context, and Train-LC are still arXiv links only. TODO recaps.
+  [LongHealth](../../papers/benchmark_2024_longhealth.md), [GSM8K](../../papers/benchmark_2021_gsm8k.md),
+  [Lost-in-the-Middle](../../papers/benchmark_2023_lost-in-the-middle.md),
+  [Effective-Context](../../papers/benchmark_2024_effective-context-length.md), and
+  [Train-LC / ProLong](../../papers/benchmark_2024_prolong.md). Done.
 
 ## See also
 
@@ -101,8 +103,8 @@ soft-token compressor — including the repo's own
 [LongBench]: ../../papers/benchmark_2023_longbench.md "LongBench (Bai et al. 2024)"
 [LongHealth]: ../../papers/benchmark_2024_longhealth.md "LongHealth (Adams et al. 2025)"
 [GSM8K]: ../../papers/benchmark_2021_gsm8k.md "GSM8K (Cobbe et al. 2021)"
-[LostMiddle]: https://arxiv.org/abs/2307.03172 "Lost in the Middle (Liu et al. 2024)"
-[EffCtx]: https://arxiv.org/abs/2410.18745 "Why Does the Effective Context Length Fall Short? (An et al. 2025)"
-[TrainLC]: https://arxiv.org/abs/2410.02660 "How to Train Long-Context LMs Effectively (Gao et al. 2025)"
+[LostMiddle]: ../../papers/benchmark_2023_lost-in-the-middle.md "Lost in the Middle (Liu et al. 2024)"
+[EffCtx]: ../../papers/benchmark_2024_effective-context-length.md "Why Does the Effective Context Length Fall Short? (An et al. 2025)"
+[TrainLC]: ../../papers/benchmark_2024_prolong.md "How to Train Long-Context LMs Effectively (Gao et al. 2025)"
 [RoPE]: https://arxiv.org/abs/2104.09864 "RoFormer / RoPE (Su et al. 2021)"
 [YaRN]: https://arxiv.org/abs/2309.00071 "YaRN (Peng et al. 2023)"

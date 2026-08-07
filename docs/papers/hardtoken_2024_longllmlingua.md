@@ -133,4 +133,4 @@ the middle, partially recovers at the end — which document **reordering** expl
 - **Venue:** ACL 2024
 - **Related papers:** [Selective Context](hardtoken_2023_selective-context.md) · [LLMLingua](hardtoken_2023_llmlingua.md) · [NL-Prompt](hardtoken_2024_nlprompt.md) · [CompAct](hardtoken_2024_compact.md) · [hard-token thread](../context/hard_token/hard_token.md)
 
-[lim]: https://arxiv.org/abs/2307.03172 "Lost in the Middle (Liu et al. 2024)"
+[lim]: benchmark_2023_lost-in-the-middle.md "Lost in the Middle (Liu et al. 2024)"
