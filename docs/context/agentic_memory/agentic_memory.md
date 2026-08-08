@@ -98,4 +98,4 @@ LCLM §4.3 already prototypes the hinge:
 [MemGPT]: https://arxiv.org/abs/2310.08560 "MemGPT (Packer et al. 2023)"
 [AMem]: https://arxiv.org/abs/2502.12110 "A-Mem (Xu et al. 2025)"
 [MemoryBank]: https://arxiv.org/abs/2305.10250 "MemoryBank (Zhong et al. 2023)"
-[SGLang]: https://arxiv.org/abs/2312.07104 "SGLang (Zheng et al. 2024)"
+[SGLang]: ../../papers/systems_2023_sglang.md "SGLang (Zheng et al. 2024)"

@@ -399,10 +399,10 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [EffCtx]: ../papers/benchmark_2024_effective-context-length.md "Why Does the Effective Context Length Fall Short? (An et al. 2025)"
 [TrainLC]: ../papers/benchmark_2024_prolong.md "How to Train Long-Context LMs Effectively (Gao et al. 2025)"
 
-[PagedAttn]: https://arxiv.org/abs/2309.06180 "PagedAttention / vLLM (Kwon et al. 2023)"
-[vLLM]: https://arxiv.org/abs/2309.06180 "vLLM (Kwon et al. 2023)"
-[SGLang]: https://arxiv.org/abs/2312.07104 "SGLang (Zheng et al. 2024)"
-[HFTransformers]: https://aclanthology.org/2020.emnlp-demos.6 "HuggingFace Transformers (Wolf et al. 2020)"
+[PagedAttn]: ../papers/systems_2023_pagedattention-vllm.md "PagedAttention / vLLM (Kwon et al. 2023)"
+[vLLM]: ../papers/systems_2023_pagedattention-vllm.md "vLLM (Kwon et al. 2023)"
+[SGLang]: ../papers/systems_2023_sglang.md "SGLang (Zheng et al. 2024)"
+[HFTransformers]: ../papers/systems_2019_hf-transformers.md "HuggingFace Transformers (Wolf et al. 2020)"
 
 [TransfoXL]: https://arxiv.org/abs/1901.02860 "Transformer-XL (Dai et al. 2019)"
 [CompTransf]: https://arxiv.org/abs/1911.05507 "Compressive Transformers (Rae et al. 2019)"

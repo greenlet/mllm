@@ -66,8 +66,8 @@ library ([HF Transformers][HFTransformers]).
   `inputs_embeds` path and reproduce TTFT/memory curves against a full-KV baseline. TODO experiment.
 - **SGLang `EXPAND(i)` prototype.** Implement the skim-then-expand loop as an SGLang program and
   measure prefix-reuse savings across turns. TODO experiment.
-- **Paper recaps to add.** vLLM/PagedAttention, SGLang, and HF Transformers are arXiv/ACL links
-  only. TODO recaps.
+- **Paper recaps.** Local recaps now exist for [vLLM/PagedAttention][vLLM], [SGLang][SGLang], and
+  [HF Transformers][HFTransformers]. Done.
 
 ## See also
 
@@ -84,10 +84,10 @@ library ([HF Transformers][HFTransformers]).
 <!-- Link reference definitions (invisible in rendered output) -->
 
 [paper]: https://arxiv.org/abs/2606.09659 "End-to-End Context Compression at Scale (2026)"
-[PagedAttn]: https://arxiv.org/abs/2309.06180 "PagedAttention / vLLM (Kwon et al. 2023)"
-[vLLM]: https://arxiv.org/abs/2309.06180 "vLLM (Kwon et al. 2023)"
-[SGLang]: https://arxiv.org/abs/2312.07104 "SGLang (Zheng et al. 2024)"
-[HFTransformers]: https://aclanthology.org/2020.emnlp-demos.6 "HuggingFace Transformers (Wolf et al. 2020)"
+[PagedAttn]: ../../papers/systems_2023_pagedattention-vllm.md "PagedAttention / vLLM (Kwon et al. 2023)"
+[vLLM]: ../../papers/systems_2023_pagedattention-vllm.md "vLLM (Kwon et al. 2023)"
+[SGLang]: ../../papers/systems_2023_sglang.md "SGLang (Zheng et al. 2024)"
+[HFTransformers]: ../../papers/systems_2019_hf-transformers.md "HuggingFace Transformers (Wolf et al. 2020)"
 [SnapKV]: ../../papers/kvcache_2024_snapkv.md "SnapKV (Li et al. 2024)"
 [KVzip]: ../../papers/kvcache_2025_kvzip.md "KVzip (Kim et al. 2025)"
 [Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"

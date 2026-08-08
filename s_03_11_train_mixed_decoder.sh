@@ -311,26 +311,26 @@ learning_rate_scheduler_name='CosineAnnealingWarmRestarts'
 
 
 # ---- Stage 2: medium compression (~31.5x, longer target) --------------------
-pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260801_203715-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl384-dtypeFp16-sepF-pallF-pfirstT-eer8-ewn10x10-frzencF-dsNext-mnt64-srcpg_bo_ar_go_gu-trn_lr5e-05_bs8_wdD0.1_wdO0.01_llrd0.9_attdp0.1_gc1.0
-next_fixed_win_size=16         # N = 16 * 126 = 2016 ctx tokens
-next_fixed_target_toks=384     # K
-emb_exp_rate=4                 # 16 * 4 = 64 soft tokens
-max_seq_len=512                # 64 + 0 + 384 = 448, headroom to 512
-freeze_decoder_epochs=4
-learning_rate=3e-5             # lower peak: harder task, resuming warm weights
-learning_rate_override=3e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
-learning_rate_scheduler_params='{"T_0": 40, "T_mult": 2, "eta_min": 1e-7}'
+# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260801_203715-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl384-dtypeFp16-sepF-pallF-pfirstT-eer8-ewn10x10-frzencF-dsNext-mnt64-srcpg_bo_ar_go_gu-trn_lr5e-05_bs8_wdD0.1_wdO0.01_llrd0.9_attdp0.1_gc1.0
+# next_fixed_win_size=16         # N = 16 * 126 = 2016 ctx tokens
+# next_fixed_target_toks=384     # K
+# emb_exp_rate=4                 # 16 * 4 = 64 soft tokens
+# max_seq_len=512                # 64 + 0 + 384 = 448, headroom to 512
+# freeze_decoder_epochs=4
+# learning_rate=3e-5             # lower peak: harder task, resuming warm weights
+# learning_rate_override=3e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
+# learning_rate_scheduler_params='{"T_0": 40, "T_mult": 2, "eta_min": 1e-7}'
 
 # ---- Stage 3: high compression (~63x, full target) --------------------------
-# pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260718_083349-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl512-dtypeBf16-sepF-pallF-pfirstT-eer4-ewn10x10-frzencF-dsNext-mnt64-srcpg_bo_ar_go_gu-trn_lr3e-05_bs8_wdD0.1_wdO0.01_llrd0.9_attdp0.1_gc1.0
-# next_fixed_win_size=32         # N = 32 * 126 = 4032 ctx tokens
-# next_fixed_target_toks=512     # K
-# emb_exp_rate=2                 # 32 * 2 = 64 soft tokens
-# max_seq_len=640                # 64 + 0 + 512 = 576, headroom to 640
-# freeze_decoder_epochs=0
-# learning_rate=2e-5             # lowest peak: hardest task, refine only
-# learning_rate_override=2e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
-# learning_rate_scheduler_params='{"T_0": 50, "T_mult": 2, "eta_min": 1e-7}'
+pretrained_mixed_decoder_model_path=$train_root_path/mixeddecoder-20260805_200304-bertbaseuncased-d768-embEncCls-inp128-decQwen2.51.5b-msl512-dtypeFp16-sepF-pallF-pfirstT-eer4-ewn10x10-frzencF-dsNext-mnt64-srcpg_bo_ar_go_gu-trn_lr3e-05_bs8_wdD0.1_wdO0.01_llrd0.9_attdp0.1_gc1.0
+next_fixed_win_size=32         # N = 32 * 126 = 4032 ctx tokens
+next_fixed_target_toks=512     # K
+emb_exp_rate=2                 # 32 * 2 = 64 soft tokens
+max_seq_len=640                # 64 + 0 + 512 = 576, headroom to 640
+freeze_decoder_epochs=0
+learning_rate=2e-5             # lowest peak: hardest task, refine only
+learning_rate_override=2e-5    # rebuild optimizer+scheduler -> fresh cosine cycle
+learning_rate_scheduler_params='{"T_0": 50, "T_mult": 2, "eta_min": 1e-7}'
 # =============================================================================
 
 
