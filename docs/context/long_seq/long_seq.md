@@ -73,9 +73,11 @@ or MLA decoder. This thread exists to place LCLM on that map and flag the compos
   backbone and check that input compression + cheap attention savings **compose**. TODO experiment.
 - **Compressive-Transformer baseline.** Compare LCLM's learned latents against fixed-pooling
   memory compression at matched slot count. TODO experiment.
-- **Paper recaps.** Local recaps now exist for the first-half classics — [Transformer-XL][TransfoXL],
-  [Compressive Transformer][CompTransf], [Linear Attention][LinAttn], and [S4][S4]. Done.
-  Still TODO: Mamba, Kimi Linear, MLA, DeepSeek-V4 recaps.
+- **Paper recaps.** Local recaps now exist for the classics — [Transformer-XL][TransfoXL],
+  [Compressive Transformer][CompTransf], [Linear Attention][LinAttn], [S4][S4], [Mamba][Mamba],
+  [MLA / DeepSeek-V2][MLA], and [Kimi Linear][KimiLinear]. Done.
+  **DeepSeek-V4** has no paper/tech report yet (the entry is a forward-looking placeholder for the
+  MLA line); its `[DSV4]` link stays on the DeepSeek GitHub org until a real report appears.
 
 ## See also
 
@@ -94,8 +96,8 @@ or MLA decoder. This thread exists to place LCLM on that map and flag the compos
 [CompTransf]: ../../papers/longseq_2019_compressive-transformer.md "Compressive Transformers (Rae et al. 2019)"
 [LinAttn]: ../../papers/longseq_2020_linear-attention.md "Linear Transformers (Katharopoulos et al. 2020)"
 [S4]: ../../papers/longseq_2021_s4.md "S4 (Gu et al. 2021)"
-[Mamba]: https://arxiv.org/abs/2312.00752 "Mamba (Gu & Dao 2024)"
-[KimiLinear]: https://arxiv.org/abs/2510.26692 "Kimi Linear (2025)"
-[MLA]: https://arxiv.org/abs/2405.04434 "DeepSeek-V2 / MLA (Liu et al. 2024)"
+[Mamba]: ../../papers/longseq_2023_mamba.md "Mamba (Gu & Dao 2024)"
+[KimiLinear]: ../../papers/longseq_2025_kimi-linear.md "Kimi Linear (2025)"
+[MLA]: ../../papers/longseq_2024_deepseek-v2-mla.md "DeepSeek-V2 / MLA (Liu et al. 2024)"
 [DSV4]: https://github.com/deepseek-ai "DeepSeek-V4 (2026)"
 [Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"

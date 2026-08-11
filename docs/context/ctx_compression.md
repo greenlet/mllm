@@ -408,9 +408,9 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [CompTransf]: ../papers/longseq_2019_compressive-transformer.md "Compressive Transformers (Rae et al. 2019)"
 [LinAttn]: ../papers/longseq_2020_linear-attention.md "Linear Transformers (Katharopoulos et al. 2020)"
 [S4]: ../papers/longseq_2021_s4.md "S4 (Gu et al. 2021)"
-[Mamba]: https://arxiv.org/abs/2312.00752 "Mamba (Gu & Dao 2024)"
-[KimiLinear]: https://arxiv.org/abs/2510.26692 "Kimi Linear (2025)"
-[MLA]: https://arxiv.org/abs/2405.04434 "DeepSeek-V2 / MLA (Liu et al. 2024)"
+[Mamba]: ../papers/longseq_2023_mamba.md "Mamba (Gu & Dao 2024)"
+[KimiLinear]: ../papers/longseq_2025_kimi-linear.md "Kimi Linear (2025)"
+[MLA]: ../papers/longseq_2024_deepseek-v2-mla.md "DeepSeek-V2 / MLA (Liu et al. 2024)"
 [DSV4]: https://github.com/deepseek-ai "DeepSeek-V4 (2026)"
 
 [RLM]: https://arxiv.org/abs/2512.24601 "Recursive Language Models (Zhang et al. 2025)"
