@@ -132,5 +132,5 @@ full context ──► [Prefill] ──► KV cache  K,V ∈ ℝ^{L×H×d}
 [MLA]: ../../papers/longseq_2024_deepseek-v2-mla.md "DeepSeek-V2 / MLA (Liu et al. 2024)"
 [KimiLinear]: ../../papers/longseq_2025_kimi-linear.md "Kimi Linear (2025)"
 [Mamba]: ../../papers/longseq_2023_mamba.md "Mamba (Gu & Dao 2024)"
-[RLM]: https://arxiv.org/abs/2512.24601 "Recursive Language Models (Zhang et al. 2025)"
-[MemGPT]: https://arxiv.org/abs/2310.08560 "MemGPT (Packer et al. 2023)"
+[RLM]: ../../papers/agentic_2025_recursive-lm.md "Recursive Language Models (Zhang et al. 2025)"
+[MemGPT]: ../../papers/agentic_2023_memgpt.md "MemGPT (Packer et al. 2023)"

@@ -126,5 +126,5 @@ long context ──► [Encoder] ──► [Pool] ──► [Adapter] ──► 
 [LongBench]: https://arxiv.org/abs/2308.14508 "LongBench (Bai et al. 2024)"
 [LongHealth]: https://arxiv.org/abs/2401.14490 "LongHealth (Adams et al. 2025)"
 [GSM8K]: https://arxiv.org/abs/2110.14168 "GSM8K (Cobbe et al. 2021)"
-[RLM]: https://arxiv.org/abs/2512.24601 "Recursive Language Models (Zhang et al. 2025)"
-[MemGPT]: https://arxiv.org/abs/2310.08560 "MemGPT (Packer et al. 2023)"
+[RLM]: ../../papers/agentic_2025_recursive-lm.md "Recursive Language Models (Zhang et al. 2025)"
+[MemGPT]: ../../papers/agentic_2023_memgpt.md "MemGPT (Packer et al. 2023)"

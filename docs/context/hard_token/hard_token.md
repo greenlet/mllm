@@ -108,5 +108,5 @@ long prompt ──► [Scorer] ──► [Select / Rewrite] ──► shorter TE
 [LostMiddle]: ../../papers/benchmark_2023_lost-in-the-middle.md "Lost in the Middle (Liu et al. 2024)"
 [RULER]: https://arxiv.org/abs/2404.06654 "RULER (Hsieh et al. 2024)"
 [GSM8K]: https://arxiv.org/abs/2110.14168 "GSM8K (Cobbe et al. 2021)"
-[RLM]: https://arxiv.org/abs/2512.24601 "Recursive Language Models (Zhang et al. 2025)"
-[MemGPT]: https://arxiv.org/abs/2310.08560 "MemGPT (Packer et al. 2023)"
+[RLM]: ../../papers/agentic_2025_recursive-lm.md "Recursive Language Models (Zhang et al. 2025)"
+[MemGPT]: ../../papers/agentic_2023_memgpt.md "MemGPT (Packer et al. 2023)"

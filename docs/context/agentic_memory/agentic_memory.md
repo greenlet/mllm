@@ -77,8 +77,10 @@ LCLM §4.3 already prototypes the hinge:
   observations (generated-state compression), not just the static input. TODO experiment.
 - **LCLM × RLM composition.** Prototype recursive decomposition where each recursion level holds
   its span as latents; check whether effective context scales without OOM. TODO experiment.
-- **Paper recaps to add.** None of the entries here has a local recap yet (Recursive Language
-  Models, MemGPT, A-Mem, MemoryBank). TODO recaps.
+- **Paper recaps.** All four entries now have local reimplementation-grade recaps:
+  [MemGPT](../../papers/agentic_2023_memgpt.md), [MemoryBank](../../papers/agentic_2023_memorybank.md),
+  [A-Mem](../../papers/agentic_2025_a-mem.md), and
+  [Recursive Language Models](../../papers/agentic_2025_recursive-lm.md). DONE.
 
 ## See also
 
@@ -94,8 +96,8 @@ LCLM §4.3 already prototypes the hinge:
 <!-- Link reference definitions (invisible in rendered output) -->
 
 [paper]: https://arxiv.org/abs/2606.09659 "End-to-End Context Compression at Scale (2026)"
-[RLM]: https://arxiv.org/abs/2512.24601 "Recursive Language Models (Zhang et al. 2025)"
-[MemGPT]: https://arxiv.org/abs/2310.08560 "MemGPT (Packer et al. 2023)"
-[AMem]: https://arxiv.org/abs/2502.12110 "A-Mem (Xu et al. 2025)"
-[MemoryBank]: https://arxiv.org/abs/2305.10250 "MemoryBank (Zhong et al. 2023)"
+[RLM]: ../../papers/agentic_2025_recursive-lm.md "Recursive Language Models (Zhang et al. 2025)"
+[MemGPT]: ../../papers/agentic_2023_memgpt.md "MemGPT (Packer et al. 2023)"
+[AMem]: ../../papers/agentic_2025_a-mem.md "A-Mem (Xu et al. 2025)"
+[MemoryBank]: ../../papers/agentic_2023_memorybank.md "MemoryBank (Zhong et al. 2023)"
 [SGLang]: ../../papers/systems_2023_sglang.md "SGLang (Zheng et al. 2024)"

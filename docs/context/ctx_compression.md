@@ -413,10 +413,10 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [MLA]: ../papers/longseq_2024_deepseek-v2-mla.md "DeepSeek-V2 / MLA (Liu et al. 2024)"
 [DSV4]: https://github.com/deepseek-ai "DeepSeek-V4 (2026)"
 
-[RLM]: https://arxiv.org/abs/2512.24601 "Recursive Language Models (Zhang et al. 2025)"
-[MemGPT]: https://arxiv.org/abs/2310.08560 "MemGPT (Packer et al. 2023)"
-[AMem]: https://arxiv.org/abs/2502.12110 "A-Mem (Xu et al. 2025)"
-[MemoryBank]: https://arxiv.org/abs/2305.10250 "MemoryBank (Zhong et al. 2023)"
+[RLM]: ../papers/agentic_2025_recursive-lm.md "Recursive Language Models (Zhang et al. 2025)"
+[MemGPT]: ../papers/agentic_2023_memgpt.md "MemGPT (Packer et al. 2023)"
+[AMem]: ../papers/agentic_2025_a-mem.md "A-Mem (Xu et al. 2025)"
+[MemoryBank]: ../papers/agentic_2023_memorybank.md "MemoryBank (Zhong et al. 2023)"
 
 [CatForgetLLM]: https://arxiv.org/abs/2308.08747 "Catastrophic Forgetting during Continual Fine-tuning (Luo et al. 2025)"
 [RevisitCF]: https://arxiv.org/abs/2406.04836 "Revisiting Catastrophic Forgetting in LLM Tuning (Li et al. 2024)"
