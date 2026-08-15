@@ -124,4 +124,4 @@ LCLM §3.2 is a text-encoder VLM alignment schedule; each stage has a vision pre
 [MRoPE]: https://arxiv.org/abs/2409.12191 "Qwen2-VL / M-RoPE (2024)"
 [vLLM]: ../../papers/systems_2023_pagedattention-vllm.md "PagedAttention / vLLM (Kwon et al. 2023)"
 [SGLang]: ../../papers/systems_2023_sglang.md "SGLang (Zheng et al. 2024)"
-[CatForgetLLM]: https://arxiv.org/abs/2308.08747 "Catastrophic Forgetting during Continual Fine-tuning (Luo et al. 2025)"
+[CatForgetLLM]: ../../papers/forgetting_2023_continual-ft.md "Catastrophic Forgetting during Continual Fine-tuning (Luo et al. 2025)"

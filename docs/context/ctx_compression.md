@@ -418,7 +418,7 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 [AMem]: ../papers/agentic_2025_a-mem.md "A-Mem (Xu et al. 2025)"
 [MemoryBank]: ../papers/agentic_2023_memorybank.md "MemoryBank (Zhong et al. 2023)"
 
-[CatForgetLLM]: https://arxiv.org/abs/2308.08747 "Catastrophic Forgetting during Continual Fine-tuning (Luo et al. 2025)"
-[RevisitCF]: https://arxiv.org/abs/2406.04836 "Revisiting Catastrophic Forgetting in LLM Tuning (Li et al. 2024)"
+[CatForgetLLM]: ../papers/forgetting_2023_continual-ft.md "Catastrophic Forgetting during Continual Fine-tuning (Luo et al. 2025)"
+[RevisitCF]: ../papers/forgetting_2024_revisiting-cf.md "Revisiting Catastrophic Forgetting in LLM Tuning (Li et al. 2024)"
 [LoRA]: https://arxiv.org/abs/2106.09685 "LoRA (Hu et al. 2021)"
 [CLSpool]: https://arxiv.org/abs/2305.14788 "EOS/CLS token pooling"

@@ -76,8 +76,10 @@ LCLM §3.2's four stages map one-to-one onto known forgetting controls:
   retained vs. new capability. TODO experiment.
 - **LoRA-plus-warmup revisit.** Re-test whether LoRA becomes competitive *after* a full-FT warmup
   (rank/target-module sweep), reconciling LCLM's negative LoRA result with its convenience. TODO experiment.
-- **Paper recaps to add.** Neither forgetting paper has a local recap yet
-  (Continual-FT Forgetting, Revisiting-CF); [LoRA][LoRA] is covered in the backbone thread. TODO recaps.
+- **Paper recaps.** Both forgetting papers now have local reimplementation-grade recaps:
+  [Continual-FT Forgetting](../../papers/forgetting_2023_continual-ft.md) and
+  [Revisiting-CF (SAM)](../../papers/forgetting_2024_revisiting-cf.md); [LoRA][LoRA] is covered in
+  the backbone thread. DONE.
 
 ## See also
 
@@ -93,7 +95,7 @@ LCLM §3.2's four stages map one-to-one onto known forgetting controls:
 <!-- Link reference definitions (invisible in rendered output) -->
 
 [paper]: https://arxiv.org/abs/2606.09659 "End-to-End Context Compression at Scale (2026)"
-[CatForgetLLM]: https://arxiv.org/abs/2308.08747 "Catastrophic Forgetting during Continual Fine-tuning (Luo et al. 2025)"
-[RevisitCF]: https://arxiv.org/abs/2406.04836 "Revisiting Catastrophic Forgetting in LLM Tuning (Li et al. 2024)"
+[CatForgetLLM]: ../../papers/forgetting_2023_continual-ft.md "Catastrophic Forgetting during Continual Fine-tuning (Luo et al. 2025)"
+[RevisitCF]: ../../papers/forgetting_2024_revisiting-cf.md "Revisiting Catastrophic Forgetting in LLM Tuning (Li et al. 2024)"
 [LoRA]: https://arxiv.org/abs/2106.09685 "LoRA (Hu et al. 2021)"
 [Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
