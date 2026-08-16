@@ -363,11 +363,11 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Cha et al. *Honeybee: Locality-enhanced Projector for Multimodal LLM.* arXiv:2312.06742, 2023. ([local recap](../papers/multimodal_2023_honeybee.md))
 
 ### 6.2 Text context compression into embeddings
-- Mu, Li, Goodman. *Learning to Compress Prompts with Gist Tokens.* arXiv:2304.08467, 2023.
-- Chevalier et al. *Adapting Language Models to Compress Contexts (AutoCompressor).* arXiv:2305.14788, 2023.
-- Ge et al. *In-context Autoencoder for Context Compression in a Large Language Model (ICAE).* arXiv:2307.06945, 2023.
-- Cheng et al. *xRAG: Extreme Context Compression for RAG with One Token.* arXiv:2405.13792, 2024.
-- Rau et al. *Context Embeddings for Efficient Answer Generation in RAG (COCOM).* arXiv:2407.09252, 2024.
+- Mu, Li, Goodman. *Learning to Compress Prompts with Gist Tokens.* arXiv:2304.08467, 2023. ([local recap](../papers/softtoken_2023_gisting.md))
+- Chevalier et al. *Adapting Language Models to Compress Contexts (AutoCompressor).* arXiv:2305.14788, 2023. ([local recap](../papers/softtoken_2023_autocompressor.md))
+- Ge et al. *In-context Autoencoder for Context Compression in a Large Language Model (ICAE).* arXiv:2307.06945, 2023. ([local recap](../papers/softtoken_2023_icae.md))
+- Cheng et al. *xRAG: Extreme Context Compression for RAG with One Token.* arXiv:2405.13792, 2024. ([local recap](../papers/softtoken_2024_xrag.md))
+- Rau et al. *Context Embeddings for Efficient Answer Generation in RAG (COCOM).* arXiv:2407.09252, 2024. ([local recap](../papers/softtoken_2024_cocom.md))
 - Li et al. *500xCompressor: Generalized Prompt Compression for LLMs.* arXiv:2408.03094, 2024.
 - Yen et al. *Long-Context Language Modeling with Parallel Context Encoding (CEPE).* arXiv:2402.16617, 2024.
 - Jiang et al. *LLMLingua: Compressing Prompts for Accelerated Inference of LLMs.* arXiv:2310.05736, 2023.
