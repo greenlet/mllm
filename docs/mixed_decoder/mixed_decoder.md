@@ -368,11 +368,11 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Ge et al. *In-context Autoencoder for Context Compression in a Large Language Model (ICAE).* arXiv:2307.06945, 2023. ([local recap](../papers/softtoken_2023_icae.md))
 - Cheng et al. *xRAG: Extreme Context Compression for RAG with One Token.* arXiv:2405.13792, 2024. ([local recap](../papers/softtoken_2024_xrag.md))
 - Rau et al. *Context Embeddings for Efficient Answer Generation in RAG (COCOM).* arXiv:2407.09252, 2024. ([local recap](../papers/softtoken_2024_cocom.md))
-- Li et al. *500xCompressor: Generalized Prompt Compression for LLMs.* arXiv:2408.03094, 2024.
-- Yen et al. *Long-Context Language Modeling with Parallel Context Encoding (CEPE).* arXiv:2402.16617, 2024.
-- Jiang et al. *LLMLingua: Compressing Prompts for Accelerated Inference of LLMs.* arXiv:2310.05736, 2023.
-- Jiang et al. *LongLLMLingua.* arXiv:2310.06839, 2023.
-- Pan et al. *LLMLingua-2.* arXiv:2403.12968, 2024.
+- Li et al. *500xCompressor: Generalized Prompt Compression for LLMs.* arXiv:2408.03094, 2024. ([local recap](../papers/softtoken_2024_500xcompressor.md))
+- Yen et al. *Long-Context Language Modeling with Parallel Context Encoding (CEPE).* arXiv:2402.16617, 2024. ([local recap](../papers/softtoken_2024_cepe.md))
+- Jiang et al. *LLMLingua: Compressing Prompts for Accelerated Inference of LLMs.* arXiv:2310.05736, 2023. ([local recap](../papers/hardtoken_2023_llmlingua.md))
+- Jiang et al. *LongLLMLingua.* arXiv:2310.06839, 2023. ([local recap](../papers/hardtoken_2024_longllmlingua.md))
+- Pan et al. *LLMLingua-2.* arXiv:2403.12968, 2024. ([local recap](../papers/hardtoken_2024_llmlingua-2.md))
 
 ### 6.3 Retrieval and late interaction
 - Khattab & Zaharia. *ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT.* arXiv:2004.12832, 2020. ([local recap](../papers/retrieval_2020_colbert-late-interaction.md))
