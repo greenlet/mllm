@@ -376,9 +376,9 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 
 ### 6.3 Retrieval and late interaction
 - Khattab & Zaharia. *ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT.* arXiv:2004.12832, 2020. ([local recap](../papers/retrieval_2020_colbert-late-interaction.md))
-- Santhanam et al. *ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction.* arXiv:2112.01488, 2021.
-- Karpukhin et al. *Dense Passage Retrieval for Open-Domain QA (DPR).* arXiv:2004.04906, 2020.
-- Reimers & Gurevych. *Sentence-BERT.* arXiv:1908.10084, 2019.
+- Santhanam et al. *ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction.* arXiv:2112.01488, 2021. ([local recap](../papers/retrieval_2021_colbertv2.md))
+- Karpukhin et al. *Dense Passage Retrieval for Open-Domain QA (DPR).* arXiv:2004.04906, 2020. ([local recap](../papers/retrieval_2020_dpr.md))
+- Reimers & Gurevych. *Sentence-BERT.* arXiv:1908.10084, 2019. ([local recap](../papers/retrieval_2019_sentence-bert.md))
 - Izacard et al. *Unsupervised Dense Information Retrieval (Contriever).* arXiv:2112.09118, 2021.
 - Ni et al. *Large Dual Encoders Are Generalizable Retrievers (GTR).* arXiv:2112.07899, 2021.
 - Wang et al. *Text Embeddings by Weakly-Supervised Contrastive Pre-training (E5).* arXiv:2212.03533, 2022.
