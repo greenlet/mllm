@@ -379,10 +379,10 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Santhanam et al. *ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction.* arXiv:2112.01488, 2021. ([local recap](../papers/retrieval_2021_colbertv2.md))
 - Karpukhin et al. *Dense Passage Retrieval for Open-Domain QA (DPR).* arXiv:2004.04906, 2020. ([local recap](../papers/retrieval_2020_dpr.md))
 - Reimers & Gurevych. *Sentence-BERT.* arXiv:1908.10084, 2019. ([local recap](../papers/retrieval_2019_sentence-bert.md))
-- Izacard et al. *Unsupervised Dense Information Retrieval (Contriever).* arXiv:2112.09118, 2021.
-- Ni et al. *Large Dual Encoders Are Generalizable Retrievers (GTR).* arXiv:2112.07899, 2021.
-- Wang et al. *Text Embeddings by Weakly-Supervised Contrastive Pre-training (E5).* arXiv:2212.03533, 2022.
-- Xiao et al. *C-Pack / BGE: Packed Resources for General Chinese Embeddings.* arXiv:2309.07597, 2023.
+- Izacard et al. *Unsupervised Dense Information Retrieval (Contriever).* arXiv:2112.09118, 2021. ([local recap](../papers/retrieval_2021_contriever.md))
+- Ni et al. *Large Dual Encoders Are Generalizable Retrievers (GTR).* arXiv:2112.07899, 2021. ([local recap](../papers/retrieval_2021_gtr.md))
+- Wang et al. *Text Embeddings by Weakly-Supervised Contrastive Pre-training (E5).* arXiv:2212.03533, 2022. ([local recap](../papers/retrieval_2022_e5.md))
+- Xiao et al. *C-Pack / BGE: Packed Resources for General Chinese Embeddings.* arXiv:2309.07597, 2023. ([local recap](../papers/retrieval_2023_bge-c-pack.md))
 
 ### 6.4 Knowledge distillation
 - Hinton, Vinyals, Dean. *Distilling the Knowledge in a Neural Network.* arXiv:1503.02531, 2015.
