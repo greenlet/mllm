@@ -385,10 +385,10 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Xiao et al. *C-Pack / BGE: Packed Resources for General Chinese Embeddings.* arXiv:2309.07597, 2023. ([local recap](../papers/retrieval_2023_bge-c-pack.md))
 
 ### 6.4 Knowledge distillation
-- Hinton, Vinyals, Dean. *Distilling the Knowledge in a Neural Network.* arXiv:1503.02531, 2015.
-- Kim & Rush. *Sequence-Level Knowledge Distillation.* arXiv:1606.07947, 2016.
-- Sanh et al. *DistilBERT.* arXiv:1910.01108, 2019.
-- Jiao et al. *TinyBERT: Distilling BERT for Natural Language Understanding.* arXiv:1909.10351, 2020.
+- Hinton, Vinyals, Dean. *Distilling the Knowledge in a Neural Network.* arXiv:1503.02531, 2015. ([local recap](../papers/distill_2015_hinton-kd.md))
+- Kim & Rush. *Sequence-Level Knowledge Distillation.* arXiv:1606.07947, 2016. ([local recap](../papers/distill_2016_seq-level-kd.md))
+- Sanh et al. *DistilBERT.* arXiv:1910.01108, 2019. ([local recap](../papers/distill_2019_distilbert.md))
+- Jiao et al. *TinyBERT: Distilling BERT for Natural Language Understanding.* arXiv:1909.10351, 2020. ([local recap](../papers/distill_2019_tinybert.md))
 
 ### 6.5 Memory-augmented and recurrent compression
 - Rae et al. *Compressive Transformers for Long-Range Sequence Modelling.* arXiv:1911.05507, 2019.
