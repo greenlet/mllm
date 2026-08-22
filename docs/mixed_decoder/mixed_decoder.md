@@ -391,10 +391,10 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Jiao et al. *TinyBERT: Distilling BERT for Natural Language Understanding.* arXiv:1909.10351, 2020. ([local recap](../papers/distill_2019_tinybert.md))
 
 ### 6.5 Memory-augmented and recurrent compression
-- Rae et al. *Compressive Transformers for Long-Range Sequence Modelling.* arXiv:1911.05507, 2019.
-- Wu et al. *Memorizing Transformers.* arXiv:2203.08913, 2022.
-- Bulatov et al. *Recurrent Memory Transformer.* arXiv:2207.06881, 2022.
-- Hutchins et al. *Block-Recurrent Transformers.* arXiv:2203.07852, 2022.
+- Rae et al. *Compressive Transformers for Long-Range Sequence Modelling.* arXiv:1911.05507, 2019. ([local recap](../papers/longseq_2019_compressive-transformer.md))
+- Wu et al. *Memorizing Transformers.* arXiv:2203.08913, 2022. ([local recap](../papers/memory_2022_memorizing-transformer.md))
+- Bulatov et al. *Recurrent Memory Transformer.* arXiv:2207.06881, 2022. ([local recap](../papers/memory_2022_recurrent-memory-transformer.md))
+- Hutchins et al. *Block-Recurrent Transformers.* arXiv:2203.07852, 2022. ([local recap](../papers/memory_2022_block-recurrent-transformer.md))
 
 ### 6.6 Soft-prompt and prefix conditioning
 - Li & Liang. *Prefix-Tuning: Optimizing Continuous Prompts for Generation.* arXiv:2101.00190, 2021.
