@@ -397,10 +397,10 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Hutchins et al. *Block-Recurrent Transformers.* arXiv:2203.07852, 2022. ([local recap](../papers/memory_2022_block-recurrent-transformer.md))
 
 ### 6.6 Soft-prompt and prefix conditioning
-- Li & Liang. *Prefix-Tuning: Optimizing Continuous Prompts for Generation.* arXiv:2101.00190, 2021.
-- Lester et al. *The Power of Scale for Parameter-Efficient Prompt Tuning.* arXiv:2104.08691, 2021.
-- Liu et al. *P-Tuning v2: Prompt Tuning Can Be Comparable to Fine-tuning Universally Across Scales and Tasks.* arXiv:2110.07602, 2021.
-- Hu et al. *LoRA: Low-Rank Adaptation of Large Language Models.* arXiv:2106.09685, 2021.
+- Li & Liang. *Prefix-Tuning: Optimizing Continuous Prompts for Generation.* arXiv:2101.00190, 2021. ([local recap](../papers/softtoken_2021_prefix-tuning.md))
+- Lester et al. *The Power of Scale for Parameter-Efficient Prompt Tuning.* arXiv:2104.08691, 2021. ([local recap](../papers/softtoken_2021_prompt-tuning.md))
+- Liu et al. *P-Tuning v2: Prompt Tuning Can Be Comparable to Fine-tuning Universally Across Scales and Tasks.* arXiv:2110.07602, 2021. ([local recap](../papers/softtoken_2021_p-tuning-v2.md))
+- Hu et al. *LoRA: Low-Rank Adaptation of Large Language Models.* arXiv:2106.09685, 2021. ([local recap](../papers/peft_2021_lora.md))
 
 ### 6.7 Diagnostic / probing datasets
 - Mohtashami & Jaggi. *Landmark Attention (passkey retrieval).* arXiv:2305.16300, 2023.
