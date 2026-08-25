@@ -403,10 +403,10 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Hu et al. *LoRA: Low-Rank Adaptation of Large Language Models.* arXiv:2106.09685, 2021. ([local recap](../papers/peft_2021_lora.md))
 
 ### 6.7 Diagnostic / probing datasets
-- Mohtashami & Jaggi. *Landmark Attention (passkey retrieval).* arXiv:2305.16300, 2023.
-- Arora et al. *Zoology: Measuring and Improving Recall in Efficient Language Models (MQAR).* arXiv:2312.04927, 2023.
-- Hsieh et al. *RULER: What's the Real Context Size of Your Long-Context Language Models?* arXiv:2404.06654, 2024.
-- Weston et al. *Towards AI-Complete Question Answering: A Set of Prerequisite Toy Tasks (bAbI).* arXiv:1502.05698, 2015.
+- Mohtashami & Jaggi. *Landmark Attention (passkey retrieval).* arXiv:2305.16300, 2023. ([local recap](../papers/longseq_2023_landmark-attention.md))
+- Arora et al. *Zoology: Measuring and Improving Recall in Efficient Language Models (MQAR).* arXiv:2312.04927, 2023. ([local recap](../papers/benchmark_2023_zoology-mqar.md))
+- Hsieh et al. *RULER: What's the Real Context Size of Your Long-Context Language Models?* arXiv:2404.06654, 2024. ([local recap](../papers/benchmark_2024_ruler.md))
+- Weston et al. *Towards AI-Complete Question Answering: A Set of Prerequisite Toy Tasks (bAbI).* arXiv:1502.05698, 2015. ([local recap](../papers/benchmark_2015_babi.md))
 - Sinha et al. *CLUTRR.* arXiv:1908.06177, 2019.
 - Paperno et al. *The LAMBADA Dataset.* arXiv:1606.06031, 2016.
 - Hill et al. *The Goldilocks Principle (Children's Book Test).* arXiv:1511.02301, 2015.
