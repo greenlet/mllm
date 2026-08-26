@@ -407,10 +407,10 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Arora et al. *Zoology: Measuring and Improving Recall in Efficient Language Models (MQAR).* arXiv:2312.04927, 2023. ([local recap](../papers/benchmark_2023_zoology-mqar.md))
 - Hsieh et al. *RULER: What's the Real Context Size of Your Long-Context Language Models?* arXiv:2404.06654, 2024. ([local recap](../papers/benchmark_2024_ruler.md))
 - Weston et al. *Towards AI-Complete Question Answering: A Set of Prerequisite Toy Tasks (bAbI).* arXiv:1502.05698, 2015. ([local recap](../papers/benchmark_2015_babi.md))
-- Sinha et al. *CLUTRR.* arXiv:1908.06177, 2019.
-- Paperno et al. *The LAMBADA Dataset.* arXiv:1606.06031, 2016.
-- Hill et al. *The Goldilocks Principle (Children's Book Test).* arXiv:1511.02301, 2015.
-- Hermann et al. *Teaching Machines to Read and Comprehend (CNN/DailyMail cloze).* arXiv:1506.03340, 2015.
+- Sinha et al. *CLUTRR.* arXiv:1908.06177, 2019. ([local recap](../papers/benchmark_2019_clutrr.md))
+- Paperno et al. *The LAMBADA Dataset.* arXiv:1606.06031, 2016. ([local recap](../papers/benchmark_2016_lambada.md))
+- Hill et al. *The Goldilocks Principle (Children's Book Test).* arXiv:1511.02301, 2015. ([local recap](../papers/benchmark_2015_cbt.md))
+- Hermann et al. *Teaching Machines to Read and Comprehend (CNN/DailyMail cloze).* arXiv:1506.03340, 2015. ([local recap](../papers/benchmark_2015_cnn-dailymail.md))
 
 ### 6.8 Extraction / structured-output / verification datasets
 - Rajpurkar et al. *Know What You Don't Know: Unanswerable Questions for SQuAD (SQuAD 2.0).* arXiv:1806.03822, 2018.

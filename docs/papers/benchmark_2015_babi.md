@@ -108,7 +108,7 @@ The lasting contribution is the **methodology**: a set of minimal, attributable 
 - Strong supervision (given supporting facts) is unrealistic; the weakly-supervised setting is the one that
   matters and is harder.
 - Conceptual ancestor of later diagnostic/probing suites for memory and reasoning —
-  [CLUTRR](../mixed_decoder/mixed_decoder.md) (relational reasoning), long-context recall probes like
+  [CLUTRR](benchmark_2019_clutrr.md) (relational reasoning), long-context recall probes like
   [MQAR/Zoology](benchmark_2023_zoology-mqar.md), passkey retrieval
   ([Landmark Attention](longseq_2023_landmark-attention.md)), and [RULER](benchmark_2024_ruler.md).
 
