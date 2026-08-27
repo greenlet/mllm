@@ -413,10 +413,10 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Hermann et al. *Teaching Machines to Read and Comprehend (CNN/DailyMail cloze).* arXiv:1506.03340, 2015. ([local recap](../papers/benchmark_2015_cnn-dailymail.md))
 
 ### 6.8 Extraction / structured-output / verification datasets
-- Rajpurkar et al. *Know What You Don't Know: Unanswerable Questions for SQuAD (SQuAD 2.0).* arXiv:1806.03822, 2018.
-- Tjong Kim Sang & De Meulder. *Introduction to the CoNLL-2003 Shared Task: Language-Independent NER.* 2003.
-- Pradhan et al. *Towards Robust Linguistic Analysis using OntoNotes (CoNLL-2012).* 2013.
-- Zhang et al. *Position-aware Attention and Supervised Data Improve Slot Filling (TACRED).* EMNLP 2017.
+- Rajpurkar et al. *Know What You Don't Know: Unanswerable Questions for SQuAD (SQuAD 2.0).* arXiv:1806.03822, 2018. ([local recap](../papers/dataset_2018_squad2.md))
+- Tjong Kim Sang & De Meulder. *Introduction to the CoNLL-2003 Shared Task: Language-Independent NER.* 2003. ([local recap](../papers/dataset_2003_conll2003-ner.md))
+- Pradhan et al. *Towards Robust Linguistic Analysis using OntoNotes (CoNLL-2012).* 2013. ([local recap](../papers/dataset_2013_ontonotes.md))
+- Zhang et al. *Position-aware Attention and Supervised Data Improve Slot Filling (TACRED).* EMNLP 2017. ([local recap](../papers/dataset_2017_tacred.md))
 - Yao et al. *DocRED: A Large-Scale Document-Level Relation Extraction Dataset.* arXiv:1906.06127, 2019.
 - Han et al. *FewRel.* arXiv:1810.10147, 2018.
 - Zhong et al. *Seq2SQL / WikiSQL.* arXiv:1709.00103, 2017.
