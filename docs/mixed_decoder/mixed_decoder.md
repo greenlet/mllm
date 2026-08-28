@@ -417,9 +417,9 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Tjong Kim Sang & De Meulder. *Introduction to the CoNLL-2003 Shared Task: Language-Independent NER.* 2003. ([local recap](../papers/dataset_2003_conll2003-ner.md))
 - Pradhan et al. *Towards Robust Linguistic Analysis using OntoNotes (CoNLL-2012).* 2013. ([local recap](../papers/dataset_2013_ontonotes.md))
 - Zhang et al. *Position-aware Attention and Supervised Data Improve Slot Filling (TACRED).* EMNLP 2017. ([local recap](../papers/dataset_2017_tacred.md))
-- Yao et al. *DocRED: A Large-Scale Document-Level Relation Extraction Dataset.* arXiv:1906.06127, 2019.
-- Han et al. *FewRel.* arXiv:1810.10147, 2018.
-- Zhong et al. *Seq2SQL / WikiSQL.* arXiv:1709.00103, 2017.
+- Yao et al. *DocRED: A Large-Scale Document-Level Relation Extraction Dataset.* arXiv:1906.06127, 2019. ([local recap](../papers/dataset_2019_docred.md))
+- Han et al. *FewRel.* arXiv:1810.10147, 2018. ([local recap](../papers/dataset_2018_fewrel.md))
+- Zhong et al. *Seq2SQL / WikiSQL.* arXiv:1709.00103, 2017. ([local recap](../papers/dataset_2017_wikisql.md))
 - Yu et al. *Spider: A Large-Scale Human-Labeled Dataset for Complex and Cross-Domain Text-to-SQL.* arXiv:1809.08887, 2018.
 - Parikh et al. *ToTTo: A Controlled Table-to-Text Generation Dataset.* arXiv:2004.14373, 2020.
 - Thorne et al. *FEVER: a Large-scale Dataset for Fact Extraction and VERification.* arXiv:1803.05355, 2018.
