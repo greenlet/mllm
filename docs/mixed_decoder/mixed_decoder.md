@@ -420,10 +420,10 @@ The unifying principle: **the cheapest path to low loss must run *through* the e
 - Yao et al. *DocRED: A Large-Scale Document-Level Relation Extraction Dataset.* arXiv:1906.06127, 2019. ([local recap](../papers/dataset_2019_docred.md))
 - Han et al. *FewRel.* arXiv:1810.10147, 2018. ([local recap](../papers/dataset_2018_fewrel.md))
 - Zhong et al. *Seq2SQL / WikiSQL.* arXiv:1709.00103, 2017. ([local recap](../papers/dataset_2017_wikisql.md))
-- Yu et al. *Spider: A Large-Scale Human-Labeled Dataset for Complex and Cross-Domain Text-to-SQL.* arXiv:1809.08887, 2018.
-- Parikh et al. *ToTTo: A Controlled Table-to-Text Generation Dataset.* arXiv:2004.14373, 2020.
-- Thorne et al. *FEVER: a Large-scale Dataset for Fact Extraction and VERification.* arXiv:1803.05355, 2018.
-- Schuster et al. *Get Your Vitamin C! Robust Fact Verification with Contrastive Evidence (VitaminC).* arXiv:2103.08541, NAACL 2021.
+- Yu et al. *Spider: A Large-Scale Human-Labeled Dataset for Complex and Cross-Domain Text-to-SQL.* arXiv:1809.08887, 2018. ([local recap](../papers/dataset_2018_spider.md))
+- Parikh et al. *ToTTo: A Controlled Table-to-Text Generation Dataset.* arXiv:2004.14373, 2020. ([local recap](../papers/dataset_2020_totto.md))
+- Thorne et al. *FEVER: a Large-scale Dataset for Fact Extraction and VERification.* arXiv:1803.05355, 2018. ([local recap](../papers/dataset_2018_fever.md))
+- Schuster et al. *Get Your Vitamin C! Robust Fact Verification with Contrastive Evidence (VitaminC).* arXiv:2103.08541, NAACL 2021. ([local recap](../papers/dataset_2021_vitaminc.md))
 
 ### 6.9 Core architecture components (in-repo recaps)
 - Vaswani et al. *Attention Is All You Need.* arXiv:1706.03762, 2017. ([local recap](../papers/attention_2017_transformer.md))

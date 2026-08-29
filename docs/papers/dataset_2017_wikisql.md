@@ -95,7 +95,7 @@ metric RL optimizes).
 - **Legacy:** WikiSQL launched a wave of single-table text-to-SQL models (**SQLNet**, **TypeSQL**,
   **SQLova**, **X-SQL**) that pushed execution accuracy above 90% by predicting the SQL **sketch slots**
   directly — validating the structure-decomposition idea. The single-table limitation motivated the
-  multi-table, cross-domain [Spider](../mixed_decoder/mixed_decoder.md) benchmark.
+  multi-table, cross-domain [Spider](dataset_2018_spider.md) benchmark.
 
 ## Limitations & follow-ups
 - **Single-table, no joins / nesting / GROUP BY** — real databases need multi-table reasoning, addressed by
@@ -105,7 +105,7 @@ metric RL optimizes).
 - Sketch-based decoding can **overfit the fixed template**; models that predict slots don't generalize to
   richer SQL grammar.
 - Part of the **structured-output** cluster with the table-to-text task
-  [ToTTo](../mixed_decoder/mixed_decoder.md); complements extraction datasets
+  [ToTTo](dataset_2020_totto.md); complements extraction datasets
   ([TACRED](dataset_2017_tacred.md), [DocRED](dataset_2019_docred.md)) and QA
   ([SQuAD 2.0](dataset_2018_squad2.md)).
 

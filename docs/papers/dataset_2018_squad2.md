@@ -92,8 +92,8 @@ and a strong 1.1 model retrofitted with abstention.
   so high scores don't fully certify open-world abstention.
 - Directly motivated no-answer heads in **BERT/RoBERTa** QA and open-domain/abstaining QA; the
   "know-what-you-don't-know" framing recurs in retrieval-augmented and fact-verification tasks
-  ([FEVER](../mixed_decoder/mixed_decoder.md), VitaminC) that also require a "NOT ENOUGH INFO" / abstain
-  decision.
+  ([FEVER](dataset_2018_fever.md), [VitaminC](dataset_2021_vitaminc.md)) that also require a
+  "NOT ENOUGH INFO" / abstain decision.
 
 ## Links
 - **arXiv:** [abs](https://arxiv.org/abs/1806.03822) · [html](https://arxiv.org/html/1806.03822v1) · [pdf](https://arxiv.org/pdf/1806.03822)
