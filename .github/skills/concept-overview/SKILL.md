@@ -6,7 +6,7 @@ description: |
   survey, state-of-the-art review, exhaustive research guide, or a document intended
   to help readers decide what to study next. The output must explain rather than list:
   every bullet or table cell containing a concept needs several sentences of context,
-  every technical concept needs a globally numbered citation, and the final references
+   every technical concept needs a descriptive clickable citation, and the final references
   must be organized into chronological/evolutionary "stories". Link to primary external
   sources (arXiv, venue, official project, GitHub, or model card), not local paper recaps.
 ---
@@ -26,7 +26,8 @@ Accept any of:
   “retrieval models”, or “mixture-of-experts”.
 - A requested destination under `docs/`.
 - Existing repository reviews whose organization and depth should be matched.
-- Specific project concerns that require a final project-facing decision section.
+- Specific project concerns, but only when the user explicitly requests tailoring to
+   the repository or a local implementation.
 
 If no destination is supplied, infer a stable path such as
 `docs/<concept>/overview.md`. Ask only when two destinations are equally plausible.
@@ -47,9 +48,10 @@ If no destination is supplied, infer a stable path such as
 5. Distinguish nominal capability from demonstrated capability. Examples include
    configured context length versus effective long-range use, pretrained backbone
    versus task-fine-tuned system, and total parameters versus active parameters.
-6. Connect the landscape to the repository when relevant. Identify concrete candidate
-   models, controlled ablations, evaluation criteria, integration constraints, and
-   failure modes instead of ending with generic recommendations.
+6. Keep the overview independent of the current repository by default. Do not inspect,
+   mention, or optimize for local implementations unless the user explicitly asks for
+   project-specific analysis. When tailoring is requested, separate it clearly from the
+   independent review.
 
 ## Explanation-depth rules
 
@@ -69,26 +71,31 @@ If no destination is supplied, infer a stable path such as
   memory, index size, training complexity, information loss, language coverage,
   tokenizer fertility, latency, or ecosystem maturity.
 
-## Numeric citation rules
+## Descriptive citation rules
 
-Use one global numeric namespace throughout the document:
+Use short words that identify the paper or artifact, and make every in-text citation a
+clickable link to the corresponding entry in the final References section:
 
 ```markdown
 ModernBERT alternates local and global attention to reduce average long-sequence
-cost while periodically restoring document-wide communication [27].
+cost while periodically restoring document-wide communication
+[ModernBERT](#ref-modernbert).
 ```
 
 Requirements:
 
 1. Every named research concept, model family, objective, dataset, benchmark, or
-   non-obvious empirical claim must have at least one numeric citation such as `[12]`.
-2. A citation number always resolves to exactly one entry in the final References
-   section. Do not reuse one number for different sources.
-3. Number references by first appearance in the body. Preserve those numbers in all
-   later mentions.
+   non-obvious empirical claim must have at least one descriptive citation such as
+   `[ModernBERT](#ref-modernbert)` or `[BERT paper](#ref-bert)`.
+2. Every citation must link to exactly one stable anchor in the final References
+   section. Every referenced entry must define that anchor explicitly.
+3. Use compact labels that identify the source or its central contribution. Never use
+   bare numeric citations such as `[12]`.
 4. Put citations immediately after the claim they support, not at the end of a long
    paragraph containing unrelated claims.
-5. For broad synthesis, cite multiple sources, for example `[14, 18, 23]`.
+5. For broad synthesis, cite multiple named sources, for example
+   `[NeoBERT](#ref-neobert), [Sentence-BERT](#ref-sentence-bert), and
+   [Nomic Embed](#ref-nomic-embed)`.
 6. Internal repository files may be linked inline, but they do not replace primary
    research citations.
 7. Do not redirect citations to local paper recaps. Cite the external primary source:
@@ -98,7 +105,7 @@ Requirements:
 ## Reference-story structure
 
 The final `References` section must be split into thematic “stories”. Each story is a
-short narrative followed by its numbered sources. A story explains how an idea evolved,
+short narrative followed by its descriptively named, anchored sources. A story explains how an idea evolved,
 which limitation caused the next paper to appear, and how approaches diverged.
 
 Example:
@@ -111,15 +118,20 @@ into one vector. Dense passage retrieval adapted this to open-domain QA. ColBERT
 retained one vector per token and delayed query-document interaction, trading a larger
 index for fine-grained matching.
 
-12. Reimers and Gurevych. *Sentence-BERT*. EMNLP 2019. [arXiv](...).
-13. Karpukhin et al. *Dense Passage Retrieval*. EMNLP 2020. [arXiv](...).
-14. Khattab and Zaharia. *ColBERT*. SIGIR 2020. [arXiv](...) · [Code](...).
+<a id="ref-sentence-bert"></a> **Sentence-BERT.** Reimers and Gurevych.
+*Sentence-BERT*. EMNLP 2019. [arXiv](...).
+
+<a id="ref-dpr"></a> **DPR.** Karpukhin et al. *Dense Passage Retrieval*.
+EMNLP 2020. [arXiv](...).
+
+<a id="ref-colbert"></a> **ColBERT.** Khattab and Zaharia. *ColBERT*.
+SIGIR 2020. [arXiv](...) · [Code](...).
 ```
 
 Rules:
 
 - Organize by conceptual lineage, not alphabetically and not merely by year.
-- Keep global citation numbers stable even though entries are grouped by story.
+- Give every source one unique, stable, kebab-case anchor such as `ref-colbert-v2`.
 - Within a story, order sources chronologically or causally.
 - Include 2–6 sentences introducing each story before its source list.
 - Add official code, model, dataset, or project links when they materially help the
@@ -140,7 +152,7 @@ Rules:
 8. Training, fine-tuning, distillation, and deployment.
 9. Evaluation methodology and benchmark caveats.
 10. Application-to-method decision guide.
-11. Repository-specific implications and experiment plan, when applicable.
+11. Repository-specific implications only when explicitly requested by the user.
 12. References organized as stories.
 
 Adjust headings to fit the concept, but preserve the explanatory progression from
@@ -152,15 +164,17 @@ Before finishing, verify all of the following:
 
 - The requested file exists at the requested path.
 - No technical bullet is a fragment or one-sentence label.
-- Every major concept has a numeric citation resolving to the final section.
-- Citation numbering is unique and reasonably follows first appearance.
+- Every major concept has a descriptive citation resolving to the final section.
+- No bare numeric in-text citations remain.
+- Every citation target exists and every reference anchor is unique.
 - Reference entries point to external primary sources, not local recaps.
 - References are grouped into narrated evolutionary stories.
 - Tables are interpreted in surrounding prose.
 - Backbone checkpoints are distinguished from downstream fine-tunes.
 - Benchmark comparisons state protocol/version caveats where needed.
 - Nominal context length is distinguished from effective long-context use.
-- Project recommendations include alternatives, trade-offs, and controlled tests.
+- Project recommendations are absent unless explicitly requested; when requested, they
+   include alternatives, trade-offs, and controlled tests.
 - Links and relative repository paths resolve.
 - No unsupported “best”, “SOTA”, license, parameter-count, or benchmark claim remains.
 
