@@ -7,7 +7,7 @@ description: |
   to help readers decide what to study next. The output must explain rather than list:
   every bullet or table cell containing a concept needs several sentences of context,
    every technical concept needs a descriptive clickable citation, and the final references
-  must be organized into chronological/evolutionary "stories". Link to primary external
+   must be organized into chronological/evolutionary named sections. Link to primary external
   sources (arXiv, venue, official project, GitHub, or model card), not local paper recaps.
 ---
 
@@ -102,42 +102,46 @@ Requirements:
    arXiv, ACL Anthology, OpenReview, official GitHub repository, official project page,
    or official model card.
 
-## Reference-story structure
+## Reference-section structure
 
-The final `References` section must be split into thematic “stories”. Each story is a
-short narrative followed by its descriptively named, anchored sources. A story explains how an idea evolved,
+The final `References` section must be split into numbered, thematically named
+subsections such as `16.1`, `16.2`, and `16.3`. Do not prefix subsection names with
+“Story”, “Thread”, or another structural label. Each subsection is a short narrative
+followed by a Markdown list of descriptively named, anchored sources. The narrative explains how an idea evolved,
 which limitation caused the next paper to appear, and how approaches diverged.
 
 Example:
 
 ```markdown
-### Story 3 — From one-vector retrieval to late interaction
+### 16.3 From one-vector retrieval to late interaction
 
 Early sentence encoders made corpus-scale similarity practical, but forced every fact
 into one vector. Dense passage retrieval adapted this to open-domain QA. ColBERT then
 retained one vector per token and delayed query-document interaction, trading a larger
 index for fine-grained matching.
 
-<a id="ref-sentence-bert"></a> **Sentence-BERT.** Reimers and Gurevych.
+- <a id="ref-sentence-bert"></a> **Sentence-BERT.** Reimers and Gurevych.
 *Sentence-BERT*. EMNLP 2019. [arXiv](...).
 
-<a id="ref-dpr"></a> **DPR.** Karpukhin et al. *Dense Passage Retrieval*.
+- <a id="ref-dpr"></a> **DPR.** Karpukhin et al. *Dense Passage Retrieval*.
 EMNLP 2020. [arXiv](...).
 
-<a id="ref-colbert"></a> **ColBERT.** Khattab and Zaharia. *ColBERT*.
+- <a id="ref-colbert"></a> **ColBERT.** Khattab and Zaharia. *ColBERT*.
 SIGIR 2020. [arXiv](...) · [Code](...).
 ```
 
 Rules:
 
+- Number subsections under the parent References section and name them only for their
+   subject, for example `### 16.1 Bidirectional pretraining objectives`.
 - Organize by conceptual lineage, not alphabetically and not merely by year.
 - Give every source one unique, stable, kebab-case anchor such as `ref-colbert-v2`.
-- Within a story, order sources chronologically or causally.
-- Include 2–6 sentences introducing each story before its source list.
+- Within a subsection, order sources chronologically or causally.
+- Include 2–6 sentences introducing each subsection before its bulleted source list.
 - Add official code, model, dataset, or project links when they materially help the
   reader continue. Prefer arXiv/venue for papers and GitHub/model cards for artifacts.
-- A source may belong to only one primary story. Cross-reference its number from other
-  stories rather than duplicating it.
+- A source may belong to only one primary subsection. Cross-reference its descriptive
+   anchor from other subsections rather than duplicating it.
 
 ## Recommended document structure
 
@@ -153,7 +157,7 @@ Rules:
 9. Evaluation methodology and benchmark caveats.
 10. Application-to-method decision guide.
 11. Repository-specific implications only when explicitly requested by the user.
-12. References organized as stories.
+12. References organized as numbered, named subsections with bulleted source lists.
 
 Adjust headings to fit the concept, but preserve the explanatory progression from
 foundations to choices to evidence to next reading.
@@ -168,7 +172,8 @@ Before finishing, verify all of the following:
 - No bare numeric in-text citations remain.
 - Every citation target exists and every reference anchor is unique.
 - Reference entries point to external primary sources, not local recaps.
-- References are grouped into narrated evolutionary stories.
+- References are grouped into numbered, named subsections with narrated evolution and
+   bulleted source lists; no subsection uses “Story” as a label.
 - Tables are interpreted in surrounding prose.
 - Backbone checkpoints are distinguished from downstream fine-tunes.
 - Benchmark comparisons state protocol/version caveats where needed.
@@ -181,5 +186,5 @@ Before finishing, verify all of the following:
 ## Output report
 
 Report the created or updated file and the skill file. Summarize the document’s major
-stories and call out any claims intentionally qualified because source evidence or
+research directions and call out any claims intentionally qualified because source evidence or
 comparison protocols differ.

@@ -9,7 +9,7 @@
 
 “BERT family” no longer means a single sequence of checkpoints that can be ranked from oldest to newest. It now describes a design space whose branches optimize different things: sample-efficient language understanding, long-document processing, multilingual transfer, retrieval geometry, token-level extraction, or low-cost deployment. A raw masked-language-model checkpoint and a retrieval-tuned embedding model may share an encoder body, but they expose different interfaces and should not be treated as interchangeable products.
 
-This review is organized as a decision map. Sections 2–7 explain the historical and architectural choices; Sections 8–11 explain how representations become predictions; Sections 12–15 cover training, deployment, evaluation, and applications. Descriptive in-text citations link directly to entries in the final section, where sources are grouped into “stories” showing how each research direction developed and where to read next.
+This review is organized as a decision map. Sections 2–7 explain the historical and architectural choices; Sections 8–11 explain how representations become predictions; Sections 12–15 cover training, deployment, evaluation, and applications. Descriptive in-text citations link directly to entries in the final section, where sources are grouped into named research directions showing how each area developed and where to read next.
 
 ## 2. Executive synthesis
 
@@ -539,162 +539,162 @@ An extraction study should report exact span F1 together with tokenizer fertilit
 
 **Free-form answering and summarization.** Use the encoder to retrieve, select, or represent evidence, then use a causal decoder or encoder-decoder for generation [BART](#ref-bart), [T5](#ref-t5). This preserves grounding and generation as separately measurable components.
 
-## 16. References — research stories
+## 16. References
 
-### Story 1 — From masked bidirectionality to stronger encoder objectives
+### 16.1 From masked bidirectionality to stronger encoder objectives
 
-BERT established bidirectional masked pretraining and a universal token-state interface. RoBERTa then demonstrated that data, masking, batching, and training duration explained major gains without a new block. ALBERT, SpanBERT, ELECTRA, and DeBERTa explored different bottlenecks: parameter storage, span semantics, sparse MLM supervision, and content-position entanglement. Read this story first to understand why “BERT improvement” can mean an objective, a corpus recipe, or an architectural change.
+BERT established bidirectional masked pretraining and a universal token-state interface. RoBERTa then demonstrated that data, masking, batching, and training duration explained major gains without a new block. ALBERT, SpanBERT, ELECTRA, and DeBERTa explored different bottlenecks: parameter storage, span semantics, sparse MLM supervision, and content-position entanglement. Read this section first to understand why “BERT improvement” can mean an objective, a corpus recipe, or an architectural change.
 
-<a id="ref-bert"></a> **BERT.** Devlin et al. *BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.* NAACL 2019. [arXiv](https://arxiv.org/abs/1810.04805) · [Code](https://github.com/google-research/bert)
+- <a id="ref-bert"></a> **BERT.** Devlin et al. *BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.* NAACL 2019. [arXiv](https://arxiv.org/abs/1810.04805) · [Code](https://github.com/google-research/bert)
 
-<a id="ref-roberta"></a> **RoBERTa.** Liu et al. *RoBERTa: A Robustly Optimized BERT Pretraining Approach.* 2019. [arXiv](https://arxiv.org/abs/1907.11692) · [Code](https://github.com/facebookresearch/fairseq/tree/main/examples/roberta)
+- <a id="ref-roberta"></a> **RoBERTa.** Liu et al. *RoBERTa: A Robustly Optimized BERT Pretraining Approach.* 2019. [arXiv](https://arxiv.org/abs/1907.11692) · [Code](https://github.com/facebookresearch/fairseq/tree/main/examples/roberta)
 
-<a id="ref-albert"></a> **ALBERT.** Lan et al. *ALBERT: A Lite BERT for Self-supervised Learning of Language Representations.* ICLR 2020. [arXiv](https://arxiv.org/abs/1909.11942) · [Code](https://github.com/google-research/albert)
+- <a id="ref-albert"></a> **ALBERT.** Lan et al. *ALBERT: A Lite BERT for Self-supervised Learning of Language Representations.* ICLR 2020. [arXiv](https://arxiv.org/abs/1909.11942) · [Code](https://github.com/google-research/albert)
 
-<a id="ref-spanbert"></a> **SpanBERT.** Joshi et al. *SpanBERT: Improving Pre-training by Representing and Predicting Spans.* TACL 2020. [arXiv](https://arxiv.org/abs/1907.10529) · [Code](https://github.com/facebookresearch/SpanBERT)
+- <a id="ref-spanbert"></a> **SpanBERT.** Joshi et al. *SpanBERT: Improving Pre-training by Representing and Predicting Spans.* TACL 2020. [arXiv](https://arxiv.org/abs/1907.10529) · [Code](https://github.com/facebookresearch/SpanBERT)
 
-<a id="ref-electra"></a> **ELECTRA.** Clark et al. *ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators.* ICLR 2020. [arXiv](https://arxiv.org/abs/2003.10555) · [Code](https://github.com/google-research/electra)
+- <a id="ref-electra"></a> **ELECTRA.** Clark et al. *ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators.* ICLR 2020. [arXiv](https://arxiv.org/abs/2003.10555) · [Code](https://github.com/google-research/electra)
 
-<a id="ref-deberta"></a> **DeBERTa.** He et al. *DeBERTa: Decoding-enhanced BERT with Disentangled Attention.* ICLR 2021. [arXiv](https://arxiv.org/abs/2006.03654) · [Code](https://github.com/microsoft/DeBERTa)
+- <a id="ref-deberta"></a> **DeBERTa.** He et al. *DeBERTa: Decoding-enhanced BERT with Disentangled Attention.* ICLR 2021. [arXiv](https://arxiv.org/abs/2006.03654) · [Code](https://github.com/microsoft/DeBERTa)
 
-<a id="ref-deberta-v3"></a> **DeBERTa-v3.** He et al. *DeBERTaV3: Improving DeBERTa using ELECTRA-Style Pre-Training with Gradient-Disentangled Embedding Sharing.* ICLR 2023. [arXiv](https://arxiv.org/abs/2111.09543) · [Code](https://github.com/microsoft/DeBERTa)
+- <a id="ref-deberta-v3"></a> **DeBERTa-v3.** He et al. *DeBERTaV3: Improving DeBERTa using ELECTRA-Style Pre-Training with Gradient-Disentangled Embedding Sharing.* ICLR 2023. [arXiv](https://arxiv.org/abs/2111.09543) · [Code](https://github.com/microsoft/DeBERTa)
 
-### Story 2 — Making bidirectional attention survive long documents
+### 16.2 Making bidirectional attention survive long documents
 
 The first long-context branch changed the attention graph. Longformer and ETC divide computation into local and global channels; BigBird adds random sparse edges with theoretical guarantees; Linformer and Reformer instead approximate or reorganize attention through low rank and hashing. These papers expose the assumptions behind “linear attention” and should be read before choosing an implementation solely from asymptotic notation.
 
-<a id="ref-longformer"></a> **Longformer.** Beltagy, Peters, and Cohan. *Longformer: The Long-Document Transformer.* 2020. [arXiv](https://arxiv.org/abs/2004.05150) · [Code](https://github.com/allenai/longformer)
+- <a id="ref-longformer"></a> **Longformer.** Beltagy, Peters, and Cohan. *Longformer: The Long-Document Transformer.* 2020. [arXiv](https://arxiv.org/abs/2004.05150) · [Code](https://github.com/allenai/longformer)
 
-<a id="ref-etc"></a> **ETC.** Ainslie et al. *ETC: Encoding Long and Structured Inputs in Transformers.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2004.08483) · [Code](https://github.com/google-research/google-research/tree/master/etcmodel)
+- <a id="ref-etc"></a> **ETC.** Ainslie et al. *ETC: Encoding Long and Structured Inputs in Transformers.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2004.08483) · [Code](https://github.com/google-research/google-research/tree/master/etcmodel)
 
-<a id="ref-bigbird"></a> **BigBird.** Zaheer et al. *Big Bird: Transformers for Longer Sequences.* NeurIPS 2020. [arXiv](https://arxiv.org/abs/2007.14062) · [Code](https://github.com/google-research/bigbird)
+- <a id="ref-bigbird"></a> **BigBird.** Zaheer et al. *Big Bird: Transformers for Longer Sequences.* NeurIPS 2020. [arXiv](https://arxiv.org/abs/2007.14062) · [Code](https://github.com/google-research/bigbird)
 
-<a id="ref-linformer"></a> **Linformer.** Wang et al. *Linformer: Self-Attention with Linear Complexity.* 2020. [arXiv](https://arxiv.org/abs/2006.04768)
+- <a id="ref-linformer"></a> **Linformer.** Wang et al. *Linformer: Self-Attention with Linear Complexity.* 2020. [arXiv](https://arxiv.org/abs/2006.04768)
 
-<a id="ref-reformer"></a> **Reformer.** Kitaev, Kaiser, and Levskaya. *Reformer: The Efficient Transformer.* ICLR 2020. [arXiv](https://arxiv.org/abs/2001.04451) · [Code](https://github.com/google/trax/tree/master/trax/models/reformer)
+- <a id="ref-reformer"></a> **Reformer.** Kitaev, Kaiser, and Levskaya. *Reformer: The Efficient Transformer.* ICLR 2020. [arXiv](https://arxiv.org/abs/2001.04451) · [Code](https://github.com/google/trax/tree/master/trax/models/reformer)
 
-### Story 3 — The modern encoder revival
+### 16.3 The modern encoder revival
 
 ModernBERT reassembled modern LLM components into an efficient English bidirectional encoder. NeoBERT chose a deeper full-attention 768-wide design and published unusually informative ablations. Ettin then trained paired encoders and decoders under matched conditions, clarifying where native objectives retain advantages. mmBERT and EuroBERT extended the revival into complementary multilingual regimes: extreme language breadth versus a scaled European/global/code/math mixture.
 
-<a id="ref-modernbert"></a> **ModernBERT.** Warner et al. *Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder for Fast, Memory Efficient, and Long Context Finetuning and Inference.* 2024. [arXiv](https://arxiv.org/abs/2412.13663) · [Code](https://github.com/AnswerDotAI/ModernBERT) · [Models](https://huggingface.co/answerdotai)
+- <a id="ref-modernbert"></a> **ModernBERT.** Warner et al. *Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder for Fast, Memory Efficient, and Long Context Finetuning and Inference.* 2024. [arXiv](https://arxiv.org/abs/2412.13663) · [Code](https://github.com/AnswerDotAI/ModernBERT) · [Models](https://huggingface.co/answerdotai)
 
-<a id="ref-neobert"></a> **NeoBERT.** Le Breton et al. *NeoBERT: A Next-Generation BERT.* 2025. [arXiv](https://arxiv.org/abs/2502.19587) · [Code](https://github.com/chandar-lab/NeoBERT)
+- <a id="ref-neobert"></a> **NeoBERT.** Le Breton et al. *NeoBERT: A Next-Generation BERT.* 2025. [arXiv](https://arxiv.org/abs/2502.19587) · [Code](https://github.com/chandar-lab/NeoBERT)
 
-<a id="ref-ettin"></a> **Ettin / Seq vs Seq.** Weller et al. *Seq vs Seq: An Open Suite of Paired Encoders and Decoders.* ICLR 2026. [arXiv](https://arxiv.org/abs/2507.11412) · [Models](https://huggingface.co/jhu-clsp)
+- <a id="ref-ettin"></a> **Ettin / Seq vs Seq.** Weller et al. *Seq vs Seq: An Open Suite of Paired Encoders and Decoders.* ICLR 2026. [arXiv](https://arxiv.org/abs/2507.11412) · [Models](https://huggingface.co/jhu-clsp)
 
-<a id="ref-mmbert"></a> **mmBERT.** Marone et al. *mmBERT: A Modern Multilingual Encoder with Annealed Language Learning.* 2025. [arXiv](https://arxiv.org/abs/2509.06888) · [Models](https://huggingface.co/jhu-clsp)
+- <a id="ref-mmbert"></a> **mmBERT.** Marone et al. *mmBERT: A Modern Multilingual Encoder with Annealed Language Learning.* 2025. [arXiv](https://arxiv.org/abs/2509.06888) · [Models](https://huggingface.co/jhu-clsp)
 
-<a id="ref-eurobert"></a> **EuroBERT.** Colombo et al. *EuroBERT: Scaling Multilingual Encoders for European Languages.* 2026 revision. [arXiv](https://arxiv.org/abs/2503.05500) · [Models](https://huggingface.co/EuroBERT)
+- <a id="ref-eurobert"></a> **EuroBERT.** Colombo et al. *EuroBERT: Scaling Multilingual Encoders for European Languages.* 2026 revision. [arXiv](https://arxiv.org/abs/2503.05500) · [Models](https://huggingface.co/EuroBERT)
 
-### Story 4 — From one-vector semantics to trained retrieval geometry
+### 16.4 From one-vector semantics to trained retrieval geometry
 
-Sentence-BERT made reusable sentence vectors practical, and DPR specialized the bi-encoder pattern for open-domain evidence retrieval. Contriever investigated unsupervised contrastive retrieval, while E5 and GTE scaled weakly supervised pairs and instruction-conditioned similarity. Nomic Embed and Jina Embeddings then combined retrieval training with long-context backbones. This story explains why a raw MLM checkpoint and an embedding checkpoint with the same body can behave very differently.
+Sentence-BERT made reusable sentence vectors practical, and DPR specialized the bi-encoder pattern for open-domain evidence retrieval. Contriever investigated unsupervised contrastive retrieval, while E5 and GTE scaled weakly supervised pairs and instruction-conditioned similarity. Nomic Embed and Jina Embeddings then combined retrieval training with long-context backbones. This section explains why a raw MLM checkpoint and an embedding checkpoint with the same body can behave very differently.
 
-<a id="ref-sentence-bert"></a> **Sentence-BERT.** Reimers and Gurevych. *Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks.* EMNLP 2019. [arXiv](https://arxiv.org/abs/1908.10084) · [Code](https://github.com/UKPLab/sentence-transformers)
+- <a id="ref-sentence-bert"></a> **Sentence-BERT.** Reimers and Gurevych. *Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks.* EMNLP 2019. [arXiv](https://arxiv.org/abs/1908.10084) · [Code](https://github.com/UKPLab/sentence-transformers)
 
-<a id="ref-dpr"></a> **DPR.** Karpukhin et al. *Dense Passage Retrieval for Open-Domain Question Answering.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2004.04906) · [Code](https://github.com/facebookresearch/DPR)
+- <a id="ref-dpr"></a> **DPR.** Karpukhin et al. *Dense Passage Retrieval for Open-Domain Question Answering.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2004.04906) · [Code](https://github.com/facebookresearch/DPR)
 
-<a id="ref-contriever"></a> **Contriever.** Izacard et al. *Unsupervised Dense Information Retrieval with Contrastive Learning.* TMLR 2022. [arXiv](https://arxiv.org/abs/2112.09118) · [Code](https://github.com/facebookresearch/contriever)
+- <a id="ref-contriever"></a> **Contriever.** Izacard et al. *Unsupervised Dense Information Retrieval with Contrastive Learning.* TMLR 2022. [arXiv](https://arxiv.org/abs/2112.09118) · [Code](https://github.com/facebookresearch/contriever)
 
-<a id="ref-e5"></a> **E5.** Wang et al. *Text Embeddings by Weakly-Supervised Contrastive Pre-training.* 2022. [arXiv](https://arxiv.org/abs/2212.03533) · [Models](https://huggingface.co/intfloat)
+- <a id="ref-e5"></a> **E5.** Wang et al. *Text Embeddings by Weakly-Supervised Contrastive Pre-training.* 2022. [arXiv](https://arxiv.org/abs/2212.03533) · [Models](https://huggingface.co/intfloat)
 
-<a id="ref-gte"></a> **GTE.** Li et al. *Towards General Text Embeddings with Multi-stage Contrastive Learning.* 2023. [arXiv](https://arxiv.org/abs/2308.03281) · [Models](https://huggingface.co/thenlper)
+- <a id="ref-gte"></a> **GTE.** Li et al. *Towards General Text Embeddings with Multi-stage Contrastive Learning.* 2023. [arXiv](https://arxiv.org/abs/2308.03281) · [Models](https://huggingface.co/thenlper)
 
-<a id="ref-nomic-embed"></a> **Nomic Embed.** Nussbaum et al. *Nomic Embed: Training a Reproducible Long Context Text Embedder.* 2024. [arXiv](https://arxiv.org/abs/2402.01613) · [Code](https://github.com/nomic-ai/contrastors) · [Models](https://huggingface.co/nomic-ai)
+- <a id="ref-nomic-embed"></a> **Nomic Embed.** Nussbaum et al. *Nomic Embed: Training a Reproducible Long Context Text Embedder.* 2024. [arXiv](https://arxiv.org/abs/2402.01613) · [Code](https://github.com/nomic-ai/contrastors) · [Models](https://huggingface.co/nomic-ai)
 
-<a id="ref-jina-v3"></a> **Jina Embeddings v3.** Sturua et al. *jina-embeddings-v3: Multilingual Embeddings With Task LoRA.* 2024. [arXiv](https://arxiv.org/abs/2409.10173) · [Models](https://huggingface.co/jinaai)
+- <a id="ref-jina-v3"></a> **Jina Embeddings v3.** Sturua et al. *jina-embeddings-v3: Multilingual Embeddings With Task LoRA.* 2024. [arXiv](https://arxiv.org/abs/2409.10173) · [Models](https://huggingface.co/jinaai)
 
-### Story 5 — Dense, sparse, late-interaction, and contextual retrieval diverge
+### 16.5 Dense, sparse, late-interaction, and contextual retrieval diverge
 
 One-vector retrieval is efficient but compresses every matching signal into one point. BGE-M3 and mGTE broaden that interface with hybrid, multilingual, long-context, and reranking capabilities. ColBERT preserves token vectors and delays interaction, SPLADE maps contextual evidence back into a sparse lexical index, and CDE conditions embeddings on corpus context. Nomic Embed v2 adds sparse experts to increase representational capacity without activating every parameter.
 
-<a id="ref-bge-m3"></a> **BGE-M3.** Chen et al. *BGE M3-Embedding: Multi-Linguality, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation.* ACL Findings 2024. [arXiv](https://arxiv.org/abs/2402.03216) · [Code](https://github.com/FlagOpen/FlagEmbedding)
+- <a id="ref-bge-m3"></a> **BGE-M3.** Chen et al. *BGE M3-Embedding: Multi-Linguality, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation.* ACL Findings 2024. [arXiv](https://arxiv.org/abs/2402.03216) · [Code](https://github.com/FlagOpen/FlagEmbedding)
 
-<a id="ref-mgte"></a> **mGTE.** Zhang et al. *mGTE: Generalized Long-Context Text Representation and Reranking Models for Multilingual Text Retrieval.* EMNLP Industry 2024. [Paper](https://aclanthology.org/2024.emnlp-industry.103/) · [Models](https://huggingface.co/Alibaba-NLP)
+- <a id="ref-mgte"></a> **mGTE.** Zhang et al. *mGTE: Generalized Long-Context Text Representation and Reranking Models for Multilingual Text Retrieval.* EMNLP Industry 2024. [Paper](https://aclanthology.org/2024.emnlp-industry.103/) · [Models](https://huggingface.co/Alibaba-NLP)
 
-<a id="ref-colbert"></a> **ColBERT.** Khattab and Zaharia. *ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT.* SIGIR 2020. [arXiv](https://arxiv.org/abs/2004.12832) · [Code](https://github.com/stanford-futuredata/ColBERT)
+- <a id="ref-colbert"></a> **ColBERT.** Khattab and Zaharia. *ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT.* SIGIR 2020. [arXiv](https://arxiv.org/abs/2004.12832) · [Code](https://github.com/stanford-futuredata/ColBERT)
 
-<a id="ref-colbert-v2"></a> **ColBERTv2.** Santhanam et al. *ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction.* NAACL 2022. [arXiv](https://arxiv.org/abs/2112.01488) · [Code](https://github.com/stanford-futuredata/ColBERT)
+- <a id="ref-colbert-v2"></a> **ColBERTv2.** Santhanam et al. *ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction.* NAACL 2022. [arXiv](https://arxiv.org/abs/2112.01488) · [Code](https://github.com/stanford-futuredata/ColBERT)
 
-<a id="ref-splade-v2"></a> **SPLADE v2.** Formal et al. *SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval.* 2021. [arXiv](https://arxiv.org/abs/2109.10086) · [Code](https://github.com/naver/splade)
+- <a id="ref-splade-v2"></a> **SPLADE v2.** Formal et al. *SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval.* 2021. [arXiv](https://arxiv.org/abs/2109.10086) · [Code](https://github.com/naver/splade)
 
-<a id="ref-cde"></a> **Contextual Document Embeddings.** Morris and Rush. *Contextual Document Embeddings.* 2024. [arXiv](https://arxiv.org/abs/2410.02525) · [Code](https://github.com/jxmorris12/cde)
+- <a id="ref-cde"></a> **Contextual Document Embeddings.** Morris and Rush. *Contextual Document Embeddings.* 2024. [arXiv](https://arxiv.org/abs/2410.02525) · [Code](https://github.com/jxmorris12/cde)
 
-<a id="ref-nomic-embed-v2"></a> **Nomic Embed v2 MoE.** Nussbaum and Duderstadt. *Training Sparse Mixture of Experts Text Embedding Models.* 2025. [arXiv](https://arxiv.org/abs/2502.07972) · [Code](https://github.com/nomic-ai/contrastors)
+- <a id="ref-nomic-embed-v2"></a> **Nomic Embed v2 MoE.** Nussbaum and Duderstadt. *Training Sparse Mixture of Experts Text Embedding Models.* 2025. [arXiv](https://arxiv.org/abs/2502.07972) · [Code](https://github.com/nomic-ai/contrastors)
 
-### Story 6 — From fixed token labels to entity-aware and open-label extraction
+### 16.6 From fixed token labels to entity-aware and open-label extraction
 
-Classic token classification assumes a fixed label head over contextual states. LUKE adds explicit entity representations and entity-aware attention, while GLiNER represents label descriptions and matches them to spans, allowing the schema to change at inference. This story is the next reading path for systems that need exact offsets and entities rather than global document vectors.
+Classic token classification assumes a fixed label head over contextual states. LUKE adds explicit entity representations and entity-aware attention, while GLiNER represents label descriptions and matches them to spans, allowing the schema to change at inference. This section is the next reading path for systems that need exact offsets and entities rather than global document vectors.
 
-<a id="ref-gliner"></a> **GLiNER.** Zaratiana et al. *GLiNER: Generalist Model for Named Entity Recognition using Bidirectional Transformer.* NAACL 2024. [arXiv](https://arxiv.org/abs/2311.08526) · [Code](https://github.com/urchade/GLiNER)
+- <a id="ref-gliner"></a> **GLiNER.** Zaratiana et al. *GLiNER: Generalist Model for Named Entity Recognition using Bidirectional Transformer.* NAACL 2024. [arXiv](https://arxiv.org/abs/2311.08526) · [Code](https://github.com/urchade/GLiNER)
 
-<a id="ref-luke"></a> **LUKE.** Yamada et al. *LUKE: Deep Contextualized Entity Representations with Entity-aware Self-attention.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2010.01057) · [Code](https://github.com/studio-ousia/luke)
+- <a id="ref-luke"></a> **LUKE.** Yamada et al. *LUKE: Deep Contextualized Entity Representations with Entity-aware Self-attention.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2010.01057) · [Code](https://github.com/studio-ousia/luke)
 
-### Story 7 — Domain encoders: vocabulary and corpus specialization
+### 16.7 Domain encoders: vocabulary and corpus specialization
 
 Scientific, biomedical, and code language contain terms and structures underrepresented in general corpora. SciBERT and BioBERT show the value of domain continuation, PubMedBERT tests training from scratch with a domain vocabulary, and CodeBERT treats natural and programming languages jointly. These papers help decide whether to adapt a modern general backbone or choose a specialized tokenizer and corpus.
 
-<a id="ref-scibert"></a> **SciBERT.** Beltagy, Lo, and Cohan. *SciBERT: A Pretrained Language Model for Scientific Text.* EMNLP 2019. [arXiv](https://arxiv.org/abs/1903.10676) · [Code](https://github.com/allenai/scibert)
+- <a id="ref-scibert"></a> **SciBERT.** Beltagy, Lo, and Cohan. *SciBERT: A Pretrained Language Model for Scientific Text.* EMNLP 2019. [arXiv](https://arxiv.org/abs/1903.10676) · [Code](https://github.com/allenai/scibert)
 
-<a id="ref-biobert"></a> **BioBERT.** Lee et al. *BioBERT: A Pre-trained Biomedical Language Representation Model for Biomedical Text Mining.* Bioinformatics 2020. [arXiv](https://arxiv.org/abs/1901.08746) · [Code](https://github.com/dmis-lab/biobert)
+- <a id="ref-biobert"></a> **BioBERT.** Lee et al. *BioBERT: A Pre-trained Biomedical Language Representation Model for Biomedical Text Mining.* Bioinformatics 2020. [arXiv](https://arxiv.org/abs/1901.08746) · [Code](https://github.com/dmis-lab/biobert)
 
-<a id="ref-pubmedbert"></a> **PubMedBERT.** Gu et al. *Domain-Specific Language Model Pretraining for Biomedical Natural Language Processing.* ACL 2021. [arXiv](https://arxiv.org/abs/2007.15779) · [Models](https://huggingface.co/microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext)
+- <a id="ref-pubmedbert"></a> **PubMedBERT.** Gu et al. *Domain-Specific Language Model Pretraining for Biomedical Natural Language Processing.* ACL 2021. [arXiv](https://arxiv.org/abs/2007.15779) · [Models](https://huggingface.co/microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext)
 
-<a id="ref-codebert"></a> **CodeBERT.** Feng et al. *CodeBERT: A Pre-Trained Model for Programming and Natural Languages.* EMNLP Findings 2020. [arXiv](https://arxiv.org/abs/2002.08155) · [Code](https://github.com/microsoft/CodeBERT)
+- <a id="ref-codebert"></a> **CodeBERT.** Feng et al. *CodeBERT: A Pre-Trained Model for Programming and Natural Languages.* EMNLP Findings 2020. [arXiv](https://arxiv.org/abs/2002.08155) · [Code](https://github.com/microsoft/CodeBERT)
 
-### Story 8 — Restoring generation with a decoder, and probing generation without one
+### 16.8 Restoring generation with a decoder, and probing generation without one
 
-BART and T5 retain a bidirectional encoder but add an autoregressive decoder, making generation order and stopping explicit. Later work shows that BERT-like encoders can perform iterative in-context generation, but this remains a different operating regime from native causal decoding. Read this story when deciding whether a task is truly extraction/infilling or requires open-ended generation.
+BART and T5 retain a bidirectional encoder but add an autoregressive decoder, making generation order and stopping explicit. Later work shows that BERT-like encoders can perform iterative in-context generation, but this remains a different operating regime from native causal decoding. Read this section when deciding whether a task is truly extraction/infilling or requires open-ended generation.
 
-<a id="ref-bart"></a> **BART.** Lewis et al. *BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension.* ACL 2020. [arXiv](https://arxiv.org/abs/1910.13461) · [Code](https://github.com/facebookresearch/fairseq)
+- <a id="ref-bart"></a> **BART.** Lewis et al. *BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension.* ACL 2020. [arXiv](https://arxiv.org/abs/1910.13461) · [Code](https://github.com/facebookresearch/fairseq)
 
-<a id="ref-t5"></a> **T5.** Raffel et al. *Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer.* JMLR 2020. [arXiv](https://arxiv.org/abs/1910.10683) · [Code](https://github.com/google-research/text-to-text-transfer-transformer)
+- <a id="ref-t5"></a> **T5.** Raffel et al. *Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer.* JMLR 2020. [arXiv](https://arxiv.org/abs/1910.10683) · [Code](https://github.com/google-research/text-to-text-transfer-transformer)
 
-<a id="ref-bert-generative-icl"></a> **BERTs are Generative In-Context Learners.** Samuel. *BERTs are Generative In-Context Learners.* NeurIPS 2024. [arXiv](https://arxiv.org/abs/2406.04823) · [Code](https://github.com/ltgoslo/bert-gen)
+- <a id="ref-bert-generative-icl"></a> **BERTs are Generative In-Context Learners.** Samuel. *BERTs are Generative In-Context Learners.* NeurIPS 2024. [arXiv](https://arxiv.org/abs/2406.04823) · [Code](https://github.com/ltgoslo/bert-gen)
 
-### Story 9 — Mask schedules and the MLM-versus-CLM question
+### 16.9 Mask schedules and the MLM-versus-CLM question
 
 Once MLM became standard, later work revisited how much text should be hidden and whether corruption difficulty should remain fixed. Dynamic schedules make masking a curriculum. Large controlled MLM-versus-CLM studies then show that CLM can learn efficiently early while MLM often produces stronger final representations, motivating biphasic training instead of a binary choice.
 
-<a id="ref-mask-15-percent"></a> **Should You Mask 15%?** Wettig et al. *Should You Mask 15% in Masked Language Modeling?* EACL 2023. [arXiv](https://arxiv.org/abs/2202.08005)
+- <a id="ref-mask-15-percent"></a> **Should You Mask 15%?** Wettig et al. *Should You Mask 15% in Masked Language Modeling?* EACL 2023. [arXiv](https://arxiv.org/abs/2202.08005)
 
-<a id="ref-dynamic-masking"></a> **Dynamic Masking Rate Schedules.** Ankner et al. *Dynamic Masking Rate Schedules for MLM Pretraining.* EACL 2024. [Paper](https://aclanthology.org/2024.eacl-short.42/)
+- <a id="ref-dynamic-masking"></a> **Dynamic Masking Rate Schedules.** Ankner et al. *Dynamic Masking Rate Schedules for MLM Pretraining.* EACL 2024. [Paper](https://aclanthology.org/2024.eacl-short.42/)
 
-<a id="ref-mlm-vs-clm"></a> **MLM versus CLM.** Gisserot-Boukhlef et al. *Should We Still Pretrain Encoders with Masked Language Modeling?* 2026 revision. [arXiv](https://arxiv.org/abs/2507.00994) · [Artifacts](https://huggingface.co/MLMvsCLM)
+- <a id="ref-mlm-vs-clm"></a> **MLM versus CLM.** Gisserot-Boukhlef et al. *Should We Still Pretrain Encoders with Masked Language Modeling?* 2026 revision. [arXiv](https://arxiv.org/abs/2507.00994) · [Artifacts](https://huggingface.co/MLMvsCLM)
 
-### Story 10 — Parameter-efficient adaptation
+### 16.10 Parameter-efficient adaptation
 
 Adapters make task-specific capacity modular by inserting small bottlenecks into a frozen network. LoRA shifts adaptation into low-rank weight updates that can often be merged for inference. Prefix tuning instead expresses adaptation through learned continuous states, connecting ordinary PEFT to soft-token conditioning and continuous-control interfaces.
 
-<a id="ref-adapters"></a> **Bottleneck adapters.** Houlsby et al. *Parameter-Efficient Transfer Learning for NLP.* ICML 2019. [arXiv](https://arxiv.org/abs/1902.00751)
+- <a id="ref-adapters"></a> **Bottleneck adapters.** Houlsby et al. *Parameter-Efficient Transfer Learning for NLP.* ICML 2019. [arXiv](https://arxiv.org/abs/1902.00751)
 
-<a id="ref-lora"></a> **LoRA.** Hu et al. *LoRA: Low-Rank Adaptation of Large Language Models.* ICLR 2022. [arXiv](https://arxiv.org/abs/2106.09685) · [Code](https://github.com/microsoft/LoRA)
+- <a id="ref-lora"></a> **LoRA.** Hu et al. *LoRA: Low-Rank Adaptation of Large Language Models.* ICLR 2022. [arXiv](https://arxiv.org/abs/2106.09685) · [Code](https://github.com/microsoft/LoRA)
 
-<a id="ref-prefix-tuning"></a> **Prefix-Tuning.** Li and Liang. *Prefix-Tuning: Optimizing Continuous Prompts for Generation.* ACL 2021. [arXiv](https://arxiv.org/abs/2101.00190) · [Code](https://github.com/XiangLi1999/PrefixTuning)
+- <a id="ref-prefix-tuning"></a> **Prefix-Tuning.** Li and Liang. *Prefix-Tuning: Optimizing Continuous Prompts for Generation.* ACL 2021. [arXiv](https://arxiv.org/abs/2101.00190) · [Code](https://github.com/XiangLi1999/PrefixTuning)
 
-### Story 11 — Distilling predictions, layers, and attention relations
+### 16.11 Distilling predictions, layers, and attention relations
 
 Classical distillation transfers the teacher’s full probability distribution rather than only its winning label. DistilBERT applies that principle during language-model compression, TinyBERT expands supervision to embeddings, states, and attention maps, and MiniLM distills attention relations that remain meaningful across different hidden widths. This progression provides a general menu for transferring knowledge into smaller encoders or compressed-context students.
 
-<a id="ref-knowledge-distillation"></a> **Knowledge distillation.** Hinton, Vinyals, and Dean. *Distilling the Knowledge in a Neural Network.* 2015. [arXiv](https://arxiv.org/abs/1503.02531)
+- <a id="ref-knowledge-distillation"></a> **Knowledge distillation.** Hinton, Vinyals, and Dean. *Distilling the Knowledge in a Neural Network.* 2015. [arXiv](https://arxiv.org/abs/1503.02531)
 
-<a id="ref-distilbert"></a> **DistilBERT.** Sanh et al. *DistilBERT, a Distilled Version of BERT: Smaller, Faster, Cheaper and Lighter.* 2019. [arXiv](https://arxiv.org/abs/1910.01108) · [Model](https://huggingface.co/distilbert/distilbert-base-uncased)
+- <a id="ref-distilbert"></a> **DistilBERT.** Sanh et al. *DistilBERT, a Distilled Version of BERT: Smaller, Faster, Cheaper and Lighter.* 2019. [arXiv](https://arxiv.org/abs/1910.01108) · [Model](https://huggingface.co/distilbert/distilbert-base-uncased)
 
-<a id="ref-tinybert"></a> **TinyBERT.** Jiao et al. *TinyBERT: Distilling BERT for Natural Language Understanding.* EMNLP Findings 2020. [arXiv](https://arxiv.org/abs/1909.10351) · [Code](https://github.com/huawei-noah/Pretrained-Language-Model/tree/master/TinyBERT)
+- <a id="ref-tinybert"></a> **TinyBERT.** Jiao et al. *TinyBERT: Distilling BERT for Natural Language Understanding.* EMNLP Findings 2020. [arXiv](https://arxiv.org/abs/1909.10351) · [Code](https://github.com/huawei-noah/Pretrained-Language-Model/tree/master/TinyBERT)
 
-<a id="ref-minilm"></a> **MiniLM.** Wang et al. *MiniLM: Deep Self-Attention Distillation for Task-Agnostic Compression of Pre-Trained Transformers.* NeurIPS 2020. [arXiv](https://arxiv.org/abs/2002.10957) · [Code](https://github.com/microsoft/unilm/tree/master/minilm)
+- <a id="ref-minilm"></a> **MiniLM.** Wang et al. *MiniLM: Deep Self-Attention Distillation for Task-Agnostic Compression of Pre-Trained Transformers.* NeurIPS 2020. [arXiv](https://arxiv.org/abs/2002.10957) · [Code](https://github.com/microsoft/unilm/tree/master/minilm)
 
-### Story 12 — Benchmarks expand from sentence semantics to multilingual and long-context behavior
+### 16.12 Benchmarks expand from sentence semantics to multilingual and long-context behavior
 
 MTEB turns embedding evaluation into a multi-task suite, and MMTEB expands it across languages. BEIR emphasizes zero-shot domain transfer rather than one in-domain retrieval set. MLDR and RULER address long-context retrieval and synthetic capability measurement, exposing the gap between accepted context length and useful context length.
 
-<a id="ref-mteb"></a> **MTEB.** Muennighoff et al. *MTEB: Massive Text Embedding Benchmark.* EACL 2023. [arXiv](https://arxiv.org/abs/2210.07316) · [Code](https://github.com/embeddings-benchmark/mteb)
+- <a id="ref-mteb"></a> **MTEB.** Muennighoff et al. *MTEB: Massive Text Embedding Benchmark.* EACL 2023. [arXiv](https://arxiv.org/abs/2210.07316) · [Code](https://github.com/embeddings-benchmark/mteb)
 
-<a id="ref-mmteb"></a> **MMTEB.** Enevoldsen et al. *MMTEB: Massive Multilingual Text Embedding Benchmark.* 2025. [arXiv](https://arxiv.org/abs/2502.13595) · [Code](https://github.com/embeddings-benchmark/mteb)
+- <a id="ref-mmteb"></a> **MMTEB.** Enevoldsen et al. *MMTEB: Massive Multilingual Text Embedding Benchmark.* 2025. [arXiv](https://arxiv.org/abs/2502.13595) · [Code](https://github.com/embeddings-benchmark/mteb)
 
-<a id="ref-beir"></a> **BEIR.** Thakur et al. *BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models.* NeurIPS Datasets and Benchmarks 2021. [arXiv](https://arxiv.org/abs/2104.08663) · [Code](https://github.com/beir-cellar/beir)
+- <a id="ref-beir"></a> **BEIR.** Thakur et al. *BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models.* NeurIPS Datasets and Benchmarks 2021. [arXiv](https://arxiv.org/abs/2104.08663) · [Code](https://github.com/beir-cellar/beir)
 
-<a id="ref-mldr"></a> **MLDR.** Chen et al. *Long-Context Retrieval Models with Document Compression.* MLDR dataset and benchmark resources. [Dataset](https://huggingface.co/datasets/Shitao/MLDR)
+- <a id="ref-mldr"></a> **MLDR.** Chen et al. *Long-Context Retrieval Models with Document Compression.* MLDR dataset and benchmark resources. [Dataset](https://huggingface.co/datasets/Shitao/MLDR)
 
-<a id="ref-ruler"></a> **RULER.** Hsieh et al. *RULER: What’s the Real Context Size of Your Long-Context Language Models?* COLM 2024. [arXiv](https://arxiv.org/abs/2404.06654) · [Code](https://github.com/NVIDIA/RULER)
+- <a id="ref-ruler"></a> **RULER.** Hsieh et al. *RULER: What’s the Real Context Size of Your Long-Context Language Models?* COLM 2024. [arXiv](https://arxiv.org/abs/2404.06654) · [Code](https://github.com/NVIDIA/RULER)
