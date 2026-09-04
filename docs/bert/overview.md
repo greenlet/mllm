@@ -545,13 +545,13 @@ An extraction study should report exact span F1 together with tokenizer fertilit
 
 BERT established bidirectional masked pretraining and a universal token-state interface. RoBERTa then demonstrated that data, masking, batching, and training duration explained major gains without a new block. ALBERT, SpanBERT, ELECTRA, and DeBERTa explored different bottlenecks: parameter storage, span semantics, sparse MLM supervision, and content-position entanglement. Read this section first to understand why “BERT improvement” can mean an objective, a corpus recipe, or an architectural change.
 
-- <a id="ref-bert"></a> **BERT.** Devlin et al. *BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.* NAACL 2019. [arXiv](https://arxiv.org/abs/1810.04805) · [Code](https://github.com/google-research/bert)
+- <a id="ref-bert"></a> **BERT.** Devlin et al. *BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.* NAACL 2019. [Local review](../papers/bert-encoder_2018_bert-pretraining.md) · [Code](https://github.com/google-research/bert)
 
-- <a id="ref-roberta"></a> **RoBERTa.** Liu et al. *RoBERTa: A Robustly Optimized BERT Pretraining Approach.* 2019. [arXiv](https://arxiv.org/abs/1907.11692) · [Code](https://github.com/facebookresearch/fairseq/tree/main/examples/roberta)
+- <a id="ref-roberta"></a> **RoBERTa.** Liu et al. *RoBERTa: A Robustly Optimized BERT Pretraining Approach.* 2019. [Local review](../papers/bert-training_2019_roberta.md) · [Code](https://github.com/facebookresearch/fairseq/tree/main/examples/roberta)
 
-- <a id="ref-albert"></a> **ALBERT.** Lan et al. *ALBERT: A Lite BERT for Self-supervised Learning of Language Representations.* ICLR 2020. [arXiv](https://arxiv.org/abs/1909.11942) · [Code](https://github.com/google-research/albert)
+- <a id="ref-albert"></a> **ALBERT.** Lan et al. *ALBERT: A Lite BERT for Self-supervised Learning of Language Representations.* ICLR 2020. [Local review](../papers/bert-efficient_2019_albert.md) · [Code](https://github.com/google-research/albert)
 
-- <a id="ref-spanbert"></a> **SpanBERT.** Joshi et al. *SpanBERT: Improving Pre-training by Representing and Predicting Spans.* TACL 2020. [arXiv](https://arxiv.org/abs/1907.10529) · [Code](https://github.com/facebookresearch/SpanBERT)
+- <a id="ref-spanbert"></a> **SpanBERT.** Joshi et al. *SpanBERT: Improving Pre-training by Representing and Predicting Spans.* TACL 2020. [Local review](../papers/bert-span_2019_spanbert.md) · [Code](https://github.com/facebookresearch/SpanBERT)
 
 - <a id="ref-electra"></a> **ELECTRA.** Clark et al. *ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators.* ICLR 2020. [arXiv](https://arxiv.org/abs/2003.10555) · [Code](https://github.com/google-research/electra)
 
