@@ -146,7 +146,7 @@ Scaling was monotonic in the reported controlled experiment. Increasing from a 3
 
 ## Limitations & follow-ups
 
-- MLM predicts only 15% of positions, so each sequence provides fewer supervised targets than a causal LM. [ELECTRA](https://arxiv.org/abs/2003.10555) later replaced sparse reconstruction with dense replaced-token detection.
+- MLM predicts only 15% of positions, so each sequence provides fewer supervised targets than a causal LM. [ELECTRA](bert-objective_2020_electra.md) later replaced sparse reconstruction with dense replaced-token detection.
 - The corruption symbol creates a train/test mismatch. Dynamic masking and larger corpora in [RoBERTa](bert-training_2019_roberta.md) improve the recipe without changing the basic encoder objective.
 - NSP negatives are often topically unrelated and can be solved without learning fine discourse coherence. [ALBERT](bert-efficient_2019_albert.md) replaces NSP with sentence-order prediction; RoBERTa and [SpanBERT](bert-span_2019_spanbert.md) remove it.
 - Dense attention and learned absolute positions cap the released model at 512 tokens and make long inputs expensive.

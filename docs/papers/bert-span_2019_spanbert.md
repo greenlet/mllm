@@ -151,7 +151,7 @@ In the controlled masking comparison, geometric spans give the strongest or tied
 - Gains are strongest for span-heavy tasks and smaller or inconsistent for generic classification.
 - Inputs remain limited to 512 tokens, and the coreference system encodes long documents as independent chunks.
 - The corpus and evaluation are English-centric, and the archived official model repository uses a noncommercial license for pretrained models.
-- Later span-denoising encoder–decoders such as T5 reconstruct spans autoregressively, while [ELECTRA](https://arxiv.org/abs/2003.10555) pursues dense token-level discrimination; these optimize different transfer interfaces.
+- Later span-denoising encoder–decoders such as T5 reconstruct spans autoregressively, while [ELECTRA](bert-objective_2020_electra.md) pursues dense token-level discrimination; these optimize different transfer interfaces.
 
 ## Links
 

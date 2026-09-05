@@ -553,11 +553,11 @@ BERT established bidirectional masked pretraining and a universal token-state in
 
 - <a id="ref-spanbert"></a> **SpanBERT.** Joshi et al. *SpanBERT: Improving Pre-training by Representing and Predicting Spans.* TACL 2020. [Local review](../papers/bert-span_2019_spanbert.md) · [Code](https://github.com/facebookresearch/SpanBERT)
 
-- <a id="ref-electra"></a> **ELECTRA.** Clark et al. *ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators.* ICLR 2020. [arXiv](https://arxiv.org/abs/2003.10555) · [Code](https://github.com/google-research/electra)
+- <a id="ref-electra"></a> **ELECTRA.** Clark et al. *ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators.* ICLR 2020. [Local review](../papers/bert-objective_2020_electra.md) · [Code](https://github.com/google-research/electra)
 
-- <a id="ref-deberta"></a> **DeBERTa.** He et al. *DeBERTa: Decoding-enhanced BERT with Disentangled Attention.* ICLR 2021. [arXiv](https://arxiv.org/abs/2006.03654) · [Code](https://github.com/microsoft/DeBERTa)
+- <a id="ref-deberta"></a> **DeBERTa.** He et al. *DeBERTa: Decoding-enhanced BERT with Disentangled Attention.* ICLR 2021. [Local review](../papers/bert-attention_2020_deberta.md) · [Code](https://github.com/microsoft/DeBERTa)
 
-- <a id="ref-deberta-v3"></a> **DeBERTa-v3.** He et al. *DeBERTaV3: Improving DeBERTa using ELECTRA-Style Pre-Training with Gradient-Disentangled Embedding Sharing.* ICLR 2023. [arXiv](https://arxiv.org/abs/2111.09543) · [Code](https://github.com/microsoft/DeBERTa)
+- <a id="ref-deberta-v3"></a> **DeBERTa-v3.** He et al. *DeBERTaV3: Improving DeBERTa using ELECTRA-Style Pre-Training with Gradient-Disentangled Embedding Sharing.* ICLR 2023. [Local review](../papers/bert-objective_2021_deberta-v3.md) · [Code](https://github.com/microsoft/DeBERTa)
 
 ### 16.2 Making bidirectional attention survive long documents
 
