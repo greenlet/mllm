@@ -563,9 +563,9 @@ BERT established bidirectional masked pretraining and a universal token-state in
 
 The first long-context branch changed the attention graph. Longformer and ETC divide computation into local and global channels; BigBird adds random sparse edges with theoretical guarantees; Linformer and Reformer instead approximate or reorganize attention through low rank and hashing. These papers expose the assumptions behind “linear attention” and should be read before choosing an implementation solely from asymptotic notation.
 
-- <a id="ref-longformer"></a> **Longformer.** Beltagy, Peters, and Cohan. *Longformer: The Long-Document Transformer.* 2020. [arXiv](https://arxiv.org/abs/2004.05150) · [Code](https://github.com/allenai/longformer)
+- <a id="ref-longformer"></a> **Longformer.** Beltagy, Peters, and Cohan. *Longformer: The Long-Document Transformer.* 2020. [Local review](../papers/bert-long-context_2020_longformer.md) · [Code](https://github.com/allenai/longformer)
 
-- <a id="ref-etc"></a> **ETC.** Ainslie et al. *ETC: Encoding Long and Structured Inputs in Transformers.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2004.08483) · [Code](https://github.com/google-research/google-research/tree/master/etcmodel)
+- <a id="ref-etc"></a> **ETC.** Ainslie et al. *ETC: Encoding Long and Structured Inputs in Transformers.* EMNLP 2020. [Local review](../papers/bert-long-context_2020_etc.md) · [Code](https://github.com/google-research/google-research/tree/master/etcmodel)
 
 - <a id="ref-bigbird"></a> **BigBird.** Zaheer et al. *Big Bird: Transformers for Longer Sequences.* NeurIPS 2020. [arXiv](https://arxiv.org/abs/2007.14062) · [Code](https://github.com/google-research/bigbird)
 
