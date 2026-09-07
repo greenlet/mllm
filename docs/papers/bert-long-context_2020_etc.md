@@ -180,7 +180,7 @@ Official single-model submissions rank first at the time of publication for NQ l
 - Hard g2l masking helps Natural Questions and HotpotQA but hurts WikiHop. Structural assumptions must match the task rather than being applied mechanically.
 - CPC requires a second sentence encoder and in-batch contrastive comparisons during pretraining. The paper does not isolate all additional compute from the architectural cost.
 - The experiments stop at 8,192 tokens even though checkpointing permits longer inputs; encoder-decoder generation is explicitly left for future work.
-- [Longformer](bert-long-context_2020_longformer.md) offers a simpler single-stream local/global interface and LED generation. [BigBird](https://arxiv.org/abs/2007.14062) later adds random sparse edges and formal expressivity/connectivity results.
+- [Longformer](bert-long-context_2020_longformer.md) offers a simpler single-stream local/global interface and LED generation. [BigBird](bert-long-context_2020_bigbird.md) later adds random sparse edges and formal expressivity/connectivity results.
 
 ## Links
 
@@ -194,4 +194,4 @@ Official single-model submissions rank first at the time of publication for NQ l
 - **OpenReview / venue page:** [ACL Anthology](https://aclanthology.org/2020.emnlp-main.19/)
 - **Papers-with-Code:** [ETC](https://paperswithcode.com/paper/etc-encoding-long-and-structured-inputs-in)
 - **BibTeX:** [ACL Anthology export](https://aclanthology.org/2020.emnlp-main.19.bib)
-- **Related / contemporary papers:** [Longformer](bert-long-context_2020_longformer.md) · [BigBird](https://arxiv.org/abs/2007.14062)
+- **Related / contemporary papers:** [Longformer](bert-long-context_2020_longformer.md) · [BigBird](bert-long-context_2020_bigbird.md)

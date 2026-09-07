@@ -567,9 +567,9 @@ The first long-context branch changed the attention graph. Longformer and ETC di
 
 - <a id="ref-etc"></a> **ETC.** Ainslie et al. *ETC: Encoding Long and Structured Inputs in Transformers.* EMNLP 2020. [Local review](../papers/bert-long-context_2020_etc.md) · [Code](https://github.com/google-research/google-research/tree/master/etcmodel)
 
-- <a id="ref-bigbird"></a> **BigBird.** Zaheer et al. *Big Bird: Transformers for Longer Sequences.* NeurIPS 2020. [arXiv](https://arxiv.org/abs/2007.14062) · [Code](https://github.com/google-research/bigbird)
+- <a id="ref-bigbird"></a> **BigBird.** Zaheer et al. *Big Bird: Transformers for Longer Sequences.* NeurIPS 2020. [Local review](../papers/bert-long-context_2020_bigbird.md) · [Code](https://github.com/google-research/bigbird)
 
-- <a id="ref-linformer"></a> **Linformer.** Wang et al. *Linformer: Self-Attention with Linear Complexity.* 2020. [arXiv](https://arxiv.org/abs/2006.04768)
+- <a id="ref-linformer"></a> **Linformer.** Wang et al. *Linformer: Self-Attention with Linear Complexity.* 2020. [Local review](../papers/bert-long-context_2020_linformer.md)
 
 - <a id="ref-reformer"></a> **Reformer.** Kitaev, Kaiser, and Levskaya. *Reformer: The Efficient Transformer.* ICLR 2020. [arXiv](https://arxiv.org/abs/2001.04451) · [Code](https://github.com/google/trax/tree/master/trax/models/reformer)
 

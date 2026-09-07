@@ -152,7 +152,7 @@ These arXiv-summarization results establish that the sparse encoder also support
 - The fast chunks implementation stores redundant scores and lacks dilation; the most flexible implementation requires a custom CUDA kernel.
 - Copying position embeddings is effective but heuristic, and learned absolute positions do not naturally extrapolate beyond the newly trained maximum.
 - Comparisons with dense RoBERTa can confound sequence length, continued pretraining, and task architecture. HotpotQA also shows that sparse context alone does not replace graph reasoning.
-- [ETC](bert-long-context_2020_etc.md) independently develops explicit global and long streams, relation labels, and structural masks. [BigBird](https://arxiv.org/abs/2007.14062) later combines local, global, and random edges with graph-theoretic guarantees.
+- [ETC](bert-long-context_2020_etc.md) independently develops explicit global and long streams, relation labels, and structural masks. [BigBird](bert-long-context_2020_bigbird.md) later combines local, global, and random edges with graph-theoretic guarantees.
 
 ## Links
 
@@ -166,4 +166,4 @@ These arXiv-summarization results establish that the sparse encoder also support
 - **OpenReview / venue page:** —
 - **Papers-with-Code:** [Longformer](https://paperswithcode.com/paper/longformer-the-long-document-transformer)
 - **BibTeX:** [arXiv export](https://export.arxiv.org/api/query?id_list=2004.05150)
-- **Related / successor papers:** [ETC](bert-long-context_2020_etc.md) · [BigBird](https://arxiv.org/abs/2007.14062)
+- **Related / successor papers:** [ETC](bert-long-context_2020_etc.md) · [BigBird](bert-long-context_2020_bigbird.md)
