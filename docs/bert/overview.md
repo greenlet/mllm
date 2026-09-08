@@ -571,7 +571,7 @@ The first long-context branch changed the attention graph. Longformer and ETC di
 
 - <a id="ref-linformer"></a> **Linformer.** Wang et al. *Linformer: Self-Attention with Linear Complexity.* 2020. [Local review](../papers/bert-long-context_2020_linformer.md)
 
-- <a id="ref-reformer"></a> **Reformer.** Kitaev, Kaiser, and Levskaya. *Reformer: The Efficient Transformer.* ICLR 2020. [arXiv](https://arxiv.org/abs/2001.04451) · [Code](https://github.com/google/trax/tree/master/trax/models/reformer)
+- <a id="ref-reformer"></a> **Reformer.** Kitaev, Kaiser, and Levskaya. *Reformer: The Efficient Transformer.* ICLR 2020. [Local review](../papers/bert-long-context_2020_reformer.md) · [Code](https://github.com/google/trax/tree/master/trax/models/reformer)
 
 ### 16.3 The modern encoder revival
 

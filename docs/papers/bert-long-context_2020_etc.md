@@ -194,4 +194,4 @@ Official single-model submissions rank first at the time of publication for NQ l
 - **OpenReview / venue page:** [ACL Anthology](https://aclanthology.org/2020.emnlp-main.19/)
 - **Papers-with-Code:** [ETC](https://paperswithcode.com/paper/etc-encoding-long-and-structured-inputs-in)
 - **BibTeX:** [ACL Anthology export](https://aclanthology.org/2020.emnlp-main.19.bib)
-- **Related / contemporary papers:** [Longformer](bert-long-context_2020_longformer.md) · [BigBird](bert-long-context_2020_bigbird.md)
+- **Related / contemporary papers:** [Longformer](bert-long-context_2020_longformer.md) · [BigBird](bert-long-context_2020_bigbird.md) · [Reformer](bert-long-context_2020_reformer.md)

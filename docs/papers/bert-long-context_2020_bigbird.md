@@ -194,4 +194,4 @@ On shorter XSum and CNN/DailyMail, BigBird-Pegasus is slightly below the re-eval
 - **OpenReview / venue page:** [NeurIPS 2020 proceedings](https://proceedings.neurips.cc/paper/2020/hash/c8512d142a2d849725f31a9a7a361ab9-Abstract.html)
 - **Papers-with-Code:** [Big Bird](https://paperswithcode.com/paper/big-bird-transformers-for-longer-sequences)
 - **BibTeX:** [NeurIPS proceedings](https://proceedings.neurips.cc/paper/2020/hash/c8512d142a2d849725f31a9a7a361ab9-Abstract.html)
-- **Related papers:** [Longformer](bert-long-context_2020_longformer.md) · [ETC](bert-long-context_2020_etc.md) · [Linformer](bert-long-context_2020_linformer.md)
+- **Related papers:** [Longformer](bert-long-context_2020_longformer.md) · [ETC](bert-long-context_2020_etc.md) · [Linformer](bert-long-context_2020_linformer.md) · [Reformer](bert-long-context_2020_reformer.md)

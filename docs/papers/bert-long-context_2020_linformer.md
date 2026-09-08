@@ -193,4 +193,4 @@ These tests use randomly generated inputs and a 12-layer forward pass on one 16G
 - **OpenReview / venue page:** —
 - **Papers-with-Code:** [Linformer](https://paperswithcode.com/paper/linformer-self-attention-with-linear)
 - **BibTeX:** [arXiv API](https://export.arxiv.org/api/query?id_list=2006.04768)
-- **Related papers:** [Longformer](bert-long-context_2020_longformer.md) · [ETC](bert-long-context_2020_etc.md) · [BigBird](bert-long-context_2020_bigbird.md) · [Performer](https://arxiv.org/abs/2009.14794)
+- **Related papers:** [Longformer](bert-long-context_2020_longformer.md) · [ETC](bert-long-context_2020_etc.md) · [BigBird](bert-long-context_2020_bigbird.md) · [Reformer](bert-long-context_2020_reformer.md) · [Performer](https://arxiv.org/abs/2009.14794)

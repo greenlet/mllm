@@ -166,4 +166,4 @@ These arXiv-summarization results establish that the sparse encoder also support
 - **OpenReview / venue page:** —
 - **Papers-with-Code:** [Longformer](https://paperswithcode.com/paper/longformer-the-long-document-transformer)
 - **BibTeX:** [arXiv export](https://export.arxiv.org/api/query?id_list=2004.05150)
-- **Related / successor papers:** [ETC](bert-long-context_2020_etc.md) · [BigBird](bert-long-context_2020_bigbird.md)
+- **Related / successor papers:** [ETC](bert-long-context_2020_etc.md) · [BigBird](bert-long-context_2020_bigbird.md) · [Reformer](bert-long-context_2020_reformer.md)
