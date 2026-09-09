@@ -577,7 +577,7 @@ The first long-context branch changed the attention graph. Longformer and ETC di
 
 ModernBERT reassembled modern LLM components into an efficient English bidirectional encoder. NeoBERT chose a deeper full-attention 768-wide design and published unusually informative ablations. Ettin then trained paired encoders and decoders under matched conditions, clarifying where native objectives retain advantages. mmBERT and EuroBERT extended the revival into complementary multilingual regimes: extreme language breadth versus a scaled European/global/code/math mixture.
 
-- <a id="ref-modernbert"></a> **ModernBERT.** Warner et al. *Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder for Fast, Memory Efficient, and Long Context Finetuning and Inference.* 2024. [arXiv](https://arxiv.org/abs/2412.13663) · [Code](https://github.com/AnswerDotAI/ModernBERT) · [Models](https://huggingface.co/answerdotai)
+- <a id="ref-modernbert"></a> **ModernBERT.** Warner et al. *Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder for Fast, Memory Efficient, and Long Context Finetuning and Inference.* 2024. [Local review](../papers/bert-modern-encoder_2024_modernbert.md) · [Code](https://github.com/AnswerDotAI/ModernBERT) · [Models](https://huggingface.co/answerdotai)
 
 - <a id="ref-neobert"></a> **NeoBERT.** Le Breton et al. *NeoBERT: A Next-Generation BERT.* 2025. [arXiv](https://arxiv.org/abs/2502.19587) · [Code](https://github.com/chandar-lab/NeoBERT)
 
