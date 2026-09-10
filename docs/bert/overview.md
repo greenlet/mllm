@@ -579,7 +579,7 @@ ModernBERT reassembled modern LLM components into an efficient English bidirecti
 
 - <a id="ref-modernbert"></a> **ModernBERT.** Warner et al. *Smarter, Better, Faster, Longer: A Modern Bidirectional Encoder for Fast, Memory Efficient, and Long Context Finetuning and Inference.* 2024. [Local review](../papers/bert-modern-encoder_2024_modernbert.md) · [Code](https://github.com/AnswerDotAI/ModernBERT) · [Models](https://huggingface.co/answerdotai)
 
-- <a id="ref-neobert"></a> **NeoBERT.** Le Breton et al. *NeoBERT: A Next-Generation BERT.* 2025. [arXiv](https://arxiv.org/abs/2502.19587) · [Code](https://github.com/chandar-lab/NeoBERT)
+- <a id="ref-neobert"></a> **NeoBERT.** Le Breton et al. *NeoBERT: A Next-Generation BERT.* 2025. [Local review](../papers/bert-modern-encoder_2025_neobert.md) · [Code](https://github.com/chandar-lab/NeoBERT)
 
 - <a id="ref-ettin"></a> **Ettin / Seq vs Seq.** Weller et al. *Seq vs Seq: An Open Suite of Paired Encoders and Decoders.* ICLR 2026. [arXiv](https://arxiv.org/abs/2507.11412) · [Models](https://huggingface.co/jhu-clsp)
 
