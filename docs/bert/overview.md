@@ -581,7 +581,7 @@ ModernBERT reassembled modern LLM components into an efficient English bidirecti
 
 - <a id="ref-neobert"></a> **NeoBERT.** Le Breton et al. *NeoBERT: A Next-Generation BERT.* 2025. [Local review](../papers/bert-modern-encoder_2025_neobert.md) · [Code](https://github.com/chandar-lab/NeoBERT)
 
-- <a id="ref-ettin"></a> **Ettin / Seq vs Seq.** Weller et al. *Seq vs Seq: An Open Suite of Paired Encoders and Decoders.* ICLR 2026. [arXiv](https://arxiv.org/abs/2507.11412) · [Models](https://huggingface.co/jhu-clsp)
+- <a id="ref-ettin"></a> **Ettin / Seq vs Seq.** Weller et al. *Seq vs Seq: An Open Suite of Paired Encoders and Decoders.* ICLR 2026. [Local review](../papers/bert-modern-encoder_2025_ettin-seq-vs-seq.md) · [Code](https://github.com/JHU-CLSP/ettin-encoder-vs-decoder) · [Models](https://huggingface.co/jhu-clsp)
 
 - <a id="ref-mmbert"></a> **mmBERT.** Marone et al. *mmBERT: A Modern Multilingual Encoder with Annealed Language Learning.* 2025. [arXiv](https://arxiv.org/abs/2509.06888) · [Models](https://huggingface.co/jhu-clsp)
 
