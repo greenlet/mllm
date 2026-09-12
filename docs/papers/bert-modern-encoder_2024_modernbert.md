@@ -338,7 +338,7 @@ On fixed short inputs, old BERT and RoBERTa remain faster than ModernBERT-base, 
 - **Model scaling.** Only 149M and 395M sizes are explored, leaving the scaling behavior of this architecture unresolved.
 - **Bias and harmful content.** Web-trained representations can reproduce source-data biases. Although the model is not an autoregressive generator, masked-token predictions can still emit harmful content.
 
-The immediate successor thread includes full-attention [NeoBERT](bert-modern-encoder_2025_neobert.md), paired encoder/decoder [Ettin](bert-modern-encoder_2025_ettin-seq-vs-seq.md), massively multilingual [mmBERT](https://arxiv.org/abs/2509.06888), and multilingual [EuroBERT](https://arxiv.org/abs/2503.05500). The NeoBERT and Ettin local reviews are available; the BERT overview tracks the remaining reviews.
+The immediate successor thread includes full-attention [NeoBERT](bert-modern-encoder_2025_neobert.md), paired encoder/decoder [Ettin](bert-modern-encoder_2025_ettin-seq-vs-seq.md), massively multilingual [mmBERT](bert-modern-encoder_2025_mmbert.md), and multilingual [EuroBERT](https://arxiv.org/abs/2503.05500). The NeoBERT, Ettin, and mmBERT local reviews are available; the BERT overview tracks the remaining reviews.
 
 ## Links
 
@@ -352,4 +352,4 @@ The immediate successor thread includes full-attention [NeoBERT](bert-modern-enc
 - **OpenReview / venue page:** —
 - **Papers-with-Code:** [ModernBERT](https://paperswithcode.com/paper/smarter-better-faster-longer-a-modern)
 - **BibTeX:** [repository citation](https://github.com/AnswerDotAI/ModernBERT#reference)
-- **Related / successor papers:** [NeoBERT](bert-modern-encoder_2025_neobert.md) · [Ettin / Seq vs Seq](bert-modern-encoder_2025_ettin-seq-vs-seq.md) · [mmBERT](https://arxiv.org/abs/2509.06888) · [EuroBERT](https://arxiv.org/abs/2503.05500)
+- **Related / successor papers:** [NeoBERT](bert-modern-encoder_2025_neobert.md) · [Ettin / Seq vs Seq](bert-modern-encoder_2025_ettin-seq-vs-seq.md) · [mmBERT](bert-modern-encoder_2025_mmbert.md) · [EuroBERT](https://arxiv.org/abs/2503.05500)

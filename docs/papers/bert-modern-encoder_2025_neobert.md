@@ -304,4 +304,4 @@ The closest predecessor is [ModernBERT](bert-modern-encoder_2024_modernbert.md),
 - **OpenReview / venue page:** — (the arXiv record says submitted to TMLR)
 - **Papers-with-Code:** —
 - **BibTeX:** [model-card citation](https://huggingface.co/chandar-lab/NeoBERT#citation)
-- **Related papers:** [ModernBERT review](bert-modern-encoder_2024_modernbert.md) · [RefinedWeb](https://arxiv.org/abs/2306.01116) · [CDE](https://arxiv.org/abs/2410.02525) · [Ettin / Seq vs Seq](bert-modern-encoder_2025_ettin-seq-vs-seq.md) · [mmBERT](https://arxiv.org/abs/2509.06888) · [EuroBERT](https://arxiv.org/abs/2503.05500)
+- **Related papers:** [ModernBERT review](bert-modern-encoder_2024_modernbert.md) · [RefinedWeb](https://arxiv.org/abs/2306.01116) · [CDE](https://arxiv.org/abs/2410.02525) · [Ettin / Seq vs Seq](bert-modern-encoder_2025_ettin-seq-vs-seq.md) · [mmBERT](bert-modern-encoder_2025_mmbert.md) · [EuroBERT](https://arxiv.org/abs/2503.05500)

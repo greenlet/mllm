@@ -210,7 +210,7 @@ Because the training data and its order are identical and public, behavioural di
 - **Non-native generative protocol.** Encoders are evaluated on generation through iterative mask-filling, which may understate or distort their generative capability.
 - **Internal inconsistency to be aware of.** The v2 introduction describes the suite as "10 models (5 pairs)", but Table 1 specifies six configurations and every results table reports six sizes; treat **six pairs** as authoritative.
 
-Successors and siblings in the encoder revival: [ModernBERT](bert-modern-encoder_2024_modernbert.md) is the recipe Ettin replicates on open data, [NeoBERT](bert-modern-encoder_2025_neobert.md) takes the full-attention alternative, and mmBERT (from an overlapping JHU team, cited by Ettin as concurrent SOTA work) extends the approach multilingually.
+Successors and siblings in the encoder revival: [ModernBERT](bert-modern-encoder_2024_modernbert.md) is the recipe Ettin replicates on open data, [NeoBERT](bert-modern-encoder_2025_neobert.md) takes the full-attention alternative, and [mmBERT](bert-modern-encoder_2025_mmbert.md) (from an overlapping JHU team, cited by Ettin as concurrent SOTA work) extends the approach multilingually.
 
 ## Links
 
@@ -224,4 +224,4 @@ Successors and siblings in the encoder revival: [ModernBERT](bert-modern-encoder
 - **OpenReview / venue page:** — (ICLR 2026)
 - **Papers-with-Code:** —
 - **BibTeX:** see the [arXiv abs page](https://arxiv.org/abs/2507.11412)
-- **Related / successor papers:** [ModernBERT](bert-modern-encoder_2024_modernbert.md) · [NeoBERT](bert-modern-encoder_2025_neobert.md) · [RoPE](positional_2021_rope-roformer.md) · [BERT](bert-encoder_2018_bert-pretraining.md) · [DeBERTa](bert-attention_2020_deberta.md) · [mmBERT](https://arxiv.org/abs/2509.06888) · [EuroBERT](https://arxiv.org/abs/2503.05500)
+- **Related / successor papers:** [ModernBERT](bert-modern-encoder_2024_modernbert.md) · [NeoBERT](bert-modern-encoder_2025_neobert.md) · [RoPE](positional_2021_rope-roformer.md) · [BERT](bert-encoder_2018_bert-pretraining.md) · [DeBERTa](bert-attention_2020_deberta.md) · [mmBERT](bert-modern-encoder_2025_mmbert.md) · [EuroBERT](https://arxiv.org/abs/2503.05500)
