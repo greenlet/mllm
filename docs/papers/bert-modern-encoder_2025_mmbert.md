@@ -270,4 +270,4 @@ Context in the encoder revival: [ModernBERT](bert-modern-encoder_2024_modernbert
     year    = {2025}
   }
   ```
-- **Related / successor papers:** [ModernBERT](bert-modern-encoder_2024_modernbert.md) · [Ettin / Seq vs Seq](bert-modern-encoder_2025_ettin-seq-vs-seq.md) · [NeoBERT](bert-modern-encoder_2025_neobert.md) · [BERT](bert-encoder_2018_bert-pretraining.md) · [EuroBERT](https://arxiv.org/abs/2503.05500) · [XLM-R](https://arxiv.org/abs/1911.02116) · [FineWeb2](https://arxiv.org/abs/2506.20920) · [TIES-merging](https://arxiv.org/abs/2306.01708)
+- **Related / successor papers:** [ModernBERT](bert-modern-encoder_2024_modernbert.md) · [Ettin / Seq vs Seq](bert-modern-encoder_2025_ettin-seq-vs-seq.md) · [NeoBERT](bert-modern-encoder_2025_neobert.md) · [BERT](bert-encoder_2018_bert-pretraining.md) · [EuroBERT](bert-modern-encoder_2025_eurobert.md) · [XLM-R](https://arxiv.org/abs/1911.02116) · [FineWeb2](https://arxiv.org/abs/2506.20920) · [TIES-merging](https://arxiv.org/abs/2306.01708)

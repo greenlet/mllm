@@ -585,7 +585,7 @@ ModernBERT reassembled modern LLM components into an efficient English bidirecti
 
 - <a id="ref-mmbert"></a> **mmBERT.** Marone et al. *mmBERT: A Modern Multilingual Encoder with Annealed Language Learning.* 2025. [Local review](../papers/bert-modern-encoder_2025_mmbert.md) · [Code](https://github.com/jhu-clsp/mmBERT) · [Models](https://huggingface.co/jhu-clsp)
 
-- <a id="ref-eurobert"></a> **EuroBERT.** Colombo et al. *EuroBERT: Scaling Multilingual Encoders for European Languages.* 2026 revision. [arXiv](https://arxiv.org/abs/2503.05500) · [Models](https://huggingface.co/EuroBERT)
+- <a id="ref-eurobert"></a> **EuroBERT.** Boizard et al. *EuroBERT: Scaling Multilingual Encoders for European Languages.* 2025 (2026 revision). [Local review](../papers/bert-modern-encoder_2025_eurobert.md) · [Code](https://github.com/Nicolas-BZRD/EuroBERT) · [Models](https://huggingface.co/EuroBERT)
 
 ### 16.4 From one-vector semantics to trained retrieval geometry
 

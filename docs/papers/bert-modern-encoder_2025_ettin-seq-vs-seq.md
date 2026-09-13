@@ -224,4 +224,4 @@ Successors and siblings in the encoder revival: [ModernBERT](bert-modern-encoder
 - **OpenReview / venue page:** — (ICLR 2026)
 - **Papers-with-Code:** —
 - **BibTeX:** see the [arXiv abs page](https://arxiv.org/abs/2507.11412)
-- **Related / successor papers:** [ModernBERT](bert-modern-encoder_2024_modernbert.md) · [NeoBERT](bert-modern-encoder_2025_neobert.md) · [RoPE](positional_2021_rope-roformer.md) · [BERT](bert-encoder_2018_bert-pretraining.md) · [DeBERTa](bert-attention_2020_deberta.md) · [mmBERT](bert-modern-encoder_2025_mmbert.md) · [EuroBERT](https://arxiv.org/abs/2503.05500)
+- **Related / successor papers:** [ModernBERT](bert-modern-encoder_2024_modernbert.md) · [NeoBERT](bert-modern-encoder_2025_neobert.md) · [RoPE](positional_2021_rope-roformer.md) · [BERT](bert-encoder_2018_bert-pretraining.md) · [DeBERTa](bert-attention_2020_deberta.md) · [mmBERT](bert-modern-encoder_2025_mmbert.md) · [EuroBERT](bert-modern-encoder_2025_eurobert.md)
