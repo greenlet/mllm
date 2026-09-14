@@ -591,7 +591,7 @@ ModernBERT reassembled modern LLM components into an efficient English bidirecti
 
 Sentence-BERT made reusable sentence vectors practical, and DPR specialized the bi-encoder pattern for open-domain evidence retrieval. Contriever investigated unsupervised contrastive retrieval, while E5 and GTE scaled weakly supervised pairs and instruction-conditioned similarity. Nomic Embed and Jina Embeddings then combined retrieval training with long-context backbones. This section explains why a raw MLM checkpoint and an embedding checkpoint with the same body can behave very differently.
 
-- <a id="ref-sentence-bert"></a> **Sentence-BERT.** Reimers and Gurevych. *Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks.* EMNLP 2019. [arXiv](https://arxiv.org/abs/1908.10084) · [Code](https://github.com/UKPLab/sentence-transformers)
+- <a id="ref-sentence-bert"></a> **Sentence-BERT.** Reimers and Gurevych. *Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks.* EMNLP 2019. [Local review](../papers/retrieval_2019_sentence-bert.md) · [Code](https://github.com/UKPLab/sentence-transformers) · [Project](https://www.sbert.net/)
 
 - <a id="ref-dpr"></a> **DPR.** Karpukhin et al. *Dense Passage Retrieval for Open-Domain Question Answering.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2004.04906) · [Code](https://github.com/facebookresearch/DPR)
 
