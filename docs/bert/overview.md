@@ -599,7 +599,7 @@ Sentence-BERT made reusable sentence vectors practical, and DPR specialized the 
 
 - <a id="ref-e5"></a> **E5.** Wang et al. *Text Embeddings by Weakly-Supervised Contrastive Pre-training.* 2022. [arXiv](https://arxiv.org/abs/2212.03533) · [Models](https://huggingface.co/intfloat)
 
-- <a id="ref-gte"></a> **GTE.** Li et al. *Towards General Text Embeddings with Multi-stage Contrastive Learning.* 2023. [arXiv](https://arxiv.org/abs/2308.03281) · [Models](https://huggingface.co/thenlper)
+- <a id="ref-gte"></a> **GTE.** Li et al. *Towards General Text Embeddings with Multi-stage Contrastive Learning.* 2023. [Local review](../papers/retrieval_2023_gte.md) · [Models](https://huggingface.co/thenlper)
 
 - <a id="ref-nomic-embed"></a> **Nomic Embed.** Nussbaum et al. *Nomic Embed: Training a Reproducible Long Context Text Embedder.* 2024. [arXiv](https://arxiv.org/abs/2402.01613) · [Code](https://github.com/nomic-ai/contrastors) · [Models](https://huggingface.co/nomic-ai)
 
