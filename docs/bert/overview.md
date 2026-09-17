@@ -603,7 +603,7 @@ Sentence-BERT made reusable sentence vectors practical, and DPR specialized the 
 
 - <a id="ref-nomic-embed"></a> **Nomic Embed.** Nussbaum et al. *Nomic Embed: Training a Reproducible Long Context Text Embedder.* 2024. [Local review](../papers/retrieval_2024_nomic-embed.md) · [Code](https://github.com/nomic-ai/contrastors) · [Models](https://huggingface.co/nomic-ai)
 
-- <a id="ref-jina-v3"></a> **Jina Embeddings v3.** Sturua et al. *jina-embeddings-v3: Multilingual Embeddings With Task LoRA.* 2024. [arXiv](https://arxiv.org/abs/2409.10173) · [Models](https://huggingface.co/jinaai)
+- <a id="ref-jina-v3"></a> **Jina Embeddings v3.** Sturua et al. *jina-embeddings-v3: Multilingual Embeddings With Task LoRA.* 2024. [Local review](../papers/retrieval_2024_jina-embeddings-v3.md) · [Models](https://huggingface.co/jinaai)
 
 ### 16.5 Dense, sparse, late-interaction, and contextual retrieval diverge
 
