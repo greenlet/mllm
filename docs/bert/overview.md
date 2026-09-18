@@ -609,7 +609,7 @@ Sentence-BERT made reusable sentence vectors practical, and DPR specialized the 
 
 One-vector retrieval is efficient but compresses every matching signal into one point. BGE-M3 and mGTE broaden that interface with hybrid, multilingual, long-context, and reranking capabilities. ColBERT preserves token vectors and delays interaction, SPLADE maps contextual evidence back into a sparse lexical index, and CDE conditions embeddings on corpus context. Nomic Embed v2 adds sparse experts to increase representational capacity without activating every parameter.
 
-- <a id="ref-bge-m3"></a> **BGE-M3.** Chen et al. *BGE M3-Embedding: Multi-Linguality, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation.* ACL Findings 2024. [arXiv](https://arxiv.org/abs/2402.03216) · [Code](https://github.com/FlagOpen/FlagEmbedding)
+- <a id="ref-bge-m3"></a> **BGE-M3.** Chen et al. *BGE M3-Embedding: Multi-Linguality, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation.* ACL Findings 2024. [Local review](../papers/retrieval_2024_bge-m3.md) · [Code](https://github.com/FlagOpen/FlagEmbedding)
 
 - <a id="ref-mgte"></a> **mGTE.** Zhang et al. *mGTE: Generalized Long-Context Text Representation and Reranking Models for Multilingual Text Retrieval.* EMNLP Industry 2024. [Paper](https://aclanthology.org/2024.emnlp-industry.103/) · [Models](https://huggingface.co/Alibaba-NLP)
 
