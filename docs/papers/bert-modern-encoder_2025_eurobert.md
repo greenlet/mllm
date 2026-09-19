@@ -217,4 +217,4 @@ Position in the encoder revival: [ModernBERT](bert-modern-encoder_2024_modernber
     year    = {2025}
   }
   ```
-- **Related / successor papers:** [mmBERT](bert-modern-encoder_2025_mmbert.md) · [ModernBERT](bert-modern-encoder_2024_modernbert.md) · [NeoBERT](bert-modern-encoder_2025_neobert.md) · [Ettin / Seq vs Seq](bert-modern-encoder_2025_ettin-seq-vs-seq.md) · [XLM-R](https://arxiv.org/abs/1911.02116) · [mGTE](https://arxiv.org/abs/2407.19669) · [Should You Mask 15%?](https://arxiv.org/abs/2202.08005) · [The Stack v2 / StarCoder2](https://arxiv.org/abs/2402.19173)
+- **Related / successor papers:** [mmBERT](bert-modern-encoder_2025_mmbert.md) · [ModernBERT](bert-modern-encoder_2024_modernbert.md) · [NeoBERT](bert-modern-encoder_2025_neobert.md) · [Ettin / Seq vs Seq](bert-modern-encoder_2025_ettin-seq-vs-seq.md) · [XLM-R](https://arxiv.org/abs/1911.02116) · [mGTE](retrieval_2024_mgte.md) · [Should You Mask 15%?](https://arxiv.org/abs/2202.08005) · [The Stack v2 / StarCoder2](https://arxiv.org/abs/2402.19173)

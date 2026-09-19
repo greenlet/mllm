@@ -593,7 +593,7 @@ Sentence-BERT made reusable sentence vectors practical, and DPR specialized the 
 
 - <a id="ref-sentence-bert"></a> **Sentence-BERT.** Reimers and Gurevych. *Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks.* EMNLP 2019. [Local review](../papers/retrieval_2019_sentence-bert.md) · [Code](https://github.com/UKPLab/sentence-transformers) · [Project](https://www.sbert.net/)
 
-- <a id="ref-dpr"></a> **DPR.** Karpukhin et al. *Dense Passage Retrieval for Open-Domain Question Answering.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2004.04906) · [Code](https://github.com/facebookresearch/DPR)
+- <a id="ref-dpr"></a> **DPR.** Karpukhin et al. *Dense Passage Retrieval for Open-Domain Question Answering.* EMNLP 2020. [Local review](../papers/retrieval_2020_dpr.md) · [Code](https://github.com/facebookresearch/DPR)
 
 - <a id="ref-contriever"></a> **Contriever.** Izacard et al. *Unsupervised Dense Information Retrieval with Contrastive Learning.* TMLR 2022. [arXiv](https://arxiv.org/abs/2112.09118) · [Code](https://github.com/facebookresearch/contriever)
 
@@ -611,7 +611,7 @@ One-vector retrieval is efficient but compresses every matching signal into one 
 
 - <a id="ref-bge-m3"></a> **BGE-M3.** Chen et al. *BGE M3-Embedding: Multi-Linguality, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation.* ACL Findings 2024. [Local review](../papers/retrieval_2024_bge-m3.md) · [Code](https://github.com/FlagOpen/FlagEmbedding)
 
-- <a id="ref-mgte"></a> **mGTE.** Zhang et al. *mGTE: Generalized Long-Context Text Representation and Reranking Models for Multilingual Text Retrieval.* EMNLP Industry 2024. [Paper](https://aclanthology.org/2024.emnlp-industry.103/) · [Models](https://huggingface.co/Alibaba-NLP)
+- <a id="ref-mgte"></a> **mGTE.** Zhang et al. *mGTE: Generalized Long-Context Text Representation and Reranking Models for Multilingual Text Retrieval.* EMNLP Industry 2024. [Local review](../papers/retrieval_2024_mgte.md) · [Models](https://huggingface.co/Alibaba-NLP)
 
 - <a id="ref-colbert"></a> **ColBERT.** Khattab and Zaharia. *ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT.* SIGIR 2020. [arXiv](https://arxiv.org/abs/2004.12832) · [Code](https://github.com/stanford-futuredata/ColBERT)
 
