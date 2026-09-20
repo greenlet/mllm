@@ -617,7 +617,7 @@ One-vector retrieval is efficient but compresses every matching signal into one 
 
 - <a id="ref-colbert-v2"></a> **ColBERTv2.** Santhanam et al. *ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction.* NAACL 2022. [arXiv](https://arxiv.org/abs/2112.01488) · [Code](https://github.com/stanford-futuredata/ColBERT)
 
-- <a id="ref-splade-v2"></a> **SPLADE v2.** Formal et al. *SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval.* 2021. [arXiv](https://arxiv.org/abs/2109.10086) · [Code](https://github.com/naver/splade)
+- <a id="ref-splade-v2"></a> **SPLADE v2.** Formal et al. *SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval.* 2021. [Local review](../papers/retrieval_2021_splade-v2.md) · [Code](https://github.com/naver/splade)
 
 - <a id="ref-cde"></a> **Contextual Document Embeddings.** Morris and Rush. *Contextual Document Embeddings.* 2024. [arXiv](https://arxiv.org/abs/2410.02525) · [Code](https://github.com/jxmorris12/cde)
 

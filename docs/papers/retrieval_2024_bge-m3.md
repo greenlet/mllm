@@ -380,7 +380,7 @@ Useful follow-ups include compressing the multi-vector head, dynamically choosin
 - **Talks / videos:** —
 - **OpenReview / venue page:** [ACL Anthology](https://aclanthology.org/2024.findings-acl.137/) · [DOI](https://doi.org/10.18653/v1/2024.findings-acl.137)
 - **Papers-with-Code:** [M3-Embedding](https://paperswithcode.com/paper/m3-embedding-multi-linguality-multi)
-- **Related local reviews:** [BGE / C-Pack](retrieval_2023_bge-c-pack.md) · [DPR](retrieval_2020_dpr.md) · [E5](retrieval_2022_e5.md) · [ColBERT](retrieval_2020_colbert-late-interaction.md) · [ColBERTv2](retrieval_2021_colbertv2.md) · [GTE](retrieval_2023_gte.md) · [Nomic Embed](retrieval_2024_nomic-embed.md) · [Jina Embeddings v3](retrieval_2024_jina-embeddings-v3.md)
+- **Related local reviews:** [BGE / C-Pack](retrieval_2023_bge-c-pack.md) · [DPR](retrieval_2020_dpr.md) · [E5](retrieval_2022_e5.md) · [ColBERT](retrieval_2020_colbert-late-interaction.md) · [ColBERTv2](retrieval_2021_colbertv2.md) · [SPLADE v2](retrieval_2021_splade-v2.md) · [GTE](retrieval_2023_gte.md) · [Nomic Embed](retrieval_2024_nomic-embed.md) · [Jina Embeddings v3](retrieval_2024_jina-embeddings-v3.md)
 - **Context overview:** [BERT-family encoders, section 16.5](../bert/overview.md#165-hybrid-multilingual-and-context-conditioned-retrieval)
 - **Licenses:** [paper: CC BY 4.0](https://arxiv.org/abs/2402.03216v5) · [model: MIT](https://huggingface.co/BAAI/bge-m3)
 - **BibTeX:**
