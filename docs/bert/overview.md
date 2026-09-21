@@ -619,7 +619,7 @@ One-vector retrieval is efficient but compresses every matching signal into one 
 
 - <a id="ref-splade-v2"></a> **SPLADE v2.** Formal et al. *SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval.* 2021. [Local review](../papers/retrieval_2021_splade-v2.md) · [Code](https://github.com/naver/splade)
 
-- <a id="ref-cde"></a> **Contextual Document Embeddings.** Morris and Rush. *Contextual Document Embeddings.* 2024. [arXiv](https://arxiv.org/abs/2410.02525) · [Code](https://github.com/jxmorris12/cde)
+- <a id="ref-cde"></a> **Contextual Document Embeddings.** Morris and Rush. *Contextual Document Embeddings.* 2024. [Local review](../papers/retrieval_2024_cde.md) · [Code](https://github.com/jxmorris12/cde)
 
 - <a id="ref-nomic-embed-v2"></a> **Nomic Embed v2 MoE.** Nussbaum and Duderstadt. *Training Sparse Mixture of Experts Text Embedding Models.* 2025. [arXiv](https://arxiv.org/abs/2502.07972) · [Code](https://github.com/nomic-ai/contrastors)
 
