@@ -621,7 +621,7 @@ One-vector retrieval is efficient but compresses every matching signal into one 
 
 - <a id="ref-cde"></a> **Contextual Document Embeddings.** Morris and Rush. *Contextual Document Embeddings.* 2024. [Local review](../papers/retrieval_2024_cde.md) · [Code](https://github.com/jxmorris12/cde)
 
-- <a id="ref-nomic-embed-v2"></a> **Nomic Embed v2 MoE.** Nussbaum and Duderstadt. *Training Sparse Mixture of Experts Text Embedding Models.* 2025. [arXiv](https://arxiv.org/abs/2502.07972) · [Code](https://github.com/nomic-ai/contrastors)
+- <a id="ref-nomic-embed-v2"></a> **Nomic Embed v2 MoE.** Nussbaum and Duderstadt. *Training Sparse Mixture of Experts Text Embedding Models.* 2025. [Local review](../papers/retrieval_2025_nomic-embed-v2-moe.md) · [Code](https://github.com/nomic-ai/contrastors)
 
 ### 16.6 From fixed token labels to entity-aware and open-label extraction
 

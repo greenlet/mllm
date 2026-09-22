@@ -1,10 +1,6 @@
-# Nomic Embed: Reproducible Long-Context Text Embeddings - Nussbaum et al., 2024
+# Nomic Embed: Reproducible Long-Context Text Embeddings — Nussbaum et al., 2024
 
-**Paper:** *Nomic Embed: Training a Reproducible Long Context Text Embedder*  
-**Authors:** Zach Nussbaum, John X. Morris, Brandon Duderstadt, Andriy Mulyar  
-**Affiliation:** Nomic AI; Cornell University  
-**Version reviewed:** [arXiv:2402.01613v2](https://arxiv.org/abs/2402.01613v2), revised 3 February 2025  
-**Venue:** OpenReview technical report (cs.CL)
+> **arXiv:** 2402.01613v2 · **Venue:** TMLR · **Affiliation:** Nomic AI; Cornell University
 
 ## TL;DR
 
@@ -154,7 +150,7 @@ flowchart LR
   P --> Q[Up to 8,192-token embedding]
 ```
 
-![Figure 1: aggregate MTEB, LoCo, and Jina Long Context comparison from the pinned paper version. The arXiv HTML renders the plot directly, so this local capture preserves the source figure.](_assets/retrieval_2024_nomic-embed/figure1-benchmark-summary.png)
+![Figure 1: aggregate MTEB, LoCo, and Jina Long Context comparison from the pinned v2 paper. Nomic Embed leads the compared compact models on MTEB and LoCo, but trails the OpenAI models on the Jina Long Context aggregate.](_assets/retrieval_2024_nomic-embed/figure1-benchmark-summary.png)
 
 *Figure 1 from the report. It summarizes the central trade-off: Nomic matches or exceeds the named compact baselines on MTEB and LoCo, while the Jina Long Context aggregate remains lower than the OpenAI baselines. The benchmark axes use different metrics, so bars should only be compared within each row.*
 
@@ -274,6 +270,8 @@ The paper evaluates the legacy 56-task English MTEB suite at a 512-token truncat
 | BGE-base | 110M | 75.5 | 45.8 | 53.3 | 82.4 | **63.6** | Table 4 |
 | `text-embedding-3-small` | undisclosed | 73.2 | 46.7 | 51.1 | 81.6 | 62.3 | Table 4 |
 
+![Table 4: the paper's complete 56-task MTEB comparison. Nomic Embed v1 reaches 62.4, tying GTE-base and exceeding the other compared 137M long-context encoder, while BGE-base remains stronger at 63.6.](_assets/retrieval_2024_nomic-embed/table4-mteb-results.png)
+
 Nomic is strongest among the compared 137M long-context open models and narrowly exceeds `text-embedding-3-small` on this protocol, but it does not beat BGE-base. The ablated model excludes FEVER, HotpotQA, and MEDI to reduce overlap with benchmark training sets. Its 1.0-point average drop shows that part of the full checkpoint's score depends on supervised data with MTEB/BEIR relationships.
 
 ### Long-context aggregates
@@ -286,6 +284,10 @@ Nomic is strongest among the compared 137M long-context open models and narrowly
 | LoCo, 2,048 | 85.3 | 85.4 | 83.0 | n/a | Five retrieval tasks, Table 6 |
 | LoCo, 4,096 | 85.6 | 86.7 | n/a | n/a | Five retrieval tasks, Table 6 |
 | LoCo, 8,192 | 85.5 | **86.9** | 85.5 | 82.4 | Five retrieval tasks, Table 6 |
+
+![Table 5: Jina Long Context results at 128, 512, and 8,191 tokens. Nomic improves as more context is admitted and beats Jina v2, but all three reported OpenAI models remain ahead at the longest setting.](_assets/retrieval_2024_nomic-embed/table5-jina-long-context.png)
+
+![Table 6: LoCo results at 2,048, 4,096, and 8,192 tokens. The ablated Nomic checkpoint reaches 86.9 at 8K, while the full checkpoint reaches 85.5; task-level columns reveal the near-saturated QASPER abstract-to-article score.](_assets/retrieval_2024_nomic-embed/table6-loco-results.png)
 
 The direction is benchmark-dependent. On Jina Long Context, Nomic improves as the limit rises and beats Jina v2, but remains below all three reported OpenAI systems at 8K. On LoCo, it beats `text-embedding-3-small` and `text-embedding-ada-002`; the ablated model is actually better than the full model, suggesting that FEVER/HotpotQA/MEDI tuning is not generally useful for LoCo and may trade away some long-document transfer.
 
@@ -315,12 +317,13 @@ The immediate successor, `nomic-embed-text-v1.5`, adds Matryoshka Representation
 - **Hugging Face:** [Nomic Embed v1](https://huggingface.co/nomic-ai/nomic-embed-text-v1) · [ablated](https://huggingface.co/nomic-ai/nomic-embed-text-v1-ablated) · [unsupervised](https://huggingface.co/nomic-ai/nomic-embed-text-v1-unsupervised) · [nomic-bert-2048](https://huggingface.co/nomic-ai/nomic-bert-2048) · [model collection](https://huggingface.co/collections/nomic-ai/nomic-embed)
 - **Data:** [access instructions](https://github.com/nomic-ai/contrastors#data-access) · [5M-pair Atlas visualization](https://atlas.nomic.ai/map/nomic-text-embed-v1-5m-sample)
 - **Project page:** [Nomic](https://www.nomic.ai/)
-- **Blog posts:** [Nomic Embed v1.5 / Matryoshka](https://blog.nomic.ai/posts/nomic-embed-matryoshka)
+- **Blog posts:** [Nomic Embed v1](https://blog.nomic.ai/posts/nomic-embed-text-v1) · [Nomic Embed v1.5 / Matryoshka](https://blog.nomic.ai/posts/nomic-embed-matryoshka)
 - **Talks / videos:** —
-- **OpenReview / venue page:** [forum](https://openreview.net/forum?id=IPmzyQSiQE)
+- **OpenReview / venue page:** [TMLR forum](https://openreview.net/forum?id=IPmzyQSiQE)
 - **Papers-with-Code:** —
-- **Related local reviews:** [Sentence-BERT](retrieval_2019_sentence-bert.md) · [DPR](retrieval_2020_dpr.md) · [Contriever](retrieval_2021_contriever.md) · [E5](retrieval_2022_e5.md) · [GTE](retrieval_2023_gte.md)
-- **Successor:** [Nomic Embed v2 paper](https://arxiv.org/abs/2502.07972) · [v2 model](https://huggingface.co/nomic-ai/nomic-embed-text-v2-moe)
+- **Licenses:** [paper: CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) · [code: Apache 2.0](https://github.com/nomic-ai/contrastors/blob/main/LICENSE) · [model: Apache 2.0](https://huggingface.co/nomic-ai/nomic-embed-text-v1)
+- **Related local reviews:** [Sentence-BERT](retrieval_2019_sentence-bert.md) · [DPR](retrieval_2020_dpr.md) · [Contriever](retrieval_2021_contriever.md) · [E5](retrieval_2022_e5.md) · [GTE](retrieval_2023_gte.md) · [Jina Embeddings v3](retrieval_2024_jina-embeddings-v3.md) · [CDE](retrieval_2024_cde.md)
+- **Successors:** [Nomic Embed v1.5 model](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) · [Nomic Embed v2 review](retrieval_2025_nomic-embed-v2-moe.md) · [v2 model](https://huggingface.co/nomic-ai/nomic-embed-text-v2-moe)
 - **Context overview:** [BERT-family encoders, §16.4](../bert/overview.md#164-from-one-vector-semantics-to-trained-retrieval-geometry)
 - **BibTeX:**
 
