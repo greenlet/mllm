@@ -627,7 +627,7 @@ One-vector retrieval is efficient but compresses every matching signal into one 
 
 Classic token classification assumes a fixed label head over contextual states. LUKE adds explicit entity representations and entity-aware attention, while GLiNER represents label descriptions and matches them to spans, allowing the schema to change at inference. This section is the next reading path for systems that need exact offsets and entities rather than global document vectors.
 
-- <a id="ref-gliner"></a> **GLiNER.** Zaratiana et al. *GLiNER: Generalist Model for Named Entity Recognition using Bidirectional Transformer.* NAACL 2024. [arXiv](https://arxiv.org/abs/2311.08526) · [Code](https://github.com/urchade/GLiNER)
+- <a id="ref-gliner"></a> **GLiNER.** Zaratiana et al. *GLiNER: Generalist Model for Named Entity Recognition using Bidirectional Transformer.* NAACL 2024. [Local review](../papers/bert-extraction_2023_gliner.md) · [Code](https://github.com/urchade/GLiNER)
 
 - <a id="ref-luke"></a> **LUKE.** Yamada et al. *LUKE: Deep Contextualized Entity Representations with Entity-aware Self-attention.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2010.01057) · [Code](https://github.com/studio-ousia/luke)
 
