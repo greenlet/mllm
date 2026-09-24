@@ -629,7 +629,7 @@ Classic token classification assumes a fixed label head over contextual states. 
 
 - <a id="ref-gliner"></a> **GLiNER.** Zaratiana et al. *GLiNER: Generalist Model for Named Entity Recognition using Bidirectional Transformer.* NAACL 2024. [Local review](../papers/bert-extraction_2023_gliner.md) · [Code](https://github.com/urchade/GLiNER)
 
-- <a id="ref-luke"></a> **LUKE.** Yamada et al. *LUKE: Deep Contextualized Entity Representations with Entity-aware Self-attention.* EMNLP 2020. [arXiv](https://arxiv.org/abs/2010.01057) · [Code](https://github.com/studio-ousia/luke)
+- <a id="ref-luke"></a> **LUKE.** Yamada et al. *LUKE: Deep Contextualized Entity Representations with Entity-aware Self-attention.* EMNLP 2020. [Local review](../papers/bert-extraction_2020_luke.md) · [Code](https://github.com/studio-ousia/luke)
 
 ### 16.7 Domain encoders: vocabulary and corpus specialization
 

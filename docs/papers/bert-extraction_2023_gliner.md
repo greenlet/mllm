@@ -237,7 +237,7 @@ With no absent labels, the model overpredicts and loses 13 precision points rela
 - The multilingual result demonstrates transfer, not multilingual NER mastery: task supervision is English-only, performance remains well below supervised models, and the English backbone collapses on some non-Latin scripts.
 - Exact-match benchmark F1 does not evaluate label paraphrase sensitivity, adversarial label descriptions, cross-sentence entities, inference speed, confidence calibration, or robustness to missing annotations.
 
-The maintained project has since expanded beyond the paper's uni-encoder into bi-encoder, relation-extraction, decoder, and streaming architectures; those capabilities should not be retroactively attributed to the original experiment. Direct follow-ups include [GLiNER multi-task](https://arxiv.org/abs/2406.12925), [GLiNER2](https://arxiv.org/abs/2507.18546), and [The Million-Label NER](https://arxiv.org/abs/2602.18487), whose separate label encoder targets the original model's schema-scaling constraint. For complementary entity-aware representation learning rather than open-label span matching, see [LUKE](https://arxiv.org/abs/2010.01057).
+The maintained project has since expanded beyond the paper's uni-encoder into bi-encoder, relation-extraction, decoder, and streaming architectures; those capabilities should not be retroactively attributed to the original experiment. Direct follow-ups include [GLiNER multi-task](https://arxiv.org/abs/2406.12925), [GLiNER2](https://arxiv.org/abs/2507.18546), and [The Million-Label NER](https://arxiv.org/abs/2602.18487), whose separate label encoder targets the original model's schema-scaling constraint. For complementary entity-aware representation learning rather than open-label span matching, see the local [LUKE review](bert-extraction_2020_luke.md).
 
 ## Links
 
@@ -250,4 +250,4 @@ The maintained project has since expanded beyond the paper's uni-encoder into bi
 - **OpenReview / venue page:** [ACL Anthology](https://aclanthology.org/2024.naacl-long.300/) · [DOI](https://doi.org/10.18653/v1/2024.naacl-long.300)
 - **Papers-with-Code:** [GLiNER](https://paperswithcode.com/paper/gliner-generalist-model-for-named-entity)
 - **BibTeX:** [ACL Anthology export](https://aclanthology.org/2024.naacl-long.300.bib)
-- **Related / successor papers:** [LUKE](https://arxiv.org/abs/2010.01057) · [UniversalNER](https://arxiv.org/abs/2308.03279) · [GLiNER multi-task](https://arxiv.org/abs/2406.12925) · [GLiNER2](https://arxiv.org/abs/2507.18546) · [The Million-Label NER](https://arxiv.org/abs/2602.18487)
+- **Related / successor papers:** [LUKE local review](bert-extraction_2020_luke.md) · [UniversalNER](https://arxiv.org/abs/2308.03279) · [GLiNER multi-task](https://arxiv.org/abs/2406.12925) · [GLiNER2](https://arxiv.org/abs/2507.18546) · [The Million-Label NER](https://arxiv.org/abs/2602.18487)
