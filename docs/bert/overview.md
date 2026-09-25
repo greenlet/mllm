@@ -635,7 +635,7 @@ Classic token classification assumes a fixed label head over contextual states. 
 
 Scientific, biomedical, and code language contain terms and structures underrepresented in general corpora. SciBERT and BioBERT show the value of domain continuation, PubMedBERT tests training from scratch with a domain vocabulary, and CodeBERT treats natural and programming languages jointly. These papers help decide whether to adapt a modern general backbone or choose a specialized tokenizer and corpus.
 
-- <a id="ref-scibert"></a> **SciBERT.** Beltagy, Lo, and Cohan. *SciBERT: A Pretrained Language Model for Scientific Text.* EMNLP 2019. [arXiv](https://arxiv.org/abs/1903.10676) · [Code](https://github.com/allenai/scibert)
+- <a id="ref-scibert"></a> **SciBERT.** Beltagy, Lo, and Cohan. *SciBERT: A Pretrained Language Model for Scientific Text.* EMNLP 2019. [Local review](../papers/bert-domain_2019_scibert.md) · [Code](https://github.com/allenai/scibert)
 
 - <a id="ref-biobert"></a> **BioBERT.** Lee et al. *BioBERT: A Pre-trained Biomedical Language Representation Model for Biomedical Text Mining.* Bioinformatics 2020. [arXiv](https://arxiv.org/abs/1901.08746) · [Code](https://github.com/dmis-lab/biobert)
 
