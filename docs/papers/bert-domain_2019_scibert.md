@@ -242,7 +242,7 @@ SciBERT leads the reported BioBERT numbers on BC5CDR and ChemProt, is close on J
 - Several “SOTA” comparisons import scores from prior systems with different architectures, auxiliary data, or task formulations. SciERC relation classification explicitly assumes gold entities and cannot be compared with the cited joint extraction model.
 - The frozen and fine-tuned conditions use different task-head capacities, so their gap measures an end-to-end recipe choice rather than the isolated effect of unfreezing the same network.
 - The original repository targets Python 3.6-era AllenNLP and its latest listed commit is from 2020. The released checkpoints remain directly usable through Transformers, but reproducing the historical training code may require an older environment.
-- The paper proposes SciBERT-Large and alternate corpus mixtures as future work but does not evaluate either. Later domain encoders include [BioBERT](https://arxiv.org/abs/1901.08746), which continues BERT on biomedical corpora, and [PubMedBERT](https://arxiv.org/abs/2007.15779), which revisits from-scratch biomedical pretraining with an in-domain vocabulary.
+- The paper proposes SciBERT-Large and alternate corpus mixtures as future work but does not evaluate either. Later domain encoders include [BioBERT](bert-domain_2019_biobert.md), which continues BERT on biomedical corpora, and [PubMedBERT](https://arxiv.org/abs/2007.15779), which revisits from-scratch biomedical pretraining with an in-domain vocabulary.
 
 ## Links
 
@@ -255,4 +255,4 @@ SciBERT leads the reported BioBERT numbers on BC5CDR and ChemProt, is close on J
 - **OpenReview / venue page:** [ACL Anthology](https://aclanthology.org/D19-1371/) · [DOI](https://doi.org/10.18653/v1/D19-1371)
 - **Papers-with-Code:** [SciBERT](https://paperswithcode.com/paper/scibert-pretrained-contextualized-embeddings)
 - **BibTeX:** [ACL Anthology export](https://aclanthology.org/D19-1371.bib)
-- **Related / successor papers:** [BERT](bert-encoder_2018_bert-pretraining.md) · [BioBERT](https://arxiv.org/abs/1901.08746) · [PubMedBERT](https://arxiv.org/abs/2007.15779) · [Longformer](bert-long-context_2020_longformer.md)
+- **Related / successor papers:** [BERT](bert-encoder_2018_bert-pretraining.md) · [BioBERT](bert-domain_2019_biobert.md) · [PubMedBERT](https://arxiv.org/abs/2007.15779) · [Longformer](bert-long-context_2020_longformer.md)

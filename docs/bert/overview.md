@@ -637,7 +637,7 @@ Scientific, biomedical, and code language contain terms and structures underrepr
 
 - <a id="ref-scibert"></a> **SciBERT.** Beltagy, Lo, and Cohan. *SciBERT: A Pretrained Language Model for Scientific Text.* EMNLP 2019. [Local review](../papers/bert-domain_2019_scibert.md) · [Code](https://github.com/allenai/scibert)
 
-- <a id="ref-biobert"></a> **BioBERT.** Lee et al. *BioBERT: A Pre-trained Biomedical Language Representation Model for Biomedical Text Mining.* Bioinformatics 2020. [arXiv](https://arxiv.org/abs/1901.08746) · [Code](https://github.com/dmis-lab/biobert)
+- <a id="ref-biobert"></a> **BioBERT.** Lee et al. *BioBERT: A Pre-trained Biomedical Language Representation Model for Biomedical Text Mining.* Bioinformatics 2020. [Local review](../papers/bert-domain_2019_biobert.md) · [Code](https://github.com/dmis-lab/biobert)
 
 - <a id="ref-pubmedbert"></a> **PubMedBERT.** Gu et al. *Domain-Specific Language Model Pretraining for Biomedical Natural Language Processing.* ACL 2021. [arXiv](https://arxiv.org/abs/2007.15779) · [Models](https://huggingface.co/microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext)
 
