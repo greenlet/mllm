@@ -181,7 +181,7 @@ Figure 2(c) plots BioBERT v1.0 + PubMed + PMC improvement over BERT against down
 
 ## Limitations & follow-ups
 
-- BioBERT keeps BERT's general-domain WordPiece vocabulary. This preserves compatibility but fragments biomedical terms heavily and does not test whether a domain-built vocabulary is better. [SciBERT](bert-domain_2019_scibert.md) and later PubMedBERT make that comparison more directly.
+- BioBERT keeps BERT's general-domain WordPiece vocabulary. This preserves compatibility but fragments biomedical terms heavily and does not test whether a domain-built vocabulary is better. [SciBERT](bert-domain_2019_scibert.md) and later [PubMedBERT](bert-domain_2020_pubmedbert.md) make that comparison more directly.
 - All checkpoints inherit BERT-Base's general-domain weights; the paper does not compare continued pretraining with a biomedical model trained from scratch. Its conclusion is specifically about domain adaptation, not the globally optimal biomedical pretraining strategy.
 - PubMed abstracts and PMC articles represent published biomedical literature, not clinical notes, patient language, coding systems, or current knowledge after the corpus snapshot. Deployment in clinical settings is outside the paper's evidence.
 - BERT's 512-token limit prevents document-scale modeling of full papers even though PMC full text supplies pretraining data. Long-distance evidence is split across examples.
@@ -192,7 +192,7 @@ Figure 2(c) plots BioBERT v1.0 + PubMed + PMC improvement over BERT against down
 - Pretraining v1.1 takes nearly 23 days on eight V100 GPUs. Continued training is cheaper than starting over, but the paper does not report energy, inference throughput, parameter count changes, or accuracy per unit compute.
 - The original code targets TensorFlow 1 and Python 3.7 or earlier. A PyTorch port and Hugging Face checkpoints exist, but the maintained v1.2 checkpoint adds an LM head and should not be mistaken for the paper's evaluated v1.1 model.
 
-The paper proposed future BERT-Base/Large models trained from scratch on PubMed with biomedical WordPiece vocabularies. [PubMedBERT](https://arxiv.org/abs/2007.15779) subsequently tested that direction, while clinical-domain variants such as [ClinicalBERT](https://aclanthology.org/W19-1909/) continued adaptation on MIMIC clinical notes.
+The paper proposed future BERT-Base/Large models trained from scratch on PubMed with biomedical WordPiece vocabularies. [PubMedBERT](bert-domain_2020_pubmedbert.md) subsequently tested that direction, while clinical-domain variants such as [ClinicalBERT](https://aclanthology.org/W19-1909/) continued adaptation on MIMIC clinical notes.
 
 ## Links
 
@@ -205,4 +205,4 @@ The paper proposed future BERT-Base/Large models trained from scratch on PubMed 
 - **OpenReview / venue page:** [Bioinformatics](https://doi.org/10.1093/bioinformatics/btz682) · [Europe PMC](https://europepmc.org/articles/PMC7703786/)
 - **Papers-with-Code:** [BioBERT](https://paperswithcode.com/paper/biobert-a-pre-trained-biomedical-language)
 - **BibTeX:** [DBLP record](https://dblp.org/rec/journals/bioinformatics/LeeYKKS0K20.html)
-- **Related / successor papers:** [BERT](bert-encoder_2018_bert-pretraining.md) · [SciBERT](bert-domain_2019_scibert.md) · [PubMedBERT](https://arxiv.org/abs/2007.15779) · [ClinicalBERT](https://aclanthology.org/W19-1909/)
+- **Related / successor papers:** [BERT](bert-encoder_2018_bert-pretraining.md) · [SciBERT](bert-domain_2019_scibert.md) · [PubMedBERT](bert-domain_2020_pubmedbert.md) · [ClinicalBERT](https://aclanthology.org/W19-1909/)
