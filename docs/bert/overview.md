@@ -641,7 +641,7 @@ Scientific, biomedical, and code language contain terms and structures underrepr
 
 - <a id="ref-pubmedbert"></a> **PubMedBERT.** Gu et al. *Domain-Specific Language Model Pretraining for Biomedical Natural Language Processing.* ACM Transactions on Computing for Healthcare 2021. [Local review](../papers/bert-domain_2020_pubmedbert.md) · [Models](https://huggingface.co/microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract)
 
-- <a id="ref-codebert"></a> **CodeBERT.** Feng et al. *CodeBERT: A Pre-Trained Model for Programming and Natural Languages.* EMNLP Findings 2020. [arXiv](https://arxiv.org/abs/2002.08155) · [Code](https://github.com/microsoft/CodeBERT)
+- <a id="ref-codebert"></a> **CodeBERT.** Feng et al. *CodeBERT: A Pre-Trained Model for Programming and Natural Languages.* Findings of EMNLP 2020. [Local review](../papers/bert-domain_2020_codebert.md) · [Code](https://github.com/microsoft/CodeBERT)
 
 ### 16.8 Restoring generation with a decoder, and probing generation without one
 
