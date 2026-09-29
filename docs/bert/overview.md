@@ -647,7 +647,7 @@ Scientific, biomedical, and code language contain terms and structures underrepr
 
 BART and T5 retain a bidirectional encoder but add an autoregressive decoder, making generation order and stopping explicit. Later work shows that BERT-like encoders can perform iterative in-context generation, but this remains a different operating regime from native causal decoding. Read this section when deciding whether a task is truly extraction/infilling or requires open-ended generation.
 
-- <a id="ref-bart"></a> **BART.** Lewis et al. *BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension.* ACL 2020. [arXiv](https://arxiv.org/abs/1910.13461) · [Code](https://github.com/facebookresearch/fairseq)
+- <a id="ref-bart"></a> **BART.** Lewis et al. *BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension.* ACL 2020. [Local review](../papers/bert-generation_2019_bart.md) · [Code](https://github.com/facebookresearch/fairseq/tree/main/examples/bart)
 
 - <a id="ref-t5"></a> **T5.** Raffel et al. *Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer.* JMLR 2020. [arXiv](https://arxiv.org/abs/1910.10683) · [Code](https://github.com/google-research/text-to-text-transfer-transformer)
 
