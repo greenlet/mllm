@@ -649,7 +649,7 @@ BART and T5 retain a bidirectional encoder but add an autoregressive decoder, ma
 
 - <a id="ref-bart"></a> **BART.** Lewis et al. *BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension.* ACL 2020. [Local review](../papers/bert-generation_2019_bart.md) · [Code](https://github.com/facebookresearch/fairseq/tree/main/examples/bart)
 
-- <a id="ref-t5"></a> **T5.** Raffel et al. *Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer.* JMLR 2020. [arXiv](https://arxiv.org/abs/1910.10683) · [Code](https://github.com/google-research/text-to-text-transfer-transformer)
+- <a id="ref-t5"></a> **T5.** Raffel et al. *Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer.* JMLR 2020. [Local review](../papers/backbone_2019_t5-prefix-lm.md) · [Code](https://github.com/google-research/text-to-text-transfer-transformer)
 
 - <a id="ref-bert-generative-icl"></a> **BERTs are Generative In-Context Learners.** Samuel. *BERTs are Generative In-Context Learners.* NeurIPS 2024. [arXiv](https://arxiv.org/abs/2406.04823) · [Code](https://github.com/ltgoslo/bert-gen)
 
