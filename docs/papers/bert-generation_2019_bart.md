@@ -222,4 +222,4 @@ The authors identify task-adapted corruption functions as the main research dire
 - **OpenReview / venue page:** [ACL Anthology](https://aclanthology.org/2020.acl-main.703/)
 - **Papers-with-Code:** [BART](https://paperswithcode.com/paper/bart-denoising-sequence-to-sequence-pre)
 - **BibTeX:** [ACL Anthology BibTeX](https://aclanthology.org/2020.acl-main.703.bib)
-- **Related / successor papers:** [BERT-family overview](../bert/overview.md#168-restoring-generation-with-a-decoder-and-probing-generation-without-one) · [Longformer / LED](bert-long-context_2020_longformer.md) · [T5](backbone_2019_t5-prefix-lm.md)
+- **Related / successor papers:** [BERT-family overview](../bert/overview.md#168-restoring-generation-with-a-decoder-and-probing-generation-without-one) · [Longformer / LED](bert-long-context_2020_longformer.md) · [T5](backbone_2019_t5-prefix-lm.md) · [BERT generative ICL](bert-generation_2024_bert-generative-icl.md)
