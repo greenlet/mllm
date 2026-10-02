@@ -657,7 +657,7 @@ BART and T5 retain a bidirectional encoder but add an autoregressive decoder, ma
 
 Once MLM became standard, later work revisited how much text should be hidden and whether corruption difficulty should remain fixed. Dynamic schedules make masking a curriculum. Large controlled MLM-versus-CLM studies then show that CLM can learn efficiently early while MLM often produces stronger final representations, motivating biphasic training instead of a binary choice.
 
-- <a id="ref-mask-15-percent"></a> **Should You Mask 15%?** Wettig et al. *Should You Mask 15% in Masked Language Modeling?* EACL 2023. [arXiv](https://arxiv.org/abs/2202.08005)
+- <a id="ref-mask-15-percent"></a> **Should You Mask 15%?** Wettig et al. *Should You Mask 15% in Masked Language Modeling?* EACL 2023. [Local review](../papers/bert-masking_2022_mask-15-percent.md)
 
 - <a id="ref-dynamic-masking"></a> **Dynamic Masking Rate Schedules.** Ankner et al. *Dynamic Masking Rate Schedules for MLM Pretraining.* EACL 2024. [Paper](https://aclanthology.org/2024.eacl-short.42/)
 
