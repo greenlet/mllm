@@ -659,7 +659,7 @@ Once MLM became standard, later work revisited how much text should be hidden an
 
 - <a id="ref-mask-15-percent"></a> **Should You Mask 15%?** Wettig et al. *Should You Mask 15% in Masked Language Modeling?* EACL 2023. [Local review](../papers/bert-masking_2022_mask-15-percent.md)
 
-- <a id="ref-dynamic-masking"></a> **Dynamic Masking Rate Schedules.** Ankner et al. *Dynamic Masking Rate Schedules for MLM Pretraining.* EACL 2024. [Paper](https://aclanthology.org/2024.eacl-short.42/)
+- <a id="ref-dynamic-masking"></a> **Dynamic Masking Rate Schedules.** Ankner et al. *Dynamic Masking Rate Schedules for MLM Pretraining.* EACL 2024. [Local review](../papers/bert-masking_2024_dynamic-mask-schedules.md)
 
 - <a id="ref-mlm-vs-clm"></a> **MLM versus CLM.** Gisserot-Boukhlef et al. *Should We Still Pretrain Encoders with Masked Language Modeling?* 2026 revision. [arXiv](https://arxiv.org/abs/2507.00994) · [Artifacts](https://huggingface.co/MLMvsCLM)
 

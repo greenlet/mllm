@@ -269,4 +269,4 @@ The paper suggests two practical research directions. First, high rates could su
 - **OpenReview / venue page:** [EACL 2023 / ACL Anthology](https://aclanthology.org/2023.eacl-main.217/)
 - **Papers-with-Code:** [Should You Mask 15% in Masked Language Modeling?](https://paperswithcode.com/paper/should-you-mask-15-in-masked-language)
 - **BibTeX:** [ACL Anthology citation](https://aclanthology.org/2023.eacl-main.217/#cite)
-- **Related / successor papers:** [BERT-family overview](../bert/overview.md#169-mask-schedules-and-the-mlm-versus-clm-question) · [BERT](bert-encoder_2018_bert-pretraining.md) · [RoBERTa](bert-training_2019_roberta.md) · [T5](backbone_2019_t5-prefix-lm.md) · [Dynamic Masking Rate Schedules](https://aclanthology.org/2024.eacl-short.42/)
+- **Related / successor papers:** [BERT-family overview](../bert/overview.md#169-mask-schedules-and-the-mlm-versus-clm-question) · [BERT](bert-encoder_2018_bert-pretraining.md) · [RoBERTa](bert-training_2019_roberta.md) · [T5](backbone_2019_t5-prefix-lm.md) · [Dynamic Masking Rate Schedules](bert-masking_2024_dynamic-mask-schedules.md)
