@@ -661,7 +661,7 @@ Once MLM became standard, later work revisited how much text should be hidden an
 
 - <a id="ref-dynamic-masking"></a> **Dynamic Masking Rate Schedules.** Ankner et al. *Dynamic Masking Rate Schedules for MLM Pretraining.* EACL 2024. [Local review](../papers/bert-masking_2024_dynamic-mask-schedules.md)
 
-- <a id="ref-mlm-vs-clm"></a> **MLM versus CLM.** Gisserot-Boukhlef et al. *Should We Still Pretrain Encoders with Masked Language Modeling?* 2026 revision. [arXiv](https://arxiv.org/abs/2507.00994) · [Artifacts](https://huggingface.co/MLMvsCLM)
+- <a id="ref-mlm-vs-clm"></a> **MLM versus CLM.** Gisserot-Boukhlef et al. *Should We Still Pretrain Encoders with Masked Language Modeling?* 2026 revision. [Recap](../papers/bert-objective_2025_mlm-vs-clm.md) · [Artifacts](https://huggingface.co/MLMvsCLM)
 
 ### 16.10 Parameter-efficient adaptation
 
