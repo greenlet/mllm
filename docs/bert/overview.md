@@ -667,7 +667,7 @@ Once MLM became standard, later work revisited how much text should be hidden an
 
 Adapters make task-specific capacity modular by inserting small bottlenecks into a frozen network. LoRA shifts adaptation into low-rank weight updates that can often be merged for inference. Prefix tuning instead expresses adaptation through learned continuous states, connecting ordinary PEFT to soft-token conditioning and continuous-control interfaces.
 
-- <a id="ref-adapters"></a> **Bottleneck adapters.** Houlsby et al. *Parameter-Efficient Transfer Learning for NLP.* ICML 2019. [arXiv](https://arxiv.org/abs/1902.00751)
+- <a id="ref-adapters"></a> **Bottleneck adapters.** Houlsby et al. *Parameter-Efficient Transfer Learning for NLP.* ICML 2019. [Local review](../papers/peft_2019_bottleneck-adapters.md) · [Code](https://github.com/google-research/adapter-bert)
 
 - <a id="ref-lora"></a> **LoRA.** Hu et al. *LoRA: Low-Rank Adaptation of Large Language Models.* ICLR 2022. [arXiv](https://arxiv.org/abs/2106.09685) · [Code](https://github.com/microsoft/LoRA)
 

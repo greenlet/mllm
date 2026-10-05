@@ -131,6 +131,6 @@ GPT-3 175B (WikiSQL acc / MNLI-m acc / SAMSum R1-R2-RL):
     url       = {https://arxiv.org/abs/2106.09685}
   }
   ```
-- **Related papers:** [Prefix-Tuning](softtoken_2021_prefix-tuning.md) ·
+- **Related papers:** [Bottleneck Adapters](peft_2019_bottleneck-adapters.md) · [Prefix-Tuning](softtoken_2021_prefix-tuning.md) ·
   [Prompt Tuning](softtoken_2021_prompt-tuning.md) · [P-Tuning v2](softtoken_2021_p-tuning-v2.md)
 - **In-repo:** [§6.6 in mixed_decoder](../mixed_decoder/mixed_decoder.md)
