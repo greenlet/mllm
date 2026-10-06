@@ -132,5 +132,5 @@ rehearsal *and* **combines** with them for incremental benefit (Wise-FT+SAM +0.9
     year      = {2024}
   }
   ```
-- **Related papers:** [Empirical Study of CF in Continual FT](forgetting_2023_continual-ft.md) · [LoRA](https://arxiv.org/abs/2106.09685)
+- **Related papers:** [Empirical Study of CF in Continual FT](forgetting_2023_continual-ft.md) · [LoRA](peft_2021_lora.md)
 - **In-repo:** [Continual training & forgetting thread](../context/forgetting/forgetting.md) · [LCLM context-compression survey](../context/ctx_compression.md) · [Multimodal / VLM alignment thread](../context/multimodal/multimodal.md)

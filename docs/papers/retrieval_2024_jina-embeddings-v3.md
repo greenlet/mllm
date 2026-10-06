@@ -360,7 +360,7 @@ Useful follow-up questions are whether adapter composition can replace one-adapt
 - **OpenReview / venue page:** —
 - **Papers-with-Code:** —
 - **Related local reviews:** [Sentence-BERT](retrieval_2019_sentence-bert.md) · [DPR](retrieval_2020_dpr.md) · [E5](retrieval_2022_e5.md) · [GTE](retrieval_2023_gte.md) · [Nomic Embed](retrieval_2024_nomic-embed.md)
-- **Related papers:** [Jina Embeddings 2](https://arxiv.org/abs/2310.19923) · [multilingual Jina Embeddings 2](https://arxiv.org/abs/2402.17016) · [LoRA](https://arxiv.org/abs/2106.09685) · [Matryoshka Representation Learning](https://arxiv.org/abs/2205.13147)
+- **Related papers:** [Jina Embeddings 2](https://arxiv.org/abs/2310.19923) · [multilingual Jina Embeddings 2](https://arxiv.org/abs/2402.17016) · [LoRA](peft_2021_lora.md) · [Matryoshka Representation Learning](https://arxiv.org/abs/2205.13147)
 - **Context overview:** [BERT-family encoders, section 16.4](../bert/overview.md#164-from-one-vector-semantics-to-trained-retrieval-geometry)
 - **Licenses:** [paper: CC BY-NC-SA 4.0](https://arxiv.org/html/2409.10173v3) · [model: CC BY-NC 4.0](https://huggingface.co/jinaai/jina-embeddings-v3)
 - **BibTeX:**

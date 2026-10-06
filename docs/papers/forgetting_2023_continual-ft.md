@@ -129,5 +129,5 @@ converge to a **similar post-tuning floor**, so the *relative* drop $FG$ is larg
     year    = {2023}
   }
   ```
-- **Related papers:** [Revisiting CF in LLM Tuning (SAM)](forgetting_2024_revisiting-cf.md) · [LoRA](https://arxiv.org/abs/2106.09685) · [RULER](benchmark_2024_ruler.md)
+- **Related papers:** [Revisiting CF in LLM Tuning (SAM)](forgetting_2024_revisiting-cf.md) · [LoRA](peft_2021_lora.md) · [RULER](benchmark_2024_ruler.md)
 - **In-repo:** [Continual training & forgetting thread](../context/forgetting/forgetting.md) · [LCLM context-compression survey](../context/ctx_compression.md) · [Multimodal / VLM alignment thread](../context/multimodal/multimodal.md)

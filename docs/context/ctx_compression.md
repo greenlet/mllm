@@ -420,5 +420,5 @@ tool for exact retrieval rather than forcing all detail through the bottleneck.
 
 [CatForgetLLM]: ../papers/forgetting_2023_continual-ft.md "Catastrophic Forgetting during Continual Fine-tuning (Luo et al. 2025)"
 [RevisitCF]: ../papers/forgetting_2024_revisiting-cf.md "Revisiting Catastrophic Forgetting in LLM Tuning (Li et al. 2024)"
-[LoRA]: https://arxiv.org/abs/2106.09685 "LoRA (Hu et al. 2021)"
+[LoRA]: ../papers/peft_2021_lora.md "LoRA (Hu et al. 2021)"
 [CLSpool]: https://arxiv.org/abs/2305.14788 "EOS/CLS token pooling"
