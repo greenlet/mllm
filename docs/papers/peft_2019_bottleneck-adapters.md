@@ -222,7 +222,7 @@ The width-2 SQuAD result is the strongest compression example: 0.1% task-specifi
 - **No compositional or shared adapters.** Each task receives an isolated module set. This guarantees no forgetting but also prevents positive transfer between related tasks and makes multi-task composition an open problem.
 - **Ablation evidence is narrow.** Layer-removal and initialization studies use only BERT-Base width-64 adapters on MNLI and CoLA; the higher-layer conclusion is suggestive, not universal.
 
-The paper established the canonical serial bottleneck adapter. Later work explores single-adapter placement, adapter fusion, multilingual and domain adapters, parallel branches, and hypernetworks. [LoRA](peft_2021_lora.md) instead parameterizes low-rank updates to existing matrices and can merge them for inference, while [Prefix-Tuning](https://arxiv.org/abs/2101.00190) adapts learned continuous states rather than adding depth-wise modules.
+The paper established the canonical serial bottleneck adapter. Later work explores single-adapter placement, adapter fusion, multilingual and domain adapters, parallel branches, and hypernetworks. [LoRA](peft_2021_lora.md) instead parameterizes low-rank updates to existing matrices and can merge them for inference, while [Prefix-Tuning](softtoken_2021_prefix-tuning.md) adapts learned continuous states rather than adding depth-wise modules.
 
 ## Links
 
@@ -235,4 +235,4 @@ The paper established the canonical serial bottleneck adapter. Later work explor
 - **OpenReview / venue page:** —
 - **Papers-with-Code:** —
 - **BibTeX:** [PMLR citation](https://proceedings.mlr.press/v97/houlsby19a.html)
-- **Related / successor papers:** [LoRA](peft_2021_lora.md) · [Prefix-Tuning](https://arxiv.org/abs/2101.00190) · [AdapterFusion](https://aclanthology.org/2021.eacl-main.39/) · [MAD-X](https://aclanthology.org/2020.emnlp-main.617/) · [BERT](bert-encoder_2018_bert-pretraining.md)
+- **Related / successor papers:** [LoRA](peft_2021_lora.md) · [Prefix-Tuning](softtoken_2021_prefix-tuning.md) · [AdapterFusion](https://aclanthology.org/2021.eacl-main.39/) · [MAD-X](https://aclanthology.org/2020.emnlp-main.617/) · [BERT](bert-encoder_2018_bert-pretraining.md)

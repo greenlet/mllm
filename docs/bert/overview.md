@@ -671,7 +671,7 @@ Adapters make task-specific capacity modular by inserting small bottlenecks into
 
 - <a id="ref-lora"></a> **LoRA.** Hu et al. *LoRA: Low-Rank Adaptation of Large Language Models.* ICLR 2022. [Review](../papers/peft_2021_lora.md) · [Code](https://github.com/microsoft/LoRA)
 
-- <a id="ref-prefix-tuning"></a> **Prefix-Tuning.** Li and Liang. *Prefix-Tuning: Optimizing Continuous Prompts for Generation.* ACL 2021. [arXiv](https://arxiv.org/abs/2101.00190) · [Code](https://github.com/XiangLi1999/PrefixTuning)
+- <a id="ref-prefix-tuning"></a> **Prefix-Tuning.** Li and Liang. *Prefix-Tuning: Optimizing Continuous Prompts for Generation.* ACL 2021. [Review](../papers/softtoken_2021_prefix-tuning.md) · [Code](https://github.com/XiangLi1999/PrefixTuning)
 
 ### 16.11 Distilling predictions, layers, and attention relations
 
