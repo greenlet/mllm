@@ -501,7 +501,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [GPTQ]: https://arxiv.org/abs/2210.17323 "Frantar et al., GPTQ (2022)"
 [AWQ]: https://arxiv.org/abs/2306.00978 "Lin et al., AWQ (2023)"
 [SmoothQuant]: https://arxiv.org/abs/2211.10438 "Xiao et al., SmoothQuant (2022)"
-[KD]: https://arxiv.org/abs/1503.02531 "Hinton et al., Distilling the Knowledge in a Neural Network (2015)"
+[KD]: ../papers/distill_2015_hinton-kd.md "Hinton et al., Distilling the Knowledge in a Neural Network (2015)"
 [ModelSoups]: https://arxiv.org/abs/2203.05482 "Wortsman et al., Model Soups (2022)"
 [TIES]: https://arxiv.org/abs/2306.01708 "Yadav et al., TIES-Merging (2023)"
 [DARE]: https://arxiv.org/abs/2311.03099 "Yu et al., DARE (2023)"

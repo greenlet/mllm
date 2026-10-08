@@ -677,7 +677,7 @@ Adapters make task-specific capacity modular by inserting small bottlenecks into
 
 Classical distillation transfers the teacher’s full probability distribution rather than only its winning label. DistilBERT applies that principle during language-model compression, TinyBERT expands supervision to embeddings, states, and attention maps, and MiniLM distills attention relations that remain meaningful across different hidden widths. This progression provides a general menu for transferring knowledge into smaller encoders or compressed-context students.
 
-- <a id="ref-knowledge-distillation"></a> **Knowledge distillation.** Hinton, Vinyals, and Dean. *Distilling the Knowledge in a Neural Network.* 2015. [arXiv](https://arxiv.org/abs/1503.02531)
+- <a id="ref-knowledge-distillation"></a> **Knowledge distillation.** Hinton, Vinyals, and Dean. *Distilling the Knowledge in a Neural Network.* 2015. [Local review](../papers/distill_2015_hinton-kd.md)
 
 - <a id="ref-distilbert"></a> **DistilBERT.** Sanh et al. *DistilBERT, a Distilled Version of BERT: Smaller, Faster, Cheaper and Lighter.* 2019. [arXiv](https://arxiv.org/abs/1910.01108) · [Model](https://huggingface.co/distilbert/distilbert-base-uncased)
 
