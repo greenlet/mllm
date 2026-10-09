@@ -679,7 +679,7 @@ Classical distillation transfers the teacher’s full probability distribution r
 
 - <a id="ref-knowledge-distillation"></a> **Knowledge distillation.** Hinton, Vinyals, and Dean. *Distilling the Knowledge in a Neural Network.* 2015. [Local review](../papers/distill_2015_hinton-kd.md)
 
-- <a id="ref-distilbert"></a> **DistilBERT.** Sanh et al. *DistilBERT, a Distilled Version of BERT: Smaller, Faster, Cheaper and Lighter.* 2019. [arXiv](https://arxiv.org/abs/1910.01108) · [Model](https://huggingface.co/distilbert/distilbert-base-uncased)
+- <a id="ref-distilbert"></a> **DistilBERT.** Sanh et al. *DistilBERT, a Distilled Version of BERT: Smaller, Faster, Cheaper and Lighter.* 2019. [Local review](../papers/distill_2019_distilbert.md) · [Model](https://huggingface.co/distilbert/distilbert-base-uncased)
 
 - <a id="ref-tinybert"></a> **TinyBERT.** Jiao et al. *TinyBERT: Distilling BERT for Natural Language Understanding.* EMNLP Findings 2020. [arXiv](https://arxiv.org/abs/1909.10351) · [Code](https://github.com/huawei-noah/Pretrained-Language-Model/tree/master/TinyBERT)
 
