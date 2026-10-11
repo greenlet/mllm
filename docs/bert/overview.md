@@ -683,7 +683,7 @@ Classical distillation transfers the teacher’s full probability distribution r
 
 - <a id="ref-tinybert"></a> **TinyBERT.** Jiao et al. *TinyBERT: Distilling BERT for Natural Language Understanding.* EMNLP Findings 2020. [Local review](../papers/distill_2019_tinybert.md) · [Code](https://github.com/huawei-noah/Pretrained-Language-Model/tree/master/TinyBERT)
 
-- <a id="ref-minilm"></a> **MiniLM.** Wang et al. *MiniLM: Deep Self-Attention Distillation for Task-Agnostic Compression of Pre-Trained Transformers.* NeurIPS 2020. [arXiv](https://arxiv.org/abs/2002.10957) · [Code](https://github.com/microsoft/unilm/tree/master/minilm)
+- <a id="ref-minilm"></a> **MiniLM.** Wang et al. *MiniLM: Deep Self-Attention Distillation for Task-Agnostic Compression of Pre-Trained Transformers.* NeurIPS 2020. [Local review](../papers/distill_2020_minilm.md) · [Code](https://github.com/microsoft/unilm/tree/master/minilm)
 
 ### 16.12 Benchmarks expand from sentence semantics to multilingual and long-context behavior
 
