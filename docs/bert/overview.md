@@ -689,7 +689,7 @@ Classical distillation transfers the teacher’s full probability distribution r
 
 MTEB turns embedding evaluation into a multi-task suite, and MMTEB expands it across languages. BEIR emphasizes zero-shot domain transfer rather than one in-domain retrieval set. MLDR and RULER address long-context retrieval and synthetic capability measurement, exposing the gap between accepted context length and useful context length.
 
-- <a id="ref-mteb"></a> **MTEB.** Muennighoff et al. *MTEB: Massive Text Embedding Benchmark.* EACL 2023. [arXiv](https://arxiv.org/abs/2210.07316) · [Code](https://github.com/embeddings-benchmark/mteb)
+- <a id="ref-mteb"></a> **MTEB.** Muennighoff et al. *MTEB: Massive Text Embedding Benchmark.* EACL 2023. [Local review](../papers/benchmark_2022_mteb.md) · [Code](https://github.com/embeddings-benchmark/mteb)
 
 - <a id="ref-mmteb"></a> **MMTEB.** Enevoldsen et al. *MMTEB: Massive Multilingual Text Embedding Benchmark.* 2025. [arXiv](https://arxiv.org/abs/2502.13595) · [Code](https://github.com/embeddings-benchmark/mteb)
 

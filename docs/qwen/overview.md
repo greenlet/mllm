@@ -507,7 +507,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [DARE]: https://arxiv.org/abs/2311.03099 "Yu et al., DARE (2023)"
 [CatForget]: https://arxiv.org/abs/1612.00796 "Kirkpatrick et al., Overcoming Catastrophic Forgetting (EWC, 2016)"
 [MRL]: https://arxiv.org/abs/2205.13147 "Kusupati et al., Matryoshka Representation Learning (2022)"
-[MTEB]: https://arxiv.org/abs/2210.07316 "Muennighoff et al., MTEB (2022)"
+[MTEB]: ../papers/benchmark_2022_mteb.md "Muennighoff et al., MTEB (2022)"
 [IntrinsicDim]: https://www.nature.com/articles/s41598-017-11873-y "Facco et al., Estimating the intrinsic dimension via TwoNN (2017)"
 [IntrinsicDimSGD]: https://arxiv.org/abs/2012.13255 "Aghajanyan et al., Intrinsic Dimensionality Explains the Effectiveness of LM Fine-Tuning (2020)"
 [GeometryLLM]: https://arxiv.org/abs/2302.00294 "Valeriani et al., The Geometry of Hidden Representations of LLMs (2023)"
