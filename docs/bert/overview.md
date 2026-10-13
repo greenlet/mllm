@@ -691,7 +691,7 @@ MTEB turns embedding evaluation into a multi-task suite, and MMTEB expands it ac
 
 - <a id="ref-mteb"></a> **MTEB.** Muennighoff et al. *MTEB: Massive Text Embedding Benchmark.* EACL 2023. [Local review](../papers/benchmark_2022_mteb.md) · [Code](https://github.com/embeddings-benchmark/mteb)
 
-- <a id="ref-mmteb"></a> **MMTEB.** Enevoldsen et al. *MMTEB: Massive Multilingual Text Embedding Benchmark.* 2025. [arXiv](https://arxiv.org/abs/2502.13595) · [Code](https://github.com/embeddings-benchmark/mteb)
+- <a id="ref-mmteb"></a> **MMTEB.** Enevoldsen et al. *MMTEB: Massive Multilingual Text Embedding Benchmark.* 2025. [Recap](../papers/benchmark_2025_mmteb.md) · [Code](https://github.com/embeddings-benchmark/mteb)
 
 - <a id="ref-beir"></a> **BEIR.** Thakur et al. *BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models.* NeurIPS Datasets and Benchmarks 2021. [arXiv](https://arxiv.org/abs/2104.08663) · [Code](https://github.com/beir-cellar/beir)
 

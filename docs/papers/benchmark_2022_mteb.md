@@ -260,7 +260,7 @@ LaBSE dominates the broad bitext average, while MPNet has the best multilingual 
 - **Correlated datasets reduce effective diversity.** Figure 2 finds identical or closely related corpora, including FEVER/ClimateFEVER, CQADupstack variants, paired S2S/P2P datasets, and scientific datasets across task families. The nominal dataset count exceeds the number of independent domains.
 - **A leaderboard is versioned evidence, not a timeless rank.** New datasets, corrected implementations, prompts, task metadata, and model behavior can change scores. Reproducible follow-up work should pin task and software versions and report task-level results.
 
-The immediate successors broaden the coverage rather than invalidate the original finding. [MMTEB](https://arxiv.org/abs/2407.07396) expands multilingual evaluation to more than 250 languages, while the current MTEB repository includes later task versions and modalities. Those are distinct protocols; historical Table 1 values should only be compared under the original 56-dataset English setup.
+The immediate successors broaden the coverage rather than invalidate the original finding. [MMTEB](benchmark_2025_mmteb.md) expands multilingual evaluation to more than 250 languages, while the current MTEB repository includes later task versions and modalities. Those are distinct protocols; historical Table 1 values should only be compared under the original 56-dataset English setup.
 
 ## Links
 
@@ -284,4 +284,4 @@ The immediate successors broaden the coverage rather than invalidate the origina
   ```
 
 - **Related local recaps:** [MiniLM](distill_2020_minilm.md) · [E5](retrieval_2022_e5.md) · [GTE](retrieval_2023_gte.md)
-- **Successors and extensions:** [MMTEB](https://arxiv.org/abs/2407.07396) · [BEIR](https://arxiv.org/abs/2104.08663)
+- **Successors and extensions:** [MMTEB](benchmark_2025_mmteb.md) · [BEIR](https://arxiv.org/abs/2104.08663)
