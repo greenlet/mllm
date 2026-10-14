@@ -284,4 +284,4 @@ The immediate successors broaden the coverage rather than invalidate the origina
   ```
 
 - **Related local recaps:** [MiniLM](distill_2020_minilm.md) · [E5](retrieval_2022_e5.md) · [GTE](retrieval_2023_gte.md)
-- **Successors and extensions:** [MMTEB](benchmark_2025_mmteb.md) · [BEIR](https://arxiv.org/abs/2104.08663)
+- **Related benchmarks and extensions:** [BEIR](benchmark_2021_beir.md) · [MMTEB](benchmark_2025_mmteb.md)
