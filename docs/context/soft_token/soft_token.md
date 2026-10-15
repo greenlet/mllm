@@ -122,7 +122,7 @@ long context ──► [Encoder] ──► [Pool] ──► [Adapter] ──► 
 [LLaVA]: https://arxiv.org/abs/2304.08485 "LLaVA (Liu et al. 2023)"
 [Cambrian]: https://arxiv.org/abs/2406.16860 "Cambrian-1 (Tong et al. 2024)"
 [RMSNorm]: https://arxiv.org/abs/1910.07467 "RMSNorm (Zhang & Sennrich 2019)"
-[RULER]: https://arxiv.org/abs/2404.06654 "RULER (Hsieh et al. 2024)"
+[RULER]: ../../papers/benchmark_2024_ruler.md "RULER (Hsieh et al. 2024)"
 [LongBench]: https://arxiv.org/abs/2308.14508 "LongBench (Bai et al. 2024)"
 [LongHealth]: https://arxiv.org/abs/2401.14490 "LongHealth (Adams et al. 2025)"
 [GSM8K]: https://arxiv.org/abs/2110.14168 "GSM8K (Cobbe et al. 2021)"

@@ -695,6 +695,6 @@ MTEB turns embedding evaluation into a multi-task suite, and MMTEB expands it ac
 
 - <a id="ref-beir"></a> **BEIR.** Thakur et al. *BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models.* NeurIPS Datasets and Benchmarks 2021. [Recap](../papers/benchmark_2021_beir.md) · [Code](https://github.com/beir-cellar/beir)
 
-- <a id="ref-mldr"></a> **MLDR.** Chen et al. *Long-Context Retrieval Models with Document Compression.* MLDR dataset and benchmark resources. [Dataset](https://huggingface.co/datasets/Shitao/MLDR)
+- <a id="ref-mldr"></a> **MLDR.** Chen et al. *Multilingual Long-Document Retrieval*, introduced with BGE-M3. 2024. [Local review](../papers/retrieval_2024_bge-m3.md) · [Dataset](https://huggingface.co/datasets/BAAI/MLDR)
 
-- <a id="ref-ruler"></a> **RULER.** Hsieh et al. *RULER: What’s the Real Context Size of Your Long-Context Language Models?* COLM 2024. [arXiv](https://arxiv.org/abs/2404.06654) · [Code](https://github.com/NVIDIA/RULER)
+- <a id="ref-ruler"></a> **RULER.** Hsieh et al. *RULER: What’s the Real Context Size of Your Long-Context Language Models?* COLM 2024. [Local review](../papers/benchmark_2024_ruler.md) · [Code](https://github.com/NVIDIA/RULER)

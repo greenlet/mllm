@@ -21,17 +21,18 @@ identifies three gaps:
    whole context, and robustness to hard distractors.
 2. **Claimed ≫ effective length.** Models advertise 32K–1M windows, yet accuracy collapses well
    before the advertised limit; there was no principled way to quantify the gap.
-3. **No configurable, contamination-free suite.** Real-data long-context benchmarks risk train
-   leakage and cannot independently vary length and task complexity.
+3. **No configurable suite with limited dependence on memorized facts.** Real-data long-context
+  benchmarks risk train leakage and cannot independently vary length and task complexity.
 
 The headline empirical fact: despite ~100% accuracy on passkey/vanilla NIAH (Appendix E,
 Tables 10–11), nearly all models show **large degradation** on RULER's harder tasks as context
 grows (§1).
 
 ## Key idea
-Build every example **synthetically** so that sequence length, number of distractors, number of
-hops, and answer multiplicity are **independent knobs**. Score by **recall-based accuracy** (the
-model must emit exactly the target items), then define effective length by a fixed reference bar:
+Build examples from configurable templates so that sequence length, number of distractors,
+number of hops, and answer multiplicity are **independent knobs**. Score by **recall-based
+accuracy**, which checks whether target answers occur in the generated response, then define
+effective length by a fixed reference bar:
 
 $$
 L_{\text{eff}} = \max\{\, L : \operatorname{acc}(L) \ge \tau \,\}, \qquad
@@ -113,8 +114,10 @@ flowchart LR
 ## Training / data
 RULER is an **evaluation-only** benchmark — no model training. Data is generated on the fly from
 task templates; haystacks come from Paul Graham essays and repeated-noise sentences, and QA tasks
-reuse SQuAD v1.1 and HotpotQA passages. This makes it **contamination-resistant** and infinitely
-re-generable at any length.
+reuse SQuAD v1.1 and HotpotQA passages. Synthetic targets reduce dependence on parametric
+knowledge, and examples can be regenerated at arbitrary configured lengths. This does not make
+the suite contamination-free: the essays and QA corpora are public, and benchmark templates can
+themselves enter later training mixtures.
 
 ## Results
 Main leaderboard (Table 3), weighted averages over the 13 tasks; effective vs. claimed length:
@@ -126,8 +129,8 @@ Main leaderboard (Table 3), weighted averages over the 13 tasks; effective vs. c
 | GLM4-9B | 1M | 64K | 88.0 | 91.7 |
 | Llama3.1-70B | 128K | 64K | 85.5 | 93.7 |
 | Llama3.1-8B | 128K | 32K | 85.4 | 91.3 |
-| Yi-34B | 200K | 32K | — | — |
-| LongAlpaca-13B | 32K | <4K | 24.7 | — |
+| Yi-34B | 200K | 32K | 84.8 | 90.1 |
+| LongAlpaca-13B | 32K | <4K | 24.7 | 47.9 |
 
 Source: Table 3. All figures (per §4).
 
@@ -146,21 +149,40 @@ Key findings:
   (Fig. 4).
 
 ## Limitations & follow-ups
-- **Synthetic ≠ natural.** Recall-based synthetic tasks may not perfectly predict real-world
-  long-document utility; the QA tasks partly bridge this.
-- **Threshold is a design choice.** The 85.6% Llama2-7B-at-4K bar is a convention; a different
-  reference shifts every effective-length number.
-- **Complementary real-data suites.** Pairs naturally with
-  [LongBench](benchmark_2023_longbench.md) (bilingual real tasks) and the domain-specific
-  [LongHealth](benchmark_2024_longhealth.md); RULER supplies the controllable length ladder those
-  lack. Successor **RULER v2** extends the task pipeline (see repo branch `rulerv2-ns`).
+- **No position-controlled reporting.** The paper aggregates each context length into one score
+  rather than sweeping the relevant evidence through input depth, so it cannot directly diagnose
+  lost-in-the-middle behavior. The authors identify key-position control as planned work (§8).
+- **Synthetic proxies are not validated against realistic utility.** Variable tracking and word
+  aggregation are intended to stand in for coreference and summarization, but the paper does not
+  establish their correlation with realistic long-context tasks. RULER is a behavioral stress
+  test, not a replacement for natural-data evaluation (§8).
+- **The suite selects for competence at 4K.** Main tasks were chosen partly because tested models
+  performed reasonably at 4K. Harder reasoning failures can appear at much shorter lengths, so a
+  high short-context RULER score is not evidence of complete short-context capability (§8).
+- **Prompt robustness is not established.** Models receive different chat templates and answer
+  prefixes, while prompt sensitivity and fixed task parameters were not comprehensively ablated.
+  Rankings can therefore depend on formatting and decoding choices (§8 and Appendix D).
+- **The threshold is conventional.** The 85.6% Llama2-7B-at-4K bar makes “effective length” easy
+  to communicate, but another reference shifts every effective-length result. The weighted scores
+  also encode an assumed workload distribution rather than a universal ranking.
+- **Public components can still be exposed during training.** Synthetic answers reduce reliance
+  on memorized world knowledge, but Paul Graham essays, SQuAD, HotpotQA, prompts, and task
+  generators are public. Later models may be trained directly or indirectly on RULER-style data.
+
+RULER pairs naturally with [LongBench](benchmark_2023_longbench.md), which uses bilingual natural
+tasks, and domain-specific [LongHealth](benchmark_2024_longhealth.md). The repository's RULER v2
+work extends the task pipeline; comparisons should record the exact code revision and suite version.
 
 ## Links
 - **arXiv:** [abs](https://arxiv.org/abs/2404.06654) · [html](https://arxiv.org/html/2404.06654v3) · [pdf](https://arxiv.org/pdf/2404.06654)
-- **Code:** https://github.com/NVIDIA/RULER
+- **Code:** [NVIDIA/RULER](https://github.com/NVIDIA/RULER)
 - **Hugging Face:** — (data generated from templates in-repo)
 - **Project page:** —
-- **Venue:** COLM 2024
+- **Blog posts:** —
+- **Talks / videos:** —
+- **OpenReview / venue page:** — (COLM 2024)
+- **Papers-with-Code:** —
+- **Context:** [BERT-family benchmark overview](../bert/overview.md#1612-benchmarks-expand-from-sentence-semantics-to-multilingual-and-long-context-behavior) · [long-context benchmark thread](../context/benchmarks/benchmarks.md)
 - **BibTeX:**
   ```bibtex
   @article{hsieh2024ruler,
