@@ -435,7 +435,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 
 <!-- Link reference definitions (invisible in rendered output) -->
 
-[Qwen1]: https://arxiv.org/abs/2309.16609 "Qwen Technical Report (2023)"
+[Qwen1]: ../papers/backbone_2023_qwen.md "Qwen Technical Report (2023) — local review"
 [Qwen-VL]: https://arxiv.org/abs/2308.12966 "Qwen-VL (2023)"
 [Qwen-Audio]: https://arxiv.org/abs/2311.07919 "Qwen-Audio (2023)"
 [Qwen2]: https://arxiv.org/abs/2407.10671 "Qwen2 Technical Report (2024)"
