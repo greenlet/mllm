@@ -438,7 +438,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Qwen1]: ../papers/backbone_2023_qwen.md "Qwen Technical Report (2023) — local review"
 [Qwen-VL]: ../papers/multimodal_2023_qwen-vl.md "Qwen-VL (2023)"
 [Qwen-Audio]: ../papers/multimodal_2023_qwen-audio.md "Qwen-Audio (2023)"
-[Qwen2]: https://arxiv.org/abs/2407.10671 "Qwen2 Technical Report (2024)"
+[Qwen2]: ../papers/backbone_2024_qwen2.md "Qwen2 Technical Report (2024)"
 [Qwen2-VL]: https://arxiv.org/abs/2409.12191 "Qwen2-VL (2024)"
 [Qwen2-Audio]: https://arxiv.org/abs/2407.10759 "Qwen2-Audio (2024)"
 [Qwen2.5]: https://arxiv.org/abs/2412.15115 "Qwen2.5 Technical Report (2024)"
