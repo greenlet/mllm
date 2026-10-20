@@ -102,6 +102,6 @@ top_k 20; Thinking temp 0.6, top_p 0.95.
   its M-RoPE extends [RoPE](positional_2021_rope-roformer.md) to (t,h,w).
 
 ## Links
-- **arXiv:** [abs](https://arxiv.org/abs/2511.21631) · [pdf](https://arxiv.org/pdf/2511.21631) · (M-RoPE origin: [Qwen2-VL 2409.12191](https://arxiv.org/abs/2409.12191); [Qwen2.5-VL 2502.13923](https://arxiv.org/abs/2502.13923))
+- **arXiv:** [abs](https://arxiv.org/abs/2511.21631) · [pdf](https://arxiv.org/pdf/2511.21631) · (M-RoPE origin: [Qwen2-VL recap](multimodal_2024_qwen2-vl.md); [Qwen2.5-VL 2502.13923](https://arxiv.org/abs/2502.13923))
 - **Code:** https://github.com/QwenLM/Qwen3-VL · **Models:** https://huggingface.co/Qwen
 - **Related:** [Qwen3](backbone_2025_qwen3.md) · [Qwen3-Embedding](backbone_2025_qwen3-embedding.md) · [ViT](multimodal_2020_vit.md) · [CPVT](multimodal_2021_cpvt.md) · [RoPE](positional_2021_rope-roformer.md) · [YaRN](positional_2023_yarn-context-extension.md) · [Cambrian-1](multimodal_2024_cambrian-1.md) · [multimodal thread](../context/multimodal/multimodal.md) · [Qwen overview](../qwen/overview.md)
