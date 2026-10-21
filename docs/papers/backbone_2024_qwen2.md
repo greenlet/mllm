@@ -524,7 +524,7 @@ The authors attribute many flagged cases to common mathematical/code expressions
 - **Safety and contamination audits have bounded scope.** Neither refusal rates on one suite nor overlapping-text filtering establishes universal safety or absence of memorization.
 - **This report's architecture is text-only.** It describes the language backbones and instruction models. Qwen2-VL and Qwen2-Audio require additional modality-specific architectures and separate reports.
 
-[Qwen](backbone_2023_qwen.md) is the original predecessor, while [Qwen3](backbone_2025_qwen3.md) later adds a different reasoning/alignment recipe and architectural changes. The next main text-generation report is [Qwen2.5](https://arxiv.org/abs/2412.15115). The multimodal branches are covered separately by [Qwen2-VL](multimodal_2024_qwen2-vl.md) and [Qwen2-Audio](https://arxiv.org/abs/2407.10759).
+[Qwen](backbone_2023_qwen.md) is the original predecessor, while [Qwen3](backbone_2025_qwen3.md) later adds a different reasoning/alignment recipe and architectural changes. The next main text-generation report is [Qwen2.5](https://arxiv.org/abs/2412.15115). The multimodal branches are covered separately by [Qwen2-VL](multimodal_2024_qwen2-vl.md) and [Qwen2-Audio](multimodal_2024_qwen2-audio.md).
 
 ## Links
 
