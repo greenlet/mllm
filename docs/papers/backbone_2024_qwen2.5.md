@@ -595,7 +595,7 @@ The report gives substantial architectural and post-training information, but om
 
 ### Successor and specialist reports
 
-[Qwen2.5-Coder](https://arxiv.org/abs/2409.12186) and [Qwen2.5-Math](https://arxiv.org/abs/2409.12122) detail specialist data and training pipelines that feed into this general-family recipe. Their benchmark numbers should not be substituted for those of the general Qwen2.5 checkpoints.
+[Qwen2.5-Coder](coding_2024_qwen2.5-coder.md) and [Qwen2.5-Math](https://arxiv.org/abs/2409.12122) detail specialist data and training pipelines that feed into this general-family recipe. Their benchmark numbers should not be substituted for those of the general Qwen2.5 checkpoints.
 
 [Qwen2.5-1M](https://arxiv.org/abs/2501.15383) later provides a dedicated long-context report; it is not the source of every 1M-token statement in this earlier report. [Qwen2.5-VL](https://arxiv.org/abs/2502.13923) and [Qwen2.5-Omni](https://arxiv.org/abs/2503.20215) add distinct multimodal systems, while the local [Qwen3 recap](backbone_2025_qwen3.md) covers a later family with thinking/non-thinking integration.
 

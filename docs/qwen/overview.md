@@ -112,7 +112,7 @@ Qwen uses a **byte‑level BPE** tokenizer ([Sennrich et al.][BPE], [Wang et al.
 - **Outputs**: streaming **text + natural speech** simultaneously.
 
 ### 3.5 Specialist lines
-- **Qwen2.5‑Coder** (0.5B–32B): 5.5T code tokens; [FIM][FIM], repo‑level context, 92 languages ([Qwen2.5‑Coder Tech Report][Qwen2.5-Coder]).
+- **Qwen2.5‑Coder** (0.5B–32B): ~5.5T continued-pretraining tokens (code, text, math); [FIM][FIM], repo‑level context, 92 languages ([Qwen2.5‑Coder Tech Report][Qwen2.5-Coder]).
 - **Qwen2.5‑Math** / **Qwen3‑Math**: **tool‑integrated reasoning** ([TIR][TIR]) with Python, [CoT][CoT] + [self‑consistency][SelfConsistency].
 - **Qwen3‑Embedding / Qwen3‑Reranker** (0.6B / 4B / 8B): dense + multi‑vector embeddings with [MRL][MRL], top of [MTEB][MTEB] multilingual leaderboard at release.
 - **[QwQ‑32B][QwQ]** (Nov 2024): research preview reasoning model, precursor to Qwen3 thinking mode.
@@ -442,7 +442,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Qwen2-VL]: ../papers/multimodal_2024_qwen2-vl.md "Qwen2-VL (2024)"
 [Qwen2-Audio]: ../papers/multimodal_2024_qwen2-audio.md "Qwen2-Audio (2024)"
 [Qwen2.5]: ../papers/backbone_2024_qwen2.5.md "Qwen2.5 Technical Report (2024)"
-[Qwen2.5-Coder]: https://arxiv.org/abs/2409.12186 "Qwen2.5-Coder (2024)"
+[Qwen2.5-Coder]: ../papers/coding_2024_qwen2.5-coder.md "Qwen2.5-Coder (2024)"
 [Qwen2.5-Math]: https://arxiv.org/abs/2409.12122 "Qwen2.5-Math (2024)"
 [Qwen2.5-VL]: https://arxiv.org/abs/2502.13923 "Qwen2.5-VL (2025)"
 [Qwen2.5-1M]: https://arxiv.org/abs/2501.15383 "Qwen2.5-1M (2025)"
