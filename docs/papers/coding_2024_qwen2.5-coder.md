@@ -566,7 +566,7 @@ Section 8's Figure 14 compares model sizes using Base **MBPP 3-shot** and Instru
 
 [Qwen2.5](backbone_2024_qwen2.5.md) explains the shared backbone and general-purpose data/alignment strategy. This Coder report describes the specialist continuation and code-specific post-training; its approximately 5.5T tokens and offline DPO should not be conflated with the general report's 18T corpus or online GRPO stage.
 
-[Qwen2.5-Math](https://arxiv.org/abs/2409.12122) is a sibling specialist and a source of mathematical pretraining data, not a successor to this coding model. The earlier **CodeQwen1.5** is the direct code-family predecessor and a synthetic-data generator in this recipe. Later [Qwen3-Coder](https://qwenlm.github.io/blog/qwen3-coder/) work moves toward more explicitly agentic coding; its architecture and agent-evaluation results are separate evidence, not retroactive properties of Qwen2.5-Coder.
+[Qwen2.5-Math](math_2024_qwen2.5-math.md) is a sibling specialist and a source of mathematical pretraining data, not a successor to this coding model. The earlier **CodeQwen1.5** is the direct code-family predecessor and a synthetic-data generator in this recipe. Later [Qwen3-Coder](https://qwenlm.github.io/blog/qwen3-coder/) work moves toward more explicitly agentic coding; its architecture and agent-evaluation results are separate evidence, not retroactive properties of Qwen2.5-Coder.
 
 ## Links
 
