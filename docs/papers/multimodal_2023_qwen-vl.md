@@ -376,7 +376,7 @@ The relevant before/after comparison is **intermediate initialization versus Qwe
 
 The clearest predecessors are [ViT](multimodal_2020_vit.md) for patch-based visual encoding, [Flamingo](multimodal_2022_flamingo-perceiver-resampler.md) for learned-query visual resampling and interleaved contexts, [BLIP-2](multimodal_2023_blip2-qformer.md) for bridging vision encoders and LLMs, and [LLaVA](multimodal_2023_llava.md) / [InstructBLIP](multimodal_2023_instructblip.md) for visual instruction following. Qwen-VL combines a simple bridge with much larger multilingual training and explicit OCR/grounding supervision, rather than introducing every ingredient from scratch.
 
-[Qwen2-VL](multimodal_2024_qwen2-vl.md) subsequently moves to dynamic-resolution visual processing and multimodal rotary position embeddings. [Qwen2.5-VL](https://arxiv.org/abs/2502.13923) further develops efficient high-resolution and temporal processing, while the local [Qwen3-VL recap](multimodal_2025_qwen3-vl.md) covers a later generation. These are successors, not capabilities or architectural details to read back into the 2023 model.
+[Qwen2-VL](multimodal_2024_qwen2-vl.md) subsequently moves to dynamic-resolution visual processing and multimodal rotary position embeddings. [Qwen2.5-VL](multimodal_2025_qwen2.5-vl.md) further develops efficient high-resolution and temporal processing, while the local [Qwen3-VL recap](multimodal_2025_qwen3-vl.md) covers a later generation. These are successors, not capabilities or architectural details to read back into the 2023 model.
 
 ## Links
 
@@ -389,7 +389,7 @@ The clearest predecessors are [ViT](multimodal_2020_vit.md) for patch-based visu
 - **Talks / videos:** Not used as a source for this recap.
 - **OpenReview / venue page:** Not used as a source for this recap; the header identifies the reviewed arXiv version.
 - **Papers-with-Code:** Not used as a source for this recap.
-- **Related / successor papers:** [Qwen backbone](backbone_2023_qwen.md) · [ViT](multimodal_2020_vit.md) · [Flamingo](multimodal_2022_flamingo-perceiver-resampler.md) · [BLIP-2](multimodal_2023_blip2-qformer.md) · [InstructBLIP](multimodal_2023_instructblip.md) · [Qwen2-VL](multimodal_2024_qwen2-vl.md) · [Qwen2.5-VL](https://arxiv.org/abs/2502.13923) · [Qwen3-VL](multimodal_2025_qwen3-vl.md)
+- **Related / successor papers:** [Qwen backbone](backbone_2023_qwen.md) · [ViT](multimodal_2020_vit.md) · [Flamingo](multimodal_2022_flamingo-perceiver-resampler.md) · [BLIP-2](multimodal_2023_blip2-qformer.md) · [InstructBLIP](multimodal_2023_instructblip.md) · [Qwen2-VL](multimodal_2024_qwen2-vl.md) · [Qwen2.5-VL](multimodal_2025_qwen2.5-vl.md) · [Qwen3-VL](multimodal_2025_qwen3-vl.md)
 - **Context:** [Qwen family overview](../qwen/overview.md)
 - **BibTeX:** Minimal arXiv citation; the author field is abbreviated.
 

@@ -478,7 +478,7 @@ M-RoPE's smaller coordinate values also do not guarantee unlimited effective con
 
 ### Where the line goes next
 
-[Qwen2.5-VL](https://arxiv.org/abs/2502.13923) later develops the vision frontend's efficiency and video temporal representation further, including window attention and stronger absolute-time modeling. The local [Qwen3-VL recap](multimodal_2025_qwen3-vl.md) covers later changes such as revised positional organization and deeper visual-language integration. Those are successor contributions, not hidden features of Qwen2-VL.
+[Qwen2.5-VL](multimodal_2025_qwen2.5-vl.md) later develops the vision frontend's efficiency and video temporal representation further, including window attention and stronger absolute-time modeling. The local [Qwen3-VL recap](multimodal_2025_qwen3-vl.md) covers later changes such as revised positional organization and deeper visual-language integration. Those are successor contributions, not hidden features of Qwen2-VL.
 
 The closest local foundations are [Qwen-VL](multimodal_2023_qwen-vl.md), [Qwen2](backbone_2024_qwen2.md), [ViT](multimodal_2020_vit.md), and [RoPE](positional_2021_rope-roformer.md). For the separate audio branch, [Qwen-Audio](multimodal_2023_qwen-audio.md) and the [Qwen2-Audio report](multimodal_2024_qwen2-audio.md) should not be confused with this image/video architecture.
 
@@ -491,7 +491,7 @@ The closest local foundations are [Qwen-VL](multimodal_2023_qwen-vl.md), [Qwen2]
 - **Talks / videos:** no specific talk used as a source for this recap.
 - **OpenReview / venue page:** not used; this recap follows the arXiv technical report.
 - **Papers-with-Code:** not used; reported values are sourced directly from the report.
-- **Related / successor papers:** [Qwen-VL](multimodal_2023_qwen-vl.md) · [Qwen2](backbone_2024_qwen2.md) · [ViT](multimodal_2020_vit.md) · [RoPE](positional_2021_rope-roformer.md) · [Qwen2.5-VL](https://arxiv.org/abs/2502.13923) · [Qwen3-VL](multimodal_2025_qwen3-vl.md)
+- **Related / successor papers:** [Qwen-VL](multimodal_2023_qwen-vl.md) · [Qwen2](backbone_2024_qwen2.md) · [ViT](multimodal_2020_vit.md) · [RoPE](positional_2021_rope-roformer.md) · [Qwen2.5-VL](multimodal_2025_qwen2.5-vl.md) · [Qwen3-VL](multimodal_2025_qwen3-vl.md)
 - **Local context:** [Qwen-family overview](../qwen/overview.md) · [multimodal concepts](../context/multimodal/multimodal.md)
 
 ```bibtex

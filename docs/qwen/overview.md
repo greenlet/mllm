@@ -444,7 +444,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Qwen2.5]: ../papers/backbone_2024_qwen2.5.md "Qwen2.5 Technical Report (2024)"
 [Qwen2.5-Coder]: ../papers/coding_2024_qwen2.5-coder.md "Qwen2.5-Coder (2024)"
 [Qwen2.5-Math]: ../papers/math_2024_qwen2.5-math.md "Qwen2.5-Math (2024)"
-[Qwen2.5-VL]: https://arxiv.org/abs/2502.13923 "Qwen2.5-VL (2025)"
+[Qwen2.5-VL]: ../papers/multimodal_2025_qwen2.5-vl.md "Qwen2.5-VL (2025)"
 [Qwen2.5-1M]: https://arxiv.org/abs/2501.15383 "Qwen2.5-1M (2025)"
 [Qwen2.5-Omni]: https://arxiv.org/abs/2503.20215 "Qwen2.5-Omni (2025)"
 [Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
