@@ -84,7 +84,7 @@ PG-19, chunked into 64k-token contiguous windows; `bf16`, AdamW $\beta=(0.9, 0.9
 - **Perplexity ≠ retrieval.** Sometimes passkey accuracy outpaces what perplexity alone would predict (App. B.5).
 - **Dynamic-YaRN trade-off.** The training-free variant can hurt very-short-context performance inside the original window (App. B.7).
 - **Successor / alternative.** [Dual Chunk Attention (DCA, An et al. 2024)](positional_2024_dca-dual-chunk-attention.md) achieves comparable extension *without any training* and stacks on top of YaRN.
-- **Productionized in:** Qwen2 / Qwen2.5 long-context models (combined with DCA up to 128k, and with both up to 1M in Qwen2.5-1M).
+- **Productionized in:** Qwen2 / Qwen2.5 long-context models (combined with DCA up to 128k). [Qwen2.5-1M](backbone_2025_qwen2.5-1m.md) specifically describes YaRN attention scaling plus DCA after progressive training to 256K, rather than attributing its entire recipe to YaRN frequency interpolation.
 
 ## Links
 - **arXiv:** [abs](https://arxiv.org/abs/2309.00071) · [html v3](https://arxiv.org/html/2309.00071v3) · [pdf](https://arxiv.org/pdf/2309.00071)

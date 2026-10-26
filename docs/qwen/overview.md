@@ -77,7 +77,7 @@ Qwen uses a **byte‑level BPE** tokenizer ([Sennrich et al.][BPE], [Wang et al.
 - **Top‑k routing** (typically k=8 of 128 experts in Qwen3 MoE) with auxiliary load‑balancing loss ([Switch Transformer][Switch], [GShard][GShard]).
 
 ### 2.4 Long context
-- Base context 32K, extended via [YaRN][YaRN] + **Dual Chunk Attention** ([DCA][DCA]) to 128K, and up to **1M tokens** in **Qwen2.5‑Turbo / Qwen2.5‑1M** ([Qwen2.5‑1M Tech Report][Qwen2.5-1M]).
+- Qwen2.5 trains to 32K and extends to 128K via [YaRN][YaRN] + **Dual Chunk Attention** ([DCA][DCA]). The dedicated **Qwen2.5‑1M / Qwen2.5‑Turbo** recipe trains progressively to 256K, then uses DCA plus YaRN attention scaling for approximately **1M-token inference** ([Qwen2.5‑1M Tech Report][Qwen2.5-1M]).
 
 ### 2.5 Post‑training
 - **SFT → preference optimization** with [DPO][DPO] / [GRPO][GRPO] / classical [RLHF][RLHF] (PPO, [Schulman et al.][PPO]).
@@ -189,7 +189,7 @@ Qwen uses a **byte‑level BPE** tokenizer ([Sennrich et al.][BPE], [Wang et al.
 
 ### 6.1 Full / continued pre‑training
 - Standard causal‑LM objective on additional domain corpora; usually combined with **replay** of general data to mitigate [catastrophic forgetting][CatForget].
-- Long‑context extension via [YaRN][YaRN] + [DCA][DCA] needs only ~1B tokens of long sequences; see the recipe in [Qwen2.5‑1M][Qwen2.5-1M].
+- [Qwen2.5‑1M][Qwen2.5-1M] combines progressive training to 256K with synthetic long-range tasks, two-stage SFT, and inference-time [DCA][DCA] plus [YaRN][YaRN] attention scaling. Its report does not disclose a total additional training-token budget; the 1M inference limit is not a 1M training length.
 
 ### 6.2 Supervised Fine‑Tuning (SFT)
 - [ChatML][ChatML] formatting, loss masked on the assistant turn (cf. the [InstructGPT][RLHF] / [Alpaca][Alpaca] / [Vicuna][Vicuna] SFT recipe).
@@ -445,7 +445,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Qwen2.5-Coder]: ../papers/coding_2024_qwen2.5-coder.md "Qwen2.5-Coder (2024)"
 [Qwen2.5-Math]: ../papers/math_2024_qwen2.5-math.md "Qwen2.5-Math (2024)"
 [Qwen2.5-VL]: ../papers/multimodal_2025_qwen2.5-vl.md "Qwen2.5-VL (2025)"
-[Qwen2.5-1M]: https://arxiv.org/abs/2501.15383 "Qwen2.5-1M (2025)"
+[Qwen2.5-1M]: ../papers/backbone_2025_qwen2.5-1m.md "Qwen2.5-1M (2025)"
 [Qwen2.5-Omni]: https://arxiv.org/abs/2503.20215 "Qwen2.5-Omni (2025)"
 [Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
 [Qwen3-Emb]: https://arxiv.org/abs/2506.05176 "Qwen3-Embedding/Reranker (2025)"

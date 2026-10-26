@@ -16,7 +16,7 @@ How Qwen got from a 2k–8k pre-training window to **1M-token inference contexts
 - **Qwen 1 / 1.5 / 2 / 2.5 / 3** all use **RoPE** as the per-head positional mechanism on $q$ and $k$. Qwen3 additionally adds **QK-Norm** on top.
 - **Qwen-7B** introduced **Dynamic NTK** (NTK-aware with $s$ recomputed per forward) to allow zero-shot extension to ~32k beyond the 8k pre-training window.
 - **Qwen2 / Qwen2.5** standardized the recipe **YaRN + DCA** for long-context inference at 128k. The Qwen2.5 tech report cites both explicitly.
-- **Qwen2.5-1M / Qwen2.5-Turbo** (arXiv 2501.15383) push to **1 000 000** tokens by combining YaRN (frequency-side fix) with DCA (chunked attention pattern), plus a brief long-context fine-tune of ≈ 1B tokens — the paper attributes the fact that this is feasible with so little training to YaRN's data-efficiency and DCA's training-freeness.
+- **[Qwen2.5-1M / Qwen2.5-Turbo](../../papers/backbone_2025_qwen2.5-1m.md)** train progressively up to **262,144 tokens**, adapting the RoPE base through ABF, then extrapolate to approximately **1M tokens** with DCA and the **attention-temperature scaling** component of YaRN. DCA remaps relative positions rather than inherently dropping distant tokens. The report does not disclose a total additional training-token budget or establish a fixed ≈ 1B-token recipe.
 - **Qwen2-VL / Qwen2.5-Omni** generalize RoPE to multimodal axes (M-RoPE / TMRoPE), so the rotational mechanism from this thread also underlies the visual / temporal positional encoding for vision and audio (those papers are in the `qwen-papers` thread).
 
 ## See also

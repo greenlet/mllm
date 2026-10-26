@@ -597,7 +597,7 @@ The report gives substantial architectural and post-training information, but om
 
 [Qwen2.5-Coder](coding_2024_qwen2.5-coder.md) and [Qwen2.5-Math](math_2024_qwen2.5-math.md) detail specialist data and training pipelines that feed into this general-family recipe. Their benchmark numbers should not be substituted for those of the general Qwen2.5 checkpoints.
 
-[Qwen2.5-1M](https://arxiv.org/abs/2501.15383) later provides a dedicated long-context report; it is not the source of every 1M-token statement in this earlier report. [Qwen2.5-VL](multimodal_2025_qwen2.5-vl.md) and [Qwen2.5-Omni](https://arxiv.org/abs/2503.20215) add distinct multimodal systems, while the local [Qwen3 recap](backbone_2025_qwen3.md) covers a later family with thinking/non-thinking integration.
+[Qwen2.5-1M](backbone_2025_qwen2.5-1m.md) later provides a dedicated long-context report; it is not the source of every 1M-token statement in this earlier report. [Qwen2.5-VL](multimodal_2025_qwen2.5-vl.md) and [Qwen2.5-Omni](https://arxiv.org/abs/2503.20215) add distinct multimodal systems, while the local [Qwen3 recap](backbone_2025_qwen3.md) covers a later family with thinking/non-thinking integration.
 
 This general Qwen2.5 report does not itself introduce a dedicated switchable thinking mode or a native audio/video architecture. Those later capabilities should not be inferred from its use of GRPO or its role as a foundation for specialist models.
 

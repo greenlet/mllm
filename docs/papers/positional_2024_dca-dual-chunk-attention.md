@@ -84,7 +84,7 @@ Training-free DCA-70B is within 0.1 avg-F1 of Meta's heavily fine-tuned Llama-2-
 - **PPL grows non-linearly past ~96k** (still acceptable up to 192k but trending up).
 - **Chunk-size tuning.** $s$ is per-model / per-target; no universal default beyond the $\tfrac{3}{4}c$ rule of thumb.
 - **No weight adaptation.** Pure inference trick — pretraining knowledge is not extended; optional chat fine-tune helps.
-- **Used in:** Qwen 2.5-1M long-context recipe (combined with YaRN to reach 1M tokens).
+- **Used in:** [Qwen2.5-1M](backbone_2025_qwen2.5-1m.md), which trains to 256K and combines DCA with YaRN attention scaling for approximately 1M-token inference.
 
 ## Links
 - **arXiv:** [abs](https://arxiv.org/abs/2402.17463) · [html v2](https://arxiv.org/html/2402.17463v2) · [pdf](https://arxiv.org/pdf/2402.17463)
