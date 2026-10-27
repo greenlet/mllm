@@ -103,12 +103,12 @@ Qwen uses a **byte‑level BPE** tokenizer ([Sennrich et al.][BPE], [Wang et al.
 - **Audio encoder**: initialized from **[Whisper‑Large‑v3][Whisper]**; 16 kHz log‑mel spectrogram → audio tokens → MLP projector → LLM.
 - **Capabilities**: ASR, speech translation, audio captioning, sound‑event / music analysis, voice‑chat (no separate ASR step).
 
-### 3.4 Qwen2.5‑Omni — Any‑to‑Any
+### 3.4 Qwen2.5‑Omni — Multimodal input, text/speech output
 - **Inputs**: text, image, video (with audio), and raw audio — streamed in real time.
 - **Architecture**: novel **"Thinker–Talker"** design ([Qwen2.5‑Omni Tech Report][Qwen2.5-Omni]).
   - *Thinker*: multimodal Transformer that consumes all modalities and produces text + high‑level semantic states.
-  - *Talker*: autoregressive **neural audio codec** decoder (cf. [Encodec][Encodec], [SoundStream][SoundStream]) that streams speech tokens conditioned on Thinker hidden states.
-  - **TMRoPE** (Time‑aligned Multimodal [RoPE][RoPE]) synchronizes video frames with audio.
+  - *Talker*: dual-track autoregressive Transformer conditioned on Thinker hidden states and sampled text embeddings; it generates speech codes. A separate flow-matching DiT + modified BigVGAN reconstructs the waveform.
+  - **TMRoPE** (Time‑aligned Multimodal [RoPE][RoPE]) aligns audio/video temporal coordinates at 25 position units/second; inputs are interleaved in 2-second bins.
 - **Outputs**: streaming **text + natural speech** simultaneously.
 
 ### 3.5 Specialist lines
@@ -223,7 +223,7 @@ Exploits the *low intrinsic dimensionality* of the adaptation problem ([Aghajany
 ### 6.5 Multimodal fine‑tuning
 - Vision SFT: freeze [ViT][ViT], train projector + LLM (LoRA or full); cf. the [LLaVA][LLaVA] / [LLaVA‑1.5][LLaVA15] recipes adapted to Qwen2‑VL in `ms‑swift` and `LLaMA‑Factory`.
 - Audio SFT: similar, freeze [Whisper][Whisper] encoder, train projector + LLM.
-- Video / Omni: stage‑wise (image → video → audio → joint) following [Qwen2.5‑Omni][Qwen2.5-Omni].
+- [Qwen2.5‑Omni][Qwen2.5-Omni]: frozen-LLM adapter/encoder alignment → joint multimodal pretraining → 32,768-token long-context extension. Post-training combines Thinker SFT with Talker speech continuation, DPO for stability, and speaker-specific adaptation; this is not an image → video → audio curriculum.
 
 ### 6.6 Quantization (post‑/during training)
 - **[GPTQ][GPTQ]**, **[AWQ][AWQ]**, **[SmoothQuant][SmoothQuant]**, **[BitsAndBytes NF4][QLoRA]**, **[GGUF k‑quants][llamacpp]** — official 4/8‑bit GGUF & GPTQ checkpoints are published for most Qwen sizes.
@@ -446,7 +446,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Qwen2.5-Math]: ../papers/math_2024_qwen2.5-math.md "Qwen2.5-Math (2024)"
 [Qwen2.5-VL]: ../papers/multimodal_2025_qwen2.5-vl.md "Qwen2.5-VL (2025)"
 [Qwen2.5-1M]: ../papers/backbone_2025_qwen2.5-1m.md "Qwen2.5-1M (2025)"
-[Qwen2.5-Omni]: https://arxiv.org/abs/2503.20215 "Qwen2.5-Omni (2025)"
+[Qwen2.5-Omni]: ../papers/multimodal_2025_qwen2.5-omni.md "Qwen2.5-Omni (2025)"
 [Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
 [Qwen3-Emb]: https://arxiv.org/abs/2506.05176 "Qwen3-Embedding/Reranker (2025)"
 [QwenAgent]: https://github.com/QwenLM/Qwen-Agent "Qwen-Agent framework"

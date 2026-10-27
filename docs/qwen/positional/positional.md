@@ -17,10 +17,10 @@ How Qwen got from a 2k–8k pre-training window to **1M-token inference contexts
 - **Qwen-7B** introduced **Dynamic NTK** (NTK-aware with $s$ recomputed per forward) to allow zero-shot extension to ~32k beyond the 8k pre-training window.
 - **Qwen2 / Qwen2.5** standardized the recipe **YaRN + DCA** for long-context inference at 128k. The Qwen2.5 tech report cites both explicitly.
 - **[Qwen2.5-1M / Qwen2.5-Turbo](../../papers/backbone_2025_qwen2.5-1m.md)** train progressively up to **262,144 tokens**, adapting the RoPE base through ABF, then extrapolate to approximately **1M tokens** with DCA and the **attention-temperature scaling** component of YaRN. DCA remaps relative positions rather than inherently dropping distant tokens. The report does not disclose a total additional training-token budget or establish a fixed ≈ 1B-token recipe.
-- **Qwen2-VL / Qwen2.5-Omni** generalize RoPE to multimodal axes (M-RoPE / TMRoPE), so the rotational mechanism from this thread also underlies the visual / temporal positional encoding for vision and audio (those papers are in the `qwen-papers` thread).
+- **[Qwen2-VL](../../papers/multimodal_2024_qwen2-vl.md) / [Qwen2.5-Omni](../../papers/multimodal_2025_qwen2.5-omni.md)** generalize RoPE to multimodal axes (M-RoPE / TMRoPE). Omni aligns audio/video time at 25 position units/second and interleaves their representations in 2-second bins; temporal IDs are distinct from raw sequence-token counts.
 
 ## See also
-- `qwen-papers/` thread (when added) — Qwen2-VL's M-RoPE and Qwen2.5-Omni's TMRoPE.
+- [Qwen2-VL recap](../../papers/multimodal_2024_qwen2-vl.md) / [Qwen2.5-Omni recap](../../papers/multimodal_2025_qwen2.5-omni.md) — M-RoPE and time-aligned TMRoPE.
 - `attention/` thread (when added) — GQA / FlashAttention-2 / QK-Norm, which are independent but composable with everything above.
 
 ## Open follow-ups for this thread

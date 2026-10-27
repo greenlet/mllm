@@ -542,7 +542,7 @@ The multimodal checkpoint largely preserves the general model's language capabil
 - **Capabilities are not monotonic in size or uniformly improved.** The paper contains predecessor regressions and smaller-model wins, documented above. Its flagship also trails specialists and proprietary systems on several tasks.
 - **Licenses vary by size.** The released 3B card identifies the Qwen Research license, 7B Apache 2.0, and 72B the Qwen license. “Open release” should not be read as identical permissions for every checkpoint.
 
-[Qwen2-VL](multimodal_2024_qwen2-vl.md) provides the immediate architectural predecessor; [Qwen2.5](backbone_2024_qwen2.5.md) provides the language backbone. [Qwen2.5-Omni](https://arxiv.org/abs/2503.20215) later adds a distinct multimodal speech-oriented system, not an audio capability hidden in this image/video model. The [Qwen3-VL recap](multimodal_2025_qwen3-vl.md) covers later positional and integration changes; those should not be attributed retroactively to Qwen2.5-VL.
+[Qwen2-VL](multimodal_2024_qwen2-vl.md) provides the immediate architectural predecessor; [Qwen2.5](backbone_2024_qwen2.5.md) provides the language backbone. [Qwen2.5-Omni](multimodal_2025_qwen2.5-omni.md) later adds a distinct multimodal speech-oriented system, not an audio capability hidden in this image/video model. The [Qwen3-VL recap](multimodal_2025_qwen3-vl.md) covers later positional and integration changes; those should not be attributed retroactively to Qwen2.5-VL.
 
 ## Links
 

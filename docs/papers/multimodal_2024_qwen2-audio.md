@@ -441,7 +441,7 @@ DPO is intended to improve response quality, not a guarantee of factual correctn
 
 The direct predecessor is [Qwen-Audio](multimodal_2023_qwen-audio.md), and the foundational text model is covered by the [Qwen recap](backbone_2023_qwen.md). [Qwen2](backbone_2024_qwen2.md) is useful family context but should not be substituted for the backbone initialization actually named in this paper.
 
-[Qwen2.5-Omni](https://arxiv.org/abs/2503.20215) later addresses broader multimodal input and output, including speech generation. That is a follow-up direction, not a capability to attribute retroactively to Qwen2-Audio. The separate [Qwen2-VL](multimodal_2024_qwen2-vl.md) branch concerns images and video rather than this audio frontend.
+[Qwen2.5-Omni](multimodal_2025_qwen2.5-omni.md) later addresses broader multimodal input and output, including speech generation. That is a follow-up direction, not a capability to attribute retroactively to Qwen2-Audio. The separate [Qwen2-VL](multimodal_2024_qwen2-vl.md) branch concerns images and video rather than this audio frontend.
 
 ## Links
 
@@ -453,7 +453,7 @@ The direct predecessor is [Qwen-Audio](multimodal_2023_qwen-audio.md), and the f
 - **Talks / videos:** no specific talk used as a source for this recap.
 - **OpenReview / venue page:** not used; this recap follows the arXiv technical report.
 - **Papers-with-Code:** not used; benchmark values are sourced from the paper and official repository.
-- **Related / successor papers:** [Qwen-Audio](multimodal_2023_qwen-audio.md) · [Qwen](backbone_2023_qwen.md) · [Whisper](https://arxiv.org/abs/2212.04356) · [DPO](https://arxiv.org/abs/2305.18290) · [Qwen2](backbone_2024_qwen2.md) · [Qwen2-VL](multimodal_2024_qwen2-vl.md) · [Qwen2.5-Omni](https://arxiv.org/abs/2503.20215)
+- **Related / successor papers:** [Qwen-Audio](multimodal_2023_qwen-audio.md) · [Qwen](backbone_2023_qwen.md) · [Whisper](https://arxiv.org/abs/2212.04356) · [DPO](https://arxiv.org/abs/2305.18290) · [Qwen2](backbone_2024_qwen2.md) · [Qwen2-VL](multimodal_2024_qwen2-vl.md) · [Qwen2.5-Omni](multimodal_2025_qwen2.5-omni.md)
 - **Local context:** [Qwen-family overview](../qwen/overview.md)
 - **BibTeX:**
 

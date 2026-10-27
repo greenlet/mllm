@@ -26,7 +26,7 @@ The pieces of the modern decoder-only Transformer block that **every** Qwen mode
 
 The same attention/norm stack runs inside the multimodal towers:
 - **Qwen2-VL / 2.5-VL** ViT uses RMSNorm + SwiGLU + GQA + FlashAttention-2 (with **2-D RoPE** instead of 1-D).
-- **Qwen2.5-Omni "Thinker"** runs the same block on text + visual + audio tokens; the "Talker" codec decoder reuses the FFN/norm pieces but replaces attention with causal codec attention.
+- **[Qwen2.5-Omni](../../papers/multimodal_2025_qwen2.5-omni.md) "Thinker"** is a causal multimodal text decoder; "Talker" is a separate causal Transformer generating speech codes from Thinker states and sampled text embeddings. Waveform reconstruction belongs to a downstream flow-matching DiT with block-wise lookback/lookahead and a modified BigVGAN, not a replacement of Talker's attention with a codec.
 - **Qwen3-Embedding** is a Qwen3 backbone with last-token pooling — the attention/norm stack is identical to the chat models.
 
 ## See also
