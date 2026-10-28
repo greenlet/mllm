@@ -40,6 +40,8 @@ is the **component inventory** — the pieces those methods plug together.
 
 ## How the pieces bind to the compression design choices
 
+**Version boundary:** the [Qwen3 report recap](../../papers/backbone_2025_qwen3.md) covers the May 2025 hybrid thinking/non-thinking family. The `Qwen3-4B-Instruct-2507` decoder named above is a later release, so its mode behavior and context settings should not be inferred directly from the original report.
+
 - **Encoder init & mask** — the choice of [Qwen3-Embedding][Qwen3Emb] (not a plain
   [Qwen3][Qwen3] LM) and a **causal** rather than bidirectional [prefix-LM][PrefixLM] mask are
   the two encoder-side findings that most move pre-training loss (LCLM §2.3).

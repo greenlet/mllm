@@ -99,7 +99,7 @@ long context ──► [Encoder] ──► [Pool] ──► [Adapter] ──► 
 <!-- Link reference definitions (invisible in rendered output) -->
 
 [paper]: https://arxiv.org/abs/2606.09659 "End-to-End Context Compression at Scale (2026)"
-[Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
+[Qwen3]: ../../papers/backbone_2025_qwen3.md "Qwen3 Technical Report (2025)"
 [Qwen3Emb]: https://arxiv.org/abs/2506.05176 "Qwen3 Embedding (2025)"
 [PrefixTuning]: ../../papers/softtoken_2021_prefix-tuning.md "Prefix-Tuning (Li & Liang 2021)"
 [Gist]: ../../papers/softtoken_2023_gisting.md "Gist Tokens (Mu et al. 2023)"

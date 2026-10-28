@@ -100,4 +100,4 @@ or MLA decoder. This thread exists to place LCLM on that map and flag the compos
 [KimiLinear]: ../../papers/longseq_2025_kimi-linear.md "Kimi Linear (2025)"
 [MLA]: ../../papers/longseq_2024_deepseek-v2-mla.md "DeepSeek-V2 / MLA (Liu et al. 2024)"
 [DSV4]: https://github.com/deepseek-ai "DeepSeek-V4 (2026)"
-[Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
+[Qwen3]: ../../papers/backbone_2025_qwen3.md "Qwen3 Technical Report (2025)"

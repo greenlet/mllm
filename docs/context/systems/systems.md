@@ -90,5 +90,5 @@ library ([HF Transformers][HFTransformers]).
 [HFTransformers]: ../../papers/systems_2019_hf-transformers.md "HuggingFace Transformers (Wolf et al. 2020)"
 [SnapKV]: ../../papers/kvcache_2024_snapkv.md "SnapKV (Li et al. 2024)"
 [KVzip]: ../../papers/kvcache_2025_kvzip.md "KVzip (Kim et al. 2025)"
-[Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
+[Qwen3]: ../../papers/backbone_2025_qwen3.md "Qwen3 Technical Report (2025)"
 [Qwen3Emb]: https://arxiv.org/abs/2506.05176 "Qwen3 Embedding (2025)"

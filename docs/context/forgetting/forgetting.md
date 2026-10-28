@@ -98,4 +98,4 @@ LCLM §3.2's four stages map one-to-one onto known forgetting controls:
 [CatForgetLLM]: ../../papers/forgetting_2023_continual-ft.md "Catastrophic Forgetting during Continual Fine-tuning (Luo et al. 2025)"
 [RevisitCF]: ../../papers/forgetting_2024_revisiting-cf.md "Revisiting Catastrophic Forgetting in LLM Tuning (Li et al. 2024)"
 [LoRA]: ../../papers/peft_2021_lora.md "LoRA (Hu et al. 2021)"
-[Qwen3]: https://arxiv.org/abs/2505.09388 "Qwen3 Technical Report (2025)"
+[Qwen3]: ../../papers/backbone_2025_qwen3.md "Qwen3 Technical Report (2025)"
