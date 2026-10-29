@@ -118,7 +118,7 @@ LCLM §3.2 is a text-encoder VLM alignment schedule; each stage has a vision pre
 [CPVT]: https://arxiv.org/abs/2102.10882 "Conditional Positional Encodings for Vision Transformers (Chu et al. 2021)"
 [Qwen3VL]: https://github.com/QwenLM/Qwen3-VL "Qwen3-VL (2025)"
 [Qwen3]: ../../papers/backbone_2025_qwen3.md "Qwen3 Technical Report (2025)"
-[Qwen3Emb]: https://arxiv.org/abs/2506.05176 "Qwen3 Embedding (2025)"
+[Qwen3Emb]: ../../papers/backbone_2025_qwen3-embedding.md "Qwen3 Embedding (2025)"
 [RoPE]: https://arxiv.org/abs/2104.09864 "RoFormer / RoPE (Su et al. 2021)"
 [YaRN]: https://arxiv.org/abs/2309.00071 "YaRN (Peng et al. 2023)"
 [MRoPE]: ../../papers/multimodal_2024_qwen2-vl.md "Qwen2-VL / M-RoPE (2024)"

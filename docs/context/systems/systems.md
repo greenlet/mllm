@@ -91,4 +91,4 @@ library ([HF Transformers][HFTransformers]).
 [SnapKV]: ../../papers/kvcache_2024_snapkv.md "SnapKV (Li et al. 2024)"
 [KVzip]: ../../papers/kvcache_2025_kvzip.md "KVzip (Kim et al. 2025)"
 [Qwen3]: ../../papers/backbone_2025_qwen3.md "Qwen3 Technical Report (2025)"
-[Qwen3Emb]: https://arxiv.org/abs/2506.05176 "Qwen3 Embedding (2025)"
+[Qwen3Emb]: ../../papers/backbone_2025_qwen3-embedding.md "Qwen3 Embedding (2025)"
