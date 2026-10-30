@@ -182,6 +182,7 @@ Qwen uses a **byte‑level BPE** tokenizer ([Sennrich et al.][BPE], [Wang et al.
 | 2025 | *Qwen2.5‑Omni Technical Report* | [arXiv:2503.20215][Qwen2.5-Omni] |
 | 2025 | *Qwen3 Technical Report* | [arXiv:2505.09388][Qwen3] |
 | 2025 | *Qwen3‑Embedding / Qwen3‑Reranker* | [arXiv:2506.05176][Qwen3-Emb] |
+| 2025 | *Qwen3-VL Technical Report* | [arXiv:2511.21631][Qwen3-VL] |
 
 ---
 
@@ -302,6 +303,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 - [Qwen2.5-Omni Technical Report (2025)][Qwen2.5-Omni]
 - [Qwen3 Technical Report (2025)][Qwen3]
 - [Qwen3-Embedding / Qwen3-Reranker (2025)][Qwen3-Emb]
+- [Qwen3-VL Technical Report (2025)][Qwen3-VL]
 - [Qwen-Agent framework (GitHub)][QwenAgent]
 
 ### Architecture & attention
@@ -449,6 +451,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Qwen2.5-Omni]: ../papers/multimodal_2025_qwen2.5-omni.md "Qwen2.5-Omni (2025)"
 [Qwen3]: ../papers/backbone_2025_qwen3.md "Qwen3 Technical Report (2025)"
 [Qwen3-Emb]: ../papers/backbone_2025_qwen3-embedding.md "Qwen3-Embedding/Reranker (2025)"
+[Qwen3-VL]: ../papers/multimodal_2025_qwen3-vl.md "Qwen3-VL (2025)"
 [QwenAgent]: https://github.com/QwenLM/Qwen-Agent "Qwen-Agent framework"
 [Transformer]: ../papers/attention_2017_transformer.md "Vaswani et al., Attention Is All You Need (2017) — local recap"
 [RoPE]: ../papers/positional_2021_rope-roformer.md "Su et al., RoFormer: Rotary Position Embedding (2021) — local recap"
