@@ -541,7 +541,7 @@ Later mathematical process-reward work, such as [Qwen2.5-Math-PRM](https://arxiv
 - **arXiv:** [abs](https://arxiv.org/abs/2409.12122v1) · [html](https://arxiv.org/html/2409.12122v1) · [pdf](https://arxiv.org/pdf/2409.12122v1).
 - **Code / evaluation:** [Qwen2.5-Math repository](https://github.com/QwenLM/Qwen2.5-Math) · [report's original Qwen2-Math repository URL](https://github.com/QwenLM/Qwen2-Math) · [evaluation runner](https://github.com/QwenLM/Qwen2.5-Math/blob/main/evaluation/math_eval.py) · [greedy evaluation script](https://github.com/QwenLM/Qwen2.5-Math/blob/main/evaluation/sh/eval.sh).
 - **Training infrastructure:** [ChatLearn](https://github.com/alibaba/ChatLearn).
-- **Tool demo:** [Qwen-Agent](https://github.com/QwenLM/Qwen-Agent).
+- **Tool demo:** [Qwen-Agent](https://github.com/QwenLM/Qwen-Agent) ([framework review](agentic_2023_qwen-agent.md)).
 - **Hugging Face:** [1.5B Instruct](https://huggingface.co/Qwen/Qwen2.5-Math-1.5B-Instruct) · [7B Instruct](https://huggingface.co/Qwen/Qwen2.5-Math-7B-Instruct) · [72B Base](https://huggingface.co/Qwen/Qwen2.5-Math-72B) · [72B Instruct](https://huggingface.co/Qwen/Qwen2.5-Math-72B-Instruct) · [72B outcome reward model](https://huggingface.co/Qwen/Qwen2.5-Math-RM-72B).
 - **Configuration sources:** [1.5B](https://huggingface.co/Qwen/Qwen2.5-Math-1.5B-Instruct/blob/main/config.json) · [7B](https://huggingface.co/Qwen/Qwen2.5-Math-7B-Instruct/blob/main/config.json) · [72B](https://huggingface.co/Qwen/Qwen2.5-Math-72B-Instruct/blob/main/config.json).
 - **RM implementation:** [two-layer scalar head and sequence pooling](https://huggingface.co/Qwen/Qwen2.5-Math-RM-72B/blob/main/modeling_qwen2_rm.py).

@@ -304,7 +304,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 - [Qwen3 Technical Report (2025)][Qwen3]
 - [Qwen3-Embedding / Qwen3-Reranker (2025)][Qwen3-Emb]
 - [Qwen3-VL Technical Report (2025)][Qwen3-VL]
-- [Qwen-Agent framework (GitHub)][QwenAgent]
+- [Qwen-Agent framework (source review)][QwenAgent]
 
 ### Architecture & attention
 
@@ -452,7 +452,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Qwen3]: ../papers/backbone_2025_qwen3.md "Qwen3 Technical Report (2025)"
 [Qwen3-Emb]: ../papers/backbone_2025_qwen3-embedding.md "Qwen3-Embedding/Reranker (2025)"
 [Qwen3-VL]: ../papers/multimodal_2025_qwen3-vl.md "Qwen3-VL (2025)"
-[QwenAgent]: https://github.com/QwenLM/Qwen-Agent "Qwen-Agent framework"
+[QwenAgent]: ../papers/agentic_2023_qwen-agent.md "Qwen-Agent framework"
 [Transformer]: ../papers/attention_2017_transformer.md "Vaswani et al., Attention Is All You Need (2017) — local recap"
 [RoPE]: ../papers/positional_2021_rope-roformer.md "Su et al., RoFormer: Rotary Position Embedding (2021) — local recap"
 [NTK]: ../papers/positional_2023_ntk-aware-rope.md "NTK-aware RoPE scaling (bloc97, 2023) — local recap"

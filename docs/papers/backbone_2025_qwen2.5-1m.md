@@ -597,7 +597,7 @@ The direct predecessor is [Qwen2.5](backbone_2024_qwen2.5.md). The reusable meth
 - **Talks / videos:** no specific presentation is identified in the report.
 - **OpenReview / venue page:** not specified; this recap uses the arXiv technical report.
 - **Papers-with-Code:** not used as a primary source.
-- **Method sources:** [MInference](https://arxiv.org/abs/2407.02490) · [ABF / effective long-context scaling](https://arxiv.org/abs/2309.16039) · [DPO](https://arxiv.org/abs/2305.18290) · [Qwen-Agent](https://github.com/QwenLM/Qwen-Agent).
+- **Method sources:** [MInference](https://arxiv.org/abs/2407.02490) · [ABF / effective long-context scaling](https://arxiv.org/abs/2309.16039) · [DPO](https://arxiv.org/abs/2305.18290) · [Qwen-Agent](https://github.com/QwenLM/Qwen-Agent) ([framework review](agentic_2023_qwen-agent.md)).
 - **Related local recaps:** [Qwen2.5](backbone_2024_qwen2.5.md) · [RoPE](positional_2021_rope-roformer.md) · [YaRN](positional_2023_yarn-context-extension.md) · [DCA](positional_2024_dca-dual-chunk-attention.md) · [Qwen3](backbone_2025_qwen3.md).
 - **Family / context hubs:** [Qwen overview](../qwen/overview.md) · [Positional encoding](../qwen/positional/positional.md) · [Attention](../qwen/attention/attention.md).
 - **BibTeX:** abbreviated author list; the paper notes that authors are ordered alphabetically by surname.
