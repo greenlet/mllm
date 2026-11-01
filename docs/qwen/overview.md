@@ -464,7 +464,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [FlashAttn]: ../papers/attention_2023_flash-attention-2.md "Dao, FlashAttention-2 (2023) — local recap"
 [TiedEmb]: ../papers/attention_2016_tied-embeddings.md "Press & Wolf, Using the Output Embedding to Improve LMs (2016) — local recap"
 [DCA]: ../papers/positional_2024_dca-dual-chunk-attention.md "An et al., Training-Free Long-Context Scaling via Dual Chunk Attention (2024) — local recap"
-[BPE]: https://arxiv.org/abs/1508.07909 "Sennrich et al., Neural MT of Rare Words with Subword Units (BPE, 2015)"
+[BPE]: ../papers/tokenization_2015_bpe-subword-units.md "Sennrich et al., Neural MT of Rare Words with Subword Units (BPE, 2015)"
 [ByteBPE]: https://arxiv.org/abs/1909.03341 "Wang et al., Neural MT with Byte-Level Subwords (2019)"
 [tiktoken]: https://github.com/openai/tiktoken "OpenAI tiktoken BPE library"
 [FIM]: https://arxiv.org/abs/2207.14255 "Bavarian et al., Efficient Training of LMs to Fill in the Middle (2022)"
