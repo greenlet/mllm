@@ -818,4 +818,4 @@ subword sequences but is not the architecture used in these experiments.
 [sentencepiece]: https://arxiv.org/abs/1808.06226
 [unigram]: https://arxiv.org/abs/1804.10959
 [bpe-dropout]: https://arxiv.org/abs/1910.13267
-[byte-subwords]: https://arxiv.org/abs/1909.03341
+[byte-subwords]: tokenization_2019_byte-level-subwords.md
