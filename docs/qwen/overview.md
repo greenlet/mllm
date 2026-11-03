@@ -466,7 +466,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [DCA]: ../papers/positional_2024_dca-dual-chunk-attention.md "An et al., Training-Free Long-Context Scaling via Dual Chunk Attention (2024) — local recap"
 [BPE]: ../papers/tokenization_2015_bpe-subword-units.md "Sennrich et al., Neural MT of Rare Words with Subword Units (BPE, 2015)"
 [ByteBPE]: ../papers/tokenization_2019_byte-level-subwords.md "Wang et al., Neural MT with Byte-Level Subwords (2019)"
-[tiktoken]: https://github.com/openai/tiktoken "OpenAI tiktoken BPE library"
+[tiktoken]: ../papers/tokenization_2022_tiktoken.md "OpenAI tiktoken BPE library"
 [FIM]: https://arxiv.org/abs/2207.14255 "Bavarian et al., Efficient Training of LMs to Fill in the Middle (2022)"
 [MoE]: ../papers/moe_2017_sparsely-gated-moe.md "Shazeer et al., Outrageously Large Neural Networks: Sparsely-Gated MoE (2017)"
 [GShard]: ../papers/moe_2020_gshard.md "Lepikhin et al., GShard (2020)"

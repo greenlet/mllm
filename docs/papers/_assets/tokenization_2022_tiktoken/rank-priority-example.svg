@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="520" viewBox="0 0 1100 520" role="img" aria-labelledby="title description">
+  <title id="title">Rank-based BPE is not longest-prefix matching</title>
+  <desc id="description">An authored example with byte ranks and three merges: bc at rank 256, ab at 257, and bcd at 258. Encoding abcd gives a plus bcd, not ab plus c plus d.</desc>
+  <rect width="1100" height="520" fill="#ffffff"/>
+  <g font-family="Arial, sans-serif" fill="#172b4d">
+    <text x="40" y="45" font-size="26" font-weight="bold">Rank-based BPE is not longest-prefix matching</text>
+    <text x="40" y="78" font-size="17">Toy vocabulary: all 256 bytes, bc = 256, ab = 257, bcd = 258; abcd is absent.</text>
+    <text x="40" y="109" font-size="17">Input is one regex piece: abcd. Smaller rank means earlier merge priority.</text>
+    <rect x="35" y="135" width="500" height="310" rx="10" fill="#eef5ff" stroke="#597da5"/>
+    <rect x="565" y="135" width="500" height="310" rx="10" fill="#fff5e8" stroke="#b58a55"/>
+    <text x="60" y="172" font-size="22" font-weight="bold">tiktoken-style BPE</text>
+    <text x="590" y="172" font-size="22" font-weight="bold">Longest-prefix shortcut</text>
+    <g font-family="Consolas, monospace" font-size="24">
+      <text x="65" y="217">[a] [b] [c] [d]</text>
+      <text x="595" y="217">[a] [b] [c] [d]</text>
+      <text x="65" y="299">[a] [bc] [d]</text>
+      <text x="595" y="299">[ab] [c] [d]</text>
+      <text x="65" y="382">[a] [bcd]</text>
+    </g>
+    <text x="65" y="253" font-size="17">Merge bc first: 256 is smaller than 257.</text>
+    <text x="595" y="253" font-size="17">Choose ab as the longest token at the start.</text>
+    <text x="65" y="338" font-size="17">Then merge bc + d using rank 258.</text>
+    <text x="595" y="338" font-size="17">This changes the learned segmentation.</text>
+    <text x="65" y="417" font-size="19" font-weight="bold">Result IDs: [97, 258]</text>
+    <text x="595" y="417" font-size="19" font-weight="bold">Different IDs: [257, 99, 100]</text>
+    <text x="40" y="480" font-size="17">Both outputs preserve the bytes, but only the left follows these BPE merge priorities.</text>
+    <text x="40" y="507" font-size="15">Authored illustration of the pinned implementation; not an official encoding or benchmark.</text>
+  </g>
+</svg>
