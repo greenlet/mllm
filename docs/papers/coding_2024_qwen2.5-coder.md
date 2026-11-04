@@ -579,7 +579,7 @@ Section 8's Figure 14 compares model sizes using Base **MBPP 3-shot** and Instru
 - **Talks / videos:** no specific presentation is cited in the report.
 - **OpenReview / venue page:** not specified; this recap uses the arXiv technical report.
 - **Papers-with-Code:** not used as a primary source.
-- **Method references:** [FIM: Efficient Training of Language Models to Fill in the Middle](https://arxiv.org/abs/2207.14255) · [DPO](https://arxiv.org/abs/2305.18290) · [StarCoder2](https://arxiv.org/abs/2402.19173) · [CRUXEval task definitions](https://crux-eval.github.io/).
+- **Method references:** [FIM: Efficient Training of Language Models to Fill in the Middle](tokenization_2022_fill-in-the-middle.md) · [DPO](https://arxiv.org/abs/2305.18290) · [StarCoder2](https://arxiv.org/abs/2402.19173) · [CRUXEval task definitions](https://crux-eval.github.io/).
 - **Related local recaps:** [Qwen2](backbone_2024_qwen2.md) · [Qwen2.5](backbone_2024_qwen2.5.md) · [GQA](attention_2023_gqa.md) · [RMSNorm](attention_2019_rmsnorm.md) · [SwiGLU](attention_2020_swiglu.md) · [RoPE](positional_2021_rope-roformer.md) · [YaRN](positional_2023_yarn-context-extension.md).
 - **Family hub:** [Qwen overview](../qwen/overview.md).
 - **BibTeX:** the author list below is deliberately abbreviated; `others` denotes omitted coauthors.

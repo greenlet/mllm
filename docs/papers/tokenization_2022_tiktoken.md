@@ -826,5 +826,5 @@ The following is an authored software citation, not a supplied paper BibTeX:
 [original-bpe]: tokenization_2015_bpe-subword-units.md
 [byte-bpe]: tokenization_2019_byte-level-subwords.md
 [gpt2-report]: https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf
-[fim-paper]: https://arxiv.org/abs/2207.14255
+[fim-paper]: tokenization_2022_fill-in-the-middle.md
 [sentencepiece]: https://github.com/google/sentencepiece
