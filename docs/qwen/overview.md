@@ -473,7 +473,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Switch]: ../papers/moe_2021_switch-transformer.md "Fedus et al., Switch Transformer (2021)"
 [DeepSeekMoE]: ../papers/moe_2024_deepseek-moe.md "Dai et al., DeepSeek-MoE (2024)"
 [ViT]: https://arxiv.org/abs/2010.11929 "Dosovitskiy et al., An Image Is Worth 16x16 Words (ViT, 2020)"
-[Swin]: https://arxiv.org/abs/2103.14030 "Liu et al., Swin Transformer (2021)"
+[Swin]: ../papers/multimodal_2021_swin-transformer.md "Liu et al., Swin Transformer (2021)"
 [PixelShuffle]: https://arxiv.org/abs/1609.05158 "Shi et al., Sub-Pixel CNN (PixelShuffle, 2016)"
 [LLaVA]: https://arxiv.org/abs/2304.08485 "Liu et al., Visual Instruction Tuning (LLaVA, 2023)"
 [LLaVA15]: https://arxiv.org/abs/2310.03744 "Liu et al., Improved Baselines with Visual Instruction Tuning (LLaVA-1.5, 2023)"
