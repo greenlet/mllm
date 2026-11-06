@@ -472,7 +472,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [GShard]: ../papers/moe_2020_gshard.md "Lepikhin et al., GShard (2020)"
 [Switch]: ../papers/moe_2021_switch-transformer.md "Fedus et al., Switch Transformer (2021)"
 [DeepSeekMoE]: ../papers/moe_2024_deepseek-moe.md "Dai et al., DeepSeek-MoE (2024)"
-[ViT]: https://arxiv.org/abs/2010.11929 "Dosovitskiy et al., An Image Is Worth 16x16 Words (ViT, 2020)"
+[ViT]: ../papers/multimodal_2020_vit.md "Dosovitskiy et al., An Image Is Worth 16x16 Words (ViT, 2020)"
 [Swin]: ../papers/multimodal_2021_swin-transformer.md "Liu et al., Swin Transformer (2021)"
 [PixelShuffle]: https://arxiv.org/abs/1609.05158 "Shi et al., Sub-Pixel CNN (PixelShuffle, 2016)"
 [LLaVA]: https://arxiv.org/abs/2304.08485 "Liu et al., Visual Instruction Tuning (LLaVA, 2023)"
