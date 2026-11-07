@@ -474,7 +474,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [DeepSeekMoE]: ../papers/moe_2024_deepseek-moe.md "Dai et al., DeepSeek-MoE (2024)"
 [ViT]: ../papers/multimodal_2020_vit.md "Dosovitskiy et al., An Image Is Worth 16x16 Words (ViT, 2020)"
 [Swin]: ../papers/multimodal_2021_swin-transformer.md "Liu et al., Swin Transformer (2021)"
-[PixelShuffle]: https://arxiv.org/abs/1609.05158 "Shi et al., Sub-Pixel CNN (PixelShuffle, 2016)"
+[PixelShuffle]: ../papers/multimodal_2016_sub-pixel-cnn.md "Shi et al., Sub-Pixel CNN (PixelShuffle, 2016)"
 [LLaVA]: https://arxiv.org/abs/2304.08485 "Liu et al., Visual Instruction Tuning (LLaVA, 2023)"
 [LLaVA15]: https://arxiv.org/abs/2310.03744 "Liu et al., Improved Baselines with Visual Instruction Tuning (LLaVA-1.5, 2023)"
 [MRoPE]: ../papers/multimodal_2024_qwen2-vl.md "M-RoPE — introduced in Qwen2-VL (2024)"
