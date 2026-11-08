@@ -104,4 +104,4 @@ is the **component inventory** — the pieces those methods plug together.
 [GELU]: https://arxiv.org/abs/1606.08415 "GELU (Hendrycks & Gimpel 2016)"
 [FlashAttn]: https://arxiv.org/abs/2307.08691 "FlashAttention-2 (Dao 2023)"
 [FlexAttn]: https://arxiv.org/abs/2412.05496 "FlexAttention (Dong et al. 2024)"
-[LLaVA]: https://arxiv.org/abs/2304.08485 "LLaVA (Liu et al. 2023)"
+[LLaVA]: ../../papers/multimodal_2023_llava.md "LLaVA (Liu et al. 2023)"

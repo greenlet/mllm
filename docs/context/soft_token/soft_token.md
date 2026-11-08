@@ -119,7 +119,7 @@ long context ──► [Encoder] ──► [Pool] ──► [Adapter] ──► 
 [KVCache]: ../../papers/kvcache_2024_kvquant.md "KVQuant (Hooper et al. 2024)"
 [vLLM]: ../../papers/systems_2023_pagedattention-vllm.md "PagedAttention / vLLM (Kwon et al. 2023)"
 [SGLang]: ../../papers/systems_2023_sglang.md "SGLang (Zheng et al. 2024)"
-[LLaVA]: https://arxiv.org/abs/2304.08485 "LLaVA (Liu et al. 2023)"
+[LLaVA]: ../../papers/multimodal_2023_llava.md "LLaVA (Liu et al. 2023)"
 [Cambrian]: https://arxiv.org/abs/2406.16860 "Cambrian-1 (Tong et al. 2024)"
 [RMSNorm]: https://arxiv.org/abs/1910.07467 "RMSNorm (Zhang & Sennrich 2019)"
 [RULER]: ../../papers/benchmark_2024_ruler.md "RULER (Hsieh et al. 2024)"

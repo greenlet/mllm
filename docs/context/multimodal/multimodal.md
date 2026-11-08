@@ -112,7 +112,7 @@ LCLM §3.2 is a text-encoder VLM alignment schedule; each stage has a vision pre
 <!-- Link reference definitions (invisible in rendered output) -->
 
 [paper]: https://arxiv.org/abs/2606.09659 "End-to-End Context Compression at Scale (2026)"
-[LLaVA]: https://arxiv.org/abs/2304.08485 "LLaVA — Visual Instruction Tuning (Liu et al. 2023)"
+[LLaVA]: ../../papers/multimodal_2023_llava.md "LLaVA — Visual Instruction Tuning (Liu et al. 2023)"
 [Cambrian]: https://arxiv.org/abs/2406.16860 "Cambrian-1 (Tong et al. 2024)"
 [ViT]: ../../papers/multimodal_2020_vit.md "An Image Is Worth 16×16 Words — ViT (Dosovitskiy et al. 2020)"
 [CPVT]: https://arxiv.org/abs/2102.10882 "Conditional Positional Encodings for Vision Transformers (Chu et al. 2021)"
