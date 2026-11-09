@@ -476,7 +476,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Swin]: ../papers/multimodal_2021_swin-transformer.md "Liu et al., Swin Transformer (2021)"
 [PixelShuffle]: ../papers/multimodal_2016_sub-pixel-cnn.md "Shi et al., Sub-Pixel CNN (PixelShuffle, 2016)"
 [LLaVA]: ../papers/multimodal_2023_llava.md "Liu et al., Visual Instruction Tuning (LLaVA, 2023)"
-[LLaVA15]: https://arxiv.org/abs/2310.03744 "Liu et al., Improved Baselines with Visual Instruction Tuning (LLaVA-1.5, 2023)"
+[LLaVA15]: ../papers/multimodal_2023_llava-1.5.md "Liu et al., Improved Baselines with Visual Instruction Tuning (LLaVA-1.5, 2023)"
 [MRoPE]: ../papers/multimodal_2024_qwen2-vl.md "M-RoPE — introduced in Qwen2-VL (2024)"
 [Whisper]: https://arxiv.org/abs/2212.04356 "Radford et al., Robust Speech Recognition via Large-Scale Weak Supervision (Whisper, 2022)"
 [Encodec]: https://arxiv.org/abs/2210.13438 "Défossez et al., High Fidelity Neural Audio Compression (Encodec, 2022)"
