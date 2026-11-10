@@ -382,7 +382,7 @@ The model's own output modality is text. Word-level grounding can supply locatio
 - **Some labels require especially careful interpretation.** Emotion and speaker-attribute datasets encode particular annotation conventions. Aggregate accuracy does not establish reliable inference about a person's internal state or personal characteristics from arbitrary audio.
 - **There is no native audio generation.** The model generates text about audio and can support tool-mediated workflows. It is not an any-to-any speech model, an audio codec generator, or evidence of direct waveform editing.
 
-The predecessor most directly reused is [Whisper](https://arxiv.org/abs/2212.04356); [Qwen](backbone_2023_qwen.md) supplies the language decoder. [Qwen-VL](multimodal_2023_qwen-vl.md) is a useful sibling comparison for modality-specific encoding and staged adaptation, but its query adapter and three-stage recipe are not part of Qwen-Audio.
+The predecessor most directly reused is [Whisper](multimodal_2022_whisper.md); [Qwen](backbone_2023_qwen.md) supplies the language decoder. [Qwen-VL](multimodal_2023_qwen-vl.md) is a useful sibling comparison for modality-specific encoding and staged adaptation, but its query adapter and three-stage recipe are not part of Qwen-Audio.
 
 [Qwen2-Audio](multimodal_2024_qwen2-audio.md) is the direct audio-language successor. [Qwen2.5-Omni](multimodal_2025_qwen2.5-omni.md) subsequently addresses a broader multimodal input/output setting; those later capabilities should not be attributed retrospectively to this 2023 system.
 
@@ -398,7 +398,7 @@ The predecessor most directly reused is [Whisper](https://arxiv.org/abs/2212.043
 - **Talks / videos:** Not used as a source for this recap.
 - **OpenReview / venue page:** Not used as a source for this recap.
 - **Papers-with-Code:** [linked recognition benchmark entry](https://paperswithcode.com/sota/speech-recognition-on-aishell-1?p=qwen-audio-advancing-universal-audio); not used for the numerical tables above.
-- **Related / successor papers:** [Qwen backbone](backbone_2023_qwen.md) · [Qwen-VL](multimodal_2023_qwen-vl.md) · [Whisper](https://arxiv.org/abs/2212.04356) · [Qwen2-Audio](multimodal_2024_qwen2-audio.md) · [Qwen2.5-Omni](multimodal_2025_qwen2.5-omni.md)
+- **Related / successor papers:** [Qwen backbone](backbone_2023_qwen.md) · [Qwen-VL](multimodal_2023_qwen-vl.md) · [Whisper](multimodal_2022_whisper.md) · [Qwen2-Audio](multimodal_2024_qwen2-audio.md) · [Qwen2.5-Omni](multimodal_2025_qwen2.5-omni.md)
 - **Context:** [Qwen family overview](../qwen/overview.md)
 - **BibTeX:**
 

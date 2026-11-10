@@ -453,7 +453,7 @@ The direct predecessor is [Qwen-Audio](multimodal_2023_qwen-audio.md), and the f
 - **Talks / videos:** no specific talk used as a source for this recap.
 - **OpenReview / venue page:** not used; this recap follows the arXiv technical report.
 - **Papers-with-Code:** not used; benchmark values are sourced from the paper and official repository.
-- **Related / successor papers:** [Qwen-Audio](multimodal_2023_qwen-audio.md) · [Qwen](backbone_2023_qwen.md) · [Whisper](https://arxiv.org/abs/2212.04356) · [DPO](https://arxiv.org/abs/2305.18290) · [Qwen2](backbone_2024_qwen2.md) · [Qwen2-VL](multimodal_2024_qwen2-vl.md) · [Qwen2.5-Omni](multimodal_2025_qwen2.5-omni.md)
+- **Related / successor papers:** [Qwen-Audio](multimodal_2023_qwen-audio.md) · [Qwen](backbone_2023_qwen.md) · [Whisper](multimodal_2022_whisper.md) · [DPO](https://arxiv.org/abs/2305.18290) · [Qwen2](backbone_2024_qwen2.md) · [Qwen2-VL](multimodal_2024_qwen2-vl.md) · [Qwen2.5-Omni](multimodal_2025_qwen2.5-omni.md)
 - **Local context:** [Qwen-family overview](../qwen/overview.md)
 - **BibTeX:**
 

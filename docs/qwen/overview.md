@@ -478,7 +478,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [LLaVA]: ../papers/multimodal_2023_llava.md "Liu et al., Visual Instruction Tuning (LLaVA, 2023)"
 [LLaVA15]: ../papers/multimodal_2023_llava-1.5.md "Liu et al., Improved Baselines with Visual Instruction Tuning (LLaVA-1.5, 2023)"
 [MRoPE]: ../papers/multimodal_2024_qwen2-vl.md "M-RoPE — introduced in Qwen2-VL (2024)"
-[Whisper]: https://arxiv.org/abs/2212.04356 "Radford et al., Robust Speech Recognition via Large-Scale Weak Supervision (Whisper, 2022)"
+[Whisper]: ../papers/multimodal_2022_whisper.md "Radford et al., Robust Speech Recognition via Large-Scale Weak Supervision (Whisper, 2022)"
 [Encodec]: https://arxiv.org/abs/2210.13438 "Défossez et al., High Fidelity Neural Audio Compression (Encodec, 2022)"
 [SoundStream]: https://arxiv.org/abs/2107.03312 "Zeghidour et al., SoundStream (2021)"
 [CoT]: https://arxiv.org/abs/2201.11903 "Wei et al., Chain-of-Thought Prompting (2022)"
