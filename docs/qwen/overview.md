@@ -480,7 +480,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [MRoPE]: ../papers/multimodal_2024_qwen2-vl.md "M-RoPE — introduced in Qwen2-VL (2024)"
 [Whisper]: ../papers/multimodal_2022_whisper.md "Radford et al., Robust Speech Recognition via Large-Scale Weak Supervision (Whisper, 2022)"
 [Encodec]: ../papers/multimodal_2022_encodec.md "Défossez et al., High Fidelity Neural Audio Compression (Encodec, 2022)"
-[SoundStream]: https://arxiv.org/abs/2107.03312 "Zeghidour et al., SoundStream (2021)"
+[SoundStream]: ../papers/multimodal_2021_soundstream.md "Zeghidour et al., SoundStream (2021)"
 [CoT]: https://arxiv.org/abs/2201.11903 "Wei et al., Chain-of-Thought Prompting (2022)"
 [SelfConsistency]: https://arxiv.org/abs/2203.11171 "Wang et al., Self-Consistency Improves CoT (2022)"
 [RLHF]: https://arxiv.org/abs/2203.02155 "Ouyang et al., InstructGPT / RLHF (2022)"

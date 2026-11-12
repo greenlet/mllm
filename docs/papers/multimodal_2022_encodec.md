@@ -33,7 +33,7 @@ Traditional codecs such as Opus and EVS are strong at moderate rates but lose co
 3. **Stable perceptual training.** Waveform, spectral, adversarial, and feature-matching losses have different units and gradient scales. Ordinary scalar weighting can become brittle as a discriminator changes.
 4. **Practical latency and computation.** A low nominal bitrate is not enough if one must wait for future audio or perform expensive autoregressive computation before transmitting it.
 
-The closest predecessor is [SoundStream](https://arxiv.org/abs/2107.03312), which already combines a neural encoder-decoder, residual vector quantization, variable-rate training, and adversarial losses. EnCodec is an improvement to this family, not the invention of residual quantization or of neural audio compression. The paper's additions concern the architecture/training combination, the discriminator, explicit gradient balancing, and optional entropy coding.
+The closest predecessor is [SoundStream](multimodal_2021_soundstream.md), which already combines a neural encoder-decoder, residual vector quantization, variable-rate training, and adversarial losses. EnCodec is an improvement to this family, not the invention of residual quantization or of neural audio compression. The paper's additions concern the architecture/training combination, the discriminator, explicit gradient balancing, and optional entropy coding.
 
 ## Key idea
 
@@ -767,7 +767,7 @@ Appendix A.4 motivates accessibility under poor connectivity and reduced storage
 
 ### Position in the audio-modeling lineage
 
-[SoundStream](https://arxiv.org/abs/2107.03312) is the immediate codec predecessor and the most useful comparison for understanding what EnCodec changes. [AudioLM](https://arxiv.org/abs/2209.03143) provides contemporaneous context for modeling audio token sequences, whereas [MusicGen](https://arxiv.org/abs/2306.05284) later uses EnCodec representations in conditional music generation. Those generative systems add sequence models and objectives beyond reconstructive codec training.
+[SoundStream](multimodal_2021_soundstream.md) is the immediate codec predecessor and the most useful comparison for understanding what EnCodec changes. [AudioLM](https://arxiv.org/abs/2209.03143) provides contemporaneous context for modeling audio token sequences, whereas [MusicGen](https://arxiv.org/abs/2306.05284) later uses EnCodec representations in conditional music generation. Those generative systems add sequence models and objectives beyond reconstructive codec training.
 
 For contrast, [Whisper](multimodal_2022_whisper.md) maps audio into text tokens rather than a code stream designed for waveform reconstruction. The [Qwen-Audio](multimodal_2023_qwen-audio.md) and [Qwen2-Audio](multimodal_2024_qwen2-audio.md) recaps cover audio understanding/instruction-following systems, not interchangeable alternatives to an audio compression codec.
 
@@ -783,7 +783,7 @@ For contrast, [Whisper](multimodal_2022_whisper.md) maps audio into text tokens 
 - **Talks / videos:** [official demonstration video](https://ai.honu.io/papers/encodec/final.mp4).
 - **OpenReview / venue page:** [TMLR record](https://openreview.net/forum?id=ivCd8z8zR2); access to the page/PDF was restricted during source verification.
 - **Papers-with-Code:** [paper record](https://paperswithcode.com/paper/high-fidelity-neural-audio-compression); not used for result values.
-- **Related / successor papers:** [SoundStream](https://arxiv.org/abs/2107.03312) · [AudioLM](https://arxiv.org/abs/2209.03143) · [MusicGen](https://arxiv.org/abs/2306.05284) · [Whisper recap](multimodal_2022_whisper.md) · [Qwen-Audio recap](multimodal_2023_qwen-audio.md) · [Qwen2-Audio recap](multimodal_2024_qwen2-audio.md).
+- **Related / successor papers:** [SoundStream](multimodal_2021_soundstream.md) · [AudioLM](https://arxiv.org/abs/2209.03143) · [MusicGen](https://arxiv.org/abs/2306.05284) · [Whisper recap](multimodal_2022_whisper.md) · [Qwen-Audio recap](multimodal_2023_qwen-audio.md) · [Qwen2-Audio recap](multimodal_2024_qwen2-audio.md).
 
 ```bibtex
 @article{defossez2022high,
