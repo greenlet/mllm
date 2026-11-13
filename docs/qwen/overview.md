@@ -481,7 +481,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [Whisper]: ../papers/multimodal_2022_whisper.md "Radford et al., Robust Speech Recognition via Large-Scale Weak Supervision (Whisper, 2022)"
 [Encodec]: ../papers/multimodal_2022_encodec.md "Défossez et al., High Fidelity Neural Audio Compression (Encodec, 2022)"
 [SoundStream]: ../papers/multimodal_2021_soundstream.md "Zeghidour et al., SoundStream (2021)"
-[CoT]: https://arxiv.org/abs/2201.11903 "Wei et al., Chain-of-Thought Prompting (2022)"
+[CoT]: ../papers/reasoning_2022_chain-of-thought.md "Wei et al., Chain-of-Thought Prompting (2022)"
 [SelfConsistency]: https://arxiv.org/abs/2203.11171 "Wang et al., Self-Consistency Improves CoT (2022)"
 [RLHF]: https://arxiv.org/abs/2203.02155 "Ouyang et al., InstructGPT / RLHF (2022)"
 [PPO]: https://arxiv.org/abs/1707.06347 "Schulman et al., PPO (2017)"
