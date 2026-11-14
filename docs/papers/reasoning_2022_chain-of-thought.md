@@ -495,7 +495,7 @@ Closed model checkpoints, inferred API size labels, missing low-level serving/pa
 
 ### What changed in subsequent methods
 
-- **[Self-consistency](https://arxiv.org/abs/2203.11171):** generates multiple reasoning paths and aggregates their final answers, replacing the original single greedy continuation. It changes the decoding and compute budget, not the basic need for a task-conditioned solution format.
+- **[Self-consistency](reasoning_2022_self-consistency.md):** generates multiple reasoning paths and aggregates their final answers, replacing the original single greedy continuation. It changes the decoding and compute budget, not the basic need for a task-conditioned solution format.
 - **[Zero-shot chain of thought](https://arxiv.org/abs/2205.11916):** elicits intermediate reasoning with an instruction such as "Let's think step by step" rather than supplying worked demonstrations. It should not be treated as the exact prompt tested in this paper.
 - **[Least-to-most prompting](https://arxiv.org/abs/2205.10625):** explicitly decomposes a problem and solves subproblems sequentially, targeting compositional generalization beyond a single demonstration-matching chain.
 - **[STaR](https://arxiv.org/abs/2203.14465):** bootstraps rationales and fine-tunes a model on selected generated solutions. This moves from frozen-model prompting into a training procedure, which the original CoT experiments deliberately avoid.
@@ -510,7 +510,7 @@ These are related directions, not components silently included in the results ab
 - **Project page / blog / talks:** No separate original project page, implementation blog, or official talk verified for this recap.
 - **OpenReview / venue:** [NeurIPS 2022 proceedings entry](https://proceedings.neurips.cc/paper_files/paper/2022/hash/9d5609613524ecf4f15af0f7b31abca4-Abstract-Conference.html) / [proceedings PDF](https://proceedings.neurips.cc/paper_files/paper/2022/file/9d5609613524ecf4f15af0f7b31abca4-Paper-Conference.pdf).
 - **Papers with Code:** No separate record verified; primary paper and venue sources are used above.
-- **Related / successor papers:** [Self-consistency](https://arxiv.org/abs/2203.11171), [zero-shot CoT](https://arxiv.org/abs/2205.11916), [least-to-most prompting](https://arxiv.org/abs/2205.10625), [STaR](https://arxiv.org/abs/2203.14465).
+- **Related / successor papers:** [Self-consistency](reasoning_2022_self-consistency.md), [zero-shot CoT](https://arxiv.org/abs/2205.11916), [least-to-most prompting](https://arxiv.org/abs/2205.10625), [STaR](https://arxiv.org/abs/2203.14465).
 - **BibTeX:**
 
 ```bibtex
