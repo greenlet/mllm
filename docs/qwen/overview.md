@@ -483,7 +483,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [SoundStream]: ../papers/multimodal_2021_soundstream.md "Zeghidour et al., SoundStream (2021)"
 [CoT]: ../papers/reasoning_2022_chain-of-thought.md "Wei et al., Chain-of-Thought Prompting (2022)"
 [SelfConsistency]: ../papers/reasoning_2022_self-consistency.md "Wang et al., Self-Consistency Improves CoT (2022)"
-[RLHF]: https://arxiv.org/abs/2203.02155 "Ouyang et al., InstructGPT / RLHF (2022)"
+[RLHF]: ../papers/alignment-rl_2022_instructgpt-rlhf.md "Ouyang et al., InstructGPT / RLHF (2022)"
 [PPO]: https://arxiv.org/abs/1707.06347 "Schulman et al., PPO (2017)"
 [DPO]: https://arxiv.org/abs/2305.18290 "Rafailov et al., Direct Preference Optimization (2023)"
 [KTO]: https://arxiv.org/abs/2402.01306 "Ethayarajh et al., Kahneman-Tversky Optimization (2024)"
