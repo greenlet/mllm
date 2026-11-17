@@ -324,7 +324,7 @@ Section 4.2 targets objective domains such as mathematics, coding, instruction f
 
 The resulting dataset contains approximately **150,000 preference pairs**. Training lasts **one epoch**, uses a learning rate of **$7\times10^{-7}$**, and uses the [Online Merging Optimizer](https://arxiv.org/abs/2405.17931). The optimizer's name does not change this stage from offline preference learning into online policy sampling.
 
-For preferred and rejected responses $y_w,y_l$ to context $c$, standard [DPO](https://arxiv.org/abs/2305.18290) uses
+For preferred and rejected responses $y_w,y_l$ to context $c$, standard [DPO](alignment-rl_2023_direct-preference-optimization.md) uses
 
 $$
 \mathcal L_{\mathrm{DPO}}
@@ -611,7 +611,7 @@ This general Qwen2.5 report does not itself introduce a dedicated switchable thi
 - **Talks / videos:** no specific talk used as a source for this recap.
 - **OpenReview / venue page:** not used; this recap follows the arXiv technical report.
 - **Papers-with-Code:** not used; benchmark values are sourced directly from the version-pinned report.
-- **Related / successor papers:** [Qwen](backbone_2023_qwen.md) · [Qwen2](backbone_2024_qwen2.md) · [GQA](attention_2023_gqa.md) · [RMSNorm](attention_2019_rmsnorm.md) · [SwiGLU](attention_2020_swiglu.md) · [RoPE](positional_2021_rope-roformer.md) · [YaRN](positional_2023_yarn-context-extension.md) · [DCA](positional_2024_dca-dual-chunk-attention.md) · [DPO](https://arxiv.org/abs/2305.18290) · [GRPO / DeepSeekMath](https://arxiv.org/abs/2402.03300) · [Qwen3](backbone_2025_qwen3.md)
+- **Related / successor papers:** [Qwen](backbone_2023_qwen.md) · [Qwen2](backbone_2024_qwen2.md) · [GQA](attention_2023_gqa.md) · [RMSNorm](attention_2019_rmsnorm.md) · [SwiGLU](attention_2020_swiglu.md) · [RoPE](positional_2021_rope-roformer.md) · [YaRN](positional_2023_yarn-context-extension.md) · [DCA](positional_2024_dca-dual-chunk-attention.md) · [DPO](alignment-rl_2023_direct-preference-optimization.md) · [GRPO / DeepSeekMath](https://arxiv.org/abs/2402.03300) · [Qwen3](backbone_2025_qwen3.md)
 - **Local context:** [Qwen-family overview](../qwen/overview.md)
 - **BibTeX** (author list abbreviated):
 

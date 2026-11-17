@@ -528,7 +528,7 @@ The distinctions are important:
 
 In InstructGPT's objective, the reference penalty is an expectation under the **current policy**, corresponding to current-to-reference KL. That is not the old-to-new KL used in this paper's TRPO and adaptive-penalty formulations.
 
-For foundations, see [TRPO](https://arxiv.org/abs/1502.05477) for trust-region policy optimization and [GAE](https://arxiv.org/abs/1506.02438) for the advantage estimator. For a later, materially different preference-training route, [DPO](https://arxiv.org/abs/2305.18290) avoids the explicit online PPO actor-critic loop in its basic formulation; it is not simply another name for clipping.
+For foundations, see [TRPO](https://arxiv.org/abs/1502.05477) for trust-region policy optimization and [GAE](https://arxiv.org/abs/1506.02438) for the advantage estimator. For a later, materially different preference-training route, [DPO](alignment-rl_2023_direct-preference-optimization.md) avoids the explicit online PPO actor-critic loop in its basic formulation; it is not simply another name for clipping.
 
 ## Links
 
@@ -540,7 +540,7 @@ For foundations, see [TRPO](https://arxiv.org/abs/1502.05477) for trust-region p
 - **Talks / videos:** No paper-specific official recording verified for this recap.
 - **OpenReview / venue page:** No conference venue asserted; the cited source is the arXiv preprint.
 - **Papers-with-Code:** Not used as a source; primary paper and official code linked above.
-- **Related / successor papers:** [TRPO](https://arxiv.org/abs/1502.05477), [GAE](https://arxiv.org/abs/1506.02438), [InstructGPT / RLHF recap](alignment-rl_2022_instructgpt-rlhf.md), [DPO](https://arxiv.org/abs/2305.18290).
+- **Related / successor papers:** [TRPO](https://arxiv.org/abs/1502.05477), [GAE](https://arxiv.org/abs/1506.02438), [InstructGPT / RLHF recap](alignment-rl_2022_instructgpt-rlhf.md), [DPO](alignment-rl_2023_direct-preference-optimization.md).
 - **BibTeX:**
 
 ```bibtex

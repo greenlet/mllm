@@ -555,7 +555,7 @@ The multimodal checkpoint largely preserves the general model's language capabil
 - **Talks / videos:** no specific presentation is identified in the report.
 - **OpenReview / venue page:** not specified; this recap uses the arXiv technical report.
 - **Papers-with-Code:** not used as a primary source.
-- **Method references:** [RoPE local recap](positional_2021_rope-roformer.md) · [DPO](https://arxiv.org/abs/2305.18290).
+- **Method references:** [RoPE local recap](positional_2021_rope-roformer.md) · [DPO](alignment-rl_2023_direct-preference-optimization.md).
 - **Related local recaps:** [Qwen-VL](multimodal_2023_qwen-vl.md) · [Qwen2-VL](multimodal_2024_qwen2-vl.md) · [Qwen2.5](backbone_2024_qwen2.5.md) · [Qwen2.5-Math](math_2024_qwen2.5-math.md) · [Qwen3-VL](multimodal_2025_qwen3-vl.md).
 - **Family hub:** [Qwen overview](../qwen/overview.md).
 - **BibTeX:** the report's author list is abbreviated below; `others` denotes omitted coauthors.

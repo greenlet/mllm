@@ -537,7 +537,7 @@ The authors attribute many flagged cases to common mathematical/code expressions
 - **Talks / videos:** Not used as a source for this recap.
 - **OpenReview / venue page:** Not used as a source for this recap.
 - **Papers-with-Code:** Not used as a source for this recap.
-- **Related / successor papers:** [Qwen](backbone_2023_qwen.md) · [GQA](attention_2023_gqa.md) · [RMSNorm](attention_2019_rmsnorm.md) · [SwiGLU](attention_2020_swiglu.md) · [RoPE](positional_2021_rope-roformer.md) · [YaRN](positional_2023_yarn-context-extension.md) · [DCA](positional_2024_dca-dual-chunk-attention.md) · [DeepSeek-MoE](moe_2024_deepseek-moe.md) · [DPO](https://arxiv.org/abs/2305.18290) · [Online Merging Optimizers](https://arxiv.org/abs/2405.17931) · [Qwen2.5](backbone_2024_qwen2.5.md) · [Qwen3](backbone_2025_qwen3.md)
+- **Related / successor papers:** [Qwen](backbone_2023_qwen.md) · [GQA](attention_2023_gqa.md) · [RMSNorm](attention_2019_rmsnorm.md) · [SwiGLU](attention_2020_swiglu.md) · [RoPE](positional_2021_rope-roformer.md) · [YaRN](positional_2023_yarn-context-extension.md) · [DCA](positional_2024_dca-dual-chunk-attention.md) · [DeepSeek-MoE](moe_2024_deepseek-moe.md) · [DPO](alignment-rl_2023_direct-preference-optimization.md) · [Online Merging Optimizers](https://arxiv.org/abs/2405.17931) · [Qwen2.5](backbone_2024_qwen2.5.md) · [Qwen3](backbone_2025_qwen3.md)
 - **Context:** [Qwen family overview](../qwen/overview.md)
 - **BibTeX:** Minimal arXiv citation; the author list is abbreviated.
 

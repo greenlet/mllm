@@ -485,7 +485,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [SelfConsistency]: ../papers/reasoning_2022_self-consistency.md "Wang et al., Self-Consistency Improves CoT (2022)"
 [RLHF]: ../papers/alignment-rl_2022_instructgpt-rlhf.md "Ouyang et al., InstructGPT / RLHF (2022)"
 [PPO]: ../papers/alignment-rl_2017_proximal-policy-optimization.md "Schulman et al., PPO (2017)"
-[DPO]: https://arxiv.org/abs/2305.18290 "Rafailov et al., Direct Preference Optimization (2023)"
+[DPO]: ../papers/alignment-rl_2023_direct-preference-optimization.md "Rafailov et al., Direct Preference Optimization (2023)"
 [KTO]: https://arxiv.org/abs/2402.01306 "Ethayarajh et al., Kahneman-Tversky Optimization (2024)"
 [ORPO]: https://arxiv.org/abs/2403.07691 "Hong et al., ORPO: Monolithic Preference Optimization (2024)"
 [GRPO]: https://arxiv.org/abs/2402.03300 "Shao et al., DeepSeekMath / GRPO (2024)"

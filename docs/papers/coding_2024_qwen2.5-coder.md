@@ -347,7 +347,7 @@ $$
 
 $\sigma$ is the logistic sigmoid and $\beta$ controls preference strength relative to the reference. Sequence probabilities multiply token probabilities, or equivalently sum their log probabilities. The objective increases the relative likelihood of preferred versus rejected responses compared with the reference.
 
-This equation explains [DPO](https://arxiv.org/abs/2305.18290); the Coder report does not state $\beta$, the full preference dataset size, candidate counts, training epochs, or optimizer settings. It also does not describe an online RL stage. Execution-based labeling and LLM judging should remain distinct: the latter can encode presentation preferences without establishing functional correctness.
+This equation explains [DPO](alignment-rl_2023_direct-preference-optimization.md); the Coder report does not state $\beta$, the full preference dataset size, candidate counts, training epochs, or optimizer settings. It also does not describe an online RL stage. Execution-based labeling and LLM judging should remain distinct: the latter can encode presentation preferences without establishing functional correctness.
 
 ### 7. Decontamination
 
@@ -579,7 +579,7 @@ Section 8's Figure 14 compares model sizes using Base **MBPP 3-shot** and Instru
 - **Talks / videos:** no specific presentation is cited in the report.
 - **OpenReview / venue page:** not specified; this recap uses the arXiv technical report.
 - **Papers-with-Code:** not used as a primary source.
-- **Method references:** [FIM: Efficient Training of Language Models to Fill in the Middle](tokenization_2022_fill-in-the-middle.md) · [DPO](https://arxiv.org/abs/2305.18290) · [StarCoder2](https://arxiv.org/abs/2402.19173) · [CRUXEval task definitions](https://crux-eval.github.io/).
+- **Method references:** [FIM: Efficient Training of Language Models to Fill in the Middle](tokenization_2022_fill-in-the-middle.md) · [DPO](alignment-rl_2023_direct-preference-optimization.md) · [StarCoder2](https://arxiv.org/abs/2402.19173) · [CRUXEval task definitions](https://crux-eval.github.io/).
 - **Related local recaps:** [Qwen2](backbone_2024_qwen2.md) · [Qwen2.5](backbone_2024_qwen2.5.md) · [GQA](attention_2023_gqa.md) · [RMSNorm](attention_2019_rmsnorm.md) · [SwiGLU](attention_2020_swiglu.md) · [RoPE](positional_2021_rope-roformer.md) · [YaRN](positional_2023_yarn-context-extension.md).
 - **Family hub:** [Qwen overview](../qwen/overview.md).
 - **BibTeX:** the author list below is deliberately abbreviated; `others` denotes omitted coauthors.
