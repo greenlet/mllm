@@ -520,7 +520,7 @@ The human study involves a small, mostly STEM/CS-affiliated Stanford population 
 
 [InstructGPT](alignment-rl_2022_instructgpt-rlhf.md) exemplifies the explicit preference-reward-plus-PPO route that DPO simplifies. [PPO](alignment-rl_2017_proximal-policy-optimization.md) is a general policy optimizer and remains useful when the task calls for online interaction or direct reward optimization; DPO is an offline preference-learning formulation, not a drop-in solution to every reinforcement-learning problem.
 
-The [reference repository](https://github.com/eric-mitchell/direct-preference-optimization) now also implements conservative DPO and [IPO](https://arxiv.org/abs/2310.12036), which alter the learning objective or assumptions. Later alternatives such as [KTO](https://arxiv.org/abs/2402.01306) and [ORPO](https://arxiv.org/abs/2403.07691) change aspects of preference supervision or reference-based training. They should not be silently substituted for the original Eq. 7 when reproducing this paper.
+The [reference repository](https://github.com/eric-mitchell/direct-preference-optimization) now also implements conservative DPO and [IPO](https://arxiv.org/abs/2310.12036), which alter the learning objective or assumptions. Later alternatives such as [KTO](alignment-rl_2024_kahneman-tversky-optimization.md) and [ORPO](https://arxiv.org/abs/2403.07691) change aspects of preference supervision or reference-based training. They should not be silently substituted for the original Eq. 7 when reproducing this paper.
 
 ## Links
 
@@ -532,7 +532,7 @@ The [reference repository](https://github.com/eric-mitchell/direct-preference-op
 - **Talks / videos:** No paper-specific recording verified for this recap.
 - **OpenReview / venue page:** [NeurIPS 2023 proceedings](https://proceedings.neurips.cc/paper_files/paper/2023/hash/a85b405ed65c6477a4fe8302b5e06ce7-Abstract-Conference.html).
 - **Papers-with-Code:** Not used as a source; primary paper and released implementation linked above.
-- **Related / successor papers:** [InstructGPT recap](alignment-rl_2022_instructgpt-rlhf.md), [PPO recap](alignment-rl_2017_proximal-policy-optimization.md), [summarization RLHF](https://arxiv.org/abs/2009.01325), [IPO](https://arxiv.org/abs/2310.12036), [KTO](https://arxiv.org/abs/2402.01306), [ORPO](https://arxiv.org/abs/2403.07691).
+- **Related / successor papers:** [InstructGPT recap](alignment-rl_2022_instructgpt-rlhf.md), [PPO recap](alignment-rl_2017_proximal-policy-optimization.md), [summarization RLHF](https://arxiv.org/abs/2009.01325), [IPO](https://arxiv.org/abs/2310.12036), [KTO](alignment-rl_2024_kahneman-tversky-optimization.md), [ORPO](https://arxiv.org/abs/2403.07691).
 - **BibTeX:**
 
 ```bibtex

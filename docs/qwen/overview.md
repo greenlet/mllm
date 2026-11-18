@@ -486,7 +486,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [RLHF]: ../papers/alignment-rl_2022_instructgpt-rlhf.md "Ouyang et al., InstructGPT / RLHF (2022)"
 [PPO]: ../papers/alignment-rl_2017_proximal-policy-optimization.md "Schulman et al., PPO (2017)"
 [DPO]: ../papers/alignment-rl_2023_direct-preference-optimization.md "Rafailov et al., Direct Preference Optimization (2023)"
-[KTO]: https://arxiv.org/abs/2402.01306 "Ethayarajh et al., Kahneman-Tversky Optimization (2024)"
+[KTO]: ../papers/alignment-rl_2024_kahneman-tversky-optimization.md "Ethayarajh et al., Kahneman-Tversky Optimization (2024)"
 [ORPO]: https://arxiv.org/abs/2403.07691 "Hong et al., ORPO: Monolithic Preference Optimization (2024)"
 [GRPO]: https://arxiv.org/abs/2402.03300 "Shao et al., DeepSeekMath / GRPO (2024)"
 [CAI]: https://arxiv.org/abs/2212.08073 "Bai et al., Constitutional AI (2022)"
