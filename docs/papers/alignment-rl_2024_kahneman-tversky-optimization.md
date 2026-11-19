@@ -483,7 +483,7 @@ The large-model and SFT-free findings are conditional on the tested models and d
 
 ### Related directions
 
-[DPO](alignment-rl_2023_direct-preference-optimization.md) remains the most direct comparison when reliable pairs exist. [InstructGPT](alignment-rl_2022_instructgpt-rlhf.md) and [PPO](alignment-rl_2017_proximal-policy-optimization.md) explain the explicit-reward and online-optimization route that offline binary alignment does not replace in every setting. [IPO](https://arxiv.org/abs/2310.12036) revisits preference-objective assumptions, while [ORPO](https://arxiv.org/abs/2403.07691) combines likelihood training with a reference-free odds-ratio preference term. These objectives use different supervision or regularization choices and should be compared as such, not relabeled as equivalent KTO implementations.
+[DPO](alignment-rl_2023_direct-preference-optimization.md) remains the most direct comparison when reliable pairs exist. [InstructGPT](alignment-rl_2022_instructgpt-rlhf.md) and [PPO](alignment-rl_2017_proximal-policy-optimization.md) explain the explicit-reward and online-optimization route that offline binary alignment does not replace in every setting. [IPO](https://arxiv.org/abs/2310.12036) revisits preference-objective assumptions, while [ORPO](alignment-rl_2024_odds-ratio-preference-optimization.md) combines likelihood training with a reference-free odds-ratio preference term. These objectives use different supervision or regularization choices and should be compared as such, not relabeled as equivalent KTO implementations.
 
 ## Links
 
@@ -495,7 +495,7 @@ The large-model and SFT-free findings are conditional on the tested models and d
 - **Talks / videos:** No paper-specific recording verified for this recap.
 - **OpenReview / venue page:** [ICML 2024 / PMLR proceedings](https://proceedings.mlr.press/v235/ethayarajh24a.html). The venue title is *Model Alignment as Prospect Theoretic Optimization*, without the initial “KTO:”.
 - **Papers-with-Code:** Not used as a source; primary paper and released implementation linked above.
-- **Related / successor papers:** [DPO recap](alignment-rl_2023_direct-preference-optimization.md), [PPO recap](alignment-rl_2017_proximal-policy-optimization.md), [InstructGPT recap](alignment-rl_2022_instructgpt-rlhf.md), [IPO](https://arxiv.org/abs/2310.12036), [ORPO](https://arxiv.org/abs/2403.07691).
+- **Related / successor papers:** [DPO recap](alignment-rl_2023_direct-preference-optimization.md), [PPO recap](alignment-rl_2017_proximal-policy-optimization.md), [InstructGPT recap](alignment-rl_2022_instructgpt-rlhf.md), [IPO](https://arxiv.org/abs/2310.12036), [ORPO](alignment-rl_2024_odds-ratio-preference-optimization.md).
 - **BibTeX:**
 
 ```bibtex
