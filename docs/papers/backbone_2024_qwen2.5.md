@@ -345,7 +345,7 @@ This stage supplies reliable discriminative signals where a generic learned rewa
 
 Section 4.3 builds reward data around truthfulness, helpfulness, conciseness, relevance, harmlessness, and debiasing. Queries combine public material with a more complex proprietary set. Responses come from Qwen checkpoints at different SFT/DPO/RL stages and from varied sampling temperatures; both human and automated preferences are used, including the offline DPO data.
 
-The online policy uses **Group Relative Policy Optimization**, citing [DeepSeekMath](https://arxiv.org/abs/2402.03300). For each query $c$, sample $G=8$ responses $y_i$ and obtain scalar rewards $r_i=R_\psi(c,y_i)$ from reward model $R_\psi$.
+The online policy uses **Group Relative Policy Optimization**, citing [DeepSeekMath](alignment-rl_2024_deepseekmath-grpo.md). For each query $c$, sample $G=8$ responses $y_i$ and obtain scalar rewards $r_i=R_\psi(c,y_i)$ from reward model $R_\psi$.
 
 A standard group-relative advantage is
 
@@ -611,7 +611,7 @@ This general Qwen2.5 report does not itself introduce a dedicated switchable thi
 - **Talks / videos:** no specific talk used as a source for this recap.
 - **OpenReview / venue page:** not used; this recap follows the arXiv technical report.
 - **Papers-with-Code:** not used; benchmark values are sourced directly from the version-pinned report.
-- **Related / successor papers:** [Qwen](backbone_2023_qwen.md) · [Qwen2](backbone_2024_qwen2.md) · [GQA](attention_2023_gqa.md) · [RMSNorm](attention_2019_rmsnorm.md) · [SwiGLU](attention_2020_swiglu.md) · [RoPE](positional_2021_rope-roformer.md) · [YaRN](positional_2023_yarn-context-extension.md) · [DCA](positional_2024_dca-dual-chunk-attention.md) · [DPO](alignment-rl_2023_direct-preference-optimization.md) · [GRPO / DeepSeekMath](https://arxiv.org/abs/2402.03300) · [Qwen3](backbone_2025_qwen3.md)
+- **Related / successor papers:** [Qwen](backbone_2023_qwen.md) · [Qwen2](backbone_2024_qwen2.md) · [GQA](attention_2023_gqa.md) · [RMSNorm](attention_2019_rmsnorm.md) · [SwiGLU](attention_2020_swiglu.md) · [RoPE](positional_2021_rope-roformer.md) · [YaRN](positional_2023_yarn-context-extension.md) · [DCA](positional_2024_dca-dual-chunk-attention.md) · [DPO](alignment-rl_2023_direct-preference-optimization.md) · [GRPO / DeepSeekMath](alignment-rl_2024_deepseekmath-grpo.md) · [Qwen3](backbone_2025_qwen3.md)
 - **Local context:** [Qwen-family overview](../qwen/overview.md)
 - **BibTeX** (author list abbreviated):
 

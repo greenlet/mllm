@@ -549,7 +549,7 @@ Later mathematical process-reward work, such as [Qwen2.5-Math-PRM](https://arxiv
 - **Talks / videos:** no specific presentation is identified by the report.
 - **OpenReview / venue page:** not specified; this recap uses the arXiv report.
 - **Papers-with-Code:** not used as a primary source.
-- **Method references:** [DeepSeekMath / GRPO](https://arxiv.org/abs/2402.03300) · [ToRA / tool-integrated reasoning](https://arxiv.org/abs/2309.17452) · [later process-reward study](https://arxiv.org/abs/2501.07301).
+- **Method references:** [DeepSeekMath / GRPO](alignment-rl_2024_deepseekmath-grpo.md) · [ToRA / tool-integrated reasoning](https://arxiv.org/abs/2309.17452) · [later process-reward study](https://arxiv.org/abs/2501.07301).
 - **Related local recaps:** [Qwen2](backbone_2024_qwen2.md) · [Qwen2.5](backbone_2024_qwen2.5.md) · [Qwen2.5-Coder](coding_2024_qwen2.5-coder.md).
 - **Family hub:** [Qwen overview](../qwen/overview.md).
 - **BibTeX:** author names are listed in the report's order.
