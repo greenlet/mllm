@@ -531,7 +531,7 @@ The quantitative results in this recap are source-checked, not reproduced by tra
 - **[PPO](alignment-rl_2017_proximal-policy-optimization.md):** supplies the clipped policy optimizer. InstructGPT's contribution is the instruction-following data, preference reward, and practical RLHF pipeline, not the invention of PPO.
 - **[Learning to summarize from human feedback](https://arxiv.org/abs/2009.01325):** an earlier task-focused demonstration of supervised initialization, preference modeling, and RL. InstructGPT broadens the target to a heterogeneous instruction distribution.
 - **[Direct Preference Optimization](alignment-rl_2023_direct-preference-optimization.md):** trains a policy from preference pairs without the same explicit reward-model-plus-PPO loop. It is a later alternative, not a hidden component of InstructGPT.
-- **[Constitutional AI](https://arxiv.org/abs/2212.08073):** explores feedback guided by explicit principles and AI assistance, addressing a different feedback-generation design. It does not remove the need to decide which principles and evaluations matter.
+- **[Constitutional AI](alignment-rl_2022_constitutional-ai.md):** explores feedback guided by explicit principles and AI assistance, addressing a different feedback-generation design. It does not remove the need to decide which principles and evaluations matter.
 - **[Chain-of-thought prompting](reasoning_2022_chain-of-thought.md) and [self-consistency](reasoning_2022_self-consistency.md):** change how a frozen model is prompted or decoded. InstructGPT instead changes model weights using demonstrations and preferences; these axes can be combined but should not be conflated.
 
 ## Links
@@ -544,7 +544,7 @@ The quantitative results in this recap are source-checked, not reproduced by tra
 - **Talks / videos:** No separate official talk verified.
 - **OpenReview / venue:** [NeurIPS 2022 proceedings entry](https://proceedings.neurips.cc/paper_files/paper/2022/hash/b1efde53be364a73914f58805a001731-Abstract-Conference.html).
 - **Papers with Code:** No separate record verified; primary paper, venue, and official release are used here.
-- **Related / successor papers:** [PPO](alignment-rl_2017_proximal-policy-optimization.md), [summarization RLHF](https://arxiv.org/abs/2009.01325), [DPO](alignment-rl_2023_direct-preference-optimization.md), [Constitutional AI](https://arxiv.org/abs/2212.08073), [CoT recap](reasoning_2022_chain-of-thought.md), [self-consistency recap](reasoning_2022_self-consistency.md).
+- **Related / successor papers:** [PPO](alignment-rl_2017_proximal-policy-optimization.md), [summarization RLHF](https://arxiv.org/abs/2009.01325), [DPO](alignment-rl_2023_direct-preference-optimization.md), [Constitutional AI](alignment-rl_2022_constitutional-ai.md), [CoT recap](reasoning_2022_chain-of-thought.md), [self-consistency recap](reasoning_2022_self-consistency.md).
 - **BibTeX:**
 
 ```bibtex
