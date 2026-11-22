@@ -490,7 +490,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [ORPO]: ../papers/alignment-rl_2024_odds-ratio-preference-optimization.md "Hong et al., ORPO: Monolithic Preference Optimization (2024)"
 [GRPO]: ../papers/alignment-rl_2024_deepseekmath-grpo.md "Shao et al., DeepSeekMath / GRPO (2024)"
 [CAI]: ../papers/alignment-rl_2022_constitutional-ai.md "Bai et al., Constitutional AI (2022)"
-[RLAIF]: https://arxiv.org/abs/2309.00267 "Lee et al., RLAIF (2023)"
+[RLAIF]: ../papers/alignment-rl_2023_rlaif-vs-rlhf.md "Lee et al., RLAIF (2023)"
 [R1]: https://arxiv.org/abs/2501.12948 "DeepSeek-R1 (2025)"
 [Adapters]: ../papers/peft_2019_bottleneck-adapters.md "Houlsby et al., Parameter-Efficient Transfer Learning (Adapters, 2019)"
 [PrefixTuning]: ../papers/softtoken_2021_prefix-tuning.md "Li & Liang, Prefix-Tuning (2021)"
