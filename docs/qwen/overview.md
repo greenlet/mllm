@@ -491,7 +491,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [GRPO]: ../papers/alignment-rl_2024_deepseekmath-grpo.md "Shao et al., DeepSeekMath / GRPO (2024)"
 [CAI]: ../papers/alignment-rl_2022_constitutional-ai.md "Bai et al., Constitutional AI (2022)"
 [RLAIF]: ../papers/alignment-rl_2023_rlaif-vs-rlhf.md "Lee et al., RLAIF (2023)"
-[R1]: https://arxiv.org/abs/2501.12948 "DeepSeek-R1 (2025)"
+[R1]: ../papers/alignment-rl_2025_deepseek-r1.md "DeepSeek-R1 (2025)"
 [Adapters]: ../papers/peft_2019_bottleneck-adapters.md "Houlsby et al., Parameter-Efficient Transfer Learning (Adapters, 2019)"
 [PrefixTuning]: ../papers/softtoken_2021_prefix-tuning.md "Li & Liang, Prefix-Tuning (2021)"
 [PromptTuning]: https://arxiv.org/abs/2104.08691 "Lester et al., The Power of Scale for Prompt Tuning (2021)"

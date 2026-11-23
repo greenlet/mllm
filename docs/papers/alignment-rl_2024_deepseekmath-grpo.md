@@ -614,7 +614,7 @@ The main results combine data mining, substantial continued pretraining, SFT, an
 
 [PPO](alignment-rl_2017_proximal-policy-optimization.md) supplies the clipped-surrogate ancestor, while [InstructGPT](alignment-rl_2022_instructgpt-rlhf.md) explains the policy/reward/reference/value roles in earlier LM RLHF. [DPO](alignment-rl_2023_direct-preference-optimization.md), [KTO](alignment-rl_2024_kahneman-tversky-optimization.md), and [ORPO](alignment-rl_2024_odds-ratio-preference-optimization.md) provide contrasting offline preference objectives rather than interchangeable implementations of grouped online RL.
 
-[Qwen2.5-Math](math_2024_qwen2.5-math.md) and [Qwen2.5](backbone_2024_qwen2.5.md) are later technical reports using GRPO-related post-training. [DeepSeek-R1](https://arxiv.org/abs/2501.12948) later popularizes a different reasoning-RL recipe, including rule-based verifiable rewards. Those later settings should not be retroactively substituted for DeepSeekMath's learned reward models and original training schedule.
+[Qwen2.5-Math](math_2024_qwen2.5-math.md) and [Qwen2.5](backbone_2024_qwen2.5.md) are later technical reports using GRPO-related post-training. [DeepSeek-R1](alignment-rl_2025_deepseek-r1.md) later popularizes a different reasoning-RL recipe, including rule-based verifiable rewards. Those later settings should not be retroactively substituted for DeepSeekMath's learned reward models and original training schedule.
 
 ## Links
 
@@ -627,7 +627,7 @@ The main results combine data mining, substantial continued pretraining, SFT, an
 - **OpenReview / venue page:** no conference venue is established by the sources used here; this recap follows the technical report.
 - **Papers-with-Code:** not used as a primary source.
 - **Licensing:** [code license](https://github.com/deepseek-ai/DeepSeek-Math/blob/main/LICENSE-CODE) is MIT; [model license](https://github.com/deepseek-ai/DeepSeek-Math/blob/main/LICENSE-MODEL) is separate. The README permits commercial use subject to the model terms, not an unrestricted relicensing of the weights.
-- **Related / successor papers:** [PPO](alignment-rl_2017_proximal-policy-optimization.md) | [InstructGPT](alignment-rl_2022_instructgpt-rlhf.md) | [DPO](alignment-rl_2023_direct-preference-optimization.md) | [KTO](alignment-rl_2024_kahneman-tversky-optimization.md) | [ORPO](alignment-rl_2024_odds-ratio-preference-optimization.md) | [Chain-of-Thought](reasoning_2022_chain-of-thought.md) | [Self-Consistency](reasoning_2022_self-consistency.md) | [Math-Shepherd](https://arxiv.org/abs/2312.08935) | [Qwen2.5-Math](math_2024_qwen2.5-math.md) | [DeepSeek-R1](https://arxiv.org/abs/2501.12948).
+- **Related / successor papers:** [PPO](alignment-rl_2017_proximal-policy-optimization.md) | [InstructGPT](alignment-rl_2022_instructgpt-rlhf.md) | [DPO](alignment-rl_2023_direct-preference-optimization.md) | [KTO](alignment-rl_2024_kahneman-tversky-optimization.md) | [ORPO](alignment-rl_2024_odds-ratio-preference-optimization.md) | [Chain-of-Thought](reasoning_2022_chain-of-thought.md) | [Self-Consistency](reasoning_2022_self-consistency.md) | [Math-Shepherd](https://arxiv.org/abs/2312.08935) | [Qwen2.5-Math](math_2024_qwen2.5-math.md) | [DeepSeek-R1](alignment-rl_2025_deepseek-r1.md).
 - **BibTeX:**
 
 ```bibtex
