@@ -494,7 +494,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [R1]: ../papers/alignment-rl_2025_deepseek-r1.md "DeepSeek-R1 (2025)"
 [Adapters]: ../papers/peft_2019_bottleneck-adapters.md "Houlsby et al., Parameter-Efficient Transfer Learning (Adapters, 2019)"
 [PrefixTuning]: ../papers/softtoken_2021_prefix-tuning.md "Li & Liang, Prefix-Tuning (2021)"
-[PromptTuning]: https://arxiv.org/abs/2104.08691 "Lester et al., The Power of Scale for Prompt Tuning (2021)"
+[PromptTuning]: ../papers/softtoken_2021_prompt-tuning.md "Lester et al., The Power of Scale for Prompt Tuning (2021)"
 [LoRA]: ../papers/peft_2021_lora.md "Hu et al., LoRA: Low-Rank Adaptation (2021)"
 [QLoRA]: https://arxiv.org/abs/2305.14314 "Dettmers et al., QLoRA (2023)"
 [DoRA]: https://arxiv.org/abs/2402.09353 "Liu et al., DoRA: Weight-Decomposed LoRA (2024)"
