@@ -496,7 +496,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [PrefixTuning]: ../papers/softtoken_2021_prefix-tuning.md "Li & Liang, Prefix-Tuning (2021)"
 [PromptTuning]: ../papers/softtoken_2021_prompt-tuning.md "Lester et al., The Power of Scale for Prompt Tuning (2021)"
 [LoRA]: ../papers/peft_2021_lora.md "Hu et al., LoRA: Low-Rank Adaptation (2021)"
-[QLoRA]: https://arxiv.org/abs/2305.14314 "Dettmers et al., QLoRA (2023)"
+[QLoRA]: ../papers/peft_2023_qlora.md "Dettmers et al., QLoRA (2023)"
 [DoRA]: https://arxiv.org/abs/2402.09353 "Liu et al., DoRA: Weight-Decomposed LoRA (2024)"
 [LoRAplus]: https://arxiv.org/abs/2402.12354 "Hayou et al., LoRA+ (2024)"
 [GaLore]: https://arxiv.org/abs/2403.03507 "Zhao et al., GaLore (2024)"

@@ -280,7 +280,7 @@ Three ablations sharpen the main result:
   input, nor does it solve composition, interference, or continual-learning forgetting by itself.
 
 Later work extends different parts of the design: [AdaLoRA](https://arxiv.org/abs/2303.10512) allocates
-rank adaptively; [QLoRA](https://arxiv.org/abs/2305.14314) backpropagates through a quantized frozen
+rank adaptively; [QLoRA](peft_2023_qlora.md) backpropagates through a quantized frozen
 backbone; [DoRA](https://arxiv.org/abs/2402.09353) separates weight magnitude from direction; and
 [LoRA+](https://arxiv.org/abs/2402.12354) uses different learning rates for the two factors. These are
 successors, not evidence retroactively established by the original paper.
