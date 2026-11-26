@@ -281,7 +281,7 @@ Three ablations sharpen the main result:
 
 Later work extends different parts of the design: [AdaLoRA](https://arxiv.org/abs/2303.10512) allocates
 rank adaptively; [QLoRA](peft_2023_qlora.md) backpropagates through a quantized frozen
-backbone; [DoRA](https://arxiv.org/abs/2402.09353) separates weight magnitude from direction; and
+backbone; [DoRA](peft_2024_dora.md) separates weight magnitude from direction; and
 [LoRA+](https://arxiv.org/abs/2402.12354) uses different learning rates for the two factors. These are
 successors, not evidence retroactively established by the original paper.
 
