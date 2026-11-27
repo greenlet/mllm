@@ -531,7 +531,7 @@ Datasets encode different goals and licenses. Full-conversation SFT on preferred
 
 [LoRA](peft_2021_lora.md) supplies the frozen-base/low-rank-update mechanism. [Prompt Tuning](softtoken_2021_prompt-tuning.md), [Prefix-Tuning](softtoken_2021_prefix-tuning.md), and [Adapters](peft_2019_bottleneck-adapters.md) offer different parameter-efficient interfaces; QLoRA's quantization/storage choices are distinct from those adaptation parameterizations.
 
-Subsequent work such as [LoftQ](https://arxiv.org/abs/2310.08659) studies quantization-aware low-rank initialization, while [DoRA](peft_2024_dora.md) and [LoRA+](https://arxiv.org/abs/2402.12354) change the adapter parameterization or optimization. Those are follow-ups, not mechanisms evaluated by the original QLoRA paper.
+Subsequent work such as [LoftQ](https://arxiv.org/abs/2310.08659) studies quantization-aware low-rank initialization, while [DoRA](peft_2024_dora.md) and [LoRA+](peft_2024_lora-plus.md) change the adapter parameterization or optimization. Those are follow-ups, not mechanisms evaluated by the original QLoRA paper.
 
 ## Links
 
@@ -544,7 +544,7 @@ Subsequent work such as [LoftQ](https://arxiv.org/abs/2310.08659) studies quanti
 - **Talks / videos / venue:** [NeurIPS 2023 presentation](https://neurips.cc/virtual/2023/poster/71815) | [proceedings](https://papers.nips.cc/paper_files/paper/2023/hash/1feb87871436031bdc0f2beaa62a049b-Abstract-Conference.html)
 - **Evaluation artifacts:** [protocol and released judgments](https://github.com/artidoro/qlora/blob/main/eval/EVAL_README.md)
 - **Papers-with-Code:** No separate record verified; primary paper and official repositories above are sufficient.
-- **Related / successor papers:** [LoRA](peft_2021_lora.md) | [Prompt Tuning](softtoken_2021_prompt-tuning.md) | [Prefix-Tuning](softtoken_2021_prefix-tuning.md) | [Adapters](peft_2019_bottleneck-adapters.md) | [LoftQ](https://arxiv.org/abs/2310.08659) | [DoRA](peft_2024_dora.md) | [LoRA+](https://arxiv.org/abs/2402.12354)
+- **Related / successor papers:** [LoRA](peft_2021_lora.md) | [Prompt Tuning](softtoken_2021_prompt-tuning.md) | [Prefix-Tuning](softtoken_2021_prefix-tuning.md) | [Adapters](peft_2019_bottleneck-adapters.md) | [LoftQ](https://arxiv.org/abs/2310.08659) | [DoRA](peft_2024_dora.md) | [LoRA+](peft_2024_lora-plus.md)
 - **BibTeX:**
 
 ```bibtex

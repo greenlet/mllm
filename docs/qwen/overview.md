@@ -498,7 +498,7 @@ In-depth threads grouping related references by lineage. Each thread doc has an 
 [LoRA]: ../papers/peft_2021_lora.md "Hu et al., LoRA: Low-Rank Adaptation (2021)"
 [QLoRA]: ../papers/peft_2023_qlora.md "Dettmers et al., QLoRA (2023)"
 [DoRA]: ../papers/peft_2024_dora.md "Liu et al., DoRA: Weight-Decomposed LoRA (2024)"
-[LoRAplus]: https://arxiv.org/abs/2402.12354 "Hayou et al., LoRA+ (2024)"
+[LoRAplus]: ../papers/peft_2024_lora-plus.md "Hayou et al., LoRA+ (2024)"
 [GaLore]: https://arxiv.org/abs/2403.03507 "Zhao et al., GaLore (2024)"
 [IA3]: https://arxiv.org/abs/2205.05638 "Liu et al., Few-Shot PEFT is Better and Cheaper than ICL (IA³, 2022)"
 [GPTQ]: https://arxiv.org/abs/2210.17323 "Frantar et al., GPTQ (2022)"

@@ -562,7 +562,7 @@ The code links track a moving repository; baseline scores and launch defaults ha
 
 [LoRA](peft_2021_lora.md) supplies the low-rank update, [QLoRA](peft_2023_qlora.md) compresses the frozen backbone, and [VeRA](https://arxiv.org/abs/2310.11454) compresses the adapter parameterization. These attack different resource/optimization dimensions, which explains the DoRA + VeRA and quantized DoRA combinations.
 
-[LoRA+](https://arxiv.org/abs/2402.12354) instead changes the relative learning rates of the two low-rank factors. It is a neighboring optimization direction, not part of the DoRA mechanism evaluated here. The paper itself identifies adaptation beyond language/vision, particularly audio, as future work.
+[LoRA+](peft_2024_lora-plus.md) instead changes the relative learning rates of the two low-rank factors. It is a neighboring optimization direction, not part of the DoRA mechanism evaluated here. The paper itself identifies adaptation beyond language/vision, particularly audio, as future work.
 
 ## Links
 
@@ -575,7 +575,7 @@ The code links track a moving repository; baseline scores and launch defaults ha
 - **OpenReview / venue page:** [ICML/PMLR proceedings and supplementary material](https://proceedings.mlr.press/v235/liu24bn.html)
 - **Papers-with-Code:** No separate record verified; primary paper and official repositories above are sufficient.
 - **QDoRA:** [official reproduction instructions](https://github.com/NVlabs/DoRA/tree/main/QDoRA) | [Answer.AI FSDP implementation](https://github.com/AnswerDotAI/fsdp_qlora)
-- **Related papers:** [LoRA](peft_2021_lora.md) | [QLoRA](peft_2023_qlora.md) | [LLaVA-1.5](multimodal_2023_llava-1.5.md) | [Weight Normalization](https://arxiv.org/abs/1602.07868) | [VeRA](https://arxiv.org/abs/2310.11454) | [LoRA+](https://arxiv.org/abs/2402.12354)
+- **Related papers:** [LoRA](peft_2021_lora.md) | [QLoRA](peft_2023_qlora.md) | [LLaVA-1.5](multimodal_2023_llava-1.5.md) | [Weight Normalization](https://arxiv.org/abs/1602.07868) | [VeRA](https://arxiv.org/abs/2310.11454) | [LoRA+](peft_2024_lora-plus.md)
 - **BibTeX:**
 
 ```bibtex
