@@ -543,7 +543,7 @@ These issues affect exact reproduction and interpretation, not the mechanically 
 
 [LoRA](peft_2021_lora.md) supplies the parameterization that LoRA+ optimizes. [QLoRA](peft_2023_qlora.md) changes frozen-base storage and training memory, while [DoRA](peft_2024_dora.md) changes how magnitude and direction are parameterized. Those are different axes of adaptation; possible combinations require actual experiments and must not be presented as combinations validated by this paper.
 
-[GaLore](https://arxiv.org/abs/2403.03507) is a neighboring memory-efficient optimization direction using low-rank gradient projection rather than simply changing the rates of two persistent LoRA factors. It is not another name for LoRA+. The [maintained PEFT LoRA guide](https://huggingface.co/docs/peft/developer_guides/lora) is useful for current tooling, but current APIs and defaults should be kept separate from the historical repository snapshot described here.
+[GaLore](peft_2024_galore.md) is a neighboring memory-efficient optimization direction using low-rank gradient projection rather than simply changing the rates of two persistent LoRA factors. It is not another name for LoRA+. The [maintained PEFT LoRA guide](https://huggingface.co/docs/peft/developer_guides/lora) is useful for current tooling, but current APIs and defaults should be kept separate from the historical repository snapshot described here.
 
 The paper's central open problem is a better finite-model account of the constants: why a given architecture, task, and initialization prefers a particular ratio, and how to select that ratio with less expensive search.
 
@@ -558,7 +558,7 @@ The paper's central open problem is a better finite-model account of the constan
 - **Talks / videos:** no separately verified recording used for this recap.
 - **OpenReview / venue page:** [ICML 2024 / PMLR proceedings](https://proceedings.mlr.press/v235/hayou24a.html).
 - **Papers-with-Code:** not used as a primary source.
-- **Related / successor papers:** [LoRA](peft_2021_lora.md) | [QLoRA](peft_2023_qlora.md) | [DoRA](peft_2024_dora.md) | [GaLore](https://arxiv.org/abs/2403.03507) | [Tensor Programs IV: feature-learning scaling background](https://arxiv.org/abs/2011.14522).
+- **Related / successor papers:** [LoRA](peft_2021_lora.md) | [QLoRA](peft_2023_qlora.md) | [DoRA](peft_2024_dora.md) | [GaLore](peft_2024_galore.md) | [Tensor Programs IV: feature-learning scaling background](https://arxiv.org/abs/2011.14522).
 - **BibTeX:**
 
 ```bibtex
